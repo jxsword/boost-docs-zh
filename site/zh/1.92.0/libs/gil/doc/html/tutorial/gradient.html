@@ -1,0 +1,649 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+    <title>教程: 图像梯度 - Boost.GIL 文档</title>
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/style.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <script type="text/javascript" src="../_static/sphinx_highlight.js"></script>
+    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <link rel="index" title="索引" href="../genindex.html" />
+    <link rel="search" title="搜索" href="../search.html" />
+    <link rel="top" title="Boost.GIL 文档" href="../index.html" />
+    <link rel="next" title="命名约定" href="../naming.html" />
+    <link rel="prev" title="教程: 直方图" href="histogram.html" /> 
+  </head>
+  <body>
+    <div class="header">
+    <table border="0" cellpadding="7" cellspacing="0" width="100%" summary=
+    "header">
+      <tr>
+        <td valign="top" width="300">
+          <h3><a href="../index.html"><img
+          alt="C++ Boost" src="../../_static/gil.png" border="0"></a></h3>
+        </td>
+        <td >
+          <h1 align="center"><a href="../index.html"></a></h1>
+        </td>
+	<td>
+      <div id="searchbox" style="display: none">
+        <form class="search" action="../search.html" method="get">
+          <input type="text" name="q" size="18" />
+          <input type="submit" value="Search" />
+          <input type="hidden" name="check_keywords" value="yes" />
+          <input type="hidden" name="area" value="default" />
+        </form>
+      </div>
+      <script type="text/javascript">$('#searchbox').show(0);</script>
+	</td>
+      </tr>
+    </table>
+    </div>
+    <hr/>
+    <div class="content">
+    <div class="navbar" style="text-align:right;">
+      
+      
+      <a class="prev" title="教程: 直方图" href="histogram.html"><img src="../_static/prev.png" alt="上一页"/></a>
+      <a class="next" title="命名约定" href="../naming.html"><img src="../_static/next.png" alt="next"/></a>
+      
+    </div>
+      
+  <section id="tutorial-image-gradient">
+<h1>教程: 图像梯度</h1>
+<nav class="contents local" id="contents">
+<ul class="simple">
+<li><p><a class="reference internal" href="#interface-and-glue-code" id="id1">接口与粘合代码</a></p></li>
+<li><p><a class="reference internal" href="#first-implementation" id="id2">第一个实现</a></p></li>
+<li><p><a class="reference internal" href="#using-locators" id="id3">使用定位器</a></p></li>
+<li><p><a class="reference internal" href="#creating-a-generic-version-of-gil-algorithms" id="id4">创建 GIL 算法的泛型版本</a></p></li>
+<li><p><a class="reference internal" href="#image-view-transformations" id="id5">Image View Transformations</a></p></li>
+<li><p><a class="reference internal" href="#d-pixel-iterators" id="id6">一维像素迭代器</a></p></li>
+<li><p><a class="reference internal" href="#stl-equivalent-algorithms" id="id7">STL 等价算法</a></p></li>
+<li><p><a class="reference internal" href="#color-conversion" id="id8">颜色转换</a></p></li>
+<li><p><a class="reference internal" href="#image" id="id9">图像</a></p></li>
+<li><p><a class="reference internal" href="#virtual-image-views" id="id10">虚拟图像视图</a></p></li>
+<li><p><a class="reference internal" href="#run-time-specified-images-and-image-views" id="id11">运行期指定的图像与图像视图</a></p></li>
+<li><p><a class="reference internal" href="#conclusion" id="id12">结论</a></p></li>
+</ul>
+</nav>
+<p>这份全面 (且篇幅较长) 的教程将通过一个示例, 讲解如何使用 GIL 计算图像梯度.</p>
+<p>我们将从一些非常简单、非泛型的代码入手, 并在过程中逐步使其泛化. 先从水平梯度开始, 采用最简单的梯度近似 - 中心差分.</p>
+<p>像素 x 处的梯度可以用其两个相邻像素的半差来近似:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="n">D</span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">I</span><span class="p">[</span><span class="n">x</span><span class="mi">-1</span><span class="p">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">I</span><span class="p">[</span><span class="n">x</span><span class="o">+</span><span class="mi">1</span><span class="p">])</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span>
+</pre></div>
+</div>
+<p>为简单起见, 我们也将忽略边界情形 - 即图像边缘处某个邻居未定义的像素. 本文档的重点是如何使用 GIL, 而不是如何设计一个好的梯度生成算法.</p>
+<section id="interface-and-glue-code">
+<h2><a class="toc-backref" href="#id1" role="doc-backlink">接口与粘合代码</a></h2>
+<p>我们首先以 8 位无符号灰度图像为输入, 以 8 位有符号灰度图像为输出.</p>
+<p>我们的算法的接口如下所示:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;boost/gil.hpp&gt;</span>
+
+<span class="k">using</span><span class="w"> </span><span class="k">namespace</span><span class="w"> </span><span class="nn">boost</span><span class="o">::</span><span class="nn">gil</span><span class="p">;</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="nf">x_gradient</span><span class="p">(</span><span class="n">gray8c_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">gray8s_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">assert</span><span class="p">(</span><span class="n">src</span><span class="p">.</span><span class="n">dimensions</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">dst</span><span class="p">.</span><span class="n">dimensions</span><span class="p">());</span>
+<span class="w">  </span><span class="p">...</span><span class="w">    </span><span class="c1">// compute the gradient</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">gray8c_view_t</span></code> 是源图像视图的类型 - 8 位灰度视图, 其像素为只读 (由 “c” 表示).</p>
+<p>输出是具有 8 位有符号 (由 “s” 表示) 整数通道类型的灰度视图. GIL 为具体类型命名所用约定的完整说明见附录 1.</p>
+<p>GIL 区分图像与图像视图. GIL 的 <em>图像视图</em> 是像素矩形网格的浅层轻量视图. 它提供对像素的访问, 但不拥有像素. 拷贝构造视图不会深拷贝像素. 图像视图不会将其 const 性传播给像素, 因此应始终以 const 引用传入. 视图是可变的还是只读的 (不可变的), 由视图类型决定.</p>
+<p>而 GIL 的 <em>图像</em> 则是带有所有权的视图. 它是像素的容器; 其构造函数/析构函数分配/释放像素, 其拷贝构造函数对像素执行深拷贝, 其 <code class="docutils literal notranslate"><span class="pre">operator==</span></code> 对像素执行深比较. 图像也会将其 const 性传播给像素 - 图像的常量引用不允许修改其像素.</p>
+<p>大多数 GIL 算法操作图像视图; 很少需要用到图像本身. GIL 的设计与 STL 非常相似. GIL 图像在 STL 中的对应物是容器, 如 <code class="docutils literal notranslate"><span class="pre">std::vector</span></code>; 而 GIL 图像视图对应 STL 范围, 后者常以一对迭代器表示. STL 算法操作范围, 正如 GIL 算法操作图像视图.</p>
+<p>GIL 的图像视图可以从原始数据构造 - 即尺寸、每行字节数与像素; 对于交织式 (chunky) 视图, 像素由一个指针表示. 下面演示如何在你的代码与 GIL 之间提供粘合代码:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">ComputeXGradientGray8</span><span class="p">(</span>
+<span class="w">    </span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="k">const</span><span class="o">*</span><span class="w"> </span><span class="n">src_pixels</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="kt">ptrdiff_t</span><span class="w"> </span><span class="n">src_row_bytes</span><span class="p">,</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">h</span><span class="p">,</span>
+<span class="w">    </span><span class="kt">signed</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">dst_pixels</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="kt">ptrdiff_t</span><span class="w"> </span><span class="n">dst_row_bytes</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">gray8c_view_t</span><span class="w"> </span><span class="n">src</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">interleaved_view</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">h</span><span class="p">,</span><span class="w"> </span><span class="k">reinterpret_cast</span><span class="o">&lt;</span><span class="n">gray8_pixel_t</span><span class="w"> </span><span class="k">const</span><span class="o">*&gt;</span><span class="p">(</span><span class="n">src_pixels</span><span class="p">),</span><span class="w"> </span><span class="n">src_row_bytes</span><span class="p">);</span>
+<span class="w">  </span><span class="n">gray8s_view_t</span><span class="w"> </span><span class="n">dst</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">interleaved_view</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">h</span><span class="p">,</span><span class="w"> </span><span class="k">reinterpret_cast</span><span class="o">&lt;</span><span class="n">gray8s_pixel_t</span><span class="o">*&gt;</span><span class="p">(</span><span class="n">dst_pixels</span><span class="p">),</span><span class="w"> </span><span class="n">dst_row_bytes</span><span class="p">);</span>
+<span class="w">  </span><span class="n">x_gradient</span><span class="p">(</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">dst</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>这段粘合代码非常快速, 视图也很轻量 - 在上例中, 视图的大小为 16 字节. 它由一个指向左上角像素的指针和三个整数 - 宽、高与每行字节数 - 组成.</p>
+</section>
+<section id="first-implementation">
+<h2><a class="toc-backref" href="#id2" role="doc-backlink">第一个实现</a></h2>
+<p>为简单起见而牺牲速度, 我们可以这样计算水平梯度:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">x_gradient</span><span class="p">(</span><span class="n">gray8c_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">gray8s_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">height</span><span class="p">();</span><span class="w"> </span><span class="o">++</span><span class="n">y</span><span class="p">)</span>
+<span class="w">      </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">width</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">x</span><span class="p">)</span>
+<span class="w">          </span><span class="n">dst</span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">src</span><span class="p">(</span><span class="n">x</span><span class="mi">-1</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">src</span><span class="p">(</span><span class="n">x</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">))</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>我们使用图像视图的 <code class="docutils literal notranslate"><span class="pre">operator(x,y)</span></code> 获取给定位置像素的引用, 并将其设为左右邻居的半差. <code class="docutils literal notranslate"><span class="pre">operator()</span></code> 返回灰度像素的引用. 灰度像素可转换为其通道类型 (<code class="docutils literal notranslate"><span class="pre">unsigned</span> <span class="pre">char</span></code> 对于 <code class="docutils literal notranslate"><span class="pre">src</span></code>), 也可以从通道拷贝构造. (这仅对灰度像素成立.)</p>
+<p>上面的代码易读, 但速度不快, 因为二元 <code class="docutils literal notranslate"><span class="pre">operator()</span></code> 要计算像素在二维网格中的位置, 这涉及加法与乘法. 下面是更快的版本:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">x_gradient</span><span class="p">(</span><span class="n">gray8c_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">gray8s_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">height</span><span class="p">();</span><span class="w"> </span><span class="o">++</span><span class="n">y</span><span class="p">)</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">      </span><span class="n">gray8c_view_t</span><span class="o">::</span><span class="n">x_iterator</span><span class="w"> </span><span class="n">src_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">row_begin</span><span class="p">(</span><span class="n">y</span><span class="p">);</span>
+<span class="w">      </span><span class="n">gray8s_view_t</span><span class="o">::</span><span class="n">x_iterator</span><span class="w"> </span><span class="n">dst_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dst</span><span class="p">.</span><span class="n">row_begin</span><span class="p">(</span><span class="n">y</span><span class="p">);</span>
+
+<span class="w">      </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">width</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">x</span><span class="p">)</span>
+<span class="w">          </span><span class="n">dst_it</span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">src_it</span><span class="p">[</span><span class="n">x</span><span class="mi">-1</span><span class="p">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">src_it</span><span class="p">[</span><span class="n">x</span><span class="o">+</span><span class="mi">1</span><span class="p">])</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>我们使用在每行起始处初始化的像素迭代器. GIL 的迭代器是随机访问遍历迭代器. 如果你不熟悉随机访问迭代器, 可以把它们当作指针来理解. 实际上, 在上例中这两个迭代器类型就是原始 C 指针, 其 <code class="docutils literal notranslate"><span class="pre">operator[]</span></code> 就是快速的指针下标运算符.</p>
+<p>在垂直方向计算梯度的代码非常相似:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">y_gradient</span><span class="p">(</span><span class="n">gray8c_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">gray8s_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">width</span><span class="p">();</span><span class="w"> </span><span class="o">++</span><span class="n">x</span><span class="p">)</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">      </span><span class="n">gray8c_view_t</span><span class="o">::</span><span class="n">y_iterator</span><span class="w"> </span><span class="n">src_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">col_begin</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+<span class="w">      </span><span class="n">gray8s_view_t</span><span class="o">::</span><span class="n">y_iterator</span><span class="w"> </span><span class="n">dst_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dst</span><span class="p">.</span><span class="n">col_begin</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+
+<span class="w">      </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">height</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">y</span><span class="p">)</span>
+<span class="w">          </span><span class="n">dst_it</span><span class="p">[</span><span class="n">y</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">src_it</span><span class="p">[</span><span class="n">y</span><span class="mi">-1</span><span class="p">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">src_it</span><span class="p">[</span><span class="n">y</span><span class="o">+</span><span class="mi">1</span><span class="p">])</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>我们不按行循环, 而是按列循环, 并创建一个 <code class="docutils literal notranslate"><span class="pre">y_iterator</span></code>, 即垂直移动的迭代器. 此时无法使用简单指针, 因为相邻两个像素之间的距离等于图像每行的字节数. GIL 在此使用一个特殊的步进迭代器类, 其大小是水平方向迭代器的两倍 - 它包含一个原始 C 指针和一个步长. 其 <code class="docutils literal notranslate"><span class="pre">operator[]</span></code> 将下标乘以步长.</p>
+<p>但由于内存访问模式的缘故, 上述 <code class="docutils literal notranslate"><span class="pre">y_gradient</span></code> 版本比 <code class="docutils literal notranslate"><span class="pre">x_gradient</span></code> 慢得多 (很容易慢一个数量级); 垂直遍历图像会产生大量缓存未命中. 更高效且对缓存友好的版本应把列循环放在内层:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">y_gradient</span><span class="p">(</span><span class="n">gray8c_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">gray8s_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">height</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">y</span><span class="p">)</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">      </span><span class="n">gray8c_view_t</span><span class="o">::</span><span class="n">x_iterator</span><span class="w"> </span><span class="n">src1_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">row_begin</span><span class="p">(</span><span class="n">y</span><span class="mi">-1</span><span class="p">);</span>
+<span class="w">      </span><span class="n">gray8c_view_t</span><span class="o">::</span><span class="n">x_iterator</span><span class="w"> </span><span class="n">src2_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">row_begin</span><span class="p">(</span><span class="n">y</span><span class="o">+</span><span class="mi">1</span><span class="p">);</span>
+<span class="w">      </span><span class="n">gray8s_view_t</span><span class="o">::</span><span class="n">x_iterator</span><span class="w"> </span><span class="n">dst_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dst</span><span class="p">.</span><span class="n">row_begin</span><span class="p">(</span><span class="n">y</span><span class="p">);</span>
+
+<span class="w">      </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">width</span><span class="p">();</span><span class="w"> </span><span class="o">++</span><span class="n">x</span><span class="p">)</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">          </span><span class="o">*</span><span class="n">dst_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">((</span><span class="o">*</span><span class="n">src1_it</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">src2_it</span><span class="p">))</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<span class="w">          </span><span class="o">++</span><span class="n">dst_it</span><span class="p">;</span>
+<span class="w">          </span><span class="o">++</span><span class="n">src1_it</span><span class="p">;</span>
+<span class="w">          </span><span class="o">++</span><span class="n">src2_it</span><span class="p">;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>这段示例代码还展示了使用像素迭代器的另一种方式 - 可以不使用 <code class="docutils literal notranslate"><span class="pre">operator[]</span></code>, 而改用递增与解引用.</p>
+</section>
+<section id="using-locators">
+<h2><a class="toc-backref" href="#id3" role="doc-backlink">使用定位器</a></h2>
+<p>遗憾的是, 这种对缓存友好的版本需要额外维护源视图中的两个独立迭代器, 颇为麻烦. 对每个像素, 我们想访问其上下邻居. 这类相对访问可以用 GIL 定位器完成:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">y_gradient</span><span class="p">(</span><span class="n">gray8c_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">gray8s_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">gray8c_view_t</span><span class="o">::</span><span class="n">xy_locator</span><span class="w"> </span><span class="n">src_loc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">xy_at</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">);</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">height</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">y</span><span class="p">)</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">      </span><span class="n">gray8s_view_t</span><span class="o">::</span><span class="n">x_iterator</span><span class="w"> </span><span class="n">dst_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dst</span><span class="p">.</span><span class="n">row_begin</span><span class="p">(</span><span class="n">y</span><span class="p">);</span>
+
+<span class="w">      </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">width</span><span class="p">();</span><span class="w"> </span><span class="o">++</span><span class="n">x</span><span class="p">)</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">          </span><span class="o">*</span><span class="n">dst_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">src_loc</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">-1</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">src_loc</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<span class="w">          </span><span class="o">++</span><span class="n">dst_it</span><span class="p">;</span>
+<span class="w">          </span><span class="o">++</span><span class="n">src_loc</span><span class="p">.</span><span class="n">x</span><span class="p">();</span><span class="w"> </span><span class="c1">// each dimension can be advanced separately</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">      </span><span class="n">src_loc</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">point_t</span><span class="p">(</span><span class="o">-</span><span class="n">src</span><span class="p">.</span><span class="n">width</span><span class="p">(),</span><span class="w"> </span><span class="mi">1</span><span class="p">);</span><span class="w"> </span><span class="c1">// carriage return</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>第一行创建一个定位器, 指向源视图第二行的第一个像素. GIL 像素定位器与迭代器非常相似, 区别在于它既可以水平移动也可以垂直移动. <code class="docutils literal notranslate"><span class="pre">src_loc.x()</span></code> 和 <code class="docutils literal notranslate"><span class="pre">src_loc.y()</span></code> 分别返回水平迭代器和垂直迭代器的引用, 如上所示, 可以用它们沿所需维度移动定位器. 此外, 还可以用定位器的 <code class="docutils literal notranslate"><span class="pre">operator+=</span></code> 和 <code class="docutils literal notranslate"><span class="pre">operator-=</span></code> 同时在两个维度上前进. 与图像视图类似, 定位器提供二元 <code class="docutils literal notranslate"><span class="pre">operator()</span></code>, 它返回一个像素的引用, 该像素相对当前定位器位置有给定的偏移. 例如, <code class="docutils literal notranslate"><span class="pre">src_loc(0,1)</span></code> 返回当前像素下方邻居的引用. 定位器是非常轻量的对象 - 它由一个指向当前像素的原始指针和一个 int 组成, 后者指示从一行到下一行的字节数 (即垂直移动时的步长). 调用 <code class="docutils literal notranslate"><span class="pre">++src_loc.x()</span></code> 对应一次 C 指针递增. 然而, 上例执行的计算多于必要. 代码 <code class="docutils literal notranslate"><span class="pre">src_loc(0,1)</span></code> 必须在两个维度上计算像素的偏移, 这很慢. 但请注意, 无论像素位于何处, 两个邻居的偏移都是相同的. 为提升性能, GIL 可以缓存并复用这一偏移:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">y_gradient</span><span class="p">(</span><span class="n">gray8c_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">gray8s_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">gray8c_view_t</span><span class="o">::</span><span class="n">xy_locator</span><span class="w"> </span><span class="n">src_loc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">xy_at</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">);</span>
+<span class="w">  </span><span class="n">gray8c_view_t</span><span class="o">::</span><span class="n">xy_locator</span><span class="o">::</span><span class="n">cached_location_t</span><span class="w"> </span><span class="n">above</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">src_loc</span><span class="p">.</span><span class="n">cache_location</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">-1</span><span class="p">);</span>
+<span class="w">  </span><span class="n">gray8c_view_t</span><span class="o">::</span><span class="n">xy_locator</span><span class="o">::</span><span class="n">cached_location_t</span><span class="w"> </span><span class="n">below</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">src_loc</span><span class="p">.</span><span class="n">cache_location</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">);</span>
+
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">height</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">y</span><span class="p">)</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">      </span><span class="n">gray8s_view_t</span><span class="o">::</span><span class="n">x_iterator</span><span class="w"> </span><span class="n">dst_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dst</span><span class="p">.</span><span class="n">row_begin</span><span class="p">(</span><span class="n">y</span><span class="p">);</span>
+
+<span class="w">      </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">width</span><span class="p">();</span><span class="w"> </span><span class="o">++</span><span class="n">x</span><span class="p">)</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">          </span><span class="o">*</span><span class="n">dst_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">src_loc</span><span class="p">[</span><span class="n">above</span><span class="p">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">src_loc</span><span class="p">[</span><span class="n">below</span><span class="p">])</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<span class="w">          </span><span class="o">++</span><span class="n">dst_it</span><span class="p">;</span>
+<span class="w">          </span><span class="o">++</span><span class="n">src_loc</span><span class="p">.</span><span class="n">x</span><span class="p">();</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">      </span><span class="n">src_loc</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">point_t</span><span class="p">(</span><span class="o">-</span><span class="n">src</span><span class="p">.</span><span class="n">width</span><span class="p">(),</span><span class="w"> </span><span class="mi">1</span><span class="p">);</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>在本例中, <code class="docutils literal notranslate"><span class="pre">src_loc[above]</span></code> 对应快速的指针下标操作, 代码是高效的.</p>
+</section>
+<section id="creating-a-generic-version-of-gil-algorithms">
+<h2><a class="toc-backref" href="#id4" role="doc-backlink">创建 GIL 算法的泛型版本</a></h2>
+<p>让我们把 <code class="docutils literal notranslate"><span class="pre">x_gradient</span></code> 变得更泛化. 它应当适用于任何图像视图, 只要二者具有相同的通道数. 梯度运算要对每个通道独立计算.</p>
+<p>新接口如下所示:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">SrcView</span><span class="p">,</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">DstView</span><span class="o">&gt;</span>
+<span class="kt">void</span><span class="w"> </span><span class="n">x_gradient</span><span class="p">(</span><span class="n">SrcView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">DstView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">gil_function_requires</span><span class="o">&lt;</span><span class="n">ImageViewConcept</span><span class="o">&lt;</span><span class="n">SrcView</span><span class="o">&gt;&gt;</span><span class="p">();</span>
+<span class="w">  </span><span class="n">gil_function_requires</span><span class="o">&lt;</span><span class="n">MutableImageViewConcept</span><span class="o">&lt;</span><span class="n">DstView</span><span class="o">&gt;&gt;</span><span class="p">();</span>
+<span class="w">  </span><span class="n">gil_function_requires</span>
+<span class="w">  </span><span class="o">&lt;</span>
+<span class="w">    </span><span class="n">ColorSpacesCompatibleConcept</span>
+<span class="w">    </span><span class="o">&lt;</span>
+<span class="w">      </span><span class="k">typename</span><span class="w"> </span><span class="nc">color_space_type</span><span class="o">&lt;</span><span class="n">SrcView</span><span class="o">&gt;::</span><span class="n">type</span><span class="p">,</span>
+<span class="w">      </span><span class="k">typename</span><span class="w"> </span><span class="nc">color_space_type</span><span class="o">&lt;</span><span class="n">DstView</span><span class="o">&gt;::</span><span class="n">type</span>
+<span class="w">    </span><span class="o">&gt;</span>
+<span class="w">  </span><span class="o">&gt;</span><span class="p">();</span>
+
+<span class="w">  </span><span class="p">...</span><span class="w"> </span><span class="c1">// compute the gradient</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>新算法现在以输入和输出图像视图的类型作为模板参数. 这使得既可以使用内建的 GIL 图像视图, 也可以使用任何用户自定义的图像视图类. 前三行是可选的; 它们使用 <code class="docutils literal notranslate"><span class="pre">boost::concept_check</span></code> 来确保两个实参都是有效的 GIL 图像视图, 第二个是可变的, 且二者的色彩空间兼容 (即具有相同的通道集合).</p>
+<p>GIL 不要求使用其内建的构造. 你可以自由使用自己的通道、色彩空间、迭代器、定位器、视图和图像. 但是, 要与 GIL 的其余部分协作, 它们必须满足一组要求; 换言之, 它们必须符合相应的 GIL <em>概念</em>. GIL 的概念定义在用户指南中.</p>
+<p>在 C++ 中使用模板和泛型编程的最大缺点之一是编译错误可能非常难以理解. 这是缺少早期类型检查的副作用 - 泛型实参可能不满足某个函数的要求, 但不兼容可能深藏在嵌套调用的代码中触发, 那段代码既陌生又与问题几乎无关. GIL 使用 <code class="docutils literal notranslate"><span class="pre">boost::concept_check</span></code> 来缓解这一问题. 上面三行代码检查模板参数是否为其对应概念的有效模型. 如果模型不正确, 编译错误将出现在 <code class="docutils literal notranslate"><span class="pre">gil_function_requires</span></code> 内部, 离问题更近, 也更容易追踪. 此外, 这类检查会被编译器去除, 没有任何性能开销. 使用概念检查的缺点是有时会严重拖慢编译时间. 因此 GIL 仅在调试模式下执行概念检查, 且仅当 <code class="docutils literal notranslate"><span class="pre">BOOST_GIL_USE_CONCEPT_CHECK</span></code> 被定义时才启用 (默认关闭).</p>
+<p>泛型函数的主体与具体版本非常相似. 最大的区别是我们需要循环遍历像素的各个通道, 并为每个通道计算梯度:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">SrcView</span><span class="p">,</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">DstView</span><span class="o">&gt;</span>
+<span class="kt">void</span><span class="w"> </span><span class="n">x_gradient</span><span class="p">(</span><span class="n">SrcView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">DstView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">height</span><span class="p">();</span><span class="w"> </span><span class="o">++</span><span class="n">y</span><span class="p">)</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">      </span><span class="k">typename</span><span class="w"> </span><span class="nc">SrcView</span><span class="o">::</span><span class="n">x_iterator</span><span class="w"> </span><span class="n">src_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">row_begin</span><span class="p">(</span><span class="n">y</span><span class="p">);</span>
+<span class="w">      </span><span class="k">typename</span><span class="w"> </span><span class="nc">DstView</span><span class="o">::</span><span class="n">x_iterator</span><span class="w"> </span><span class="n">dst_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dst</span><span class="p">.</span><span class="n">row_begin</span><span class="p">(</span><span class="n">y</span><span class="p">);</span>
+
+<span class="w">      </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">width</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">x</span><span class="p">)</span>
+<span class="w">          </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">num_channels</span><span class="o">&lt;</span><span class="n">SrcView</span><span class="o">&gt;::</span><span class="n">value</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">c</span><span class="p">)</span>
+<span class="w">              </span><span class="n">dst_it</span><span class="p">[</span><span class="n">x</span><span class="p">][</span><span class="n">c</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">src_it</span><span class="p">[</span><span class="n">x</span><span class="mi">-1</span><span class="p">][</span><span class="n">c</span><span class="p">]</span><span class="o">-</span><span class="w"> </span><span class="n">src_it</span><span class="p">[</span><span class="n">x</span><span class="o">+</span><span class="mi">1</span><span class="p">][</span><span class="n">c</span><span class="p">])</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>为每个通道写一个显式循环可能带来性能问题. GIL 允许我们把这类逐通道操作抽象出来:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">Out</span><span class="o">&gt;</span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">halfdiff_cast_channels</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">T</span><span class="o">&gt;</span>
+<span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="k">operator</span><span class="p">()(</span><span class="n">T</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">in1</span><span class="p">,</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">in2</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Out</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="n">Out</span><span class="p">((</span><span class="n">in1</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">in2</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">};</span>
+
+<span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">SrcView</span><span class="p">,</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">DstView</span><span class="o">&gt;</span>
+<span class="kt">void</span><span class="w"> </span><span class="n">x_gradient</span><span class="p">(</span><span class="n">SrcView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">DstView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">dst_channel_t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">channel_type</span><span class="o">&lt;</span><span class="n">DstView</span><span class="o">&gt;::</span><span class="n">type</span><span class="p">;</span>
+
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">height</span><span class="p">();</span><span class="w"> </span><span class="o">++</span><span class="n">y</span><span class="p">)</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">      </span><span class="k">typename</span><span class="w"> </span><span class="nc">SrcView</span><span class="o">::</span><span class="n">x_iterator</span><span class="w"> </span><span class="n">src_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">row_begin</span><span class="p">(</span><span class="n">y</span><span class="p">);</span>
+<span class="w">      </span><span class="k">typename</span><span class="w"> </span><span class="nc">DstView</span><span class="o">::</span><span class="n">x_iterator</span><span class="w"> </span><span class="n">dst_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dst</span><span class="p">.</span><span class="n">row_begin</span><span class="p">(</span><span class="n">y</span><span class="p">);</span>
+
+<span class="w">      </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">width</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">x</span><span class="p">)</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">          </span><span class="n">static_transform</span><span class="p">(</span><span class="n">src_it</span><span class="p">[</span><span class="n">x</span><span class="mi">-1</span><span class="p">],</span><span class="w"> </span><span class="n">src_it</span><span class="p">[</span><span class="n">x</span><span class="o">+</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="n">dst_it</span><span class="p">[</span><span class="n">x</span><span class="p">],</span>
+<span class="w">              </span><span class="n">halfdiff_cast_channels</span><span class="o">&lt;</span><span class="n">dst_channel_t</span><span class="o">&gt;</span><span class="p">());</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p> <code class="docutils literal notranslate"><span class="pre">static_transform</span></code> 是通道级 GIL 算法的一个示例. 其他此类算法还有 <code class="docutils literal notranslate"><span class="pre">static_generate</span></code>, <code class="docutils literal notranslate"><span class="pre">static_fill</span></code> 和 <code class="docutils literal notranslate"><span class="pre">static_for_each</span></code>. 它们分别是 STL <code class="docutils literal notranslate"><span class="pre">generate</span></code>, <code class="docutils literal notranslate"><span class="pre">transform</span></code>, <code class="docutils literal notranslate"><span class="pre">fill</span></code> 和 <code class="docutils literal notranslate"><span class="pre">for_each</span></code> 在通道级的对应物. GIL 通道算法使用静态递归来展开循环; 它们从不在通道上显式循环.</p>
+<p>注意, 现代编译器有时已会自行展开诸如上述的通道级循环. 然而, 使用 GIL 通道级算法的另一个优点是它们按语义配对通道, 而不是按通道在内存中的顺序. 例如, 上面的示例能正确地把 RGB 源与 BGR 目标相匹配.</p>
+<p>我们可以这样将泛型版本用于不同类型的图像:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="c1">// Calling with 16-bit grayscale data</span>
+<span class="kt">void</span><span class="w"> </span><span class="nf">XGradientGray16_Gray32</span><span class="p">(</span>
+<span class="w">    </span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">short</span><span class="w"> </span><span class="k">const</span><span class="o">*</span><span class="w"> </span><span class="n">src_pixels</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="kt">ptrdiff_t</span><span class="w"> </span><span class="n">src_row_bytes</span><span class="p">,</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">h</span><span class="p">,</span>
+<span class="w">    </span><span class="kt">signed</span><span class="w"> </span><span class="kt">int</span><span class="o">*</span><span class="w"> </span><span class="n">dst_pixels</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="kt">ptrdiff_t</span><span class="w"> </span><span class="n">dst_row_bytes</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">gray16c_view_t</span><span class="w"> </span><span class="n">src</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">interleaved_view</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">h</span><span class="p">,</span><span class="w"> </span><span class="k">reinterpret_cast</span><span class="o">&lt;</span><span class="n">gray16_pixel_t</span><span class="w"> </span><span class="k">const</span><span class="o">*&gt;</span><span class="p">(</span><span class="n">src_pixels</span><span class="p">),</span><span class="w"> </span><span class="n">src_row_bytes</span><span class="p">);</span>
+<span class="w">  </span><span class="n">gray32s_view_t</span><span class="w"> </span><span class="n">dst</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">interleaved_view</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">h</span><span class="p">,</span><span class="w"> </span><span class="k">reinterpret_cast</span><span class="o">&lt;</span><span class="n">gray32s_pixel_t</span><span class="o">*&gt;</span><span class="p">(</span><span class="n">dst_pixels</span><span class="p">),</span><span class="w"> </span><span class="n">dst_row_bytes</span><span class="p">);</span>
+<span class="w">  </span><span class="n">x_gradient</span><span class="p">(</span><span class="n">src</span><span class="p">,</span><span class="n">dst</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// Calling with 8-bit RGB data into 16-bit BGR</span>
+<span class="kt">void</span><span class="w"> </span><span class="nf">XGradientRGB8_BGR16</span><span class="p">(</span>
+<span class="w">    </span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="k">const</span><span class="o">*</span><span class="w"> </span><span class="n">src_pixels</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="kt">ptrdiff_t</span><span class="w"> </span><span class="n">src_row_bytes</span><span class="p">,</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">h</span><span class="p">,</span>
+<span class="w">    </span><span class="kt">signed</span><span class="w"> </span><span class="kt">short</span><span class="o">*</span><span class="w"> </span><span class="n">dst_pixels</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="kt">ptrdiff_t</span><span class="w"> </span><span class="n">dst_row_bytes</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">rgb8c_view_t</span><span class="w">  </span><span class="n">src</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">interleaved_view</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">h</span><span class="p">,</span><span class="w"> </span><span class="k">reinterpret_cast</span><span class="o">&lt;</span><span class="n">rgb8_pixel_t</span><span class="w"> </span><span class="k">const</span><span class="o">*&gt;</span><span class="p">(</span><span class="n">src_pixels</span><span class="p">),</span><span class="w"> </span><span class="n">src_row_bytes</span><span class="p">);</span>
+<span class="w">  </span><span class="n">bgr16s_view_t</span><span class="w"> </span><span class="n">dst</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">interleaved_view</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">h</span><span class="p">,</span><span class="w"> </span><span class="k">reinterpret_cast</span><span class="o">&lt;</span><span class="n">bgr16s_pixel_t</span><span class="o">*&gt;</span><span class="p">(</span><span class="n">dst_pixels</span><span class="p">),</span><span class="w"> </span><span class="n">dst_row_bytes</span><span class="p">);</span>
+<span class="w">  </span><span class="n">x_gradient</span><span class="p">(</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">dst</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// Either or both the source and the destination could be planar - the gradient code does not change</span>
+<span class="kt">void</span><span class="w"> </span><span class="nf">XGradientPlanarRGB8_RGB32</span><span class="p">(</span>
+<span class="w">    </span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">short</span><span class="w"> </span><span class="k">const</span><span class="o">*</span><span class="w"> </span><span class="n">src_r</span><span class="p">,</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">short</span><span class="w"> </span><span class="k">const</span><span class="o">*</span><span class="w"> </span><span class="n">src_g</span><span class="p">,</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">short</span><span class="w"> </span><span class="k">const</span><span class="o">*</span><span class="w"> </span><span class="n">src_b</span><span class="p">,</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="kt">ptrdiff_t</span><span class="w"> </span><span class="n">src_row_bytes</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">h</span><span class="p">,</span>
+<span class="w">    </span><span class="kt">signed</span><span class="w"> </span><span class="kt">int</span><span class="o">*</span><span class="w"> </span><span class="n">dst_pixels</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="kt">ptrdiff_t</span><span class="w"> </span><span class="n">dst_row_bytes</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">rgb16c_planar_view_t</span><span class="w"> </span><span class="n">src</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">planar_rgb_view</span><span class="w"> </span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">h</span><span class="p">,</span><span class="w"> </span><span class="n">src_r</span><span class="p">,</span><span class="w"> </span><span class="n">src_g</span><span class="p">,</span><span class="w"> </span><span class="n">src_b</span><span class="p">,</span><span class="w">        </span><span class="n">src_row_bytes</span><span class="p">);</span>
+<span class="w">  </span><span class="n">rgb32s_view_t</span><span class="w">        </span><span class="n">dst</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">interleaved_view</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">h</span><span class="p">,</span><span class="w"> </span><span class="k">reinterpret_cast</span><span class="o">&lt;</span><span class="n">rgb32s_pixel_t</span><span class="o">*&gt;</span><span class="p">(</span><span class="n">dst_pixels</span><span class="p">),</span><span class="w"> </span><span class="n">dst_row_bytes</span><span class="p">);</span>
+<span class="w">  </span><span class="n">x_gradient</span><span class="p">(</span><span class="n">src</span><span class="p">,</span><span class="n">dst</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>如这些示例所示, 源和目标都可以是交织式或平面式的, 通道深度任意 (假定目标通道可从源赋值), 色彩空间任意兼容.</p>
+<p>GIL 2.1 还能原生表示通道不按字节对齐的图像, 例如 6 位 RGB222 图像或 1 位 Gray1 图像. GIL 算法可原生作用于这些图像. 关于使用此类图像的更多信息, 参见设计指南或示例文件.</p>
+</section>
+<section id="image-view-transformations">
+<h2><a class="toc-backref" href="#id5" role="doc-backlink">Image View Transformations</a></h2>
+<p>计算 y 梯度的一种方法是把图像旋转 90 度, 计算 x 梯度, 再把结果旋转回来. 在 GIL 中做法如下:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">SrcView</span><span class="p">,</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">DstView</span><span class="o">&gt;</span>
+<span class="kt">void</span><span class="w"> </span><span class="n">y_gradient</span><span class="p">(</span><span class="n">SrcView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">DstView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">x_gradient</span><span class="p">(</span><span class="n">rotated90ccw_view</span><span class="p">(</span><span class="n">src</span><span class="p">),</span><span class="w"> </span><span class="n">rotated90ccw_view</span><span class="p">(</span><span class="n">dst</span><span class="p">));</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">rotated90ccw_view</span></code> 接受一个图像视图, 返回一个表示其输入逆时针旋转 90 度的图像视图. 它是 GIL 视图变换函数的一个示例. GIL 提供了多种变换函数, 可执行任意轴对齐旋转、转置视图、垂直或水平翻转视图、提取矩形子图、执行颜色转换、对视图子采样等. 视图变换函数快速而浅层 - 它们不复制像素, 只是改变访问像素的“坐标系”. 例如 <code class="docutils literal notranslate"><span class="pre">rotated90cw_view</span></code> 返回一个视图, 其水平迭代器是原视图的垂直迭代器. 上述计算 <code class="docutils literal notranslate"><span class="pre">y_gradient</span></code> 的代码因内存访问模式而较慢; 使用 <code class="docutils literal notranslate"><span class="pre">rotated90cw_view</span></code> 并不会使其更慢.</p>
+<p>另一个例子: 假设我们要计算彩色图像第 N 个通道的梯度. 做法如下:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">SrcView</span><span class="p">,</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">DstView</span><span class="o">&gt;</span>
+<span class="kt">void</span><span class="w"> </span><span class="n">nth_channel_x_gradient</span><span class="p">(</span><span class="n">SrcView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="n">DstView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">x_gradient</span><span class="p">(</span><span class="n">nth_channel_view</span><span class="p">(</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">),</span><span class="w"> </span><span class="n">dst</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">nth_channel_view</span></code> 是一个视图变换函数, 它接受任意视图并返回其第 N 个通道的单通道 (灰度) 视图. 例如对交织式 RGB 视图, 返回的视图是步进视图 - 其水平迭代器每递增一次就跳过两个通道. 若作用于平面式 RGB 视图, 返回的类型是简单的灰度视图, 其水平迭代器是 C 指针. 图像视图变换函数可以串接使用. 例如, 要计算视图中偶数像素第二个通道的 y 梯度, 使用:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="n">y_gradient</span><span class="p">(</span><span class="n">subsampled_view</span><span class="p">(</span><span class="n">nth_channel_view</span><span class="p">(</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">),</span><span class="w"> </span><span class="n">dst</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>GIL 有时可以化简串接后的视图. 例如, 两个嵌套的子采样视图 (在 X 和 Y 方向跳过像素的视图) 可以表示为一个子采样视图, 其步长是两个视图步长的乘积.</p>
+</section>
+<section id="d-pixel-iterators">
+<h2><a class="toc-backref" href="#id6" role="doc-backlink">一维像素迭代器</a></h2>
+<p>让我们再回到 <code class="docutils literal notranslate"><span class="pre">x_gradient</span></code>. 许多图像视图算法对每个像素施加同一操作, GIL 提供了一个抽象来处理它们. 然而, 我们的算法有一种不寻常的访问模式, 因为它跳过第一列和最后一列. 看看如何把它改写成规范形式, 是有益且有启发性的. 在 GIL 中的做法是: 写一个对每个像素都适用的版本, 但只把它应用于排除第一列和最后一列的子图:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">x_gradient_unguarded</span><span class="p">(</span><span class="n">gray8c_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">gray8s_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">height</span><span class="p">();</span><span class="w"> </span><span class="o">++</span><span class="n">y</span><span class="p">)</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">      </span><span class="n">gray8c_view_t</span><span class="o">::</span><span class="n">x_iterator</span><span class="w"> </span><span class="n">src_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">row_begin</span><span class="p">(</span><span class="n">y</span><span class="p">);</span>
+<span class="w">      </span><span class="n">gray8s_view_t</span><span class="o">::</span><span class="n">x_iterator</span><span class="w"> </span><span class="n">dst_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dst</span><span class="p">.</span><span class="n">row_begin</span><span class="p">(</span><span class="n">y</span><span class="p">);</span>
+
+<span class="w">      </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">width</span><span class="p">();</span><span class="w"> </span><span class="o">++</span><span class="n">x</span><span class="p">)</span>
+<span class="w">          </span><span class="n">dst_it</span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">src_it</span><span class="p">[</span><span class="n">x</span><span class="mi">-1</span><span class="p">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">src_it</span><span class="p">[</span><span class="n">x</span><span class="o">+</span><span class="mi">1</span><span class="p">])</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="nf">x_gradient</span><span class="p">(</span><span class="n">gray8c_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">gray8s_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">assert</span><span class="p">(</span><span class="n">src</span><span class="p">.</span><span class="n">width</span><span class="p">()</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span>
+<span class="w">  </span><span class="n">x_gradient_unguarded</span><span class="p">(</span><span class="n">subimage_view</span><span class="p">(</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">width</span><span class="p">()</span><span class="mi">-2</span><span class="p">,</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">height</span><span class="p">()),</span>
+<span class="w">                       </span><span class="n">subimage_view</span><span class="p">(</span><span class="n">dst</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">width</span><span class="p">()</span><span class="mi">-2</span><span class="p">,</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">height</span><span class="p">()));</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">subimage_view</span></code> 是 GIL 视图变换函数的另一个示例. 它接受一个源视图和一个矩形区域 (本例中定义为 x_min,y_min,width,height), 返回一个作用于源视图该区域的视图. 上述实现与作用于原始视图的版本相比, 没有可测量的性能下降.</p>
+<p>既然 <code class="docutils literal notranslate"><span class="pre">x_gradient_unguarded</span></code> 对每个像素都适用, 我们可以把它重写得更紧凑:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">x_gradient_unguarded</span><span class="p">(</span><span class="n">gray8c_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">gray8s_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">gray8c_view_t</span><span class="o">::</span><span class="n">iterator</span><span class="w"> </span><span class="n">src_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">src</span><span class="p">.</span><span class="n">begin</span><span class="p">();</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">gray8s_view_t</span><span class="o">::</span><span class="n">iterator</span><span class="w"> </span><span class="n">dst_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dst</span><span class="p">.</span><span class="n">begin</span><span class="p">();</span><span class="w"> </span><span class="n">dst_it</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">dst</span><span class="p">.</span><span class="n">end</span><span class="p">();</span><span class="w"> </span><span class="o">++</span><span class="n">dst_it</span><span class="p">,</span><span class="w"> </span><span class="o">++</span><span class="n">src_it</span><span class="p">)</span>
+<span class="w">      </span><span class="o">*</span><span class="n">dst_it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">src_it</span><span class="p">.</span><span class="n">x</span><span class="p">()[</span><span class="mi">-1</span><span class="p">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">src_it</span><span class="p">.</span><span class="n">x</span><span class="p">()[</span><span class="mi">1</span><span class="p">])</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>GIL 图像视图提供 <code class="docutils literal notranslate"><span class="pre">begin()</span></code> 和 <code class="docutils literal notranslate"><span class="pre">end()</span></code> 方法, 它们返回一维像素迭代器, 按从左到右、从上到下的顺序遍历视图中的每个像素. 它们会正确地“回车” - 跳过行末所有未使用的字节. 因此它们略有欠缺, 因为需要相对于行末跟踪自己的当前位置. 其递增运算符要多做一次检查 (是否已到行末?), 若改用两个嵌套循环即可避免该检查. 这些迭代器有一个方法 <code class="docutils literal notranslate"><span class="pre">x()</span></code>, 返回我们之前使用的更轻量的水平迭代器. 水平迭代器没有行末的概念. 在本例中, 水平迭代器是原始 C 指针. 在我们的示例中, 必须使用水平迭代器才能正确访问两个邻居, 因为它们可能位于图像视图之外.</p>
+</section>
+<section id="stl-equivalent-algorithms">
+<h2><a class="toc-backref" href="#id7" role="doc-backlink">STL 等价算法</a></h2>
+<p>GIL 为许多算法提供了 STL 等价物. 例如, <code class="docutils literal notranslate"><span class="pre">std::transform</span></code> 是一个 STL 算法, 它把一个泛型函数作用于源范围的对应元素, 并将结果赋给目标范围中的每个元素. 在本例中, 我们想把对应源像素水平邻居的半差值赋给每个目标像素. 如果把该操作抽象成一个函数对象, 就可以用 GIL 的 <code class="docutils literal notranslate"><span class="pre">transform_pixel_positions</span></code> 来完成:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">struct</span><span class="w"> </span><span class="nc">half_x_difference</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="k">operator</span><span class="p">()(</span><span class="n">gray8c_loc_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src_loc</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="kt">int</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="n">src_loc</span><span class="p">.</span><span class="n">x</span><span class="p">()[</span><span class="mi">-1</span><span class="p">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">src_loc</span><span class="p">.</span><span class="n">x</span><span class="p">()[</span><span class="mi">1</span><span class="p">])</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">};</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="nf">x_gradient_unguarded</span><span class="p">(</span><span class="n">gray8c_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">gray8s_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">transform_pixel_positions</span><span class="p">(</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">dst</span><span class="p">,</span><span class="w"> </span><span class="n">half_x_difference</span><span class="p">());</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>GIL 提供算法 <code class="docutils literal notranslate"><span class="pre">for_each_pixel</span></code> 和 <code class="docutils literal notranslate"><span class="pre">transform_pixels</span></code>, 它们是 STL <code class="docutils literal notranslate"><span class="pre">std::for_each</span></code> 和 <code class="docutils literal notranslate"><span class="pre">std::transform</span></code> 在图像视图上的对应物. 它还提供 <code class="docutils literal notranslate"><span class="pre">for_each_pixel_position</span></code> 和 <code class="docutils literal notranslate"><span class="pre">transform_pixel_positions</span></code>, 后者不向泛型函数传递像素引用, 而是传递像素定位器. 这使得函数更加强大, 可以通过传入的定位器使用像素的邻居. GIL 算法使用效率更高的两个嵌套循环遍历像素 (而不是使用一维迭代器的单循环).</p>
+</section>
+<section id="color-conversion">
+<h2><a class="toc-backref" href="#id8" role="doc-backlink">颜色转换</a></h2>
+<p>比起计算图像每个颜色平面的梯度, 我们常常想计算亮度的梯度. 换言之, 我们想把彩色图像转换为灰度, 再计算结果的梯度. 下面演示如何计算 32 位浮点 RGB 图像的亮度梯度:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">x_gradient_rgb_luminosity</span><span class="p">(</span><span class="n">rgb32fc_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">gray8s_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">x_gradient</span><span class="p">(</span><span class="n">color_converted_view</span><span class="o">&lt;</span><span class="n">gray8_pixel_t</span><span class="o">&gt;</span><span class="p">(</span><span class="n">src</span><span class="p">),</span><span class="w"> </span><span class="n">dst</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">color_converted_view</span></code> 是一个 GIL 视图变换函数, 它接受任意图像视图, 并返回处于目标色彩空间与通道深度的视图 (以模板参数指定). 在本例中, 它在 32 位浮点 RGB 像素之上构造一个 8 位整数灰度视图. 与所有其他视图变换函数一样, <code class="docutils literal notranslate"><span class="pre">color_converted_view</span></code> 非常快速且浅层. 它不复制数据, 也不执行任何颜色转换, 而是返回一个视图, 该视图在每次访问像素时执行颜色转换.</p>
+<p>在本算法的泛型版本中, 我们可能希望把色彩空间转换为灰度, 但保持通道深度不变. 做法是: 构造一个 GIL 灰度像素的类型, 其通道与源相同, 然后把颜色转换到该像素类型:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">SrcView</span><span class="p">,</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">DstView</span><span class="o">&gt;</span>
+<span class="kt">void</span><span class="w"> </span><span class="n">x_luminosity_gradient</span><span class="p">(</span><span class="n">SrcView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">DstView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">gray_pixel_t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">pixel</span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">channel_type</span><span class="o">&lt;</span><span class="n">SrcView</span><span class="o">&gt;::</span><span class="n">type</span><span class="p">,</span><span class="w"> </span><span class="n">gray_layout_t</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="w">  </span><span class="n">x_gradient</span><span class="p">(</span><span class="n">color_converted_view</span><span class="o">&lt;</span><span class="n">gray_pixel_t</span><span class="o">&gt;</span><span class="p">(</span><span class="n">src</span><span class="p">),</span><span class="w"> </span><span class="n">dst</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>当目标色彩空间与通道类型恰好与源相同时, 无需颜色转换. GIL 会检测这种情况并完全避免调用颜色转换代码 - 即 <code class="docutils literal notranslate"><span class="pre">color_converted_view</span></code> 原样返回源视图.</p>
+</section>
+<section id="image">
+<h2><a class="toc-backref" href="#id9" role="doc-backlink">图像</a></h2>
+<p>上面的例子存在性能问题 - <code class="docutils literal notranslate"><span class="pre">x_gradient</span></code> 对大多数源像素解引用两次, 这会使上述代码执行两次颜色转换. 有时, 把颜色转换后的图像复制到临时缓冲区并用它计算梯度可能更高效 - 这样每个像素只调用一次颜色转换. 使用我们的非泛型版本可以这样实现:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">x_luminosity_gradient</span><span class="p">(</span><span class="n">rgb32fc_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">gray8s_view_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">gray8_image_t</span><span class="w"> </span><span class="n">ccv_image</span><span class="p">(</span><span class="n">src</span><span class="p">.</span><span class="n">dimensions</span><span class="p">());</span>
+<span class="w">  </span><span class="n">copy_pixels</span><span class="p">(</span><span class="n">color_converted_view</span><span class="o">&lt;</span><span class="n">gray8_pixel_t</span><span class="o">&gt;</span><span class="p">(</span><span class="n">src</span><span class="p">),</span><span class="w"> </span><span class="n">view</span><span class="p">(</span><span class="n">ccv_image</span><span class="p">));</span>
+
+<span class="w">  </span><span class="n">x_gradient</span><span class="p">(</span><span class="n">const_view</span><span class="p">(</span><span class="n">ccv_image</span><span class="p">),</span><span class="w"> </span><span class="n">dst</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>首先构造一个与源具有相同尺寸的 8 位灰度图像. 然后把源的颜色转换视图复制到临时图像中. 最后在 <code class="docutils literal notranslate"><span class="pre">x_gradient</span> <span class="pre">algorithm</span></code> 中使用临时图像的只读视图. 如示例所示, GIL 提供全局函数 <code class="docutils literal notranslate"><span class="pre">view</span></code> 和 <code class="docutils literal notranslate"><span class="pre">const_view</span></code>, 它们接受一个图像并返回其像素的可变视图或不可变视图.</p>
+<p>把上述代码做成泛型版本要更费些周折:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">SrcView</span><span class="p">,</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">DstView</span><span class="o">&gt;</span>
+<span class="kt">void</span><span class="w"> </span><span class="n">x_luminosity_gradient</span><span class="p">(</span><span class="n">SrcView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">DstView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">d_channel_t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">channel_type</span><span class="o">&lt;</span><span class="n">DstView</span><span class="o">&gt;::</span><span class="n">type</span><span class="p">;</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">channel_t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">detail</span><span class="o">::</span><span class="n">channel_convert_to_unsigned</span><span class="o">&lt;</span><span class="n">d_channel_t</span><span class="o">&gt;::</span><span class="n">type</span><span class="p">;</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">gray_pixel_t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">pixel</span><span class="o">&lt;</span><span class="n">channel_t</span><span class="p">,</span><span class="w"> </span><span class="n">gray_layout_t</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">gray_image_t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">image</span><span class="o">&lt;</span><span class="n">gray_pixel_t</span><span class="p">,</span><span class="w"> </span><span class="nb">false</span><span class="o">&gt;</span><span class="p">;</span>
+
+<span class="w">  </span><span class="n">gray_image_t</span><span class="w"> </span><span class="nf">ccv_image</span><span class="p">(</span><span class="n">src</span><span class="p">.</span><span class="n">dimensions</span><span class="p">());</span>
+<span class="w">  </span><span class="n">copy_pixels</span><span class="p">(</span><span class="n">color_converted_view</span><span class="o">&lt;</span><span class="n">gray_pixel_t</span><span class="o">&gt;</span><span class="p">(</span><span class="n">src</span><span class="p">),</span><span class="w"> </span><span class="n">view</span><span class="p">(</span><span class="n">ccv_image</span><span class="p">));</span>
+<span class="w">  </span><span class="n">x_gradient</span><span class="p">(</span><span class="n">const_view</span><span class="p">(</span><span class="n">ccv_image</span><span class="p">),</span><span class="w"> </span><span class="n">dst</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>首先使用 <code class="docutils literal notranslate"><span class="pre">channel_type</span></code> 元函数获取目标视图的通道类型. 元函数是作用于类型的函数. 在 GIL 中, 元函数是类模板 (用 <code class="docutils literal notranslate"><span class="pre">struct</span></code> 类型说明符声明), 它们以模板参数的形式接受参数, 并在一个名为 <code class="docutils literal notranslate"><span class="pre">type</span></code> 的嵌套 typedef 中返回结果. 本例中的 <code class="docutils literal notranslate"><span class="pre">channel_type</span></code> 是一个一元元函数, 在此示例中以图像视图的类型调用, 返回与该图像视图关联的通道的类型.</p>
+<p>具有关联像素类型的 GIL 构造, 如像素、像素迭代器、定位器、视图和图像, 都符合 <code class="docutils literal notranslate"><span class="pre">PixelBasedConcept</span></code>, 这意味着它们提供一组元函数来查询像素属性, 如 <code class="docutils literal notranslate"><span class="pre">channel_type</span></code>, <code class="docutils literal notranslate"><span class="pre">color_space_type</span></code>, <code class="docutils literal notranslate"><span class="pre">channel_mapping_type</span></code> 和 <code class="docutils literal notranslate"><span class="pre">num_channels</span></code>.</p>
+<p>得到目标视图的通道类型之后, 我们用另一个元函数去除其符号性 (若其为有符号整数类型), 然后用它生成灰度像素的类型. 由像素类型创建图像类型. GIL 的 image 类以像素类型和一个布尔值 (指示图像应为平面式还是交织式) 特化. GIL 中的单通道 (灰度) 图像必须始终是交织式的. 在 GIL 中构造类型有多种方式. 我们本可以直接使用类型工厂元函数, 而不必直接实例化类. 以下代码与之等价:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">SrcView</span><span class="p">,</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">DstView</span><span class="o">&gt;</span>
+<span class="kt">void</span><span class="w"> </span><span class="n">x_luminosity_gradient</span><span class="p">(</span><span class="n">SrcView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">DstView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">d_channel_t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">channel_type</span><span class="o">&lt;</span><span class="n">DstView</span><span class="o">&gt;::</span><span class="n">type</span><span class="p">;</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">channel_t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">detail</span><span class="o">::</span><span class="n">channel_convert_to_unsigned</span><span class="o">&lt;</span><span class="n">d_channel_t</span><span class="o">&gt;::</span><span class="n">type</span><span class="p">;</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">gray_image_t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">image_type</span><span class="o">&lt;</span><span class="n">channel_t</span><span class="p">,</span><span class="w"> </span><span class="n">gray_layout_t</span><span class="o">&gt;::</span><span class="n">type</span><span class="p">;</span>
+
+<span class="w">  </span><span class="n">gray_image_t</span><span class="w"> </span><span class="nf">ccv_image</span><span class="p">(</span><span class="n">src</span><span class="p">.</span><span class="n">dimensions</span><span class="p">());</span>
+<span class="w">  </span><span class="n">copy_and_convert_pixels</span><span class="p">(</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">view</span><span class="p">(</span><span class="n">ccv_image</span><span class="p">));</span>
+<span class="w">  </span><span class="n">x_gradient</span><span class="p">(</span><span class="n">const_view</span><span class="p">(</span><span class="n">ccv_image</span><span class="p">),</span><span class="w"> </span><span class="n">dst</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>GIL 提供一组生成 GIL 类型的元函数 - <code class="docutils literal notranslate"><span class="pre">image_type</span></code> 即是这样一种元函数, 它由给定的通道类型、颜色布局以及平面式/交织式选项 (默认为交织式) 构造图像的类型. 还有类似的元函数可构造像素引用、迭代器、定位器和图像视图的类型. GIL 还有元函数 <code class="docutils literal notranslate"><span class="pre">derived_pixel_reference_type</span></code>, <code class="docutils literal notranslate"><span class="pre">derived_iterator_type</span></code>, <code class="docutils literal notranslate"><span class="pre">derived_view_type</span></code> 和 <code class="docutils literal notranslate"><span class="pre">derived_image_type</span></code>, 它们从给定的源构造构造出新的 GIL 构造类型, 只改变该类型的一个或多个属性而保持其余不变.</p>
+<p>从图像类型出发, 我们可以使用嵌套 typedef <code class="docutils literal notranslate"><span class="pre">value_type</span></code> 来获得像素的类型. GIL 图像、图像视图和定位器都有嵌套 typedef <code class="docutils literal notranslate"><span class="pre">value_type</span></code> 和 <code class="docutils literal notranslate"><span class="pre">reference</span></code>, 用于获得像素的类型和像素的引用的类型. 如果你拿到的是一个像素迭代器, 可以从其 <code class="docutils literal notranslate"><span class="pre">iterator_traits</span></code> 获得这些类型. 另请注意算法 <code class="docutils literal notranslate"><span class="pre">copy_and_convert_pixels</span></code>, 它是 <code class="docutils literal notranslate"><span class="pre">copy_pixels</span></code> 的简写版本, 带有颜色转换后的源视图.</p>
+</section>
+<section id="virtual-image-views">
+<h2><a class="toc-backref" href="#id10" role="doc-backlink">虚拟图像视图</a></h2>
+<p>迄今为止, 我们处理的是像素存储在内存中的图像. GIL 允许你为任意图像创建图像视图, 包括合成函数. 为演示这一点, 我们来创建 Mandelbrot 集的视图. 首先, 需要创建一个函数对象, 计算图像中给定位置 (x,y) 处 Mandelbrot 集的值:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="c1">// models PixelDereferenceAdaptorConcept</span>
+<span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">Pixel</span><span class="o">&gt;</span><span class="w">   </span><span class="c1">// Models PixelValueConcept</span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">mandelbrot_fn</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">point_t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">point</span><span class="o">&lt;</span><span class="kt">ptrdiff_t</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">const_t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mandelbrot_fn</span><span class="p">;</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">value_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Pixel</span><span class="p">;</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">reference</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">value_type</span><span class="p">;</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">const_reference</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">value_type</span><span class="p">;</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">argument_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">point_t</span><span class="p">;</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">result_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">reference</span><span class="p">;</span>
+<span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="n">is_mutable</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+
+<span class="w">  </span><span class="n">mandelbrot_fn</span><span class="p">()</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">default</span><span class="p">;</span>
+<span class="w">  </span><span class="n">mandelbrot_fn</span><span class="p">(</span><span class="n">point_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">sz</span><span class="p">,</span><span class="w"> </span><span class="n">value_type</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">in_color</span><span class="p">,</span><span class="w"> </span><span class="n">value_type</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">out_color</span><span class="p">)</span>
+<span class="w">      </span><span class="o">:</span><span class="w"> </span><span class="n">_in_color</span><span class="p">(</span><span class="n">in_color</span><span class="p">),</span><span class="w"> </span><span class="n">_out_color</span><span class="p">(</span><span class="n">out_color</span><span class="p">),</span><span class="w"> </span><span class="n">_img_size</span><span class="p">(</span><span class="n">sz</span><span class="p">)</span><span class="w"> </span><span class="p">{}</span>
+
+<span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="k">operator</span><span class="p">()(</span><span class="n">point_t</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">p</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">result_type</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">      </span><span class="c1">// normalize the coords to (-2..1, -1.5..1.5)</span>
+<span class="w">      </span><span class="c1">// (actually make y -1.0..2 so it is asymmetric, so we can verify some view factory methods)</span>
+<span class="w">      </span><span class="kt">double</span><span class="w"> </span><span class="n">t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">get_num_iter</span><span class="p">(</span><span class="n">point</span><span class="o">&lt;</span><span class="kt">double</span><span class="o">&gt;</span><span class="p">(</span><span class="n">p</span><span class="p">.</span><span class="n">x</span><span class="o">/</span><span class="p">(</span><span class="kt">double</span><span class="p">)</span><span class="n">_img_size</span><span class="p">.</span><span class="n">x</span><span class="o">*</span><span class="mi">3-2</span><span class="p">,</span><span class="w"> </span><span class="n">p</span><span class="p">.</span><span class="n">y</span><span class="o">/</span><span class="p">(</span><span class="kt">double</span><span class="p">)</span><span class="n">_img_size</span><span class="p">.</span><span class="n">y</span><span class="o">*</span><span class="mi">3</span><span class="mf">-1.0f</span><span class="p">));</span><span class="c1">//1.5f));</span>
+<span class="w">      </span><span class="n">t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">pow</span><span class="p">(</span><span class="n">t</span><span class="p">,</span><span class="mf">0.2</span><span class="p">);</span>
+
+<span class="w">      </span><span class="n">result_type</span><span class="w"> </span><span class="n">ret</span><span class="p">;</span>
+<span class="w">      </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="w"> </span><span class="n">k</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">k</span><span class="o">&lt;</span><span class="n">num_channels</span><span class="o">&lt;</span><span class="n">Pixel</span><span class="o">&gt;::</span><span class="n">value</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">k</span><span class="p">)</span>
+<span class="w">          </span><span class="n">ret</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">channel_type</span><span class="o">&lt;</span><span class="n">Pixel</span><span class="o">&gt;::</span><span class="n">type</span><span class="p">(</span><span class="n">_in_color</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">*</span><span class="n">t</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">_out_color</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">*</span><span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="n">t</span><span class="p">));</span>
+<span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="n">ret</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+
+<span class="k">private</span><span class="o">:</span>
+<span class="w">  </span><span class="n">value_type</span><span class="w"> </span><span class="n">_in_color</span><span class="p">,</span><span class="n">_out_color</span><span class="p">;</span>
+<span class="w">  </span><span class="n">point_t</span><span class="w"> </span><span class="n">_img_size</span><span class="p">;</span>
+<span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">MAX_ITER</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span><span class="p">;</span>
+
+<span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">get_num_iter</span><span class="p">(</span><span class="n">point</span><span class="o">&lt;</span><span class="kt">double</span><span class="o">&gt;</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">p</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="kt">double</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">      </span><span class="n">point</span><span class="o">&lt;</span><span class="kt">double</span><span class="o">&gt;</span><span class="w"> </span><span class="n">Z</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">);</span>
+<span class="w">      </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">MAX_ITER</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">          </span><span class="n">Z</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">point</span><span class="o">&lt;</span><span class="kt">double</span><span class="o">&gt;</span><span class="p">(</span><span class="n">Z</span><span class="p">.</span><span class="n">x</span><span class="o">*</span><span class="n">Z</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">Z</span><span class="p">.</span><span class="n">y</span><span class="o">*</span><span class="n">Z</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">p</span><span class="p">.</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="o">*</span><span class="n">Z</span><span class="p">.</span><span class="n">x</span><span class="o">*</span><span class="n">Z</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">p</span><span class="p">.</span><span class="n">y</span><span class="p">);</span>
+<span class="w">          </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">Z</span><span class="p">.</span><span class="n">x</span><span class="o">*</span><span class="n">Z</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">Z</span><span class="p">.</span><span class="n">y</span><span class="o">*</span><span class="n">Z</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">4</span><span class="p">)</span>
+<span class="w">              </span><span class="k">return</span><span class="w"> </span><span class="n">i</span><span class="o">/</span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">double</span><span class="o">&gt;</span><span class="p">(</span><span class="n">MAX_ITER</span><span class="p">);</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">};</span>
+</pre></div>
+</div>
+<p>现在我们可以使用 GIL 的 <code class="docutils literal notranslate"><span class="pre">virtual_2d_locator</span></code> 配合这个函数对象, 构造一个大小为 200x200 像素的 rgb8 Mandelbrot 视图:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">using</span><span class="w"> </span><span class="n">deref_t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mandelbrot_fn</span><span class="o">&lt;</span><span class="n">rgb8_pixel_t</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="k">using</span><span class="w"> </span><span class="n">point_t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">deref_t</span><span class="o">::</span><span class="n">point_t</span><span class="p">;</span>
+<span class="k">using</span><span class="w"> </span><span class="n">locator_t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">virtual_2d_locator</span><span class="o">&lt;</span><span class="n">deref_t</span><span class="p">,</span><span class="w"> </span><span class="nb">false</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="k">using</span><span class="w"> </span><span class="n">my_virt_view_t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">image_view</span><span class="o">&lt;</span><span class="n">locator_t</span><span class="o">&gt;</span><span class="p">;</span>
+
+<span class="n">point_t</span><span class="w"> </span><span class="nf">dims</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span><span class="mi">200</span><span class="p">);</span>
+
+<span class="c1">// Construct a Mandelbrot view with a locator, taking top-left corner (0,0) and step (1,1)</span>
+<span class="n">my_virt_view_t</span><span class="w"> </span><span class="nf">mandel</span><span class="p">(</span><span class="n">dims</span><span class="p">,</span><span class="w"> </span><span class="n">locator_t</span><span class="p">(</span>
+<span class="w">    </span><span class="n">point_t</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">point_t</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">),</span>
+<span class="w">    </span><span class="n">deref_t</span><span class="p">(</span><span class="n">dims</span><span class="p">,</span><span class="w"> </span><span class="n">rgb8_pixel_t</span><span class="p">(</span><span class="mi">255</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">255</span><span class="p">),</span><span class="w"> </span><span class="n">rgb8_pixel_t</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">255</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">))));</span>
+</pre></div>
+</div>
+<p>我们可以像对待真实视图一样对待这个合成视图. 例如, 调用我们的 <code class="docutils literal notranslate"><span class="pre">x_luminosity_gradient</span></code> 算法计算 Mandelbrot 集旋转 90 度后视图的亮度梯度, 并保存原图与结果:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;boost/gil/extension/io/jpeg.hpp&gt;</span>
+
+<span class="n">gray8s_image_t</span><span class="w"> </span><span class="nf">img</span><span class="p">(</span><span class="n">dims</span><span class="p">);</span>
+<span class="n">x_luminosity_gradient</span><span class="p">(</span><span class="n">rotated90cw_view</span><span class="p">(</span><span class="n">mandel</span><span class="p">),</span><span class="w"> </span><span class="n">view</span><span class="p">(</span><span class="n">img</span><span class="p">));</span>
+
+<span class="c1">// Save the Mandelbrot set and its 90-degree rotated gradient</span>
+<span class="c1">// (jpeg cannot save signed char; must convert to unsigned char)</span>
+<span class="n">write_view</span><span class="p">(</span><span class="s">&quot;mandel.jpg&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">mandel</span><span class="p">,</span><span class="w"> </span><span class="n">jpeg_tag</span><span class="p">{});</span>
+<span class="n">write_view</span><span class="p">(</span><span class="s">&quot;mandel_grad.jpg&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">color_converted_view</span><span class="o">&lt;</span><span class="n">gray8_pixel_t</span><span class="o">&gt;</span><span class="p">(</span><span class="n">const_view</span><span class="p">(</span><span class="n">img</span><span class="p">)),</span><span class="w"> </span><span class="n">jpeg_tag</span><span class="p">{});</span>
+</pre></div>
+</div>
+<p>这两个文件如下所示:</p>
+<img alt="../_images/mandel.jpg" src="../_images/mandel.jpg" />
+</section>
+<section id="run-time-specified-images-and-image-views">
+<h2><a class="toc-backref" href="#id11" role="doc-backlink">运行期指定的图像与图像视图</a></h2>
+<p>至此, 我们创建了一个泛型函数, 它计算图像视图模板特化的图像梯度. 但有时, 图像视图的属性 (如色彩空间和通道深度) 可能在编译期不可用. GIL 的 <code class="docutils literal notranslate"><span class="pre">dynamic_image</span></code> 扩展支持处理在运行期指定的 GIL 构造, 也称为 <em>变体</em>. GIL 提供了运行期实例化图像 <code class="docutils literal notranslate"><span class="pre">any_image</span></code> 和运行期实例化图像视图 <code class="docutils literal notranslate"><span class="pre">any_image_view</span></code> 的模型. 也已具备创建其他变体的机制, 如 <code class="docutils literal notranslate"><span class="pre">any_pixel</span></code>, <code class="docutils literal notranslate"><span class="pre">any_pixel_iterator</span></code> 等. GIL 的大多数算法和全部视图变换函数同样可用于运行期实例化的图像视图, 且二元算法 (如 <code class="docutils literal notranslate"><span class="pre">copy_pixels</span></code>) 的任一或全部实参都可以是变体.</p>
+<p>让我们让 <code class="docutils literal notranslate"><span class="pre">x_luminosity_gradient</span></code> 算法接受变体图像视图. 为简单起见, 假定只有源视图可以是变体. 使用多个变体的示例, 参见 GIL 接受多个变体的图像视图算法重载.</p>
+<p>首先, 我们需要创建一个函数对象, 它包含模板化的目标视图, 并有一个以模板化源视图为参数的应用运算符:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;boost/gil/extension/dynamic_image/dynamic_image_all.hpp&gt;</span>
+
+<span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">DstView</span><span class="o">&gt;</span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">x_gradient_obj</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">result_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">void</span><span class="p">;</span><span class="w">        </span><span class="c1">// required typedef</span>
+
+<span class="w">  </span><span class="n">DstView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">_dst</span><span class="p">;</span>
+<span class="w">  </span><span class="n">x_gradient_obj</span><span class="p">(</span><span class="n">DstView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">_dst</span><span class="p">(</span><span class="n">dst</span><span class="p">)</span><span class="w"> </span><span class="p">{}</span>
+
+<span class="w">  </span><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">SrcView</span><span class="o">&gt;</span>
+<span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="k">operator</span><span class="p">()(</span><span class="n">SrcView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">result_type</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">    </span><span class="n">x_luminosity_gradient</span><span class="p">(</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">_dst</span><span class="p">);</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">};</span>
+</pre></div>
+</div>
+<p>第二步是为 <code class="docutils literal notranslate"><span class="pre">x_luminosity_gradient</span></code> 提供一个重载, 它接受图像视图变体并调用 <code class="docutils literal notranslate"><span class="pre">variant2::visit</span></code>, 将函数对象传入:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="p">...</span><span class="n">SrcViews</span><span class="p">,</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">DstView</span><span class="o">&gt;</span>
+<span class="kt">void</span><span class="w"> </span><span class="n">x_luminosity_gradient</span><span class="p">(</span><span class="n">any_image_view</span><span class="o">&lt;</span><span class="n">SrcViews</span><span class="p">...</span><span class="o">&gt;</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">DstView</span><span class="w"> </span><span class="k">const</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dst</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">variant2</span><span class="o">::</span><span class="n">visit</span><span class="p">(</span><span class="n">x_gradient_obj</span><span class="o">&lt;</span><span class="n">DstView</span><span class="o">&gt;</span><span class="p">(</span><span class="n">dst</span><span class="p">),</span><span class="w"> </span><span class="n">src</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">any_image_view&lt;SrcViews...&gt;</span></code> 是图像视图变体. 它以 <code class="docutils literal notranslate"><span class="pre">SrcViews...</span></code> 为模板参数, 后者枚举了该变体可能采取的所有视图类型. <code class="docutils literal notranslate"><span class="pre">src</span></code> 内部包含当前实例化类型的索引, 以及包含实例的一块内存. <code class="docutils literal notranslate"><span class="pre">variant2::visit</span></code> 对该索引执行 switch 语句, 其每个 case 把内存转换为正确的视图类型, 并用它调用函数对象. 对变体调用算法只有一次 switch 语句的开销. 对图像视图中的每个像素执行操作的算法在与变体一起使用时几乎没有性能下降.</p>
+<p>我们可以这样构造变体并调用算法:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;boost/gil/extension/io/jpeg.hpp&gt;</span>
+
+<span class="k">using</span><span class="w"> </span><span class="n">my_img</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">any_image</span><span class="o">&lt;</span><span class="n">gray8_image_t</span><span class="p">,</span><span class="w"> </span><span class="n">gray16_image_t</span><span class="p">,</span><span class="w"> </span><span class="n">rgb8_image_t</span><span class="p">,</span><span class="w"> </span><span class="n">rgb16_image_t</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="n">my_img</span><span class="w"> </span><span class="n">runtime_image</span><span class="p">;</span>
+<span class="n">read_image</span><span class="p">(</span><span class="s">&quot;input.jpg&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">runtime_image</span><span class="p">,</span><span class="w"> </span><span class="n">jpeg_tag</span><span class="p">{});</span>
+
+<span class="n">gray8s_image_t</span><span class="w"> </span><span class="nf">gradient</span><span class="p">(</span><span class="n">runtime_image</span><span class="p">.</span><span class="n">dimensions</span><span class="p">());</span>
+<span class="n">x_luminosity_gradient</span><span class="p">(</span><span class="n">const_view</span><span class="p">(</span><span class="n">runtime_image</span><span class="p">),</span><span class="w"> </span><span class="n">view</span><span class="p">(</span><span class="n">gradient</span><span class="p">));</span>
+<span class="n">write_view</span><span class="p">(</span>
+<span class="w">    </span><span class="s">&quot;x_gradient.jpg&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="n">color_converted_view</span><span class="o">&lt;</span><span class="n">gray8_pixel_t</span><span class="o">&gt;</span><span class="p">(</span><span class="n">const_view</span><span class="p">(</span><span class="n">gradient</span><span class="p">)),</span>
+<span class="w">    </span><span class="n">jpeg_tag</span><span class="p">{});</span>
+</pre></div>
+</div>
+<p>在本例中, 我们创建一个图像变体, 它可以是 8 位或 16 位的 RGB 或灰度图像. 然后使用 GIL 的 I/O 扩展从文件加载图像, 保持其原生色彩空间和通道深度. 若所有允许的图像类型都无法匹配磁盘上的图像, 将抛出异常. 接着构造一个 8 位有符号 (即 <code class="docutils literal notranslate"><span class="pre">char</span></code>) 图像来存储梯度, 并对其调用 <code class="docutils literal notranslate"><span class="pre">x_luminosity_gradient</span></code>. 最后把结果保存到另一个文件. 我们保存的是转换为 8 位无符号的视图, 因为 JPEG I/O 不支持有符号 char.</p>
+<p>注意 <code class="docutils literal notranslate"><span class="pre">read_image</span></code>, <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, <code class="docutils literal notranslate"><span class="pre">view</span></code> 和 <code class="docutils literal notranslate"><span class="pre">const_view</span></code> 这类自由函数和方法既可用于模板化类型, 也可用于变体类型. 对模板化图像, <code class="docutils literal notranslate"><span class="pre">view(img)</span></code> 返回模板化视图; 而对图像变体, 它返回视图变体. 例如, <code class="docutils literal notranslate"><span class="pre">view(runtime_image)</span></code> 的返回类型是 <code class="docutils literal notranslate"><span class="pre">any_image_view&lt;Views&gt;</span></code>, 其中 <code class="docutils literal notranslate"><span class="pre">Views</span></code> 枚举了与四种图像类型对应的四个视图. <code class="docutils literal notranslate"><span class="pre">const_view(runtime_image)</span></code> 返回四个只读视图类型的 <code class="docutils literal notranslate"><span class="pre">any_image_view</span></code>, 等等.</p>
+<p>关于使用变体的一个警告: 用变体实例化算法, 实际上会以该变体可能采取的每种类型实例化它. 对二元算法, 算法会以两种输入类型的每种可能组合实例化! 这会同时拖累编译时间和可执行文件的大小.</p>
+</section>
+<section id="conclusion">
+<h2><a class="toc-backref" href="#id12" role="doc-backlink">结论</a></h2>
+<p>本教程简要展示了在 GIL 中编写泛型且高效的图像处理算法所面临的挑战. 我们选取一个简单的算法, 展示了如何使其适用于位深度、色彩空间、通道顺序和平面式/交织式结构各异的图像表示. 我们证明了该算法可以处理完全抽象的虚拟图像, 甚至类型在运行期才确定的图像. 相关视频演示还表明, 即使对于复杂场景, 生成的汇编代码也可与针对特定图像类型手写的该算法 C 版本相媲美.</p>
+<p>然而, 即使对于这样一个简单的算法, 我们距离完全泛化且优化的代码还很远. 特别是, 呈现的算法作用于同质图像, 即像素的通道全部为同一类型的图像. 也存在包含不同类型通道的图像示例, 例如打包的 565 RGB 格式. 尽管 GIL 提供了作用于异质像素的概念和算法, 但我们把扩展 <code class="docutils literal notranslate"><span class="pre">x_gradient</span></code> 的任务留作读者的练习. 其次, 在计算出梯度值之后, 我们只是简单地把它转换为目标通道类型. 这并不总是所需的操作. 例如, 若源通道是范围为 [0..1] 的 float, 而目标是 unsigned char, 把半差转换为 unsigned char 的结果只会是 0 或 1. 相反, 我们可能想做的是把结果缩放到目标通道的范围内. GIL 的通道级算法在这类情况下可能有用. 例如, <code class="docutils literal notranslate"><span class="pre">channel_convert</span></code> 通过把源通道值线性缩放到目标通道的范围来在通道间转换.</p>
+<p>在改进性能方面还有很多工作可做. 通道级操作 (如半差) 可以抽象为原子级的通道级算法, 并可为具体通道类型提供性能重载. 可以使用处理器专有的操作, 例如同时对整行像素执行操作, 或者预取数据. 所有这些优化都可以实现为泛型算法的性能特化. 最后, 编译器虽然在不断改进, 但在某些情况下仍无法充分优化泛型代码, 例如无法内联某些函数或把某些变量放入寄存器. 如果性能是问题所在, 值得用不同的编译器尝试你的代码.</p>
+</section>
+</section>
+
+
+    <div class="navbar" style="text-align:right;">
+      
+      
+      <a class="prev" title="教程: 直方图" href="histogram.html"><img src="../_static/prev.png" alt="上一页"/></a>
+      <a class="next" title="命名约定" href="../naming.html"><img src="../_static/next.png" alt="next"/></a>
+      
+    </div>
+    </div>
+    <div class="footer" role="contentinfo">最后更新于 2026-08-05 17:08:45. 由 <a href="http://sphinx-doc.org/">Sphinx</a> 5.2.1 生成.</div>
+  </body>
+</html>

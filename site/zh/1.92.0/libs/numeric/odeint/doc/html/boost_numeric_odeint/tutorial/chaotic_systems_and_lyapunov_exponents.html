@@ -1,0 +1,207 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>混沌系统与 Lyapunov 指数</title>
+<link rel="stylesheet" href="../../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Boost.Numeric.Odeint">
+<link rel="up" href="../tutorial.html" title="Tutorial">
+<link rel="prev" href="solar_system.html" title="太阳系">
+<link rel="next" href="stiff_systems.html" title="刚性系统">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../logo.jpg"></td>
+<td align="center"><a href="../../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="solar_system.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../tutorial.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="stiff_systems.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_numeric_odeint.tutorial.chaotic_systems_and_lyapunov_exponents"></a><a class="link" href="chaotic_systems_and_lyapunov_exponents.html" title="混沌系统与 Lyapunov 指数">混沌系统与 Lyapunov 指数</a>
+</h3></div></div></div>
+<p>本示例展示如何将 odeint 应用于混沌确定性系统性质的研究. 用数学语言来说, "混沌"指扰动 <span class="emphasis"><em>δ x</em></span> 的指数增长. 为了观察这种指数增长, 通常求解切向动力学的方程, 它同样是一个常微分方程. 这些方程是线性的但依赖于时间, 可通过</p>
+<p>
+        <span class="emphasis"><em>d δ x / dt = J(x) δ x</em></span>
+      </p>
+<p>得到, 其中 <span class="emphasis"><em>J</em></span> 是所研究系统的 Jacobian. <span class="emphasis"><em>δ x</em></span> 也可以解释为原系统的扰动. 原则上存在 <span class="emphasis"><em>n</em></span> 个这样的扰动, 它们构成一个超立方体并随时间演化. Lyapunov 指数随后被定义为各扰动的对数增长率. 如果某个 Lyapunov 指数大于零, 相邻轨迹将指数式发散, 因此系统是混沌的. 如果最大 Lyapunov 指数为零, 通常面对的是周期运动. 如果最大 Lyapunov 指数小于零, 则预期收敛到不动点. 关于 Lyapunov 指数和非线性动力系统的更多信息可以在许多教科书中找到, 例如: E. Ott "Chaos is Dynamical Systems", Cambridge.</p>
+<p>为了数值计算 Lyapunov 指数, 通常求解 <span class="emphasis"><em>n</em></span> 个扰动的运动方程, 并每隔 <span class="emphasis"><em>k</em></span> 步对它们进行正交归一化. Lyapunov 指数是每个扰动拉伸因子对数的平均值.</p>
+<p>为了演示如何使用 odeint 确定 Lyapunov 指数, 我们选择 Lorenz 系统. 它是非线性动力学界研究最多的动力系统之一. 对于标准参数, 它拥有一个维数非整数的奇怪吸引子. 其 Lyapunov 指数约为 0.9、0 和 -12.</p>
+<p>Lorenz 系统的实现如下</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">const</span> <span class="keyword">double</span> <span class="identifier">sigma</span> <span class="special">=</span> <span class="number">10.0</span><span class="special">;</span>
+<span class="keyword">const</span> <span class="keyword">double</span> <span class="identifier">R</span> <span class="special">=</span> <span class="number">28.0</span><span class="special">;</span>
+<span class="keyword">const</span> <span class="keyword">double</span> <span class="identifier">b</span> <span class="special">=</span> <span class="number">8.0</span> <span class="special">/</span> <span class="number">3.0</span><span class="special">;</span>
+
+<span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">,</span> <span class="number">3</span> <span class="special">&gt;</span> <span class="identifier">lorenz_state_type</span><span class="special">;</span>
+
+<span class="keyword">void</span> <span class="identifier">lorenz</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">lorenz_state_type</span> <span class="special">&amp;</span><span class="identifier">x</span> <span class="special">,</span> <span class="identifier">lorenz_state_type</span> <span class="special">&amp;</span><span class="identifier">dxdt</span> <span class="special">,</span> <span class="keyword">double</span> <span class="identifier">t</span> <span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">dxdt</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">sigma</span> <span class="special">*</span> <span class="special">(</span> <span class="identifier">x</span><span class="special">[</span><span class="number">1</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">);</span>
+    <span class="identifier">dxdt</span><span class="special">[</span><span class="number">1</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">R</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="number">1</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">[</span><span class="number">2</span><span class="special">];</span>
+    <span class="identifier">dxdt</span><span class="special">[</span><span class="number">2</span><span class="special">]</span> <span class="special">=</span> <span class="special">-</span><span class="identifier">b</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">[</span><span class="number">2</span><span class="special">]</span> <span class="special">+</span> <span class="identifier">x</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">[</span><span class="number">1</span><span class="special">];</span>
+<span class="special">}</span>
+</pre>
+<p>我们还需要对扰动集合进行积分. 这要与原系统并行进行, 因此放在同一个系统函数内. 当然, 我们希望使用上面 Lorenz 系统的定义, 因此包含 Lorenz 系统本身和扰动的系统函数定义可以写成:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">const</span> <span class="identifier">size_t</span> <span class="identifier">n</span> <span class="special">=</span> <span class="number">3</span><span class="special">;</span>
+<span class="keyword">const</span> <span class="identifier">size_t</span> <span class="identifier">num_of_lyap</span> <span class="special">=</span> <span class="number">3</span><span class="special">;</span>
+<span class="keyword">const</span> <span class="identifier">size_t</span> <span class="identifier">N</span> <span class="special">=</span> <span class="identifier">n</span> <span class="special">+</span> <span class="identifier">n</span><span class="special">*</span><span class="identifier">num_of_lyap</span><span class="special">;</span>
+
+<span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">tr1</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">,</span> <span class="identifier">N</span> <span class="special">&gt;</span> <span class="identifier">state_type</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">tr1</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">,</span> <span class="identifier">num_of_lyap</span> <span class="special">&gt;</span> <span class="identifier">lyap_type</span><span class="special">;</span>
+
+<span class="keyword">void</span> <span class="identifier">lorenz_with_lyap</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">x</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">dxdt</span> <span class="special">,</span> <span class="keyword">double</span> <span class="identifier">t</span> <span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">lorenz</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">dxdt</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">);</span>
+
+    <span class="keyword">for</span><span class="special">(</span> <span class="identifier">size_t</span> <span class="identifier">l</span><span class="special">=</span><span class="number">0</span> <span class="special">;</span> <span class="identifier">l</span><span class="special">&lt;</span><span class="identifier">num_of_lyap</span> <span class="special">;</span> <span class="special">++</span><span class="identifier">l</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="keyword">const</span> <span class="keyword">double</span> <span class="special">*</span><span class="identifier">pert</span> <span class="special">=</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">+</span> <span class="number">3</span> <span class="special">+</span> <span class="identifier">l</span> <span class="special">*</span> <span class="number">3</span><span class="special">;</span>
+        <span class="keyword">double</span> <span class="special">*</span><span class="identifier">dpert</span> <span class="special">=</span> <span class="identifier">dxdt</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">+</span> <span class="number">3</span> <span class="special">+</span> <span class="identifier">l</span> <span class="special">*</span> <span class="number">3</span><span class="special">;</span>
+        <span class="identifier">dpert</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="special">-</span> <span class="identifier">sigma</span> <span class="special">*</span> <span class="identifier">pert</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">+</span> <span class="number">10.0</span> <span class="special">*</span> <span class="identifier">pert</span><span class="special">[</span><span class="number">1</span><span class="special">];</span>
+        <span class="identifier">dpert</span><span class="special">[</span><span class="number">1</span><span class="special">]</span> <span class="special">=</span> <span class="special">(</span> <span class="identifier">R</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="number">2</span><span class="special">]</span> <span class="special">)</span> <span class="special">*</span> <span class="identifier">pert</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">pert</span><span class="special">[</span><span class="number">1</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">*</span> <span class="identifier">pert</span><span class="special">[</span><span class="number">2</span><span class="special">];</span>
+        <span class="identifier">dpert</span><span class="special">[</span><span class="number">2</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">x</span><span class="special">[</span><span class="number">1</span><span class="special">]</span> <span class="special">*</span> <span class="identifier">pert</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">+</span> <span class="identifier">x</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">*</span> <span class="identifier">pert</span><span class="special">[</span><span class="number">1</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">b</span> <span class="special">*</span> <span class="identifier">pert</span><span class="special">[</span><span class="number">2</span><span class="special">];</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>扰动线性地存储在 <code class="computeroutput"><span class="identifier">state_type</span></code> 中 Lorenz 系统状态之后的位置. lorenz() 和 lorenz_with_lyap() 状态类型不同的问题可以通过把 Lorenz 系统放进一个参数模板化的函数对象来解决:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">lorenz</span>
+<span class="special">{</span>
+    <span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">class</span> <span class="identifier">StateIn</span> <span class="special">,</span> <span class="keyword">class</span> <span class="identifier">StateOut</span> <span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Value</span> <span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="keyword">const</span> <span class="identifier">StateIn</span> <span class="special">&amp;</span><span class="identifier">x</span> <span class="special">,</span> <span class="identifier">StateOut</span> <span class="special">&amp;</span><span class="identifier">dxdt</span> <span class="special">,</span> <span class="identifier">Value</span> <span class="identifier">t</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">dxdt</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">sigma</span> <span class="special">*</span> <span class="special">(</span> <span class="identifier">x</span><span class="special">[</span><span class="number">1</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">);</span>
+        <span class="identifier">dxdt</span><span class="special">[</span><span class="number">1</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">R</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="number">1</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">[</span><span class="number">2</span><span class="special">];</span>
+        <span class="identifier">dxdt</span><span class="special">[</span><span class="number">2</span><span class="special">]</span> <span class="special">=</span> <span class="special">-</span><span class="identifier">b</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">[</span><span class="number">2</span><span class="special">]</span> <span class="special">+</span> <span class="identifier">x</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">[</span><span class="number">1</span><span class="special">];</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="keyword">void</span> <span class="identifier">lorenz_with_lyap</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">x</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">dxdt</span> <span class="special">,</span> <span class="keyword">double</span> <span class="identifier">t</span> <span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">lorenz</span><span class="special">()(</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">dxdt</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">);</span>
+    <span class="special">...</span>
+<span class="special">}</span>
+</pre>
+<p>这样工作正常, <code class="computeroutput"><span class="identifier">lorenz_with_lyap</span></code> 可以例如通过如下方式使用</p>
+<pre class="programlisting"><span class="identifier">state_type</span> <span class="identifier">x</span><span class="special">;</span>
+<span class="comment">// initialize x..</span>
+
+<span class="identifier">explicit_rk4</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">&gt;</span> <span class="identifier">rk4</span><span class="special">;</span>
+<span class="identifier">integrate_n_steps</span><span class="special">(</span> <span class="identifier">rk4</span> <span class="special">,</span> <span class="identifier">lorenz_with_lyap</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">,</span> <span class="number">0.0</span> <span class="special">,</span> <span class="number">0.01</span> <span class="special">,</span> <span class="number">1000</span> <span class="special">);</span>
+</pre>
+<p>这段代码以固定步长 0.01 执行 1000 步.</p>
+<p>计算 Lorenz 系统 Lyapunov 指数的实际用例总是包含一些暂态步骤, 只是为了确保当前状态位于吸引子上, 因此它看起来像</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">state_type</span> <span class="identifier">x</span><span class="special">;</span>
+<span class="comment">// initialize x</span>
+<span class="identifier">explicit_rk4</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">&gt;</span> <span class="identifier">rk4</span><span class="special">;</span>
+<span class="identifier">integrate_n_steps</span><span class="special">(</span> <span class="identifier">rk4</span> <span class="special">,</span> <span class="identifier">lorenz</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">,</span> <span class="number">0.0</span> <span class="special">,</span> <span class="number">0.01</span> <span class="special">,</span> <span class="number">1000</span> <span class="special">);</span>
+</pre>
+<p>现在的问题是, <code class="computeroutput"><span class="identifier">x</span></code> 是包含扰动的完整状态, 而 <code class="computeroutput"><span class="identifier">integrate_n_steps</span></code> 并不知道它只应使用 3 个元素. 具体来说, odeint 及其步进器通过确定状态的长度来确定所研究系统的长度. 在经典求解器 (如 Numerical Recipes 中的) 中, 这个问题通过指向状态的指针和适当的长度来解决, 类似于</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">lorenz</span><span class="special">(</span> <span class="keyword">double</span><span class="special">*</span> <span class="identifier">x</span> <span class="special">,</span> <span class="keyword">double</span> <span class="special">*</span><span class="identifier">dxdt</span> <span class="special">,</span> <span class="keyword">double</span> <span class="identifier">t</span><span class="special">,</span> <span class="keyword">void</span><span class="special">*</span> <span class="identifier">params</span> <span class="special">)</span>
+<span class="special">{</span>
+    <span class="special">...</span>
+<span class="special">}</span>
+
+<span class="keyword">int</span> <span class="identifier">system_length</span> <span class="special">=</span> <span class="number">3</span><span class="special">;</span>
+<span class="identifier">rk4</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">system_length</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">,</span> <span class="identifier">lorenz</span> <span class="special">);</span>
+</pre>
+<p>
+      </p>
+<p>但 odeint 支持一个类似且精巧得多的概念: <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a>. 为使步进器和系统准备好配合 <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a> 工作, 系统必须做如下修改:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">lorenz</span>
+<span class="special">{</span>
+    <span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">class</span> <span class="identifier">State</span> <span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Deriv</span> <span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="keyword">const</span> <span class="identifier">State</span> <span class="special">&amp;</span><span class="identifier">x_</span> <span class="special">,</span> <span class="identifier">Deriv</span> <span class="special">&amp;</span><span class="identifier">dxdt_</span> <span class="special">,</span> <span class="keyword">double</span> <span class="identifier">t</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">typename</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">range_iterator</span><span class="special">&lt;</span> <span class="keyword">const</span> <span class="identifier">State</span> <span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">x</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span> <span class="identifier">x_</span> <span class="special">);</span>
+        <span class="keyword">typename</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">range_iterator</span><span class="special">&lt;</span> <span class="identifier">Deriv</span> <span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">dxdt</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span> <span class="identifier">dxdt_</span> <span class="special">);</span>
+
+        <span class="identifier">dxdt</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">sigma</span> <span class="special">*</span> <span class="special">(</span> <span class="identifier">x</span><span class="special">[</span><span class="number">1</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">);</span>
+        <span class="identifier">dxdt</span><span class="special">[</span><span class="number">1</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">R</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="number">1</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">[</span><span class="number">2</span><span class="special">];</span>
+        <span class="identifier">dxdt</span><span class="special">[</span><span class="number">2</span><span class="special">]</span> <span class="special">=</span> <span class="special">-</span><span class="identifier">b</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">[</span><span class="number">2</span><span class="special">]</span> <span class="special">+</span> <span class="identifier">x</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">[</span><span class="number">1</span><span class="special">];</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<p>原则上这就是全部. 现在, 我们只需调用 <code class="computeroutput"><span class="identifier">integrate_n_steps</span></code>, 传入一个仅包含 <span class="emphasis"><em>x</em></span> 前 3 个分量的 range:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// explicitly choose range_algebra to override default choice of array_algebra</span>
+<span class="identifier">runge_kutta4</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">,</span> <span class="keyword">double</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">,</span> <span class="keyword">double</span> <span class="special">,</span> <span class="identifier">range_algebra</span> <span class="special">&gt;</span> <span class="identifier">rk4</span><span class="special">;</span>
+
+<span class="comment">// perform 10000 transient steps</span>
+<span class="identifier">integrate_n_steps</span><span class="special">(</span> <span class="identifier">rk4</span> <span class="special">,</span> <span class="identifier">lorenz</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">make_pair</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">+</span> <span class="identifier">n</span> <span class="special">)</span> <span class="special">,</span> <span class="number">0.0</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">,</span> <span class="number">10000</span> <span class="special">);</span>
+</pre>
+<p>
+      </p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>注意, 使用 <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a> 时, 我们必须显式配置步进器使用 <code class="computeroutput"><span class="identifier">range_algebra</span></code>, 否则 odeint 会自动选择 <code class="computeroutput"><span class="identifier">array_algebra</span></code>, 它与 <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a> 的用法不兼容, 因为原始的 state_type 是一个 <code class="computeroutput"><span class="identifier">array</span></code>.</p></td></tr>
+</table></div>
+<p>在积分了足够多的暂态步之后, 我们现在能够计算 Lyapunov 指数:</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">初始化扰动. 它们线性地存储在 Lorenz 系统状态之后的位置. 扰动的初始化方式使 <span class="emphasis"><em>p <sub>​ij</sub> = δ <sub>​ij</sub></em></span>, 其中 <span class="emphasis"><em>p <sub>​ij</sub></em></span> 是第 <span class="emphasis"><em>i</em></span> 个扰动的第 <span class="emphasis"><em>j</em></span> 个分量, <span class="emphasis"><em>δ <sub>​ij</sub></em></span> 是 Kronecker 符号.</li>
+<li class="listitem">对包含扰动的完整系统积分 100 步</li>
+<li class="listitem">使用 Gram-Schmidt 正交归一化算法对扰动进行正交归一化.</li>
+<li class="listitem">重复第 2 步和第 3 步. 每 10000 步写出当前的 Lyapunov 指数.</li>
+</ol></div>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">fill</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()+</span><span class="identifier">n</span> <span class="special">,</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">,</span> <span class="number">0.0</span> <span class="special">);</span>
+<span class="keyword">for</span><span class="special">(</span> <span class="identifier">size_t</span> <span class="identifier">i</span><span class="special">=</span><span class="number">0</span> <span class="special">;</span> <span class="identifier">i</span><span class="special">&lt;</span><span class="identifier">num_of_lyap</span> <span class="special">;</span> <span class="special">++</span><span class="identifier">i</span> <span class="special">)</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">n</span><span class="special">+</span><span class="identifier">n</span><span class="special">*</span><span class="identifier">i</span><span class="special">+</span><span class="identifier">i</span><span class="special">]</span> <span class="special">=</span> <span class="number">1.0</span><span class="special">;</span>
+<span class="identifier">fill</span><span class="special">(</span> <span class="identifier">lyap</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">lyap</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">,</span> <span class="number">0.0</span> <span class="special">);</span>
+
+<span class="keyword">double</span> <span class="identifier">t</span> <span class="special">=</span> <span class="number">0.0</span><span class="special">;</span>
+<span class="identifier">size_t</span> <span class="identifier">count</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+<span class="keyword">while</span><span class="special">(</span> <span class="keyword">true</span> <span class="special">)</span>
+<span class="special">{</span>
+
+    <span class="identifier">t</span> <span class="special">=</span> <span class="identifier">integrate_n_steps</span><span class="special">(</span> <span class="identifier">rk4</span> <span class="special">,</span> <span class="identifier">lorenz_with_lyap</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">,</span> <span class="number">100</span> <span class="special">);</span>
+    <span class="identifier">gram_schmidt</span><span class="special">&lt;</span> <span class="identifier">num_of_lyap</span> <span class="special">&gt;(</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">lyap</span> <span class="special">,</span> <span class="identifier">n</span> <span class="special">);</span>
+    <span class="special">++</span><span class="identifier">count</span><span class="special">;</span>
+
+    <span class="keyword">if</span><span class="special">(</span> <span class="special">!(</span><span class="identifier">count</span> <span class="special">%</span> <span class="number">100000</span><span class="special">)</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">t</span><span class="special">;</span>
+        <span class="keyword">for</span><span class="special">(</span> <span class="identifier">size_t</span> <span class="identifier">i</span><span class="special">=</span><span class="number">0</span> <span class="special">;</span> <span class="identifier">i</span><span class="special">&lt;</span><span class="identifier">num_of_lyap</span> <span class="special">;</span> <span class="special">++</span><span class="identifier">i</span> <span class="special">)</span> <span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"\t"</span> <span class="special">&lt;&lt;</span> <span class="identifier">lyap</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">/</span> <span class="identifier">t</span> <span class="special">;</span>
+        <span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>完整代码可在此处找到: <a href="https://github.com/headmyshoulder/odeint-v2/blob/master/examples/chaotic_system.cpp" target="_top">chaotic_system.cpp</a>
+      </p>
+</div>
+<div class="copyright-footer">版权所有 © 2009-2015 Karsten Ahnert 和 Mario Mulansky<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="solar_system.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../tutorial.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="stiff_systems.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

@@ -1,0 +1,406 @@
+# Version 1.84.0
+
+## Version 1.84.0
+
+December 13th, 2023 23:54 GMT
+
+[Documentation](/doc/libs/1_84_0/)
+
+| Platform | File | SHA256 Hash |
+|----|----|----|
+| unix | [boost_1_84_0.tar.bz2](https://archives.boost.io/release/1.84.0/source/boost_1_84_0.tar.bz2) | cc4b893acf645c9d4b698e9a0f08ca8846aa5d6c68275c14c3e7949c24109454 |
+|  | [boost_1_84_0.tar.gz](https://archives.boost.io/release/1.84.0/source/boost_1_84_0.tar.gz) | a5800f405508f5df8114558ca9855d2640a2de8f0445f051fa1c7c3383045724 |
+| windows | [boost_1_84_0.7z](https://archives.boost.io/release/1.84.0/source/boost_1_84_0.7z) | 81a4d10075731966477276c47324ecd9cac02da49899d36c48eba66e40014f25 |
+|  | [boost_1_84_0.zip](https://archives.boost.io/release/1.84.0/source/boost_1_84_0.zip) | cc77eb8ed25da4d596b25e77e4dbb6c5afaac9cddd00dc9ca947b6b268cc76a4 |
+
+Downloads {.download-table}
+
+\* The download links are supported by grants from [The C++ Alliance](https://cppalliance.org/).  
+  
+
+### Updated default target Windows version
+
+Boost.WinAPI, a library that is used internally by other Boost libraries for defining Windows SDK components, has been updated to target Windows 10 API by default, where possible. This means that Boost libraries will target Windows 10 by default and may not run on older Windows versions. This includes the pre-built binaries that are distributed by Boost.
+
+The affected libraries include:
+
+- Boost.Atomic
+
+- Boost.Beast
+
+- Boost.Chrono
+
+- Boost.DateTime
+
+- Boost.DLL
+
+- Boost.Filesystem
+
+- Boost.Interprocess
+
+- Boost.Log
+
+- Boost.Pool
+
+- Boost.Process
+
+- Boost.System
+
+- Boost.Stacktrace
+
+- Boost.Thread
+
+- Boost.UUID
+
+as well as libraries that depend on the above.
+
+Users are able to change the default by defining `BOOST_USE_WINAPI_VERSION` or `_WIN32_WINNT` when building and using Boost to the required version number. For example, to build Boost targeting Windows 7 one could use a command line like this:
+
+        b2 variant=release define=BOOST_USE_WINAPI_VERSION=0x0601 stage
+
+Note, however, that individual libraries may have their own requirements on the minimum supported Windows version.
+
+The list of Windows API version numbers can be seen on [this](https://msdn.microsoft.com/en-us/library/6sehtctf.aspx) page.
+
+### New Libraries
+
+- [Cobalt](/libs/cobalt/): Basic algorithms and types for C++20 coroutines, from Klemens Morgenstern.
+
+- [Redis](/libs/redis/): Redis async client library built on top of Boost.Asio, from Marcelo Zimbres Silva.
+
+### Updated Libraries
+
+- [Any](/libs/any/):
+  - C++03 is no longer supported [PR#26](https://github.com/boostorg/any/pull/26).
+
+  - Fixed reference documentation generation. Now it is not overwritten by Boost.PFR reference. Thanks to Peter Dimov for the debugging.
+
+- [Asio](/libs/asio/):
+  - Changed to require C++11 as the minimum language standard. C++03 is no longer supported.
+
+  - Removed deprecated functionality from the `boost``::``asio``::``execution` namespace.
+
+  - Removed deprecated invocation and allocation hooks.
+
+  - Added `try_send_via_dispatch` and `try_send_n_via_dispatch` functions to channels.
+
+  - Added compatibility between Asio's placeholders and `std``::``bind`.
+
+  - Improved C++11 support for channels that have multiple completion signatures.
+
+  - Fixed compatibility between channel asynchronous operations and `any_completion_handler`.
+
+  - Fixed compatibility between `any_completion_handler` and compilation using `BOOST_ASIO_USE_TS_EXECUTOR_AS_DEFAULT`.
+
+  - Added missing equality operators for comparing mixed executor property types belonging to the same category.
+
+  - Fixed an issue where `spawn`-based stackful coroutines would terminate the program when used with asynchronous operations that have a completion signature starting with `std``::``exception_ptr`.
+
+  - Fixed a crash that may occur when attempting to access a default-constructed `any_completion_handler` object's associators.
+
+  - Fixed `ssl``::``stream``<>` class's `async_handshake` operation so that it works with a defaulted completion token.
+
+  - Updated all examples to use C++11 as the minimum language standard.
+
+- [Atomic](/libs/atomic/):
+  - C++03 is no longer supported, the minimum required language version is C++11.
+
+  - Added support for x87 extended double with reduced precision, which is used on FreeBSD and OpenBSD. ([\#14](https://github.com/boostorg/atomic/issues/14))
+
+  - Support for Windows versions older than Windows 10 is deprecated and will be removed in Boost 1.87.
+
+- [Beast](/libs/beast/):
+  - Support for `immediate_executor`.
+
+  - Remove deprecated allocation and invocation hooks.
+
+  - Use the explicit type std::size_t when completing transfer_op.
+
+  - Replaced `BOOST_ASIO_INITFN_RESULT_TYPE` with `BOOST_ASIO_INITFN_AUTO_RES`.
+
+  - `server``-``flex``-``awaitable` example resets parser.
+
+  - Corrected the `websocket``::``stream``::``async_ping``/``pong` handler requirement.
+
+  - Update documentation for `websocket``::``stream``::``async_write_some`.
+
+- [Chrono](/libs/chrono/):
+  - C++03 is no longer supported.
+
+- [ContainerHash](/libs/container_hash/):
+  - C++03 is no longer supported.
+
+- [Conversion](/libs/conversion/):
+  - C++03 is no longer supported [PR#27](https://github.com/boostorg/conversion/pull/27).
+
+- [Core](/libs/core/):
+  - `boost``::``swap` utility function has been renamed to `boost``::``core``::``invoke_swap` to avoid forming a potential infinite recursion when the arguments are not swappable. The new function is defined in `boost``/``core``/``invoke_swap``.``hpp` and is functionally equivalent to `boost``::``swap`. The old `boost``::``swap` name is preserved for backward compatibility but deprecated and will be removed in a future release. Its `noexcept` specification has been removed to avoid compile errors caused by compile-time recursion. `BOOST_ALLOW_DEPRECATED_SYMBOLS` or `BOOST_ALLOW_DEPRECATED` can be defined to suppress deprecation warnings for the transition period. ([\#148](https://github.com/boostorg/core/issues/148))
+
+  - Headers `boost``/``swap``.``hpp`, `boost``/``utility``/``swap``.``hpp` and `boost``/``core``/``swap``.``hpp` are deprecated and will be removed. Please, switch to `boost``/``core``/``invoke_swap``.``hpp`. `BOOST_ALLOW_DEPRECATED_HEADERS` or `BOOST_ALLOW_DEPRECATED` can be defined to suppress deprecation warnings.
+
+- [CRC](/libs/crc/):
+  - C++03 support is deprecated and will be removed in release 1.86.
+
+- [DLL](/libs/dll/):
+  - C++03 is no longer supported [PR#66](https://github.com/boostorg/dll/pull/66).
+
+- [Endian](/libs/endian/):
+  - C++03 is no longer supported.
+
+- [Filesystem](/libs/filesystem/):
+  - As was announced in Boost 1.82.0, C++03 is no longer supported. A C++11 or later compiler is required.
+
+  - Fixed that some `directory_entry` observers taking `error_code``&`` ``ec` argument did not clear the error code on successful return. ([\#291](https://github.com/boostorg/filesystem/issues/291))
+
+  - On Windows, improved robustness of date and time conversion and added support for dates before January 1, 1970. ([\#293](https://github.com/boostorg/filesystem/issues/293))
+
+  - Removed support for Windows CE that was deprecated since Boost.Filesystem 1.79.0.
+
+  - Removed `boost``/``filesystem``/``string_file``.``hpp` header. The header was deprecated since Boost.Filesystem 1.79.0.
+
+  - **Deprecated:** Support for Windows versions older than Windows 10 is deprecated and will be removed in Boost 1.87.
+
+- [Geometry](/libs/geometry/):
+  - Solved issues
+    - [\#1138](https://github.com/boostorg/geometry/issues/1138) Fix difference of two polygons
+
+    - [\#1183](https://github.com/boostorg/geometry/issues/1183) Fix for union\_ incomplete result polygon
+
+    - [\#1184](https://github.com/boostorg/geometry/issues/1184) Fix for intersection
+
+    - [\#1186](https://github.com/boostorg/geometry/issues/1186) Fix for union\_ improper inner ring assignment
+
+    - Various fixes of errors and warnings
+
+- [Heap](/libs/heap/):
+  - C++03 support is deprecated and will be removed in release 1.86. New requirement will be C++14.
+
+- [JSON](/libs/json/):
+  - Implement parsing directly into user types.
+
+  - Add conversion categories for optionals and variants.
+
+  - Relax iterator requirements for constructors from iterator pairs.
+
+  - Fix reading beyond input buffer.
+
+  - Fix inconsistent choice of init list constructor.
+
+- [LEAF](/libs/leaf/):
+  - class result\<T\> marked nodiscard.
+
+  - Added member typedef result\<T\>::value_type.
+
+  - verbose_diagnostic_info defers conversion to string until an error handling scope is reached.
+
+  - Improved support for embedded development.
+
+  - Improved Visual Studio 2015 compatibility (thanks godmaycrying).
+
+  - Minor bug fixes an improvements.
+
+  - Dropped support for GCC 4.8 and 4.9.
+
+- [LexicalCast](/libs/lexical_cast/):
+  - C++03 is no longer supported [PR#62](https://github.com/boostorg/lexical_cast/pull/62).
+
+  - Fixed -Wdeprecated-copy-with-dtor warnings with clang. Thanks to [Romain Geissler](https://github.com/Romain-Geissler-1A) for the PR [PR#59](https://github.com/boostorg/lexical_cast/pull/59)!
+
+  - Dropped dependency on Boost.Range [PR#63](https://github.com/boostorg/lexical_cast/pull/63).
+
+- [Locale](/libs/locale/):
+  - `to_title` for the WinAPI backend returns the string unchanged instead of an empty string
+
+  - Improved support for `char8_t` and `std``::``u8string`
+
+  - Fix off-by-one error when using negative times [PR#198](https://github.com/boostorg/locale/pull/198)
+
+  - Fix escape-handling of curly braces in format strings [\#194](https://github.com/boostorg/locale/issues/194)
+
+  - Fix some build errors and warnings, notably one on MSVC, see [\#189](https://github.com/boostorg/locale/issues/189)
+
+- [Lockfree](/libs/lockfree/):
+  - C++03 support is deprecated and will be removed in release 1.86. New requirement will be C++14.
+
+- [Log](/libs/log/):
+  - C++03 is no longer supported. A C++11 or later compiler is required.
+
+  - When built with C++11 compilers that are conforming enough for Boost.Regex v5 to be used, Boost.Log no longer links with Boost.Regex prebuilt library, since Boost.Regex v5 is header-only.
+
+  - Support for Windows versions older than Windows 10 is deprecated and will be removed in Boost 1.87.
+
+- [Math](/libs/math/):
+  - Improve ccmath error detection.
+
+  - Remove use of deprecated std::numeric_limits\<\>::has_denorm, see [1028](https://github.com/boostorg/math/issues/1028).
+
+  - Correct non-convergence bug in non-central-t distribution, see [1035](https://github.com/boostorg/math/issues/1035).
+
+  - Adjust Bessel function approximation to \[sub 1\]F\[sub 1\] to avoid taking tgamma at a negative integer, see [1034](https://github.com/boostorg/math/issues/1034).
+
+  - Avoid spurious overflow and divide by zero in ibeta, see [1006](https://github.com/boostorg/math/issues/1006).
+
+  - Improve accuracy when using Sterling's approximation to tgamma, completes work started in [1007](https://github.com/boostorg/math/pull/1007).
+
+  - Fix inverse_discrete_quantile for large initial guesses, see [1007](https://github.com/boostorg/math/pull/1007).
+
+  - Improve Newton root finding, see [1000](https://github.com/boostorg/math/pull/1000).
+
+  - Fix median_absolute_deviation for non-zero centre, see [997](https://github.com/boostorg/math/pull/997).
+
+  - Fix up cstdfloat.hpp for gcc-14.
+
+  - Update to work for the new types declared in \<stdfloat\>.
+
+  - Change hypergeometric_distribution to use 64 rather than 32 bit integers to avoid unnecessary overflow and restrictions on use.
+
+- [Multi-index Containers](/libs/multi_index/):
+  - Fixed a serialization-related compile-time bug in old compilers without ADL support (issue [\#70](https://github.com/boostorg/multi_index/issues/70)).
+
+- [Multiprecision](/libs/multiprecision/):
+  - Change `boost``::``array` to `std``::``array` in the tests, fixes [567](https://github.com/boostorg/multiprecision/issues/567).
+
+  - Correct cpp_int::eval_convert_to to be noexcept, fixes [553](https://github.com/boostorg/multiprecision/issues/553).
+
+  - Make sure that changing the global precision, also changes the current thread precision.
+
+  - Fix rational_adaptor construction bug, fixes [540](https://github.com/boostorg/multiprecision/issues/540).
+
+- [MySQL](/libs/mysql/):
+  - Added `connection``::``reset_connection` and `connection``::``async_reset_connection`. These functions clean session state (including prepared statements, variables, locks and more) without closing and re-opening the connection.
+
+  - Added error codes introduced in MySQL server v8.1.0.
+
+  - Added fuzz testing for the deserialization functions.
+
+- [PFR](/libs/pfr/):
+  - **Big new feature: field names reflection**. Added new `constexpr` `boost``::``pfr``::``get_name``<``N``,`` ``T``>()` function that returns a `std``::``string_view` with a name of field at index `N` of an aggregate `T`. Requires C++20. `BOOST_PFR_CORE_NAME_ENABLED` is defined to 1 if the functionality is available. Many thanks to [Denis Mikhailov](https://github.com/denzor200), [Bela Schaum](https://github.com/schaumb) and [X-Ryl669](https://github.com/X-Ryl669) for the PR [PR#129](https://github.com/boostorg/pfr/pull/129) and implementation ideas.
+
+  - `for_each_field``()` is now `constexpr` for C++17. Many thanks to [Alexander Karatarakis](https://github.com/alexkaratarakis) for the PR [PR#134](https://github.com/boostorg/pfr/pull/134).
+
+- [Predef](/libs/predef/):
+  - Version 1.15.0
+
+  - Add detection of Microsoft STL (from Henrik Gaßmann).
+
+- [Random](/libs/random/):
+  - C++03 is no longer supported.
+
+  - Fixed overflows in tests using Boost.Multiprecision
+
+- [Ratio](/libs/ratio/):
+  - C++03 is no longer supported.
+
+  - Support for `BOOST_RATIO_EXTENSIONS` has been removed. Ratio is now implemented in terms of the standard `<``ratio``>` header.
+
+- [Stacktrace](/libs/stacktrace/):
+  - C++03 is no longer supported. Thanks to [Alex](https://github.com/leha-bot) for the PR [PR#139](https://github.com/boostorg/stacktrace/pull/139)
+
+  - Fixed `addr2line` for pie binaries. Thanks to [ja2142](https://github.com/ja2142) for the PR [PR#138](https://github.com/boostorg/stacktrace/pull/138)!
+
+  - Fixed build with MinGW-w64 12+. Thanks to [yhsb2k](https://github.com/yhsb2k) for the PR [PR#140](https://github.com/boostorg/stacktrace/pull/140)!
+
+  - Added missing include. Thanks to [Francesco Ballarin](https://github.com/francesco-ballarin) for the PR [PR#143](https://github.com/boostorg/stacktrace/pull/143)!
+
+- [System](/libs/system/):
+  - Added support for `result``<``U``&,`` ``E``>`.
+
+  - Added `operator``|` for `result`.
+
+  - Added `operator``&` for `result`.
+
+  - Added `operator``&=` for `result`.
+
+- [Test](/libs/test/):
+  - C++03 is no longer supported.
+
+  - Fixed useage of PRIxPTR for glibc 2.2 - 2.17 [PR#392](https://github.com/boostorg/test/pull/392)
+
+  - Fixed MSVC warning C5263: calling 'std::move' on a temporary object prevents copy elision [PR#390](https://github.com/boostorg/test/pull/390)
+
+- [Thread](/libs/thread/):
+  - C++03 is no longer supported.
+
+- [TypeIndex](/libs/type_index/):
+  - C++03 is no longer supported.
+
+  - `BOOST_TYPE_INDEX_REGISTER_RUNTIME_CLASS``((``A``)(``B``)(``C``)(``D``))` changed syntax to `BOOST_TYPE_INDEX_REGISTER_RUNTIME_CLASS``(``A``,`` ``B``,`` ``C``,`` ``D``)`.
+
+  - Dropped Boost.PP dependency.
+
+- [TypeOf](/libs/typeof/):
+  - C++03 is no longer supported.
+
+- [Unordered](/libs/unordered/):
+  - **Major update.**
+
+  - Added `boost``::``concurrent_flat_set`.
+
+  - Added `[``c``]``visit_while` operations to concurrent containers, with serial and parallel variants.
+
+  - Added efficient move construction of `boost``::``unordered_flat_``(``map``|``set``)` from `boost``::``concurrent_flat_``(``map``|``set``)` and vice versa.
+
+  - Added bulk visitation to concurrent containers for increased lookup performance.
+
+  - Added debug-mode mechanisms for detecting illegal reentrancies into a concurrent container from user code.
+
+  - Added Boost.Serialization support to all containers and their (non-local) iterator types.
+
+  - Added support for fancy pointers to open-addressing and concurrent containers. This enables scenarios like the use of Boost.Interprocess allocators to construct containers in shared memory.
+
+  - Fixed bug in member of pointer operator for local iterators of closed-addressing containers ([PR#221](https://github.com/boostorg/unordered/pull/221), credit goes to GitHub user vslashg for finding and fixing this issue).
+
+  - Starting with this release, `boost``::``unordered_``[``multi``]``set` and `boost``::``unordered_``[``multi``]``map` only work with C++11 onwards.
+
+- [variant](/libs/variant/):
+  - C++03 is no longer supported [PR#107](https://github.com/boostorg/variant/pull/107).
+
+  - Dropped Boost.Move and Boost.Bind dependencies.
+
+- [Wave](/libs/wave/): Fixed bugs:
+  - [\#188](https://github.com/boostorg/wave/issues/188): Segmentation fault when "#pragma\n" is encountered
+
+### Compilers Tested
+
+Boost's primary test compilers are:
+
+- Linux:
+  - Clang, C++03: 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 12.0.0, 13.0.0, 14.0.0, 15.0.0
+
+  - Clang, C++11: 3.4, 11.0.0, 13.0.0, 14.0.0, 15.0.0
+
+  - Clang, C++14: 3.5, 3.6, 3.7, 3.8, 3.9, 4.0, 5.0, 12.0.0, 13.0.0, 14.0.0, 15.0.0
+
+  - Clang, C++17: 6.0.1, 7.0.0, 8.0.0, 9.0.0, 10.0.0, 11.0.0, 12.0.0, 13.0.0, 14.0.0, 15.0.0
+
+  - Clang, C++20: 11.0.0, 12.0.0, 13.0.0, 14.0.0, 15.0.0
+
+  - GCC, C++03: 4.6.3, 11, 12
+
+  - GCC, C++11: 4.7.3, 4.8.5, 11, 12
+
+  - GCC, C++14: 5.4.0, 6.4.0, 7.3.0, 8.0.1, 9.1.0, 11, 12
+
+  - GCC, C++17: 7.3.0, 8.0.1, 9.1.0, 11, 12
+
+  - GCC, C++20: 8.0.1, 9.1.0, 10, 11, 12
+
+- OS X:
+  - Apple Clang, C++03: 11.0.3
+
+  - Apple Clang, C++11: 11.0.3
+
+  - Apple Clang, C++14: 11.0.3
+
+  - Apple Clang, C++17: 11.0.3
+
+  - Apple Clang, C++20: 11.0.3
+
+- Windows:
+  - Visual C++: 10.0, 11.0, 12.0, 14.0, 14.1, 14.2, 14.3
+
+### Acknowledgements
+
+Marshall Clow and Glen Fernandes managed this release.
+
+Copyright Rene Rivera 2006-2007.

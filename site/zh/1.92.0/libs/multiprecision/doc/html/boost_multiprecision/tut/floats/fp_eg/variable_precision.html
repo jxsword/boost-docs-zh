@@ -1,0 +1,164 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>可变精度牛顿求值</title>
+<link rel="stylesheet" href="../../../../multiprecision.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../../../index.html" title="第 1 章 Boost.Multiprecision">
+<link rel="up" href="../fp_eg.html" title="示例">
+<link rel="prev" href="poly_eg.html" title="多项式求值">
+<link rel="next" href="gauss_lagerre_quadrature.html" title="Gauss-Laguerre 求积">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="poly_eg.html"><img src="../../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../fp_eg.html"><img src="../../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../../index.html"><img src="../../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="gauss_lagerre_quadrature.html"><img src="../../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="boost_multiprecision.tut.floats.fp_eg.variable_precision"></a><a class="link" href="variable_precision.html" title="可变精度牛顿法求值">可变精度牛顿求值</a>
+</h5></div></div></div>
+<p>此示例演示对<code class="computeroutput"><span class="identifier">mpfr_float</span></code> 数字类型使用可变精度算术. 我们将把 Beta 分布的中位数计算到极高精度, 并比较各种方法的精度与耗时. 也就是说, 我们要计算<code class="computeroutput"><span class="identifier">x</span></code> 的值, 使得<span class="emphasis"><em>I<sub>x</sub>(a, b) = 0.5</em></span>.</p>
+<p>最终我们将使用牛顿法, 并在每次迭代时把 mpfr_float 的精度设置为刚好足够的位数.</p>
+<p>此程序的完整源代码在<a href="http://www.boost.org/doc/libs/release/libs/multiprecision/doc/html/../../example/mpfr_precision.cpp" target="_top">../../example/mpfr_precision.cpp</a>.</p>
+<p>我们跳过 #include 和 using 声明, 直接看一些支持代码: 首先是用于性能测量的简易秒表:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">clock_type</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">stopwatch</span> <span class="special">{</span> <span class="comment">/*details \*/</span> <span class="special">};</span>
+</pre>
+<p>我们将使用<code class="computeroutput"><span class="identifier">stopwatch</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">chono</span><span class="special">::</span><span class="identifier">high_resolution_clock</span><span class="special">&gt;</span></code> 作为性能测量工具.</p>
+<p>我们还有一个小工具类, 用于控制 mpfr_float 的当前精度:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">scoped_precision</span>
+<span class="special">{</span>
+   <span class="keyword">unsigned</span> <span class="identifier">p</span><span class="special">;</span>
+   <span class="identifier">scoped_precision</span><span class="special">(</span><span class="keyword">unsigned</span> <span class="identifier">new_p</span><span class="special">)</span> <span class="special">:</span> <span class="identifier">p</span><span class="special">(</span><span class="identifier">mpfr_float</span><span class="special">::</span><span class="identifier">default_precision</span><span class="special">())</span>
+   <span class="special">{</span>
+      <span class="identifier">mpfr_float</span><span class="special">::</span><span class="identifier">default_precision</span><span class="special">(</span><span class="identifier">new_p</span><span class="special">);</span>
+   <span class="special">}</span>
+   <span class="special">~</span><span class="identifier">scoped_precision</span><span class="special">()</span>
+   <span class="special">{</span>
+      <span class="identifier">mpfr_float</span><span class="special">::</span><span class="identifier">default_precision</span><span class="special">(</span><span class="identifier">p</span><span class="special">);</span>
+   <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>我们先从一个参考方法开始, 它只是简单地调用 Boost.Math 函数<code class="computeroutput"><span class="identifier">ibeta_inv</span></code>, 并全程使用参数的完整工作精度. 我们的参考函数接受 3 个参数:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">Beta 分布的两个参数<code class="computeroutput"><span class="identifier">a</span></code> 和<code class="computeroutput"><span class="identifier">b</span></code>, 以及</li>
+<li class="listitem">结果要达到的十进制精度位数.</li>
+</ul></div>
+<p>我们先把默认工作精度设为所要求的值; 然后, 由于我们不知道参数<code class="computeroutput"><span class="identifier">a</span></code> 和<code class="computeroutput"><span class="identifier">b</span></code> 的来历或精度, 我们对它们做一份拷贝 - 注意, 由于拷贝在复制值的同时也复制精度, 我们必须在拷贝时用第二个参数显式设置精度. 然后只需返回<code class="computeroutput"><span class="identifier">ibeta_inv</span></code> 的结果:</p>
+<pre class="programlisting"><span class="identifier">mpfr_float</span> <span class="identifier">beta_distribution_median_method_1</span><span class="special">(</span><span class="identifier">mpfr_float</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a_</span><span class="special">,</span> <span class="identifier">mpfr_float</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">b_</span><span class="special">,</span> <span class="keyword">unsigned</span> <span class="identifier">digits10</span><span class="special">)</span>
+<span class="special">{</span>
+   <span class="identifier">scoped_precision</span> <span class="identifier">sp</span><span class="special">(</span><span class="identifier">digits10</span><span class="special">);</span>
+   <span class="identifier">mpfr_float</span> <span class="identifier">half</span><span class="special">(</span><span class="number">0.5</span><span class="special">),</span> <span class="identifier">a</span><span class="special">(</span><span class="identifier">a_</span><span class="special">,</span> <span class="identifier">digits10</span><span class="special">),</span> <span class="identifier">b</span><span class="special">(</span><span class="identifier">b_</span><span class="special">,</span> <span class="identifier">digits10</span><span class="special">);</span>
+   <span class="keyword">return</span> <span class="identifier">ibeta_inv</span><span class="special">(</span><span class="identifier">a</span><span class="special">,</span> <span class="identifier">b</span><span class="special">,</span> <span class="identifier">half</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>你可能想知道, 为什么除了设置默认精度之外, 还需要更改变量<code class="computeroutput"><span class="identifier">a</span></code> 和<code class="computeroutput"><span class="identifier">b</span></code> 的精度 - 实际上, 若不这样做, 有两种情况会出问题:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">变量精度过高 - 这会导致所有涉及这些类型的算术运算被提升到更高精度, 浪费宝贵的计算时间.</li>
+<li class="listitem">变量精度过低 - 这会导致只涉及这些变量的表达式以较低精度计算 - 例如, 若我们在内部计算<code class="computeroutput"><span class="identifier">exp</span><span class="special">(</span><span class="identifier">a</span><span class="special">)</span></code>, 则求值会使用<code class="computeroutput"><span class="identifier">a</span></code> 的精度, 而不是当前默认精度.</li>
+</ul></div>
+<p>由于我们的参考方法以所要求的完整精度执行全部计算, 一个显而易见的改进是先以<code class="computeroutput"><span class="keyword">double</span></code> 精度计算第一近似, 然后用牛顿迭代进一步精化.</p>
+<p>我们的函数开头与之前相同: 设置新的默认精度, 然后以正确精度拷贝参数. 接着以全 double 精度参数调用<code class="computeroutput"><span class="identifier">ibeta_inv</span></code>, 把结果提升为<code class="computeroutput"><span class="identifier">mpfr_float</span></code>, 再执行牛顿迭代得到结果. 注意, 我们的终止条件有些粗糙: 我们只是假定从 double 精度近似中获得了约 14 位正确数字, 且精度每步翻倍. 我们还耍了个小聪明, 使用 Boost.Math 的一个内部函数一次性计算<span class="emphasis"><em>I<sub>x</sub>(a, b)</em></span> 及其导数:</p>
+<pre class="programlisting"><span class="identifier">mpfr_float</span> <span class="identifier">beta_distribution_median_method_2</span><span class="special">(</span><span class="identifier">mpfr_float</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a_</span><span class="special">,</span> <span class="identifier">mpfr_float</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">b_</span><span class="special">,</span> <span class="keyword">unsigned</span> <span class="identifier">digits10</span><span class="special">)</span>
+<span class="special">{</span>
+   <span class="identifier">scoped_precision</span> <span class="identifier">sp</span><span class="special">(</span><span class="identifier">digits10</span><span class="special">);</span>
+   <span class="identifier">mpfr_float</span> <span class="identifier">half</span><span class="special">(</span><span class="number">0.5</span><span class="special">),</span> <span class="identifier">a</span><span class="special">(</span><span class="identifier">a_</span><span class="special">,</span> <span class="identifier">digits10</span><span class="special">),</span> <span class="identifier">b</span><span class="special">(</span><span class="identifier">b_</span><span class="special">,</span> <span class="identifier">digits10</span><span class="special">);</span>
+   <span class="identifier">mpfr_float</span> <span class="identifier">guess</span> <span class="special">=</span> <span class="identifier">ibeta_inv</span><span class="special">((</span><span class="keyword">double</span><span class="special">)</span><span class="identifier">a</span><span class="special">,</span> <span class="special">(</span><span class="keyword">double</span><span class="special">)</span><span class="identifier">b</span><span class="special">,</span> <span class="number">0.5</span><span class="special">);</span>
+   <span class="keyword">unsigned</span> <span class="identifier">current_digits</span> <span class="special">=</span> <span class="number">14</span><span class="special">;</span>
+   <span class="identifier">mpfr_float</span> <span class="identifier">f</span><span class="special">,</span> <span class="identifier">f1</span><span class="special">;</span>
+   <span class="keyword">while</span> <span class="special">(</span><span class="identifier">current_digits</span> <span class="special">&lt;</span> <span class="identifier">digits10</span><span class="special">)</span>
+   <span class="special">{</span>
+      <span class="identifier">f</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">ibeta_imp</span><span class="special">(</span><span class="identifier">a</span><span class="special">,</span> <span class="identifier">b</span><span class="special">,</span> <span class="identifier">guess</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">policies</span><span class="special">::</span><span class="identifier">policy</span><span class="special">&lt;&gt;(),</span> <span class="keyword">false</span><span class="special">,</span> <span class="keyword">true</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">f1</span><span class="special">)</span> <span class="special">-</span> <span class="identifier">half</span><span class="special">;</span>
+      <span class="identifier">guess</span> <span class="special">-=</span> <span class="identifier">f</span> <span class="special">/</span> <span class="identifier">f1</span><span class="special">;</span>
+      <span class="identifier">current_digits</span> <span class="special">*=</span> <span class="number">2</span><span class="special">;</span>
+   <span class="special">}</span>
+   <span class="keyword">return</span> <span class="identifier">guess</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>在进一步精化该方法之前, 先盘点一下方法 1 和方法 2 的比较结果也许是明智的. 我们让两者都给出 1500 位精度, 并与<code class="computeroutput"><span class="identifier">ibeta_inv</span></code> 在 1700 位下产生的值进行比较. 结果如下:</p>
+<pre class="programlisting">Method 1 time = 0.611647
+Relative error: 2.99991e-1501
+Method 2 time = 0.646746
+Relative error: 7.55843e-1501
+</pre>
+<p>显然两者同样精确, 但方法 1 实际上更快, 我们提升性能的计划并未奏效. 事实证明我们并非在比较同类事物:<code class="computeroutput"><span class="identifier">ibeta_inv</span></code> 内部使用 Halley 迭代, 其产出更多精度数字的速度比牛顿迭代快得多. 因此, 我们靠精化初始<code class="computeroutput"><span class="keyword">double</span></code> 近似所节省的时间, 又因需要更多迭代才能得到结果而损失掉了.</p>
+<p>是时候采用更精细的方案了. 它与方法 2 形式相同, 但现在我们在牛顿迭代循环内设置工作精度, 只保留覆盖每步预期精度所需的位数. 这意味着我们还要在循环内以正确精度创建参数的新拷贝, 并且每次迭代都要更改当前<code class="computeroutput"><span class="identifier">guess</span></code> 的精度:</p>
+<pre class="programlisting"><span class="identifier">mpfr_float</span> <span class="identifier">beta_distribution_median_method_3</span><span class="special">(</span><span class="identifier">mpfr_float</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a_</span><span class="special">,</span> <span class="identifier">mpfr_float</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">b_</span><span class="special">,</span> <span class="keyword">unsigned</span> <span class="identifier">digits10</span><span class="special">)</span>
+<span class="special">{</span>
+   <span class="identifier">mpfr_float</span> <span class="identifier">guess</span> <span class="special">=</span> <span class="identifier">ibeta_inv</span><span class="special">((</span><span class="keyword">double</span><span class="special">)</span><span class="identifier">a_</span><span class="special">,</span> <span class="special">(</span><span class="keyword">double</span><span class="special">)</span><span class="identifier">b_</span><span class="special">,</span> <span class="number">0.5</span><span class="special">);</span>
+   <span class="keyword">unsigned</span> <span class="identifier">current_digits</span> <span class="special">=</span> <span class="number">14</span><span class="special">;</span>
+   <span class="identifier">mpfr_float</span> <span class="identifier">f</span><span class="special">(</span><span class="number">0</span><span class="special">,</span> <span class="identifier">current_digits</span><span class="special">),</span> <span class="identifier">f1</span><span class="special">(</span><span class="number">0</span><span class="special">,</span> <span class="identifier">current_digits</span><span class="special">),</span> <span class="identifier">delta</span><span class="special">(</span><span class="number">1</span><span class="special">);</span>
+   <span class="keyword">while</span> <span class="special">(</span><span class="identifier">current_digits</span> <span class="special">&lt;</span> <span class="identifier">digits10</span><span class="special">)</span>
+   <span class="special">{</span>
+      <span class="identifier">current_digits</span> <span class="special">*=</span> <span class="number">2</span><span class="special">;</span>
+      <span class="identifier">scoped_precision</span> <span class="identifier">sp</span><span class="special">((</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">min</span><span class="special">)(</span><span class="identifier">current_digits</span><span class="special">,</span> <span class="identifier">digits10</span><span class="special">));</span>
+      <span class="identifier">mpfr_float</span> <span class="identifier">a</span><span class="special">(</span><span class="identifier">a_</span><span class="special">,</span> <span class="identifier">mpfr_float</span><span class="special">::</span><span class="identifier">default_precision</span><span class="special">()),</span> <span class="identifier">b</span><span class="special">(</span><span class="identifier">b_</span><span class="special">,</span> <span class="identifier">mpfr_float</span><span class="special">::</span><span class="identifier">default_precision</span><span class="special">());</span>
+      <span class="identifier">guess</span><span class="special">.</span><span class="identifier">precision</span><span class="special">(</span><span class="identifier">mpfr_float</span><span class="special">::</span><span class="identifier">default_precision</span><span class="special">());</span>
+      <span class="identifier">f</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">ibeta_imp</span><span class="special">(</span><span class="identifier">a</span><span class="special">,</span> <span class="identifier">b</span><span class="special">,</span> <span class="identifier">guess</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">policies</span><span class="special">::</span><span class="identifier">policy</span><span class="special">&lt;&gt;(),</span> <span class="keyword">false</span><span class="special">,</span> <span class="keyword">true</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">f1</span><span class="special">)</span> <span class="special">-</span> <span class="number">0.5f</span><span class="special">;</span>
+      <span class="identifier">guess</span> <span class="special">-=</span> <span class="identifier">f</span> <span class="special">/</span> <span class="identifier">f1</span><span class="special">;</span>
+   <span class="special">}</span>
+   <span class="keyword">return</span> <span class="identifier">guess</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>新的性能结果看起来更有希望:</p>
+<pre class="programlisting">Method 1 time = 0.591244
+Relative error: 2.99991e-1501
+Method 2 time = 0.622679
+Relative error: 7.55843e-1501
+Method 3 time = 0.143393
+Relative error: 4.03898e-1501
+</pre>
+<p>这次我们比<code class="computeroutput"><span class="identifier">ibeta_inv</span></code> 快 4 倍; 毫无疑问, 通过仔细优化迭代次数和所用的方法(Halley 还是牛顿), 还能再提升一些.</p>
+<p>最后, 上述方法的驱动代码如下:</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">main</span><span class="special">()</span>
+<span class="special">{</span>
+   <span class="keyword">try</span> <span class="special">{</span>
+      <span class="identifier">mpfr_float</span> <span class="identifier">a</span><span class="special">(</span><span class="number">10</span><span class="special">),</span> <span class="identifier">b</span><span class="special">(</span><span class="number">20</span><span class="special">);</span>
+
+      <span class="identifier">mpfr_float</span> <span class="identifier">true_value</span> <span class="special">=</span> <span class="identifier">beta_distribution_median_method_1</span><span class="special">(</span><span class="identifier">a</span><span class="special">,</span> <span class="identifier">b</span><span class="special">,</span> <span class="number">1700</span><span class="special">);</span>
+
+      <span class="identifier">stopwatch</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">high_resolution_clock</span><span class="special">&gt;</span> <span class="identifier">my_stopwatch</span><span class="special">;</span>
+
+      <span class="identifier">mpfr_float</span> <span class="identifier">v1</span> <span class="special">=</span> <span class="identifier">beta_distribution_median_method_1</span><span class="special">(</span><span class="identifier">a</span><span class="special">,</span> <span class="identifier">b</span><span class="special">,</span> <span class="number">1500</span><span class="special">);</span>
+      <span class="keyword">float</span> <span class="identifier">hp_time</span> <span class="special">=</span> <span class="identifier">my_stopwatch</span><span class="special">.</span><span class="identifier">elapsed</span><span class="special">();</span>
+      <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Method 1 time = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">hp_time</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+      <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Relative error: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">relative_difference</span><span class="special">(</span><span class="identifier">v1</span><span class="special">,</span> <span class="identifier">true_value</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+
+      <span class="identifier">my_stopwatch</span><span class="special">.</span><span class="identifier">reset</span><span class="special">();</span>
+      <span class="identifier">mpfr_float</span> <span class="identifier">v2</span> <span class="special">=</span> <span class="identifier">beta_distribution_median_method_2</span><span class="special">(</span><span class="identifier">a</span><span class="special">,</span> <span class="identifier">b</span><span class="special">,</span> <span class="number">1500</span><span class="special">);</span>
+      <span class="identifier">hp_time</span> <span class="special">=</span> <span class="identifier">my_stopwatch</span><span class="special">.</span><span class="identifier">elapsed</span><span class="special">();</span>
+      <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Method 2 time = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">hp_time</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+      <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Relative error: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">relative_difference</span><span class="special">(</span><span class="identifier">v2</span><span class="special">,</span> <span class="identifier">true_value</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+
+      <span class="identifier">my_stopwatch</span><span class="special">.</span><span class="identifier">reset</span><span class="special">();</span>
+      <span class="identifier">mpfr_float</span> <span class="identifier">v3</span> <span class="special">=</span> <span class="identifier">beta_distribution_median_method_3</span><span class="special">(</span><span class="identifier">a</span><span class="special">,</span> <span class="identifier">b</span><span class="special">,</span> <span class="number">1500</span><span class="special">);</span>
+      <span class="identifier">hp_time</span> <span class="special">=</span> <span class="identifier">my_stopwatch</span><span class="special">.</span><span class="identifier">elapsed</span><span class="special">();</span>
+      <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Method 3 time = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">hp_time</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+      <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Relative error: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">relative_difference</span><span class="special">(</span><span class="identifier">v3</span><span class="special">,</span> <span class="identifier">true_value</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+   <span class="special">}</span>
+   <span class="keyword">catch</span> <span class="special">(</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">exception</span><span class="special">&amp;</span> <span class="identifier">e</span><span class="special">)</span>
+   <span class="special">{</span>
+      <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Found exception with message: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">e</span><span class="special">.</span><span class="identifier">what</span><span class="special">()</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+   <span class="special">}</span>
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+</div>
+<div class="copyright-footer">版权所有 © 2002-2025 Matthew Borland, Paul A. Bristow, Christopher Kormanyos, Janek Kozicki, John Maddock 和 Fahad Syed<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="poly_eg.html"><img src="../../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../fp_eg.html"><img src="../../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../../index.html"><img src="../../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="gauss_lagerre_quadrature.html"><img src="../../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

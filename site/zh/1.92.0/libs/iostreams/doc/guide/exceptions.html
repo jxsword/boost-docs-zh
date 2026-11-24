@@ -1,0 +1,114 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+<HEAD>
+    <TITLE>异常</TITLE>
+    <LINK REL="stylesheet" HREF="../../../../boost.css">
+    <LINK REL="stylesheet" HREF="../theme/iostreams.css">
+    <STYLE> 
+        OL LI { list-style-image:none; list-style-type: decimal } 
+        OL LI LI { list-style-image:none; list-style-type: lower-alpha } 
+     </STYLE>
+</HEAD>
+<BODY>
+
+<!-- Begin Banner -->
+
+    <H1 CLASS="title">User's Guide</H1>
+    <HR CLASS="banner">
+
+<!-- End Banner -->
+
+<!-- Begin Nav -->
+
+<DIV CLASS='nav'>
+     <A HREF='views.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/prev.png'></A>
+    <A HREF='guide.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/up.png'></A>
+    <A HREF='buffering.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/next.png'></A>
+</DIV>
+
+<!-- End Nav -->
+
+<A NAME="overview"></A>
+<H2>3.10 异常</H2>
+
+<DL class="page-index">
+  <DT><A href="#standard_iostreams">标准 Iostreams 库</A></DT>
+  <DT><A href="#boost_iostreams">Boost Iostreams 库</A></DT>
+  <DT><A href="#safety"> 异常安全 </A></DT>
+  <DT><A href="#acknowledgments">致谢</A></DT>
+</DL>
+
+<HR STYLE="margin-top:1em">
+
+<A NAME="standard_iostreams"></A>
+<H2>标准 Iostreams 库</H2>
+
+<P> <CODE>public</CODE> 成员函数 — <CODE>std::basic_streambuf</CODE> 中执行 I/O 的那些 — 即 <CODE>sgetn()</CODE>、<CODE>sputn()</CODE>、<CODE>pubsync(), <I>etc.</I> </CODE> — 是使用 <CODE>protected virtual</CODE> 接口实现的, 该接口属于 <CODE>std::basic_streambuf</CODE> — 即 <CODE>underflow()</CODE>、<CODE>overflow()</CODE>、<CODE>sync()</CODE>、<I>等</I>. 这些 <CODE>protected virtual</CODE> 函数中的大多数允许通过抛出异常或返回错误指示符 (通常是 <CODE>traits_type::eof()</CODE>) 来报告失败. 抛出的所有异常都会由 <CODE>public</CODE> 成员函数传播, 因此原始流缓冲的用户原则上必须准备好处理异常. 不过, 大多数标准库实现自带的流缓冲并不抛出异常.</P>
+
+<P>相比之下, 标准流默认不抛出异常: 用户必须设置<I>异常掩码</I>, 才能请求使用异常报告异常状况. 若流的异常掩码中设置了 <CODE>ios_base::badbit</CODE>, 则底层流缓冲抛出的所有异常都会被捕获并重新抛出.</P>
+
+<P>因此, 对于流, 用户可以选择是否启用异常; 对于流缓冲, 实现者有选择权, 而用户没有.</P>
+
+<A NAME="boost_iostreams"></A>
+<H2>Boost Iostreams 库</H2>
+
+<H5>策略</H5>
+
+<P>Boost Iostreams 库中的基本流缓冲模板 <A HREF="generic_streams.html#stream_buffer"><CODE>stream_buffer</CODE></A> 实现了 <CODE>protected virtual</CODE> (<CODE>std::basic_streambuf</CODE> 的成员函数), 方式是委托给 I/O 函数 <A HREF="../functions/read.html"><CODE>read</CODE></A>、<A HREF="../functions/write.html"><CODE>write</CODE></A>、<A HREF="../functions/put.html"><CODE>put</CODE></A>、<A HREF="../functions/get.html"><CODE>get</CODE></A>、<I>等</I>, 而这些函数又委托给过滤器和设备的成员函数. <I>这些成员函数抛出异常来报告错误.</I> 异常由 <CODE>protected virtual</CODE> — <CODE>stream_buffer</CODE> 的成员 — 以及 <CODE>std::basic_streambuf</CODE> 的公有成员传播.</P>
+
+<P>建议用户定义的过滤器和设备抛出的所有异常都派生自 <CODE>std::ios_base::failure</CODE>.<SUP><A CLASS="footnote_ref" NAME="note_1_ref" HREF="#note_1">[1]</A></SUP>
+</P>
+
+<H5>设计理由</H5>
+
+<P>另一种可能的表述是: 要求返回类型为 <CODE>std::streamsize</CODE> 的过滤器和设备成员函数返回 <CODE>-1</CODE> 以指示错误, 并修改返回 <CODE>void</CODE> 的函数的规范, 使其返回表示成功的 <CODE>bool</CODE>. 决定依靠异常报告错误, 是为了让实现者能够传达关于错误原因的额外信息, 并让他们不必记住哪些返回值被指定为错误指示符.</P>
+
+<P>第三种可能是仿照 <CODE>std::basic_streambuf</CODE> 的做法, 允许过滤器和设备的成员函数通过抛出异常或返回指定的错误指示符来报告错误. 这一方案被否决, 因为它会复杂化各种 <A HREF="concepts.html#filter_concepts">Filter</A> 与 <A HREF="concepts.html#device_concepts">Device</A> 概念的规范, 并使 <CODE>stream_buffer</CODE> 的内部更难理解和维护.<SUP><A CLASS="footnote_ref" NAME="note_2_ref" HREF="#note_2">[2]</A></SUP>
+</P>
+
+<A NAME="safety"></A>
+<H2>异常安全</H2> Iostreams 库旨在在 I/O 操作期间抛出异常时提供以下保证: <OL>
+    <LI>酌情通过调用析构函数或 <A HREF="../functions/close.html"><CODE>close</CODE></A> 来释放资源.<LI>C++ 标准库为流和流缓冲规定的不变式得到维持. 允许尝试执行更多 I/O, 但可能引发更多异常.</LI>
+    <LI>Boost Iostreams 库为流和流缓冲规定的不变式得到维持. 具体而言, <OL>
+            <LI>可以关闭并重新打开 <A HREF="generic_streams.html#stream_buffer"><CODE>stream_buffer</CODE></A> 或 <A HREF="generic_streams.html#stream"><CODE>stream</CODE></A>, 以使用底层 <A HREF="concepts.html#filter_concepts">过滤器</A> 或 <A HREF="concepts.html#device_concepts">设备</A> 类型的新实例执行更多 I/O.</LI>
+            <LI> <A HREF="../classes/filtering_streambuf.html"><CODE>filtering_streambuf</CODE></A> 或 <A HREF="../classes/filtering_stream.html"><CODE>filtering_stream</CODE></A> 的过滤器和设备链处于一致状态. 如果从链中移除当前设备并添加新设备, 用户即可像流或流缓冲是新构造的那样执行 I/O.</LI>
+        </OL> 
+    </LI>
+</OL>
+
+<P>条件 2. 与 3. 依赖于 <A HREF="concepts.html#filter_concepts">Filter</A> 与 <A HREF="concepts.html#device_concepts">Device</A> 概念的规范. 注意, 并<I>不</I>保证流或流缓冲的字符序列处于一致状态, <I>即</I>数据未被破坏, 而且一般无法在异常发生后确定这些序列的状态.</P>
+
+<P>这些条件等同于通常所说的异常安全的<I>基本保证</I> (<I>参见</I> <A CLASS="bib_ref" HREF="../bibliography.html#abrahams1">[Abrahams1]</A>.)</P>
+
+<A NAME="acknowledgments"></A>
+<H2>致谢</H2>
+
+<P>感谢 Angelika Langer 与 John Torjo 就异常问题进行的讨论.</P>
+
+<!-- Begin Footnotes -->
+
+<HR>
+
+<P>
+    <A CLASS="footnote_ref" NAME="note_1" HREF="#note_1_ref"><SUP>[1]</SUP></A>C++ 标准将 <CODE>std::ios_base::failure</CODE> 描述为"Iostreams 库中的函数在流缓冲操作期间检测到错误时抛出的所有异常对象类型"的基类 (<A CLASS="bib_ref" HREF="../bibliography.html#iso">[ISO]</A>, 27.4.2.1.1 节). 对于这是否意味着流缓冲成员函数抛出的<I>所有</I>异常都必须是 <CODE>failure</CODE> 类型, 各家解说存在分歧.</P>
+
+<P>一本关于 C++ iostreams 的权威著作将标准中的措辞解读为: 异常"可以是任何类型", 但"如果异常是<I>由任何 IOStreams 操作发现的</I>错误情形引发的, 则其类型为 <CODE>failure</CODE>" (<A CLASS="bib_ref" HREF="../bibliography.html#langer">[Langer]</A>, p. 36, 着重号为引者所加). 例如, 该书作者指出, 在缓冲区分配期间产生的 <CODE>std::bad_alloc</CODE> 无需捕获后再以 <CODE>failure</CODE> 重新抛出.</P>
+
+<P>然而, 另一本权威著作认为<I>所有</I>异常都必须派生自 <CODE>failure</CODE>. (<A CLASS="bib_ref" HREF="../bibliography.html#josuttis1">[Josuttis1]</A>, p. 602.)</P>
+<P>Iostreams 库在此问题上持中立立场: 库内部抛出的所有异常都是 <CODE>failure</CODE> 类型或其派生类, 但用户自定义类型抛出的异常会<I>原样</I>传播.</P>
+
+<P>
+    <A CLASS="footnote_ref" NAME="note_2" HREF="#note_2_ref"><SUP>[2]</SUP></A>正如 Herb Sutter 所写: "允许一个操作以两种不同方式报告同一错误始终是糟糕的设计……它使接口和语义变得复杂, 也让调用者更难堪, 因为调用者必须能够处理两种风格的错误报告." (<A CLASS="bib_ref" HREF="../bibliography.html#sutter">[Sutter]</A>, p. 130.)</P>
+
+<!-- End Footnotes -->
+
+<!-- Begin Footer -->
+
+<HR>
+
+<P CLASS="copyright">© 版权所有 2008 <a href="http://www.coderage.com/" target="_top">CodeRage, LLC</a><br/>© 版权所有 2004-2007 <a href="https://www.boost.org/users/people/jonathan_turkanis.html" target="_top">Jonathan Turkanis</a></P>
+<P CLASS="copyright">按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <A HREF="http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</A>)</P>
+
+<!-- End Footer -->
+
+</BODY>

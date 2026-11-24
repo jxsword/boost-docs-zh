@@ -1,0 +1,619 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>动机</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Coroutine">
+<link rel="up" href="../index.html" title="第 1 章 Coroutine">
+<link rel="prev" href="intro.html" title="引言">
+<link rel="next" href="coroutine.html" title="Coroutine">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="intro.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="coroutine.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="coroutine.motivation"></a><a class="link" href="motivation.html" title="动机">动机</a>
+</h2></div></div></div>
+<p>为了支持广泛的执行控制行为, <span class="emphasis"><em>symmetric_coroutine&lt;&gt;</em></span> 与 <span class="emphasis"><em>asymmetric_coroutine&lt;&gt;</em></span> 的协程类型可用于 <span class="emphasis"><em>逃逸并重入</em></span> 循环、<span class="emphasis"><em>逃逸并重入</em></span> 递归计算, 以及 <span class="emphasis"><em>协作式</em></span> 多任务, 帮助以比单一控制流简单得多、优雅得多的方式解决问题.</p>
+<h4>
+<a name="coroutine.motivation.h0"></a>
+      <span class="phrase"><a name="coroutine.motivation.event_driven_model"></a></span><a class="link" href="motivation.html#coroutine.motivation.event_driven_model">事件驱动模型</a>
+    </h4>
+<p>事件驱动模型是一种编程范式, 程序的流程由事件决定. 事件由多个独立的来源产生, 等待所有外部来源的事件分发器在检测到其中某个事件时触发回调函数 (事件处理器) (事件循环). 应用程序被划分为事件选择 (检测) 与事件处理两部分.</p>
+<p>
+      <span class="inlinemediaobject"><img src="../../../../../libs/coroutine/doc/images/event_model.png" align="middle" alt="event_model"></span>
+    </p>
+<p>由此得到的应用程序高度可伸缩、灵活、响应迅速, 且组件之间松散耦合. 这使得事件驱动模型适用于用户界面应用、基于规则的产生式系统或处理异步 I/O 的应用程序 (例如网络服务器).</p>
+<h4>
+<a name="coroutine.motivation.h1"></a>
+      <span class="phrase"><a name="coroutine.motivation.event_based_asynchronous_paradigm"></a></span><a class="link" href="motivation.html#coroutine.motivation.event_based_asynchronous_paradigm">基于事件的异步范式</a>
+    </h4>
+<p>经典的同步控制台程序发出一个 I/O 请求 (例如用户输入或文件系统数据), 然后阻塞直至请求完成.</p>
+<p>与此相反, 异步 I/O 函数发起物理操作后立即返回其调用者, 即使操作尚未完成. 为利用这一功能而编写的程序不会阻塞: 在原始操作仍处于未决状态时, 它可以继续做其他工作 (包括并行发起其他 I/O 请求). 操作完成时, 程序会收到通知. 由于异步应用程序在等待操作上花费的总时间更少, 它们的性能可以超过同步程序.</p>
+<p>事件是异步执行的范式之一, 但并非所有异步系统都使用事件. 虽然可以使用线程进行异步编程, 但线程有其自身的代价:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">难以编程 (对疏忽者布满陷阱)</li>
+<li class="listitem">内存需求高</li>
+<li class="listitem">线程状态的创建与维护开销大</li>
+<li class="listitem">线程间上下文切换代价高昂</li>
+</ul></div>
+<p>基于事件的异步模型避免了这些问题:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">由于只有单一的指令流而更简单</li>
+<li class="listitem">上下文切换的代价低得多</li>
+</ul></div>
+<p>这种范式的缺点在于程序结构欠佳. 事件驱动程序必须把代码拆分为多个小的回调函数, 也就是说, 代码被组织成一系列间歇执行的小步骤. 通常会表达为函数与循环层级的算法必须改写成回调. 当控制流返回事件循环时, 完整状态必须存入数据结构. 因此, 事件驱动应用往往写得繁琐且令人困惑. 每个回调都引入新的作用域、错误回调等. 算法的顺序性被拆散到多个调用栈中, 使应用难以调试. 异常处理器只能局限于局部处理器: 无法把一段事件序列包进单个 try-catch 块. 局部变量、while/for 循环、递归等无法与事件循环配合使用. 代码的表达力随之下降.</p>
+<p>过去, 使用 asio <span class="emphasis"><em>异步操作</em></span> 的代码会被回调函数搅得难以理解.</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">session</span>
+<span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">session</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">io_service</span><span class="special">&amp;</span> <span class="identifier">io_service</span><span class="special">)</span> <span class="special">:</span>
+          <span class="identifier">socket_</span><span class="special">(</span><span class="identifier">io_service</span><span class="special">)</span> <span class="comment">// construct a TCP-socket from io_service</span>
+    <span class="special">{}</span>
+
+    <span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span><span class="special">&amp;</span> <span class="identifier">socket</span><span class="special">(){</span>
+        <span class="keyword">return</span> <span class="identifier">socket_</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">void</span> <span class="identifier">start</span><span class="special">(){</span>
+        <span class="comment">// initiate asynchronous read; handle_read() is callback-function</span>
+        <span class="identifier">socket_</span><span class="special">.</span><span class="identifier">async_read_some</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">buffer</span><span class="special">(</span><span class="identifier">data_</span><span class="special">,</span><span class="identifier">max_length</span><span class="special">),</span>
+            <span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(&amp;</span><span class="identifier">session</span><span class="special">::</span><span class="identifier">handle_read</span><span class="special">,</span><span class="keyword">this</span><span class="special">,</span>
+                <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">placeholders</span><span class="special">::</span><span class="identifier">error</span><span class="special">,</span>
+                <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">placeholders</span><span class="special">::</span><span class="identifier">bytes_transferred</span><span class="special">));</span>
+    <span class="special">}</span>
+
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="keyword">void</span> <span class="identifier">handle_read</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span><span class="special">&amp;</span> <span class="identifier">error</span><span class="special">,</span>
+                     <span class="identifier">size_t</span> <span class="identifier">bytes_transferred</span><span class="special">){</span>
+        <span class="keyword">if</span> <span class="special">(!</span><span class="identifier">error</span><span class="special">)</span>
+            <span class="comment">// initiate asynchronous write; handle_write() is callback-function</span>
+            <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">async_write</span><span class="special">(</span><span class="identifier">socket_</span><span class="special">,</span>
+                <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">buffer</span><span class="special">(</span><span class="identifier">data_</span><span class="special">,</span><span class="identifier">bytes_transferred</span><span class="special">),</span>
+                <span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(&amp;</span><span class="identifier">session</span><span class="special">::</span><span class="identifier">handle_write</span><span class="special">,</span><span class="keyword">this</span><span class="special">,</span>
+                    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">placeholders</span><span class="special">::</span><span class="identifier">error</span><span class="special">));</span>
+        <span class="keyword">else</span>
+            <span class="keyword">delete</span> <span class="keyword">this</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">void</span> <span class="identifier">handle_write</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span><span class="special">&amp;</span> <span class="identifier">error</span><span class="special">){</span>
+        <span class="keyword">if</span> <span class="special">(!</span><span class="identifier">error</span><span class="special">)</span>
+            <span class="comment">// initiate asynchronous read; handle_read() is callback-function</span>
+            <span class="identifier">socket_</span><span class="special">.</span><span class="identifier">async_read_some</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">buffer</span><span class="special">(</span><span class="identifier">data_</span><span class="special">,</span><span class="identifier">max_length</span><span class="special">),</span>
+                <span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(&amp;</span><span class="identifier">session</span><span class="special">::</span><span class="identifier">handle_read</span><span class="special">,</span><span class="keyword">this</span><span class="special">,</span>
+                    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">placeholders</span><span class="special">::</span><span class="identifier">error</span><span class="special">,</span>
+                    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">placeholders</span><span class="special">::</span><span class="identifier">bytes_transferred</span><span class="special">));</span>
+        <span class="keyword">else</span>
+            <span class="keyword">delete</span> <span class="keyword">this</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">ip</span><span class="special">::</span><span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span> <span class="identifier">socket_</span><span class="special">;</span>
+    <span class="keyword">enum</span> <span class="special">{</span> <span class="identifier">max_length</span><span class="special">=</span><span class="number">1024</span> <span class="special">};</span>
+    <span class="keyword">char</span> <span class="identifier">data_</span><span class="special">[</span><span class="identifier">max_length</span><span class="special">];</span>
+<span class="special">};</span>
+</pre>
+<p>在这个例子 (一个简单的回显服务器) 中, 逻辑被拆分到三个成员函数中 - 局部状态 (例如数据缓冲区) 被移到成员变量里.</p>
+<p>
+      <span class="bold"><strong>Boost.Asio</strong></span> 通过其新的 <span class="emphasis"><em>异步结果</em></span> 特性提供了一个结合事件驱动模型与协程的新框架, 隐藏了事件驱动编程的复杂性, 并允许经典顺序代码的风格. 应用程序不必向异步操作传递回调函数, 局部状态也保留为局部变量. 因此代码更易阅读和理解. <a href="#ftn.coroutine.motivation.f0" class="footnote" name="coroutine.motivation.f0"><sup class="footnote">[4]</sup></a>. <span class="emphasis"><em>boost::asio::yield_context</em></span> 内部使用了 <span class="bold"><strong>Boost.Coroutine</strong></span>:</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">session</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">io_service</span><span class="special">&amp;</span> <span class="identifier">io_service</span><span class="special">){</span>
+    <span class="comment">// construct TCP-socket from io_service</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">ip</span><span class="special">::</span><span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span> <span class="identifier">socket</span><span class="special">(</span><span class="identifier">io_service</span><span class="special">);</span>
+
+    <span class="keyword">try</span><span class="special">{</span>
+        <span class="keyword">for</span><span class="special">(;;){</span>
+            <span class="comment">// local data-buffer</span>
+            <span class="keyword">char</span> <span class="identifier">data</span><span class="special">[</span><span class="identifier">max_length</span><span class="special">];</span>
+
+            <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span> <span class="identifier">ec</span><span class="special">;</span>
+
+            <span class="comment">// read asynchronous data from socket</span>
+            <span class="comment">// execution context will be suspended until</span>
+            <span class="comment">// some bytes are read from socket</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">length</span><span class="special">=</span><span class="identifier">socket</span><span class="special">.</span><span class="identifier">async_read_some</span><span class="special">(</span>
+                    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">buffer</span><span class="special">(</span><span class="identifier">data</span><span class="special">),</span>
+                    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">yield</span><span class="special">[</span><span class="identifier">ec</span><span class="special">]);</span>
+            <span class="keyword">if</span> <span class="special">(</span><span class="identifier">ec</span><span class="special">==</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">error</span><span class="special">::</span><span class="identifier">eof</span><span class="special">)</span>
+                <span class="keyword">break</span><span class="special">;</span> <span class="comment">//connection closed cleanly by peer</span>
+            <span class="keyword">else</span> <span class="keyword">if</span><span class="special">(</span><span class="identifier">ec</span><span class="special">)</span>
+                <span class="keyword">throw</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">system_error</span><span class="special">(</span><span class="identifier">ec</span><span class="special">);</span> <span class="comment">//some other error</span>
+
+            <span class="comment">// write some bytes asynchronously</span>
+            <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">async_write</span><span class="special">(</span>
+                    <span class="identifier">socket</span><span class="special">,</span>
+                    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">buffer</span><span class="special">(</span><span class="identifier">data</span><span class="special">,</span><span class="identifier">length</span><span class="special">),</span>
+                    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">yield</span><span class="special">[</span><span class="identifier">ec</span><span class="special">]);</span>
+            <span class="keyword">if</span> <span class="special">(</span><span class="identifier">ec</span><span class="special">==</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">error</span><span class="special">::</span><span class="identifier">eof</span><span class="special">)</span>
+                <span class="keyword">break</span><span class="special">;</span> <span class="comment">//connection closed cleanly by peer</span>
+            <span class="keyword">else</span> <span class="keyword">if</span><span class="special">(</span><span class="identifier">ec</span><span class="special">)</span>
+                <span class="keyword">throw</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">system_error</span><span class="special">(</span><span class="identifier">ec</span><span class="special">);</span> <span class="comment">//some other error</span>
+        <span class="special">}</span>
+    <span class="special">}</span> <span class="keyword">catch</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">exception</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">e</span><span class="special">){</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cerr</span><span class="special">&lt;&lt;</span><span class="string">"Exception: "</span><span class="special">&lt;&lt;</span><span class="identifier">e</span><span class="special">.</span><span class="identifier">what</span><span class="special">()&lt;&lt;</span><span class="string">"\n"</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+</pre>
+<p>与前一例子相比, 这个例子在使用异步操作 (<span class="emphasis"><em>async_read()</em></span>, <span class="emphasis"><em>async_write()</em></span>) 的同时, 给人顺序代码和局部数据 (<span class="emphasis"><em>data</em></span>) 的印象. 算法在单个函数中实现, 错误处理由一个 try-catch 块完成.</p>
+<h4>
+<a name="coroutine.motivation.h2"></a>
+      <span class="phrase"><a name="coroutine.motivation.recursive_sax_parsing"></a></span><a class="link" href="motivation.html#coroutine.motivation.recursive_sax_parsing">递归式 SAX 解析</a>
+    </h4>
+<p>对了解 SAX 的人来说, "递归式 SAX 解析" 这个说法听起来可能很荒谬. SAX 是回调驱动的; 元素栈必须自己管理. 若要递归地处理 XML, 必须先把整个 DOM 读入内存, 再遍历该树.</p>
+<p>但协程让你可以反转控制流, 主动请求 SAX 事件. 一旦能做到这一点, 就可以递归地处理它们.</p>
+<pre class="programlisting"><span class="comment">// Represent a subset of interesting SAX events</span>
+<span class="keyword">struct</span> <span class="identifier">BaseEvent</span><span class="special">{</span>
+   <span class="identifier">BaseEvent</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">BaseEvent</span><span class="special">&amp;)=</span><span class="keyword">delete</span><span class="special">;</span>
+   <span class="identifier">BaseEvent</span><span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">=(</span><span class="keyword">const</span> <span class="identifier">BaseEvent</span><span class="special">&amp;)=</span><span class="keyword">delete</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="comment">// End of document or element</span>
+<span class="keyword">struct</span> <span class="identifier">CloseEvent</span><span class="special">:</span> <span class="keyword">public</span> <span class="identifier">BaseEvent</span><span class="special">{</span>
+   <span class="comment">// CloseEvent binds (without copying) the TagType reference.</span>
+   <span class="identifier">CloseEvent</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">xml</span><span class="special">::</span><span class="identifier">sax</span><span class="special">::</span><span class="identifier">Parser</span><span class="special">::</span><span class="identifier">TagType</span><span class="special">&amp;</span> <span class="identifier">name</span><span class="special">):</span>
+       <span class="identifier">mName</span><span class="special">(</span><span class="identifier">name</span><span class="special">)</span>
+   <span class="special">{}</span>
+
+   <span class="keyword">const</span> <span class="identifier">xml</span><span class="special">::</span><span class="identifier">sax</span><span class="special">::</span><span class="identifier">Parser</span><span class="special">::</span><span class="identifier">TagType</span><span class="special">&amp;</span> <span class="identifier">mName</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="comment">// Start of document or element</span>
+<span class="keyword">struct</span> <span class="identifier">OpenEvent</span><span class="special">:</span> <span class="keyword">public</span> <span class="identifier">CloseEvent</span><span class="special">{</span>
+   <span class="comment">// In addition to CloseEvent's TagType, OpenEvent binds AttributeIterator.</span>
+   <span class="identifier">OpenEvent</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">xml</span><span class="special">::</span><span class="identifier">sax</span><span class="special">::</span><span class="identifier">Parser</span><span class="special">::</span><span class="identifier">TagType</span><span class="special">&amp;</span> <span class="identifier">name</span><span class="special">,</span>
+             <span class="identifier">xml</span><span class="special">::</span><span class="identifier">sax</span><span class="special">::</span><span class="identifier">AttributeIterator</span><span class="special">&amp;</span> <span class="identifier">attrs</span><span class="special">):</span>
+       <span class="identifier">CloseEvent</span><span class="special">(</span><span class="identifier">name</span><span class="special">),</span>
+       <span class="identifier">mAttrs</span><span class="special">(</span><span class="identifier">attrs</span><span class="special">)</span>
+   <span class="special">{}</span>
+
+   <span class="identifier">xml</span><span class="special">::</span><span class="identifier">sax</span><span class="special">::</span><span class="identifier">AttributeIterator</span><span class="special">&amp;</span> <span class="identifier">mAttrs</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="comment">// text within an element</span>
+<span class="keyword">struct</span> <span class="identifier">TextEvent</span><span class="special">:</span> <span class="keyword">public</span> <span class="identifier">BaseEvent</span><span class="special">{</span>
+   <span class="comment">// TextEvent binds the CharIterator.</span>
+   <span class="identifier">TextEvent</span><span class="special">(</span><span class="identifier">xml</span><span class="special">::</span><span class="identifier">sax</span><span class="special">::</span><span class="identifier">CharIterator</span><span class="special">&amp;</span> <span class="identifier">text</span><span class="special">):</span>
+       <span class="identifier">mText</span><span class="special">(</span><span class="identifier">text</span><span class="special">)</span>
+   <span class="special">{}</span>
+
+   <span class="identifier">xml</span><span class="special">::</span><span class="identifier">sax</span><span class="special">::</span><span class="identifier">CharIterator</span><span class="special">&amp;</span> <span class="identifier">mText</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="comment">// The parsing coroutine instantiates BaseEvent subclass instances and</span>
+<span class="comment">// successively shows them to the main program. It passes a reference so we</span>
+<span class="comment">// don't slice the BaseEvent subclass.</span>
+<span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">coroutines</span><span class="special">::</span><span class="identifier">asymmetric_coroutine</span><span class="special">&lt;</span><span class="keyword">const</span> <span class="identifier">BaseEvent</span><span class="special">&amp;&gt;</span> <span class="identifier">coro_t</span><span class="special">;</span>
+
+<span class="keyword">void</span> <span class="identifier">parser</span><span class="special">(</span><span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">push_type</span><span class="special">&amp;</span> <span class="identifier">sink</span><span class="special">,</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">istream</span><span class="special">&amp;</span> <span class="identifier">in</span><span class="special">){</span>
+   <span class="identifier">xml</span><span class="special">::</span><span class="identifier">sax</span><span class="special">::</span><span class="identifier">Parser</span> <span class="identifier">xparser</span><span class="special">;</span>
+   <span class="comment">// startDocument() will send OpenEvent</span>
+   <span class="identifier">xparser</span><span class="special">.</span><span class="identifier">startDocument</span><span class="special">([&amp;</span><span class="identifier">sink</span><span class="special">](</span><span class="keyword">const</span> <span class="identifier">xml</span><span class="special">::</span><span class="identifier">sax</span><span class="special">::</span><span class="identifier">Parser</span><span class="special">::</span><span class="identifier">TagType</span><span class="special">&amp;</span> <span class="identifier">name</span><span class="special">,</span>
+                                 <span class="identifier">xml</span><span class="special">::</span><span class="identifier">sax</span><span class="special">::</span><span class="identifier">AttributeIterator</span><span class="special">&amp;</span> <span class="identifier">attrs</span><span class="special">)</span>
+                         <span class="special">{</span>
+                             <span class="identifier">sink</span><span class="special">(</span><span class="identifier">OpenEvent</span><span class="special">(</span><span class="identifier">name</span><span class="special">,</span><span class="identifier">attrs</span><span class="special">));</span>
+                         <span class="special">});</span>
+   <span class="comment">// startTag() will likewise send OpenEvent</span>
+   <span class="identifier">xparser</span><span class="special">.</span><span class="identifier">startTag</span><span class="special">([&amp;</span><span class="identifier">sink</span><span class="special">](</span><span class="keyword">const</span> <span class="identifier">xml</span><span class="special">::</span><span class="identifier">sax</span><span class="special">::</span><span class="identifier">Parser</span><span class="special">::</span><span class="identifier">TagType</span><span class="special">&amp;</span> <span class="identifier">name</span><span class="special">,</span>
+                            <span class="identifier">xml</span><span class="special">::</span><span class="identifier">sax</span><span class="special">::</span><span class="identifier">AttributeIterator</span><span class="special">&amp;</span> <span class="identifier">attrs</span><span class="special">)</span>
+                    <span class="special">{</span>
+                        <span class="identifier">sink</span><span class="special">(</span><span class="identifier">OpenEvent</span><span class="special">(</span><span class="identifier">name</span><span class="special">,</span><span class="identifier">attrs</span><span class="special">));</span>
+                    <span class="special">});</span>
+   <span class="comment">// endTag() will send CloseEvent</span>
+   <span class="identifier">xparser</span><span class="special">.</span><span class="identifier">endTag</span><span class="special">([&amp;</span><span class="identifier">sink</span><span class="special">](</span><span class="keyword">const</span> <span class="identifier">xml</span><span class="special">::</span><span class="identifier">sax</span><span class="special">::</span><span class="identifier">Parser</span><span class="special">::</span><span class="identifier">TagType</span><span class="special">&amp;</span> <span class="identifier">name</span><span class="special">)</span>
+                  <span class="special">{</span>
+                      <span class="identifier">sink</span><span class="special">(</span><span class="identifier">CloseEvent</span><span class="special">(</span><span class="identifier">name</span><span class="special">));</span>
+                  <span class="special">});</span>
+   <span class="comment">// endDocument() will likewise send CloseEvent</span>
+   <span class="identifier">xparser</span><span class="special">.</span><span class="identifier">endDocument</span><span class="special">([&amp;</span><span class="identifier">sink</span><span class="special">](</span><span class="keyword">const</span> <span class="identifier">xml</span><span class="special">::</span><span class="identifier">sax</span><span class="special">::</span><span class="identifier">Parser</span><span class="special">::</span><span class="identifier">TagType</span><span class="special">&amp;</span> <span class="identifier">name</span><span class="special">)</span>
+                       <span class="special">{</span>
+                           <span class="identifier">sink</span><span class="special">(</span><span class="identifier">CloseEvent</span><span class="special">(</span><span class="identifier">name</span><span class="special">));</span>
+                       <span class="special">});</span>
+   <span class="comment">// characters() will send TextEvent</span>
+   <span class="identifier">xparser</span><span class="special">.</span><span class="identifier">characters</span><span class="special">([&amp;</span><span class="identifier">sink</span><span class="special">](</span><span class="identifier">xml</span><span class="special">::</span><span class="identifier">sax</span><span class="special">::</span><span class="identifier">CharIterator</span><span class="special">&amp;</span> <span class="identifier">text</span><span class="special">)</span>
+                      <span class="special">{</span>
+                          <span class="identifier">sink</span><span class="special">(</span><span class="identifier">TextEvent</span><span class="special">(</span><span class="identifier">text</span><span class="special">));</span>
+                      <span class="special">});</span>
+   <span class="keyword">try</span>
+   <span class="special">{</span>
+       <span class="comment">// parse the document, firing all the above</span>
+       <span class="identifier">xparser</span><span class="special">.</span><span class="identifier">parse</span><span class="special">(</span><span class="identifier">in</span><span class="special">);</span>
+   <span class="special">}</span>
+   <span class="keyword">catch</span> <span class="special">(</span><span class="identifier">xml</span><span class="special">::</span><span class="identifier">Exception</span> <span class="identifier">e</span><span class="special">)</span>
+   <span class="special">{</span>
+       <span class="comment">// xml::sax::Parser throws xml::Exception. Helpfully translate the</span>
+       <span class="comment">// name and provide it as the what() string.</span>
+       <span class="keyword">throw</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">runtime_error</span><span class="special">(</span><span class="identifier">exception_name</span><span class="special">(</span><span class="identifier">e</span><span class="special">));</span>
+   <span class="special">}</span>
+<span class="special">}</span>
+
+<span class="comment">// Recursively traverse the incoming XML document on the fly, pulling</span>
+<span class="comment">// BaseEvent&amp; references from 'events'.</span>
+<span class="comment">// 'indent' illustrates the level of recursion.</span>
+<span class="comment">// Each time we're called, we've just retrieved an OpenEvent from 'events';</span>
+<span class="comment">// accept that as a param.</span>
+<span class="comment">// Return the CloseEvent that ends this element.</span>
+<span class="keyword">const</span> <span class="identifier">CloseEvent</span><span class="special">&amp;</span> <span class="identifier">process</span><span class="special">(</span><span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">pull_type</span><span class="special">&amp;</span> <span class="identifier">events</span><span class="special">,</span><span class="keyword">const</span> <span class="identifier">OpenEvent</span><span class="special">&amp;</span> <span class="identifier">context</span><span class="special">,</span>
+                          <span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;</span> <span class="identifier">indent</span><span class="special">=</span><span class="string">""</span><span class="special">){</span>
+   <span class="comment">// Capture OpenEvent's tag name: as soon as we advance the parser, the</span>
+   <span class="comment">// TagType&amp; reference bound in this OpenEvent will be invalidated.</span>
+   <span class="identifier">xml</span><span class="special">::</span><span class="identifier">sax</span><span class="special">::</span><span class="identifier">Parser</span><span class="special">::</span><span class="identifier">TagType</span> <span class="identifier">tagName</span> <span class="special">=</span> <span class="identifier">context</span><span class="special">.</span><span class="identifier">mName</span><span class="special">;</span>
+   <span class="comment">// Since the OpenEvent is still the current value from 'events', pass</span>
+   <span class="comment">// control back to 'events' until the next event. Of course, each time we</span>
+   <span class="comment">// come back we must check for the end of the results stream.</span>
+   <span class="keyword">while</span><span class="special">(</span><span class="identifier">events</span><span class="special">()){</span>
+       <span class="comment">// Another event is pending; retrieve it.</span>
+       <span class="keyword">const</span> <span class="identifier">BaseEvent</span><span class="special">&amp;</span> <span class="identifier">event</span><span class="special">=</span><span class="identifier">events</span><span class="special">.</span><span class="identifier">get</span><span class="special">();</span>
+       <span class="keyword">const</span> <span class="identifier">OpenEvent</span><span class="special">*</span> <span class="identifier">oe</span><span class="special">;</span>
+       <span class="keyword">const</span> <span class="identifier">CloseEvent</span><span class="special">*</span> <span class="identifier">ce</span><span class="special">;</span>
+       <span class="keyword">const</span> <span class="identifier">TextEvent</span><span class="special">*</span> <span class="identifier">te</span><span class="special">;</span>
+       <span class="keyword">if</span><span class="special">((</span><span class="identifier">oe</span><span class="special">=</span><span class="keyword">dynamic_cast</span><span class="special">&lt;</span><span class="keyword">const</span> <span class="identifier">OpenEvent</span><span class="special">*&gt;(&amp;</span><span class="identifier">event</span><span class="special">))){</span>
+           <span class="comment">// When we see OpenEvent, recursively process it.</span>
+           <span class="identifier">process</span><span class="special">(</span><span class="identifier">events</span><span class="special">,*</span><span class="identifier">oe</span><span class="special">,</span><span class="identifier">indent</span><span class="special">+</span><span class="string">"    "</span><span class="special">);</span>
+       <span class="special">}</span>
+       <span class="keyword">else</span> <span class="keyword">if</span><span class="special">((</span><span class="identifier">ce</span><span class="special">=</span><span class="keyword">dynamic_cast</span><span class="special">&lt;</span><span class="keyword">const</span> <span class="identifier">CloseEvent</span><span class="special">*&gt;(&amp;</span><span class="identifier">event</span><span class="special">))){</span>
+           <span class="comment">// When we see CloseEvent, validate its tag name and then return</span>
+           <span class="comment">// it. (This assert is really a check on xml::sax::Parser, since</span>
+           <span class="comment">// it already validates matching open/close tags.)</span>
+           <span class="identifier">assert</span><span class="special">(</span><span class="identifier">ce</span><span class="special">-&gt;</span><span class="identifier">mName</span> <span class="special">==</span> <span class="identifier">tagName</span><span class="special">);</span>
+           <span class="keyword">return</span> <span class="special">*</span><span class="identifier">ce</span><span class="special">;</span>
+       <span class="special">}</span>
+       <span class="keyword">else</span> <span class="keyword">if</span><span class="special">((</span><span class="identifier">te</span><span class="special">=</span><span class="keyword">dynamic_cast</span><span class="special">&lt;</span><span class="keyword">const</span> <span class="identifier">TextEvent</span><span class="special">*&gt;(&amp;</span><span class="identifier">event</span><span class="special">))){</span>
+           <span class="comment">// When we see TextEvent, just report its text, along with</span>
+           <span class="comment">// indentation indicating recursion level.</span>
+           <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span><span class="special">&lt;&lt;</span><span class="identifier">indent</span><span class="special">&lt;&lt;</span><span class="string">"text: '"</span><span class="special">&lt;&lt;</span><span class="identifier">te</span><span class="special">-&gt;</span><span class="identifier">mText</span><span class="special">.</span><span class="identifier">getText</span><span class="special">()&lt;&lt;</span><span class="string">"'\n"</span><span class="special">;</span>
+       <span class="special">}</span>
+   <span class="special">}</span>
+<span class="special">}</span>
+
+<span class="comment">// pretend we have an XML file of arbitrary size</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">istringstream</span> <span class="identifier">in</span><span class="special">(</span><span class="identifier">doc</span><span class="special">);</span>
+<span class="keyword">try</span>
+<span class="special">{</span>
+   <span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">pull_type</span> <span class="identifier">events</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">parser</span><span class="special">,</span><span class="identifier">_1</span><span class="special">,</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">in</span><span class="special">)));</span>
+   <span class="comment">// We fully expect at least ONE event.</span>
+   <span class="identifier">assert</span><span class="special">(</span><span class="identifier">events</span><span class="special">);</span>
+   <span class="comment">// This dynamic_cast&lt;&amp;&gt; is itself an assertion that the first event is an</span>
+   <span class="comment">// OpenEvent.</span>
+   <span class="keyword">const</span> <span class="identifier">OpenEvent</span><span class="special">&amp;</span> <span class="identifier">context</span><span class="special">=</span><span class="keyword">dynamic_cast</span><span class="special">&lt;</span><span class="keyword">const</span> <span class="identifier">OpenEvent</span><span class="special">&amp;&gt;(</span><span class="identifier">events</span><span class="special">.</span><span class="identifier">get</span><span class="special">());</span>
+   <span class="identifier">process</span><span class="special">(</span><span class="identifier">events</span><span class="special">,</span> <span class="identifier">context</span><span class="special">);</span>
+<span class="special">}</span>
+<span class="keyword">catch</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">exception</span><span class="special">&amp;</span> <span class="identifier">e</span><span class="special">)</span>
+<span class="special">{</span>
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Parsing error: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">e</span><span class="special">.</span><span class="identifier">what</span><span class="special">()</span> <span class="special">&lt;&lt;</span> <span class="char">'\n'</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>这个问题完全不适合用独立线程之间的通信来解决. 任何一方独立于另一方推进都没有意义. 你需要的是让双方来回传递控制权.</p>
+<p>解决方案涉及一个小的多态事件类层次结构, 我们向其传递引用. 实际的实例是协程栈上的临时对象; 协程依次把每个引用传给主逻辑. 若按基类值复制它们, 就会发生切片 (slicing).</p>
+<p>如果想让 SAX 解析器独立于消费逻辑推进, 可以设想在堆上分配事件子类实例, 并通过线程安全的指针队列传递它们. 但这同样行不通, 因为这些事件类绑定了 SAX 解析器传来的引用. 解析器一旦继续前进, 那些引用就失效了.</p>
+<p>我们可以不绑定 <span class="emphasis"><em>TagType&amp;</em></span> 引用, 而是在 <span class="emphasis"><em>CloseEvent</em></span> 中存储 <span class="emphasis"><em>TagType</em></span> 的一份拷贝. 但这并不能解决全部问题. 对于属性, 我们得到的是 <span class="emphasis"><em>AttributeIterator&amp;</em></span>; 对于文本, 我们得到的是 <span class="emphasis"><em>CharIterator&amp;</em></span>. 存储这些迭代器的拷贝毫无意义: 解析器一旦继续前进, 那些迭代器就失效了. 必须在该事件的 SAX 回调期间处理属性迭代器 (或字符迭代器).</p>
+<p>当然, 我们可以取出并存储每个属性及其值的拷贝; 也可以存储每段文本的拷贝. 那实际上就是文档中的全部文本 -- 如果我们使用 SAX 的初衷正是担心整个 DOM 放不进内存, 这个代价就太沉重了.</p>
+<p>使用协程还有另一个好处. 这个 SAX 解析器在解析失败时抛出异常. 采用协程实现时, 只需把调用代码包在 try/catch 中.</p>
+<p>若用相互通信的线程, 就必须安排好异常捕获, 并把异常指针放到用于传递其他事件的同一个队列上. 之后还得重新抛出该异常, 以展开递归的文档处理.</p>
+<p>协程方案非常自然地映射到问题空间.</p>
+<h4>
+<a name="coroutine.motivation.h3"></a>
+      <span class="phrase"><a name="coroutine.motivation._same_fringe__problem"></a></span><a class="link" href="motivation.html#coroutine.motivation._same_fringe__problem">'same fringe' 问题</a>
+    </h4>
+<p>在任意调用深度挂起的优点, 在使用递归函数 (例如树的遍历) 时看得特别清楚. 如果以相同的确定性顺序遍历两棵不同的树产生相同的叶节点列表, 则两棵树具有相同的 fringe (叶序列).</p>
+<p>
+      <span class="inlinemediaobject"><img src="../../../../../libs/coroutine/doc/images/same_fringe.png" align="middle" alt="same_fringe"></span>
+    </p>
+<p>图中两棵树尽管结构不同, 却具有相同的 fringe.</p>
+<p>same fringe 问题可以用协程解决: 迭代叶节点, 并通过 <span class="emphasis"><em>std::equal()</em></span> 比较这两个序列. 数据值范围由函数 <span class="emphasis"><em>traverse()</em></span> 生成, 该函数递归遍历树, 并把每个节点的数据值传给其 <span class="emphasis"><em>asymmetric_coroutine&lt;&gt;::push_type</em></span>. <span class="emphasis"><em>asymmetric_coroutine&lt;&gt;::push_type</em></span> 挂起递归计算, 并把数据值传给主执行上下文. 由 <span class="emphasis"><em>asymmetric_coroutine&lt;&gt;::pull_type</em></span> 创建的 <span class="emphasis"><em>asymmetric_coroutine&lt;&gt;::pull_type::iterator</em></span> 逐个取出这些数据值, 交给 <span class="emphasis"><em>std::equal()</em></span> 进行比较. <span class="emphasis"><em>asymmetric_coroutine&lt;&gt;::pull_type::iterator</em></span> 每次递增都会恢复 <span class="emphasis"><em>traverse()</em></span>. 从 <span class="emphasis"><em>iterator::operator++()</em></span> 返回时, 要么有新的数据值可用, 要么树的遍历已经结束 (迭代器失效).</p>
+<p>实际上, 协程迭代器为递归数据结构提供了一个扁平化的视图.</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">node</span><span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span><span class="identifier">node</span><span class="special">&gt;</span> <span class="identifier">ptr_t</span><span class="special">;</span>
+
+    <span class="comment">// Each tree node has an optional left subtree,</span>
+    <span class="comment">// an optional right subtree and a value of its own.</span>
+    <span class="comment">// The value is considered to be between the left</span>
+    <span class="comment">// subtree and the right.</span>
+    <span class="identifier">ptr_t</span>       <span class="identifier">left</span><span class="special">,</span><span class="identifier">right</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">value</span><span class="special">;</span>
+
+    <span class="comment">// construct leaf</span>
+    <span class="identifier">node</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;</span> <span class="identifier">v</span><span class="special">):</span>
+        <span class="identifier">left</span><span class="special">(),</span><span class="identifier">right</span><span class="special">(),</span><span class="identifier">value</span><span class="special">(</span><span class="identifier">v</span><span class="special">)</span>
+    <span class="special">{}</span>
+    <span class="comment">// construct nonleaf</span>
+    <span class="identifier">node</span><span class="special">(</span><span class="identifier">ptr_t</span> <span class="identifier">l</span><span class="special">,</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;</span> <span class="identifier">v</span><span class="special">,</span><span class="identifier">ptr_t</span> <span class="identifier">r</span><span class="special">):</span>
+        <span class="identifier">left</span><span class="special">(</span><span class="identifier">l</span><span class="special">),</span><span class="identifier">right</span><span class="special">(</span><span class="identifier">r</span><span class="special">),</span><span class="identifier">value</span><span class="special">(</span><span class="identifier">v</span><span class="special">)</span>
+    <span class="special">{}</span>
+
+    <span class="keyword">static</span> <span class="identifier">ptr_t</span> <span class="identifier">create</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;</span> <span class="identifier">v</span><span class="special">){</span>
+        <span class="keyword">return</span> <span class="identifier">ptr_t</span><span class="special">(</span><span class="keyword">new</span> <span class="identifier">node</span><span class="special">(</span><span class="identifier">v</span><span class="special">));</span>
+    <span class="special">}</span>
+
+    <span class="keyword">static</span> <span class="identifier">ptr_t</span> <span class="identifier">create</span><span class="special">(</span><span class="identifier">ptr_t</span> <span class="identifier">l</span><span class="special">,</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;</span> <span class="identifier">v</span><span class="special">,</span><span class="identifier">ptr_t</span> <span class="identifier">r</span><span class="special">){</span>
+        <span class="keyword">return</span> <span class="identifier">ptr_t</span><span class="special">(</span><span class="keyword">new</span> <span class="identifier">node</span><span class="special">(</span><span class="identifier">l</span><span class="special">,</span><span class="identifier">v</span><span class="special">,</span><span class="identifier">r</span><span class="special">));</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="identifier">node</span><span class="special">::</span><span class="identifier">ptr_t</span> <span class="identifier">create_left_tree_from</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;</span> <span class="identifier">root</span><span class="special">){</span>
+    <span class="comment">/* --------
+         root
+         / \
+        b   e
+       / \
+      a   c
+     -------- */</span>
+    <span class="keyword">return</span> <span class="identifier">node</span><span class="special">::</span><span class="identifier">create</span><span class="special">(</span>
+            <span class="identifier">node</span><span class="special">::</span><span class="identifier">create</span><span class="special">(</span>
+                <span class="identifier">node</span><span class="special">::</span><span class="identifier">create</span><span class="special">(</span><span class="string">"a"</span><span class="special">),</span>
+                <span class="string">"b"</span><span class="special">,</span>
+                <span class="identifier">node</span><span class="special">::</span><span class="identifier">create</span><span class="special">(</span><span class="string">"c"</span><span class="special">)),</span>
+            <span class="identifier">root</span><span class="special">,</span>
+            <span class="identifier">node</span><span class="special">::</span><span class="identifier">create</span><span class="special">(</span><span class="string">"e"</span><span class="special">));</span>
+<span class="special">}</span>
+
+<span class="identifier">node</span><span class="special">::</span><span class="identifier">ptr_t</span> <span class="identifier">create_right_tree_from</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;</span> <span class="identifier">root</span><span class="special">){</span>
+    <span class="comment">/* --------
+         root
+         / \
+        a   d
+           / \
+          c   e
+       -------- */</span>
+    <span class="keyword">return</span> <span class="identifier">node</span><span class="special">::</span><span class="identifier">create</span><span class="special">(</span>
+            <span class="identifier">node</span><span class="special">::</span><span class="identifier">create</span><span class="special">(</span><span class="string">"a"</span><span class="special">),</span>
+            <span class="identifier">root</span><span class="special">,</span>
+            <span class="identifier">node</span><span class="special">::</span><span class="identifier">create</span><span class="special">(</span>
+                <span class="identifier">node</span><span class="special">::</span><span class="identifier">create</span><span class="special">(</span><span class="string">"c"</span><span class="special">),</span>
+                <span class="string">"d"</span><span class="special">,</span>
+                <span class="identifier">node</span><span class="special">::</span><span class="identifier">create</span><span class="special">(</span><span class="string">"e"</span><span class="special">)));</span>
+<span class="special">}</span>
+
+<span class="comment">// recursively walk the tree, delivering values in order</span>
+<span class="keyword">void</span> <span class="identifier">traverse</span><span class="special">(</span><span class="identifier">node</span><span class="special">::</span><span class="identifier">ptr_t</span> <span class="identifier">n</span><span class="special">,</span>
+              <span class="identifier">boost</span><span class="special">::</span><span class="identifier">coroutines</span><span class="special">::</span><span class="identifier">asymmetric_coroutine</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;::</span><span class="identifier">push_type</span><span class="special">&amp;</span> <span class="identifier">out</span><span class="special">){</span>
+    <span class="keyword">if</span><span class="special">(</span><span class="identifier">n</span><span class="special">-&gt;</span><span class="identifier">left</span><span class="special">)</span> <span class="identifier">traverse</span><span class="special">(</span><span class="identifier">n</span><span class="special">-&gt;</span><span class="identifier">left</span><span class="special">,</span><span class="identifier">out</span><span class="special">);</span>
+    <span class="identifier">out</span><span class="special">(</span><span class="identifier">n</span><span class="special">-&gt;</span><span class="identifier">value</span><span class="special">);</span>
+    <span class="keyword">if</span><span class="special">(</span><span class="identifier">n</span><span class="special">-&gt;</span><span class="identifier">right</span><span class="special">)</span> <span class="identifier">traverse</span><span class="special">(</span><span class="identifier">n</span><span class="special">-&gt;</span><span class="identifier">right</span><span class="special">,</span><span class="identifier">out</span><span class="special">);</span>
+<span class="special">}</span>
+
+<span class="comment">// evaluation</span>
+<span class="special">{</span>
+    <span class="identifier">node</span><span class="special">::</span><span class="identifier">ptr_t</span> <span class="identifier">left_d</span><span class="special">(</span><span class="identifier">create_left_tree_from</span><span class="special">(</span><span class="string">"d"</span><span class="special">));</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">coroutines</span><span class="special">::</span><span class="identifier">asymmetric_coroutine</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;::</span><span class="identifier">pull_type</span> <span class="identifier">left_d_reader</span><span class="special">(</span>
+        <span class="special">[&amp;](</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">coroutines</span><span class="special">::</span><span class="identifier">asymmetric_coroutine</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;::</span><span class="identifier">push_type</span> <span class="special">&amp;</span> <span class="identifier">out</span><span class="special">){</span>
+            <span class="identifier">traverse</span><span class="special">(</span><span class="identifier">left_d</span><span class="special">,</span><span class="identifier">out</span><span class="special">);</span>
+        <span class="special">});</span>
+
+    <span class="identifier">node</span><span class="special">::</span><span class="identifier">ptr_t</span> <span class="identifier">right_b</span><span class="special">(</span><span class="identifier">create_right_tree_from</span><span class="special">(</span><span class="string">"b"</span><span class="special">));</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">coroutines</span><span class="special">::</span><span class="identifier">asymmetric_coroutine</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;::</span><span class="identifier">pull_type</span> <span class="identifier">right_b_reader</span><span class="special">(</span>
+        <span class="special">[&amp;](</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">coroutines</span><span class="special">::</span><span class="identifier">asymmetric_coroutine</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;::</span><span class="identifier">push_type</span> <span class="special">&amp;</span> <span class="identifier">out</span><span class="special">){</span>
+            <span class="identifier">traverse</span><span class="special">(</span><span class="identifier">right_b</span><span class="special">,</span><span class="identifier">out</span><span class="special">);</span>
+        <span class="special">});</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"left tree from d == right tree from b? "</span>
+              <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">boolalpha</span>
+              <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">equal</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span><span class="identifier">left_d_reader</span><span class="special">),</span>
+                            <span class="identifier">boost</span><span class="special">::</span><span class="identifier">end</span><span class="special">(</span><span class="identifier">left_d_reader</span><span class="special">),</span>
+                            <span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span><span class="identifier">right_b_reader</span><span class="special">))</span>
+              <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+<span class="special">{</span>
+    <span class="identifier">node</span><span class="special">::</span><span class="identifier">ptr_t</span> <span class="identifier">left_d</span><span class="special">(</span><span class="identifier">create_left_tree_from</span><span class="special">(</span><span class="string">"d"</span><span class="special">));</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">coroutines</span><span class="special">::</span><span class="identifier">asymmetric_coroutine</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;::</span><span class="identifier">pull_type</span> <span class="identifier">left_d_reader</span><span class="special">(</span>
+        <span class="special">[&amp;](</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">coroutines</span><span class="special">::</span><span class="identifier">asymmetric_coroutine</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;::</span><span class="identifier">push_type</span> <span class="special">&amp;</span> <span class="identifier">out</span><span class="special">){</span>
+            <span class="identifier">traverse</span><span class="special">(</span><span class="identifier">left_d</span><span class="special">,</span><span class="identifier">out</span><span class="special">);</span>
+        <span class="special">});</span>
+
+    <span class="identifier">node</span><span class="special">::</span><span class="identifier">ptr_t</span> <span class="identifier">right_x</span><span class="special">(</span><span class="identifier">create_right_tree_from</span><span class="special">(</span><span class="string">"x"</span><span class="special">));</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">coroutines</span><span class="special">::</span><span class="identifier">asymmetric_coroutine</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;::</span><span class="identifier">pull_type</span> <span class="identifier">right_x_reader</span><span class="special">(</span>
+        <span class="special">[&amp;](</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">coroutines</span><span class="special">::</span><span class="identifier">asymmetric_coroutine</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;::</span><span class="identifier">push_type</span> <span class="special">&amp;</span> <span class="identifier">out</span><span class="special">){</span>
+            <span class="identifier">traverse</span><span class="special">(</span><span class="identifier">right_x</span><span class="special">,</span><span class="identifier">out</span><span class="special">);</span>
+        <span class="special">});</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"left tree from d == right tree from x? "</span>
+              <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">boolalpha</span>
+              <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">equal</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span><span class="identifier">left_d_reader</span><span class="special">),</span>
+                            <span class="identifier">boost</span><span class="special">::</span><span class="identifier">end</span><span class="special">(</span><span class="identifier">left_d_reader</span><span class="special">),</span>
+                            <span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span><span class="identifier">right_x_reader</span><span class="special">))</span>
+              <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Done"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+
+<span class="identifier">output</span><span class="special">:</span>
+<span class="identifier">left</span> <span class="identifier">tree</span> <span class="identifier">from</span> <span class="identifier">d</span> <span class="special">==</span> <span class="identifier">right</span> <span class="identifier">tree</span> <span class="identifier">from</span> <span class="identifier">b</span><span class="special">?</span> <span class="keyword">true</span>
+<span class="identifier">left</span> <span class="identifier">tree</span> <span class="identifier">from</span> <span class="identifier">d</span> <span class="special">==</span> <span class="identifier">right</span> <span class="identifier">tree</span> <span class="identifier">from</span> <span class="identifier">x</span><span class="special">?</span> <span class="keyword">false</span>
+<span class="identifier">Done</span>
+</pre>
+<h4>
+<a name="coroutine.motivation.h4"></a>
+      <span class="phrase"><a name="coroutine.motivation.merging_two_sorted_arrays"></a></span><a class="link" href="motivation.html#coroutine.motivation.merging_two_sorted_arrays">合并两个有序数组</a>
+    </h4>
+<p>本示例演示对称协程如何合并两个有序数组.</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">merge</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;&amp;</span> <span class="identifier">a</span><span class="special">,</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;&amp;</span> <span class="identifier">b</span><span class="special">){</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">c</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">idx_a</span><span class="special">=</span><span class="number">0</span><span class="special">,</span><span class="identifier">idx_b</span><span class="special">=</span><span class="number">0</span><span class="special">;</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">coroutines</span><span class="special">::</span><span class="identifier">symmetric_coroutine</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;::</span><span class="identifier">call_type</span> <span class="special">*</span><span class="identifier">other_a</span><span class="special">=</span><span class="number">0</span><span class="special">,*</span><span class="identifier">other_b</span><span class="special">=</span><span class="number">0</span><span class="special">;</span>
+
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">coroutines</span><span class="special">::</span><span class="identifier">symmetric_coroutine</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;::</span><span class="identifier">call_type</span> <span class="identifier">coro_a</span><span class="special">(</span>
+        <span class="special">[&amp;](</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">coroutines</span><span class="special">::</span><span class="identifier">symmetric_coroutine</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;::</span><span class="identifier">yield_type</span><span class="special">&amp;</span> <span class="identifier">yield</span><span class="special">){</span>
+            <span class="keyword">while</span><span class="special">(</span><span class="identifier">idx_a</span><span class="special">&lt;</span><span class="identifier">a</span><span class="special">.</span><span class="identifier">size</span><span class="special">()){</span>
+                <span class="keyword">if</span><span class="special">(</span><span class="identifier">b</span><span class="special">[</span><span class="identifier">idx_b</span><span class="special">]&lt;</span><span class="identifier">a</span><span class="special">[</span><span class="identifier">idx_a</span><span class="special">])</span>    <span class="comment">// test if element in array b is less than in array a</span>
+                    <span class="identifier">yield</span><span class="special">(*</span><span class="identifier">other_b</span><span class="special">);</span>     <span class="comment">// yield to coroutine coro_b</span>
+                <span class="identifier">c</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">a</span><span class="special">[</span><span class="identifier">idx_a</span><span class="special">++]);</span> <span class="comment">// add element to final array</span>
+            <span class="special">}</span>
+            <span class="comment">// add remaining elements of array b</span>
+            <span class="keyword">while</span><span class="special">(</span><span class="identifier">idx_b</span><span class="special">&lt;</span><span class="identifier">b</span><span class="special">.</span><span class="identifier">size</span><span class="special">())</span>
+                <span class="identifier">c</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">b</span><span class="special">[</span><span class="identifier">idx_b</span><span class="special">++]);</span>
+        <span class="special">});</span>
+
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">coroutines</span><span class="special">::</span><span class="identifier">symmetric_coroutine</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;::</span><span class="identifier">call_type</span> <span class="identifier">coro_b</span><span class="special">(</span>
+        <span class="special">[&amp;](</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">coroutines</span><span class="special">::</span><span class="identifier">symmetric_coroutine</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;::</span><span class="identifier">yield_type</span><span class="special">&amp;</span> <span class="identifier">yield</span><span class="special">){</span>
+            <span class="keyword">while</span><span class="special">(</span><span class="identifier">idx_b</span><span class="special">&lt;</span><span class="identifier">b</span><span class="special">.</span><span class="identifier">size</span><span class="special">()){</span>
+                <span class="keyword">if</span><span class="special">(</span><span class="identifier">a</span><span class="special">[</span><span class="identifier">idx_a</span><span class="special">]&lt;</span><span class="identifier">b</span><span class="special">[</span><span class="identifier">idx_b</span><span class="special">])</span>    <span class="comment">// test if element in array a is less than in array b</span>
+                    <span class="identifier">yield</span><span class="special">(*</span><span class="identifier">other_a</span><span class="special">);</span>     <span class="comment">// yield to coroutine coro_a</span>
+                <span class="identifier">c</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">b</span><span class="special">[</span><span class="identifier">idx_b</span><span class="special">++]);</span> <span class="comment">// add element to final array</span>
+            <span class="special">}</span>
+            <span class="comment">// add remaining elements of array a</span>
+            <span class="keyword">while</span><span class="special">(</span><span class="identifier">idx_a</span><span class="special">&lt;</span><span class="identifier">a</span><span class="special">.</span><span class="identifier">size</span><span class="special">())</span>
+                <span class="identifier">c</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">a</span><span class="special">[</span><span class="identifier">idx_a</span><span class="special">++]);</span>
+        <span class="special">});</span>
+
+
+    <span class="identifier">other_a</span><span class="special">=&amp;</span><span class="identifier">coro_a</span><span class="special">;</span>
+    <span class="identifier">other_b</span><span class="special">=&amp;</span><span class="identifier">coro_b</span><span class="special">;</span>
+
+    <span class="identifier">coro_a</span><span class="special">();</span> <span class="comment">// enter coroutine-fn of coro_a</span>
+
+    <span class="keyword">return</span> <span class="identifier">c</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<h4>
+<a name="coroutine.motivation.h5"></a>
+      <span class="phrase"><a name="coroutine.motivation.chaining_coroutines"></a></span><a class="link" href="motivation.html#coroutine.motivation.chaining_coroutines">链接协程</a>
+    </h4>
+<p>这段代码展示协程如何被链接.</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">coroutines</span><span class="special">::</span><span class="identifier">asymmetric_coroutine</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;</span> <span class="identifier">coro_t</span><span class="special">;</span>
+
+<span class="comment">// deliver each line of input stream to sink as a separate string</span>
+<span class="keyword">void</span> <span class="identifier">readlines</span><span class="special">(</span><span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">push_type</span><span class="special">&amp;</span> <span class="identifier">sink</span><span class="special">,</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">istream</span><span class="special">&amp;</span> <span class="identifier">in</span><span class="special">){</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">line</span><span class="special">;</span>
+    <span class="keyword">while</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">getline</span><span class="special">(</span><span class="identifier">in</span><span class="special">,</span><span class="identifier">line</span><span class="special">))</span>
+        <span class="identifier">sink</span><span class="special">(</span><span class="identifier">line</span><span class="special">);</span>
+<span class="special">}</span>
+
+<span class="keyword">void</span> <span class="identifier">tokenize</span><span class="special">(</span><span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">push_type</span><span class="special">&amp;</span> <span class="identifier">sink</span><span class="special">,</span> <span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">pull_type</span><span class="special">&amp;</span> <span class="identifier">source</span><span class="special">){</span>
+    <span class="comment">// This tokenizer doesn't happen to be stateful: you could reasonably</span>
+    <span class="comment">// implement it with a single call to push each new token downstream. But</span>
+    <span class="comment">// I've worked with stateful tokenizers, in which the meaning of input</span>
+    <span class="comment">// characters depends in part on their position within the input line.</span>
+    <span class="identifier">BOOST_FOREACH</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">line</span><span class="special">,</span><span class="identifier">source</span><span class="special">){</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">::</span><span class="identifier">size_type</span> <span class="identifier">pos</span><span class="special">=</span><span class="number">0</span><span class="special">;</span>
+        <span class="keyword">while</span><span class="special">(</span><span class="identifier">pos</span><span class="special">&lt;</span><span class="identifier">line</span><span class="special">.</span><span class="identifier">length</span><span class="special">()){</span>
+            <span class="keyword">if</span><span class="special">(</span><span class="identifier">line</span><span class="special">[</span><span class="identifier">pos</span><span class="special">]==</span><span class="char">'"'</span><span class="special">){</span>
+                <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">token</span><span class="special">;</span>
+                <span class="special">++</span><span class="identifier">pos</span><span class="special">;</span>              <span class="comment">// skip open quote</span>
+                <span class="keyword">while</span><span class="special">(</span><span class="identifier">pos</span><span class="special">&lt;</span><span class="identifier">line</span><span class="special">.</span><span class="identifier">length</span><span class="special">()&amp;&amp;</span><span class="identifier">line</span><span class="special">[</span><span class="identifier">pos</span><span class="special">]!=</span><span class="char">'"'</span><span class="special">)</span>
+                    <span class="identifier">token</span><span class="special">+=</span><span class="identifier">line</span><span class="special">[</span><span class="identifier">pos</span><span class="special">++];</span>
+                <span class="special">++</span><span class="identifier">pos</span><span class="special">;</span>              <span class="comment">// skip close quote</span>
+                <span class="identifier">sink</span><span class="special">(</span><span class="identifier">token</span><span class="special">);</span>        <span class="comment">// pass token downstream</span>
+            <span class="special">}</span> <span class="keyword">else</span> <span class="keyword">if</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">isspace</span><span class="special">(</span><span class="identifier">line</span><span class="special">[</span><span class="identifier">pos</span><span class="special">])){</span>
+                <span class="special">++</span><span class="identifier">pos</span><span class="special">;</span>              <span class="comment">// outside quotes, ignore whitespace</span>
+            <span class="special">}</span> <span class="keyword">else</span> <span class="keyword">if</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">isalpha</span><span class="special">(</span><span class="identifier">line</span><span class="special">[</span><span class="identifier">pos</span><span class="special">])){</span>
+                <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">token</span><span class="special">;</span>
+                <span class="keyword">while</span> <span class="special">(</span><span class="identifier">pos</span> <span class="special">&lt;</span> <span class="identifier">line</span><span class="special">.</span><span class="identifier">length</span><span class="special">()</span> <span class="special">&amp;&amp;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">isalpha</span><span class="special">(</span><span class="identifier">line</span><span class="special">[</span><span class="identifier">pos</span><span class="special">]))</span>
+                    <span class="identifier">token</span> <span class="special">+=</span> <span class="identifier">line</span><span class="special">[</span><span class="identifier">pos</span><span class="special">++];</span>
+                <span class="identifier">sink</span><span class="special">(</span><span class="identifier">token</span><span class="special">);</span>        <span class="comment">// pass token downstream</span>
+            <span class="special">}</span> <span class="keyword">else</span> <span class="special">{</span>                <span class="comment">// punctuation</span>
+                <span class="identifier">sink</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">(</span><span class="number">1</span><span class="special">,</span><span class="identifier">line</span><span class="special">[</span><span class="identifier">pos</span><span class="special">++]));</span>
+            <span class="special">}</span>
+        <span class="special">}</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+
+<span class="keyword">void</span> <span class="identifier">only_words</span><span class="special">(</span><span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">push_type</span><span class="special">&amp;</span> <span class="identifier">sink</span><span class="special">,</span><span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">pull_type</span><span class="special">&amp;</span> <span class="identifier">source</span><span class="special">){</span>
+    <span class="identifier">BOOST_FOREACH</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">token</span><span class="special">,</span><span class="identifier">source</span><span class="special">){</span>
+        <span class="keyword">if</span> <span class="special">(!</span><span class="identifier">token</span><span class="special">.</span><span class="identifier">empty</span><span class="special">()</span> <span class="special">&amp;&amp;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">isalpha</span><span class="special">(</span><span class="identifier">token</span><span class="special">[</span><span class="number">0</span><span class="special">]))</span>
+            <span class="identifier">sink</span><span class="special">(</span><span class="identifier">token</span><span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+
+<span class="keyword">void</span> <span class="identifier">trace</span><span class="special">(</span><span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">push_type</span><span class="special">&amp;</span> <span class="identifier">sink</span><span class="special">,</span> <span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">pull_type</span><span class="special">&amp;</span> <span class="identifier">source</span><span class="special">){</span>
+    <span class="identifier">BOOST_FOREACH</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">token</span><span class="special">,</span><span class="identifier">source</span><span class="special">){</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"trace: '"</span> <span class="special">&lt;&lt;</span> <span class="identifier">token</span> <span class="special">&lt;&lt;</span> <span class="string">"'\n"</span><span class="special">;</span>
+        <span class="identifier">sink</span><span class="special">(</span><span class="identifier">token</span><span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+
+<span class="keyword">struct</span> <span class="identifier">FinalEOL</span><span class="special">{</span>
+    <span class="special">~</span><span class="identifier">FinalEOL</span><span class="special">(){</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="keyword">void</span> <span class="identifier">layout</span><span class="special">(</span><span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">pull_type</span><span class="special">&amp;</span> <span class="identifier">source</span><span class="special">,</span><span class="keyword">int</span> <span class="identifier">num</span><span class="special">,</span><span class="keyword">int</span> <span class="identifier">width</span><span class="special">){</span>
+    <span class="comment">// Finish the last line when we leave by whatever means</span>
+    <span class="identifier">FinalEOL</span> <span class="identifier">eol</span><span class="special">;</span>
+
+    <span class="comment">// Pull values from upstream, lay them out 'num' to a line</span>
+    <span class="keyword">for</span> <span class="special">(;;){</span>
+        <span class="keyword">for</span> <span class="special">(</span><span class="keyword">int</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">num</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">){</span>
+            <span class="comment">// when we exhaust the input, stop</span>
+            <span class="keyword">if</span> <span class="special">(!</span><span class="identifier">source</span><span class="special">)</span> <span class="keyword">return</span><span class="special">;</span>
+
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">setw</span><span class="special">(</span><span class="identifier">width</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">source</span><span class="special">.</span><span class="identifier">get</span><span class="special">();</span>
+            <span class="comment">// now that we've handled this item, advance to next</span>
+            <span class="identifier">source</span><span class="special">();</span>
+        <span class="special">}</span>
+        <span class="comment">// after 'num' items, line break</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+
+<span class="comment">// For example purposes, instead of having a separate text file in the</span>
+<span class="comment">// local filesystem, construct an istringstream to read.</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">data</span><span class="special">(</span>
+    <span class="string">"This is the first line.\n"</span>
+    <span class="string">"This, the second.\n"</span>
+    <span class="string">"The third has \"a phrase\"!\n"</span>
+    <span class="special">);</span>
+
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"\nfilter:\n"</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">istringstream</span> <span class="identifier">infile</span><span class="special">(</span><span class="identifier">data</span><span class="special">);</span>
+    <span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">pull_type</span> <span class="identifier">reader</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">readlines</span><span class="special">,</span> <span class="identifier">_1</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">infile</span><span class="special">)));</span>
+    <span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">pull_type</span> <span class="identifier">tokenizer</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">tokenize</span><span class="special">,</span> <span class="identifier">_1</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">reader</span><span class="special">)));</span>
+    <span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">pull_type</span> <span class="identifier">filter</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">only_words</span><span class="special">,</span> <span class="identifier">_1</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">tokenizer</span><span class="special">)));</span>
+    <span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">pull_type</span> <span class="identifier">tracer</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">trace</span><span class="special">,</span> <span class="identifier">_1</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">filter</span><span class="special">)));</span>
+    <span class="identifier">BOOST_FOREACH</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">token</span><span class="special">,</span><span class="identifier">tracer</span><span class="special">){</span>
+        <span class="comment">// just iterate, we're already pulling through tracer</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"\nlayout() as coroutine::push_type:\n"</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">istringstream</span> <span class="identifier">infile</span><span class="special">(</span><span class="identifier">data</span><span class="special">);</span>
+    <span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">pull_type</span> <span class="identifier">reader</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">readlines</span><span class="special">,</span> <span class="identifier">_1</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">infile</span><span class="special">)));</span>
+    <span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">pull_type</span> <span class="identifier">tokenizer</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">tokenize</span><span class="special">,</span> <span class="identifier">_1</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">reader</span><span class="special">)));</span>
+    <span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">pull_type</span> <span class="identifier">filter</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">only_words</span><span class="special">,</span> <span class="identifier">_1</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">tokenizer</span><span class="special">)));</span>
+    <span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">push_type</span> <span class="identifier">writer</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">layout</span><span class="special">,</span> <span class="identifier">_1</span><span class="special">,</span> <span class="number">5</span><span class="special">,</span> <span class="number">15</span><span class="special">));</span>
+    <span class="identifier">BOOST_FOREACH</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">token</span><span class="special">,</span><span class="identifier">filter</span><span class="special">){</span>
+        <span class="identifier">writer</span><span class="special">(</span><span class="identifier">token</span><span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"\nfiltering output:\n"</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">istringstream</span> <span class="identifier">infile</span><span class="special">(</span><span class="identifier">data</span><span class="special">);</span>
+    <span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">pull_type</span> <span class="identifier">reader</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">readlines</span><span class="special">,</span><span class="identifier">_1</span><span class="special">,</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">infile</span><span class="special">)));</span>
+    <span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">pull_type</span> <span class="identifier">tokenizer</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">tokenize</span><span class="special">,</span><span class="identifier">_1</span><span class="special">,</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">reader</span><span class="special">)));</span>
+    <span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">push_type</span> <span class="identifier">writer</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">layout</span><span class="special">,</span><span class="identifier">_1</span><span class="special">,</span><span class="number">5</span><span class="special">,</span><span class="number">15</span><span class="special">));</span>
+    <span class="comment">// Because of the symmetry of the API, we can use any of these</span>
+    <span class="comment">// chaining functions in a push_type coroutine chain as well.</span>
+    <span class="identifier">coro_t</span><span class="special">::</span><span class="identifier">push_type</span> <span class="identifier">filter</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">only_words</span><span class="special">,</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">writer</span><span class="special">),</span><span class="identifier">_1</span><span class="special">));</span>
+    <span class="identifier">BOOST_FOREACH</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">token</span><span class="special">,</span><span class="identifier">tokenizer</span><span class="special">){</span>
+        <span class="identifier">filter</span><span class="special">(</span><span class="identifier">token</span><span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+</pre>
+<div class="footnotes">
+<br><hr style="width:100; text-align:left;margin-left: 0">
+<div id="ftn.coroutine.motivation.f0" class="footnote"><p><a href="#coroutine.motivation.f0" class="para"><sup class="para">[4] </sup></a>
+        Christopher Kohlhoff, <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n3964.pdf" target="_top">N3964
+        - Library Foundations for Asynchronous Operations, Revision 1</a>
+      </p></div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2009 Oliver Kowalke<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="intro.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="coroutine.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

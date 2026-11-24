@@ -1,0 +1,88 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>与官方连接器对比的基准测试</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="up" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="prev" href="pipeline.html" title="(实验性) 管道">
+<link rel="next" href="examples.html" title="示例">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="pipeline.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="examples.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="mysql.benchmarks"></a><a class="link" href="benchmarks.html" title="与官方连接器对比的基准测试">与官方连接器对比的基准测试</a>
+</h2></div></div></div>
+<p>MySQL 和 MariaDB 自带官方 C 连接器: <a href="https://dev.mysql.com/downloads/c-api/" target="_top">libmysqlclient</a> 和 <a href="https://mariadb.com/kb/en/mariadb-connectorc-api-functions/" target="_top">libmariadb</a>. 两者都实现了客户端/服务器协议, Boost.MySQL 也是如此. 由此产生一个问题: Boost.MySQL 与官方驱动一样快吗?</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>简而言之: Boost.MySQL 与官方 C API 一样快, 在某些情况下甚至可能更快.</p></td></tr>
+</table></div>
+<h4>
+<a name="mysql.benchmarks.h0"></a>
+      <span class="phrase"><a name="mysql.benchmarks.design_decisions"></a></span><a class="link" href="benchmarks.html#mysql.benchmarks.design_decisions">设计决策</a>
+    </h4>
+<p>这些基准测试聚焦于 <span class="bold"><strong>协议实现的速度</strong></span>, 以尝试回答上面的问题. 这至少应将 (反) 序列化和缓冲考虑在内. 它不应考虑 Boost.MySQL 特有的功能, 例如静态接口或连接池.</p>
+<p>libmysqlclient 和 libmariadb 都提供了一种连接类型, 类似于 <a class="link" href="ref/boost__mysql__any_connection.html" title="any_connection"><code class="literal">any_connection</code></a>, 同时具有同步和异步原语. 同步函数与 Boost.MySQL 中的类似 (尽管带有 C 语言风格). 异步函数则低级得多, 往往需要集成到某个框架 (如 Asio 或 libuv) 中, 或者手写 <code class="computeroutput"><span class="identifier">poll</span></code>/<code class="computeroutput"><span class="identifier">epoll</span></code> 代码. 这些选项都不简单. 此外, 同步函数的开销更小, 因此最适合用来回答我们的问题. 出于这个原因, 基准测试中 <span class="bold"><strong>只使用同步函数</strong></span>.</p>
+<p>基准测试 <span class="bold"><strong>只使用预处理语句</strong></span>. 官方驱动对文本查询 (通过 <code class="computeroutput"><span class="identifier">mysql_real_query</span></code> 发出) 和预处理语句的处理方式不同. 文本查询生成的行以字符串形式返回, 需要用户自行解析. Boost.MySQL 会自动为你完成这一解析. 因此, 比较文本查询没有太大意义. 预处理语句的处理方式相似, 并且更适合大行和大数据集.</p>
+<p>
+      <span class="bold"><strong>所有测试都使用真实数据库</strong></span>. Boost.MySQL 和官方 C 客户端都不暴露 (反) 序列化函数. 缓冲和优化系统调用次数对效率也至关重要, 只能通过真实通信来衡量. 缺点是数据库处理会引入延迟, 并可能最终成为瓶颈.</p>
+<p>基准测试尝试 <span class="bold"><strong>通过使用 UNIX 套接字将通信开销降到最低</strong></span>.</p>
+<h4>
+<a name="mysql.benchmarks.h1"></a>
+      <span class="phrase"><a name="mysql.benchmarks.benchmark_procedure"></a></span><a class="link" href="benchmarks.html#mysql.benchmarks.benchmark_procedure">基准测试流程</a>
+    </h4>
+<p>基准测试源码位于仓库的 <a href="https://github.com/boostorg/mysql/tree/master/bench" target="_top">bench/</a> 目录中. 执行的基准测试如下:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">单个小行. 执行一条语句, 生成一个包含 15 个字段的小行, 涵盖大多数可能的类型. 每行约 500 字节. 执行重复 10000 次. Boost.MySQL 版本使用 <a class="link" href="ref/boost__mysql__any_connection/execute.html" title="any_connection::execute"><code class="literal">any_connection::execute</code></a>.</li>
+<li class="listitem">单个大行. 与上面类似, 但行有 17 个字段, 每行大小在 72 到 108 KB 之间. Boost.MySQL 版本使用 <a class="link" href="ref/boost__mysql__any_connection/start_execution.html" title="any_connection::start_execution"><code class="literal">any_connection::start_execution</code></a>, 允许零拷贝.</li>
+<li class="listitem">多行. 执行一条语句, 生成 5000 行上述“大行”. 该语句只执行一次. Boost.MySQL 版本使用 <a class="link" href="ref/boost__mysql__any_connection/start_execution.html" title="any_connection::start_execution"><code class="literal">any_connection::start_execution</code></a>, 因为结果集很大.</li>
+<li class="listitem">带参数的语句. 执行一条包含 17 个参数的语句, 大致对应上述“大行”结构. 用于衡量序列化速度. 该语句执行 1000 次.</li>
+</ul></div>
+<p>基准测试条件:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">数据库: MySQL 8.4.1, 运行在 localhost 的 Docker 容器中.</li>
+<li class="listitem">操作系统: Ubuntu 24.04</li>
+<li class="listitem">CPU: Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz, 8 核.</li>
+<li class="listitem">编译器: g++-14, 使用 CMake 的 Release 配置, C++23.</li>
+<li class="listitem">MySQL C API: libmysqlclient24 (官方 MySQL 8.4.4 发布版所含版本).</li>
+<li class="listitem">MariaDB C API: libmariadb3 1:10.11.11-0ubuntu0.24.04.2 (Ubuntu 官方包).</li>
+<li class="listitem">Boost.MySQL: Boost 1.87.0. 使用仅头文件版本 (不定义 <code class="computeroutput"><span class="identifier">BOOST_MYSQL_SEPARATE_COMPILATION</span></code>), 因为它稍快一些.</li>
+</ul></div>
+<h4>
+<a name="mysql.benchmarks.h2"></a>
+      <span class="phrase"><a name="mysql.benchmarks.results"></a></span><a class="link" href="benchmarks.html#mysql.benchmarks.results">结果</a>
+    </h4>
+<p>
+      <span class="inlinemediaobject"><img src="images/bench-protocol.png" align="middle"></span>
+    </p>
+<p>三个库表现出相近的性能水平, 这对于正确实现的二进制协议是符合预期的. Boost.MySQL 在单行基准测试中优于 libmysqlclient, 并与 libmariadb 持平. 其他基准测试中的差异似乎在统计上不显著.</p>
+<p>在这些基准测试期间, 发现了一些潜在的性能改进方向. 详见 [https://github.com/boostorg/mysql/issues/458 该 issue].</p>
+<p>请记住, 协议只是整个拼图中的一块. 正确使用 <a class="link" href="ref/boost__mysql__connection_pool.html" title="connection_pool"><code class="literal">connection_pool</code></a>、<a class="link" href="ref/boost__mysql__with_params.html" title="with_params"><code class="literal">with_params</code></a>、多函数操作和多查询等特性, 可以为你的应用带来巨大的性能差异. 永远不要想当然, 始终要进行测量!</p>
+<p>致谢: 感谢 <a href="https://github.com/LowLevelMahn" target="_top">LowLevelMahn</a> 提出这些基准测试.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2019-2024 Ruben Perez<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="pipeline.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="examples.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

@@ -1,0 +1,280 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+<HEAD>
+    <TITLE>Tutorial</TITLE>
+    <LINK REL="stylesheet" HREF="../../../../boost.css">
+    <LINK REL="stylesheet" HREF="../theme/iostreams.css">
+</HEAD>
+<BODY>
+
+<!-- Begin Banner -->
+
+    <H1 CLASS="title">Tutorial</H1>
+    <HR CLASS="banner">
+
+<!-- End Banner -->
+
+<!-- Begin Nav -->
+
+<DIV CLASS='nav'>
+    <A HREF='filter_usage.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/prev.png'></A>
+    <A HREF='tutorial.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/up.png'></A>
+    <A HREF='line_wrapping_filters.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/next.png'></A>
+</DIV>
+
+<!-- End Nav -->
+
+
+<A NAME="shell_comments"></A>
+<H2>2.2.3. Shell 注释过滤器</H2>
+
+<P>假设你想编写一个移除 shell 风格注释的过滤器. 基本算法如下: 你逐个检查字符并原样转发, 直到遇到注释字符 — 通常是 <CODE>'#'</CODE>. 找到注释字符后, 你检查并忽略字符, 直到遇到换行字符, 此时算法重新开始. 注意, 该算法由两个子算法组成: 一个用于读取普通文本, 一个用于读取注释.</P>
+
+<P>在下面三节中, 我将把这一算法分别表述为一个 <A HREF="../classes/stdio_filter.html"><CODE>stdio_filter</CODE></A>、一个 <A HREF="../concepts/input_filter.html">InputFilter</A> 和一个 <A HREF="../concepts/output_filter.html">OutputFilter</A>. 源代码可在头文件 <A HREF="../../example/shell_comments_filter.hpp"><CODE>&lt;libs/iostreams/example/shell_comments_filter.hpp&gt;</CODE></A> 中找到. 这些示例的灵感来自 James Kanze 的 <CODE>UncommentExtractor.hh</CODE> (<I>参见</I> <A CLASS="bib_ref" HREF="../bibliography.html#kanze">[Kanze]</A>).</P>
+
+<A NAME="shell_comments_stdio_filter"></A>
+<H4><CODE>shell_comments_stdio_filter</CODE></H4>
+
+<P>你可以将 shell 注释过滤器表述为一个 <A HREF="../classes/stdio_filter.html"><CODE>stdio_filter</CODE></A>, 如下:</P>
+
+<PRE class="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <SPAN CLASS="literal">&lt;cstdio&gt;</SPAN>    <SPAN CLASS="comment">// EOF</SPAN>
+<SPAN CLASS="preprocessor">#include</SPAN> <SPAN CLASS="literal">&lt;iostream&gt;</SPAN>  <SPAN CLASS="comment">// cin, cout</SPAN>
+<SPAN CLASS="preprocessor">#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/filter/stdio.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/filter/stdio.hpp&gt;</SPAN></A>
+
+<SPAN CLASS="keyword">class</SPAN> shell_comments_stdio_filter : <SPAN CLASS="keyword"><SPAN CLASS="keyword"><SPAN CLASS="keyword">public</SPAN></SPAN></SPAN> stdio_filter {
+<SPAN CLASS="keyword">public</SPAN>:
+    explicit shell_comments_stdio_filter(<SPAN CLASS="keyword">char</SPAN> comment_char = <SPAN CLASS="literal">'#'</SPAN>)
+        : comment_char_(comment_char) 
+        { }
+<SPAN CLASS="keyword">private</SPAN>:
+    <SPAN CLASS="keyword">void</SPAN> do_filter()
+    {
+        <SPAN CLASS="keyword"><SPAN CLASS="keyword">bool</SPAN></SPAN>  skip = <SPAN CLASS="keyword">false</SPAN>;
+        <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN>   c;
+        <SPAN CLASS="keyword">while</SPAN> ((c = std::cin.get()) != <SPAN CLASS="numeric_literal">EOF</SPAN>) {
+            skip = c == comment_char_ ?
+                <SPAN CLASS="keyword">true</SPAN> :
+                c == <SPAN CLASS="literal">'\n'</SPAN> ?
+                    <SPAN CLASS="keyword">false</SPAN> :
+                    skip;
+            <SPAN CLASS="keyword">if</SPAN> (!skip)
+                std::cout.put(c);
+        }
+    }
+    <SPAN CLASS="keyword">char</SPAN> comment_char_;
+};
+
+} } } <SPAN CLASS="comment">// End namespace boost::iostreams:example</SPAN></PRE>
+
+<P> <CODE>virtual</CODE> 函数 <CODE>do_filter</CODE> 的实现很直接: 局部变量 <CODE>skip</CODE> 记录你是否正在处理注释; <CODE>while</CODE> 循环读取一个字符 <CODE>c</CODE> — 来自 <CODE>std::cin</CODE> — 更新 <CODE>skip</CODE> 并将 <CODE>c</CODE> 写入 <CODE>std::cout</CODE>, 除非 <CODE>skip</CODE> 为 <CODE>true</CODE>.</P>
+
+<P>派生自 <CODE>stdio_filter</CODE> 的过滤器是 <A HREF="../concepts/dual_use_filter.html">DualUseFilters</A>, 意味着它们既可用于输出也可用于输入, 但不能同时用于两者. 因此, 在下文中 <CODE>unix2dos_stdio_filter</CODE> 可用于替代 <A HREF="#shell_comments_input_filter"><CODE>shell_comments_input_filter</CODE></A> 与 <A HREF="#shell_comments_output_filter"><CODE>shell_comments_output_filter</CODE></A>. <A NAME="shell_comments_input_filter"></A>
+<H4><CODE>shell_comments_input_filter</CODE></H4>
+
+<P>接下来, 你将把 shell 注释过滤器表述为一个 <A HREF="../concepts/input_filter.html">InputFilter</A>. 典型的窄字符 InputFilter 如下所示:</P>
+
+<PRE CLASS="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="HEADER" HREF="../../../../boost/iostreams/categories.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/categories.hpp&gt;</SPAN></A>  <SPAN CLASS='comment'>// input_filter_tag</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="HEADER" HREF="../../../../boost/iostreams/char_traits.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/char_traits.hpp&gt;</SPAN></A> <SPAN CLASS='comment'>// EOF, WOULD_BLOCK</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="HEADER" HREF="../../../../boost/iostreams/operations.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/operations.hpp&gt;</SPAN></A>  <SPAN CLASS='comment'>// get, read, putback</SPAN>
+
+<SPAN CLASS='keyword'>namespace</SPAN> io = boost::iostreams;
+
+<SPAN CLASS='keyword'>class</SPAN> my_input_filter {
+<SPAN CLASS='keyword'>public</SPAN>:
+    <SPAN CLASS='keyword'>typedef</SPAN> <SPAN CLASS='keyword'>char</SPAN>              char_type;
+    <SPAN CLASS='keyword'>typedef</SPAN> input_filter_tag  category;
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS='keyword'>int</SPAN> get(Source&amp; src)
+    {
+        <SPAN CLASS='comment'>// Attempt to produce one character of filtered</SPAN>
+        <SPAN CLASS='comment'>// data, reading from src as necessary. If successful,</SPAN>
+        <SPAN CLASS='comment'>// return the character; otherwise return EOF to</SPAN>
+        <SPAN CLASS='comment'>// indicate end-of-stream, or WOULD_BLOCK</SPAN>
+    }
+
+    <SPAN CLASS='comment'>/* Other members */</SPAN>
+};</PRE>
+
+<P>函数 <CODE>get</CODE> 尝试产生单个过滤后的输出字符. 它通过提供的 <A HREF="../concepts/source.html">源</A> <CODE>src</CODE> 访问未过滤的字符序列, 使用基本 I/O 操作 <A HREF="../functions/get.html"><CODE>get</CODE></A>、<A HREF="../functions/read.html"><CODE>read</CODE></A> 与 <A HREF="../functions/putback.html"><CODE>putback</CODE></A>. 若产生了字符, <CODE>get</CODE> 返回它; 否则 <CODE>get</CODE> 返回状态码 <CODE>EOF</CODE> 或 <CODE>WOULD_BLOCK</CODE> 之一. <CODE>EOF</CODE> 表示流末尾, 是标准头文件 <CODE>&lt;cstdio&gt;</CODE> 中定义的宏. <CODE>WOULD_BLOCK</CODE> 表示输入暂时不可用, 是命名空间 <CODE>boost::iostreams</CODE> 中定义的常量, 见头文件 <A HREF="../../../../boost/iostreams/char_traits.hpp"><CODE>&lt;boost/iostreams/char_traits.hpp&gt;</CODE></A></P>
+
+<P>你也可以将上面的示例写为如下形式:</P>
+
+<PRE CLASS="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="HEADER" HREF="../../../../boost/iostreams/concepts.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/concepts.hpp&gt;</SPAN></A>  <SPAN CLASS='comment'>// input_filter</SPAN>
+
+<SPAN CLASS='keyword'>class</SPAN> my_input_filter : <SPAN CLASS='keyword'>public</SPAN> input_filter {
+<SPAN CLASS='keyword'>public</SPAN>:
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS='keyword'>int</SPAN> get(Source&amp; src);
+
+    <SPAN CLASS='comment'>/* Other members */</SPAN>
+};</PRE>
+
+<P>此处 <A HREF="../classes/filter.html#synopsis"><CODE>input_filter</CODE></A> 是一个便利基类, 它提供成员类型 <CODE>char_type</CODE> 与 <CODE>category</CODE>, 以及成员函数 <CODE>close</CODE> 与 <CODE>imbue</CODE> 的空操作实现. 我稍后会讨论 <CODE>close</CODE>.<P>现在你可以将 shell 注释过滤器表述为一个 <A HREF="../concepts/input_filter.html">InputFilter</A> 了:</P>
+
+<PRE class="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/char_traits.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/char_traits.hpp&gt;</SPAN></A> <SPAN CLASS="comment">// EOF, WOULD_BLOCK</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/concepts.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/concepts.hpp&gt;</SPAN></A>    <SPAN CLASS="comment">// input_filter</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/operations.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/operations.hpp&gt;</SPAN></A>  <SPAN CLASS="comment">// get</SPAN>
+
+<SPAN CLASS='keyword'>namespace</SPAN> boost { <SPAN CLASS='keyword'>namespace</SPAN> iostreams { <SPAN CLASS='keyword'>namespace</SPAN> example {
+
+<SPAN CLASS="keyword">class</SPAN> shell_comments_input_filter : <SPAN CLASS="keyword"><SPAN CLASS="keyword"><SPAN CLASS="keyword">public</SPAN></SPAN></SPAN> input_filter {
+<SPAN CLASS="keyword">public</SPAN>:
+    explicit shell_comments_input_filter(<SPAN CLASS="keyword">char</SPAN> comment_char = <SPAN CLASS="literal">'#'</SPAN>)
+        : comment_char_(comment_char), skip_(<SPAN CLASS="keyword">false</SPAN>)
+        { }
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> get(Source&amp; src)
+    {
+        <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> c;
+        <SPAN CLASS="keyword">while</SPAN> (<SPAN CLASS="keyword">true</SPAN>) {
+            <SPAN CLASS="keyword">if</SPAN> ((c = boost::iostreams::get(src)) == <SPAN CLASS="numeric_literal">EOF</SPAN> || c == WOULD_BLOCK)
+                break;
+            skip_ = c == comment_char_ ?
+                <SPAN CLASS="keyword">true</SPAN> :
+                c == <SPAN CLASS="literal">'\n'</SPAN> ?
+                    <SPAN CLASS="keyword">false</SPAN> :
+                    skip_;
+            <SPAN CLASS="keyword">if</SPAN> (!skip_)
+                break;
+        }
+        <SPAN CLASS="keyword">return</SPAN> c;
+    }
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS="keyword">void</SPAN> close(Source&amp;) { skip_ = <SPAN CLASS="keyword">false</SPAN>; }
+<SPAN CLASS="keyword">private</SPAN>:
+    <SPAN CLASS="keyword">char</SPAN> comment_char_;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">bool</SPAN></SPAN> skip_;
+};
+
+} } } <SPAN CLASS="comment">// End namespace boost::iostreams:example</SPAN></PRE>
+
+<P>此处成员变量 <CODE>skip_</CODE> 扮演与局部变量 <CODE>skip</CODE> <CODE>shell_comments_stdio_filter::do_filter</CODE> 相同的角色. <CODE>get</CODE> 的实现与 <CODE>shell_comments_stdio_filter::do_filter</CODE> 的实现非常相似: <CODE>while</CODE> 循环读取一个字符 <CODE>c</CODE>, 更新 <CODE>skip_</CODE> 并返回 <CODE>c</CODE>, 除非 <CODE>skip_</CODE> 为 <CODE>true</CODE>. 主要区别在于你必须处理特殊值 <CODE>WOULD_BLOCK</CODE> — 它表示当前没有可用输入.</P>
+<P>可见, 从零实现一个 <A HREF="../concepts/input_filter.html"><CODE>InputFilter</CODE></A> 比从 <A HREF="../classes/stdio_filter.html"><CODE>stdio_filter</CODE></A> 派生要复杂一些. 编写 <CODE>InputFilter</CODE> 时, 你必须准备好在算法中途的任意一点被打断; 此时, 你必须记录关于算法当前状态的足够信息, 以便稍后能从上次中断之处精确继续. 对 <A HREF="../concepts/output_filter.html"><CODE>OutputFilters</CODE></A> 也是如此. 事实上, 许多 InputFilter 和 OutputFilter 都可视为有限状态机; 我稍后会将这一想法形式化. <I>参见</I> <A HREF="finite_state_filters.html">有限状态过滤器</A>.</P>
+<P> <CODE>shell_comments_input_filter</CODE> 仍有一个问题: 其实例只能使用一次. 这是因为有人可能在设置了 <CODE>skip_</CODE> 标志的情况下关闭流. 如果之后重新打开该流 — 带有新的未过滤数据序列 — 文本的第一行将被过滤掉, 无论它是否被注释.</P>
+<P>修复方法是让你的过滤器成为 <A HREF="../concepts/closable.html">Closable</A> 的. 为此, 你必须实现成员函数 <CODE>close</CODE>. 你还必须给过滤器一个 <A HREF="../guide/traits.html#category_tags">类别标签</A> — 可转换为 <A HREF="../guide/traits.html#category_tags"><CODE>closable_tag</CODE></A> — 以告诉 Iostreams 库你的过滤器实现了 <CODE>close</CODE>.</P>
+
+<P>改进后的过滤器如下所示:</P>
+
+<PRE CLASS="broken_ie"><SPAN CLASS='keyword'>namespace</SPAN> boost { <SPAN CLASS='keyword'>namespace</SPAN> iostreams { <SPAN CLASS='keyword'>namespace</SPAN> example {
+
+<SPAN CLASS="keyword">class</SPAN> shell_comments_input_filter : <SPAN CLASS='keyword'>public</SPAN> input_filter {
+<SPAN CLASS="keyword">public</SPAN>:
+    shell_comments_input_filter();
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS="keyword">int</SPAN> get(Source&amp; src);
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS="keyword">void</SPAN> close(Source&amp;) { skip_ = <SPAN CLASS="keyword">false</SPAN>; }
+<SPAN CLASS="keyword">private</SPAN>:
+    <SPAN CLASS="keyword">bool</SPAN> skip_;
+};
+
+} } } <SPAN CLASS='comment'>// End namespace boost::iostreams:example</SPAN></PRE>
+
+<P>此处我从辅助类 <A HREF="../classes/filter.html#synopsis"><CODE>input_filter</CODE></A> 派生, 它提供成员类型 <CODE>char_type</CODE> — 等于 <CODE>char</CODE> — 以及可转换为 <A HREF="../guide/traits.html#category_tags"><CODE>input_filter_tag</CODE></A> 与 <A HREF="../guide/traits.html#category_tags"><CODE>closable_tag</CODE></A> 的类别标签. <CODE>close</CODE> 的实现只是清除 <CODE>skip_</CODE> 标志, 使过滤器可以再次使用.</P>
+
+<A NAME="shell_comments_output_filter"></A>
+<H4><CODE>shell_comments_output_filter</CODE></H4>
+
+<P>接下来, 我们把 shell 注释过滤器表述为一个 <A HREF="../concepts/output_filter.html">OutputFilter</A>. 典型的窄字符 OutputFilter 如下所示:</P>
+
+<PRE CLASS="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="HEADER" HREF="../../../../boost/iostreams/categories.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/categories.hpp&gt;</SPAN></A>  
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="HEADER" HREF="../../../../boost/iostreams/operations.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/operations.hpp&gt;</SPAN></A>  <SPAN CLASS='comment'>// put, write</SPAN>
+
+<SPAN CLASS='keyword'>namespace</SPAN> io = boost::iostreams;
+
+<SPAN CLASS='keyword'>class</SPAN> my_output_filter {
+<SPAN CLASS='keyword'>public</SPAN>:
+    <SPAN CLASS='keyword'>typedef</SPAN> <SPAN CLASS='keyword'>char</SPAN>               char_type;
+    <SPAN CLASS='keyword'>typedef</SPAN> output_filter_tag  category;
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS='keyword'>bool</SPAN> put(Sink&amp; dest, <SPAN CLASS='keyword'>int</SPAN> c)
+    {
+        <SPAN CLASS='comment'>// Attempt to consume the given character of unfiltered</SPAN>
+        <SPAN CLASS='comment'>// data, writing filtered data to dest as appropriate. </SPAN>
+        <SPAN CLASS='comment'>// Return true if the character was successfully consumed.</SPAN>
+    }
+
+    <SPAN CLASS='comment'>/* Other members */</SPAN>
+};</PRE>
+
+<P>函数 <CODE>put</CODE> 尝试过滤单个字符 <CODE>c</CODE>, 将过滤后的输出写入 <A HREF="../concepts/sink.html">汇</A> <CODE>dest</CODE>. 它使用基本 I/O 操作访问 <CODE>dest</CODE> — 即 <A HREF="../functions/put.html"><CODE>put</CODE></A> 与 <A HREF="../functions/write.html"><CODE>write</CODE></A>. 这两个函数都可能失败: <CODE>iostreams::put</CODE> 可以返回 <CODE>false</CODE>, 而 <CODE>iostreams::write</CODE> 消费的字符可能少于请求的数量. 若发生这种情况, 允许成员函数 <CODE>put</CODE> 返回 <CODE>false</CODE>, 表示 <CODE>c</CODE> 未能被消费. 否则, 它必须消费 <CODE>c</CODE> 并返回 <CODE>true</CODE>.</P>
+
+<P>你也可以将上面的示例写为如下形式:</P>
+
+<PRE CLASS="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="HEADER" HREF="../../../../boost/iostreams/concepts.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/concepts.hpp&gt;</SPAN></A>  <SPAN CLASS='comment'>// output_filter</SPAN>
+
+<SPAN CLASS='keyword'>class</SPAN> my_output_filter : <SPAN CLASS='keyword'>public</SPAN> output_filter {
+<SPAN CLASS='keyword'>public</SPAN>:
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS='keyword'>bool</SPAN> put(Sink&amp; dest, <SPAN CLASS='keyword'>int</SPAN> c);
+
+    <SPAN CLASS='comment'>/* Other members */</SPAN>
+};</PRE>
+
+<P>此处 <A HREF="../classes/filter.html#synopsis"><CODE>output_filter</CODE></A> 是一个便利基类, 它提供成员类型 <CODE>char_type</CODE> 与 <CODE>category</CODE>, 以及成员函数 <CODE>close</CODE> 与 <CODE>imbue</CODE> 的空操作实现.</P>
+
+<P>现在你可以将 shell 注释过滤器表述为一个 <A HREF="../concepts/output_filter.html">OutputFilter</A> 了:</P>
+
+<PRE class="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/concepts.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/concepts.hpp&gt;</SPAN></A>    <SPAN CLASS="comment">// output_filter</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/operations.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/operations.hpp&gt;</SPAN></A>  <SPAN CLASS="comment">// put</SPAN>
+
+<SPAN CLASS='keyword'>namespace</SPAN> boost { <SPAN CLASS='keyword'>namespace</SPAN> iostreams { <SPAN CLASS='keyword'>namespace</SPAN> example {
+
+<SPAN CLASS="keyword">class</SPAN> shell_comments_output_filter : <SPAN CLASS="keyword"><SPAN CLASS="keyword"><SPAN CLASS="keyword">public</SPAN></SPAN></SPAN> output_filter {
+<SPAN CLASS="keyword">public</SPAN>:
+    <SPAN CLASS='keyword'>explicit</SPAN> shell_comments_output_filter(<SPAN CLASS="keyword">char</SPAN> comment_char = <SPAN CLASS='literal'>'#'</SPAN>)
+        : comment_char_(comment_char), skip_(<SPAN CLASS="keyword">false</SPAN>)
+        { }
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">bool</SPAN></SPAN> put(Sink&amp; dest, <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> c)
+    {
+        skip_ = c == comment_char_ ?
+            <SPAN CLASS="keyword">true</SPAN> :
+            c == <SPAN CLASS="literal">'\n'</SPAN> ?
+                <SPAN CLASS="keyword">false</SPAN> :
+                skip_;
+
+        <SPAN CLASS="keyword">if</SPAN> (skip_)
+            <SPAN CLASS="keyword">return</SPAN> <SPAN CLASS="keyword">true</SPAN>;
+
+        <SPAN CLASS="keyword">return</SPAN> iostreams::put(dest, c);
+    }
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS="keyword">void</SPAN> close(Source&amp;) { skip_ = <SPAN CLASS="keyword">false</SPAN>; }
+<SPAN CLASS="keyword">private</SPAN>:
+    <SPAN CLASS="keyword">char</SPAN> comment_char_;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">bool</SPAN></SPAN> skip_;
+};
+
+} } } <SPAN CLASS="comment">// End namespace boost::iostreams:example</SPAN></PRE>
+
+<P>成员函数 <CODE>put</CODE> 先检查给定字符 <CODE>c</CODE> 并更新成员变量 <CODE>skip_</CODE>; 接着, 除非 <CODE>skip_</CODE> 为 <CODE>true</CODE>, 否则它尝试写入 c. 成员函数 <CODE>close</CODE> 只是清除 <CODE>skip_</CODE> 标志, 使过滤器可以再次使用.</P>
+
+<!-- Begin Nav -->
+
+<DIV CLASS='nav'>
+    <A HREF='filter_usage.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/prev.png'></A>
+    <A HREF='tutorial.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/up.png'></A>
+    <A HREF='line_wrapping_filters.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/next.png'></A>
+</DIV>
+
+<!-- End Nav -->
+
+<!-- Begin Footer -->
+
+<HR>
+
+
+<P CLASS="copyright">© 版权所有 2008 <a href="http://www.coderage.com/" target="_top">CodeRage, LLC</a><br/>© 版权所有 2004-2007 <a href="https://www.boost.org/users/people/jonathan_turkanis.html" target="_top">Jonathan Turkanis</a></P>
+<P CLASS="copyright">使用、修改与分发受 Boost 软件许可 2.0 版约束. (随附文件 <A HREF="../../../../LICENSE_1_0.txt">LICENSE_1_0.txt</A> 或复制于 <A HREF="http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</A>)</P>
+<!-- End Footer -->
+
+</BODY>

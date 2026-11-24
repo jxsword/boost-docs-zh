@@ -1,0 +1,99 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>设计概述与设计理由</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost.Optional">
+<link rel="up" href="../index.html" title="Boost.Optional">
+<link rel="prev" href="quick_overview/monadic_interface.html" title="单子接口">
+<link rel="next" href="design/iface.html" title="接口设计">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="quick_overview/monadic_interface.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="design/iface.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="optional.design"></a><a class="link" href="design.html" title="设计概述与设计理由">设计概述与设计理由</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="design.html#optional.design.design_goals">设计目标</a></span></dt>
+<dt><span class="section"><a href="design/iface.html">接口设计</a></span></dt>
+<dt><span class="section"><a href="design/relational_operators.html">关系运算符</a></span></dt>
+<dt><span class="section"><a href="design/convenience_conversions_and_dedu.html">便捷转换与推导</a></span></dt>
+<dt><span class="section"><a href="design/io_operators.html">IO 运算符</a></span></dt>
+<dt><span class="section"><a href="design/optional_references.html">可选引用</a></span></dt>
+<dt><span class="section"><a href="design/in_place_factories.html">就地工厂</a></span></dt>
+<dt><span class="section"><a href="design/gotchas.html">陷阱</a></span></dt>
+<dt><span class="section"><a href="design/exception_safety_guarantees.html">异常安全保证</a></span></dt>
+<dt><span class="section"><a href="design/type_requirements.html">类型要求</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="optional.design.design_goals"></a><a class="link" href="design.html#optional.design.design_goals" title="Design Goals">设计目标</a>
+</h3></div></div></div>
+<p>在 C++ 中, 你可以创建一个标量类型的自动对象并操纵它, 而不给它赋初值.</p>
+<pre class="programlisting"><span class="special">{</span>
+  <span class="keyword">int</span> <span class="identifier">i</span><span class="special">;</span> <span class="comment">// indeterminate value</span>
+  <span class="identifier">populate</span><span class="special">(&amp;</span><span class="identifier">i</span><span class="special">);</span>
+  <span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">i</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>这样的对象被称为具有 <span class="emphasis"><em>不确定值</em></span>. 如果你随后为该对象赋予恰当的值, 一切正常; 但若程序试图读取不确定值, 这是 <span class="emphasis"><em>未定义行为</em></span>, 且自 C++26 起这是 <span class="emphasis"><em>错误行为</em></span>. 无论如何, 程序现在很可能做出程序员未曾打算的事情. 如果你有一个对象 <code class="computeroutput"><span class="identifier">i</span></code>, 但不知道它具有的是不确定值还是正常的、预期的值, 没有办法检查它, 因为检查本身就需要读取该值.</p>
+<p>这是 <code class="computeroutput"><span class="identifier">optional</span></code> 旨在解决的主要问题之一: 让你可以拥有一个知道自己是否被赋予了恰当值的类型, 并且在被要求时能告诉你.</p>
+<p>对于类型 <code class="computeroutput"><span class="keyword">int</span></code>, 这样一个类的内部表示可以是:</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">OptionalInt</span>
+<span class="special">{</span>
+  <span class="keyword">bool</span> <span class="identifier">_has_value</span> <span class="special">=</span> <span class="keyword">false</span><span class="special">;</span>
+  <span class="keyword">int</span> <span class="identifier">_value</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>一般情况下, 内部表示等价于:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">T</span><span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">Optional</span>
+<span class="special">{</span>
+  <span class="keyword">bool</span> <span class="identifier">_has_value</span> <span class="special">=</span> <span class="keyword">false</span><span class="special">;</span>
+  <span class="keyword">alignas</span><span class="special">(</span><span class="identifier">T</span><span class="special">)</span> <span class="keyword">char</span> <span class="identifier">_value</span> <span class="special">[</span><span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">T</span><span class="special">)];</span>
+<span class="special">};</span>
+</pre>
+<p>或者:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">T</span><span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">Optional</span>
+<span class="special">{</span>
+  <span class="keyword">bool</span> <span class="identifier">_has_value</span> <span class="special">=</span> <span class="keyword">false</span><span class="special">;</span>
+  <span class="keyword">union</span> <span class="special">{</span>
+    <span class="identifier">T</span>         <span class="identifier">_value</span><span class="special">;</span>
+    <span class="identifier">DummyType</span> <span class="identifier">_non_value</span><span class="special">;</span>
+  <span class="special">};</span>
+<span class="special">};</span>
+</pre>
+<p>接下来, 因为我们需要把这些 "可选的" <code class="computeroutput"><span class="keyword">int</span></code> 像普通 <code class="computeroutput"><span class="keyword">int</span></code> 一样四处传递 (比如从函数返回它们), 在复制时, 我们需要复制 <code class="computeroutput"><span class="identifier">_has_value</span></code> (它表明我们是否有值), 并且仅当我们确实有值时, 才还要复制 <code class="computeroutput"><span class="identifier">_value</span></code>.</p>
+<p>这意味着我们的类型需要 <span class="emphasis"><em>深复制</em></span> 语义.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>这是 <a href="https://hackage.haskell.org/package/base-4.20.0.1/docs/Data-Maybe.html" target="_top">Haskell</a> 中 <a href="http://www.haskell.org/" target="_top">Maybe</a> 单子的 C++ 等价物.</p></td></tr>
+</table></div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2003-2007 Fernando Luis Cacciola Carballal<br>版权所有 © 2014-2026 Andrzej Krzemieński<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="quick_overview/monadic_interface.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="design/iface.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

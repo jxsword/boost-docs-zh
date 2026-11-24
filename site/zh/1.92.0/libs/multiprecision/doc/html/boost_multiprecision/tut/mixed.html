@@ -1,0 +1,676 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>混合精度算术</title>
+<link rel="stylesheet" href="../../multiprecision.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Boost.Multiprecision">
+<link rel="up" href="../tut.html" title="Tutorial">
+<link rel="prev" href="rounding.html" title="转换的舍入规则">
+<link rel="next" href="variable.html" title="可变精度算术">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="rounding.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../tut.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="variable.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_multiprecision.tut.mixed"></a><a class="link" href="mixed.html" title="混合精度算术">混合精度算术</a>
+</h3></div></div></div>
+<p>本库完全支持混合精度算术.</p>
+<p>共有三种不同形式:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">操作数的精度或类型不同.</li>
+<li class="listitem">操作数类型和精度相同, 但产生更高精度的结果.</li>
+<li class="listitem">操作数或结果是不同但等价的类型(例如仅在内存管理上有区别的类型).</li>
+</ul></div>
+<h5>
+<a name="boost_multiprecision.tut.mixed.h0"></a>
+        <span class="phrase"><a name="boost_multiprecision.tut.mixed.mixing_operands_of_differing_typ"></a></span><a class="link" href="mixed.html#boost_multiprecision.tut.mixed.mixing_operands_of_differing_typ">混合不同类型或精度的操作数</a>
+      </h5>
+<p>若二元运算符的参数类型或精度不同, 则只要存在从一个参数类型到另一个参数类型的无歧义隐式转换, 该运算就是允许的. 在所有情况下, 算术都"表现得好像"先把较低精度类型提升为较高精度类型再应用运算符. 不过, 特定后端若能做到, 可能会对此优化, 避免实际创建临时对象.</p>
+<p>例如:</p>
+<pre class="programlisting"><span class="identifier">mpfr_float_50</span>         <span class="identifier">a</span><span class="special">(</span><span class="number">2</span><span class="special">),</span> <span class="identifier">b</span><span class="special">;</span>
+<span class="identifier">mpfr_float_100</span>        <span class="identifier">c</span><span class="special">(</span><span class="number">3</span><span class="special">),</span> <span class="identifier">d</span><span class="special">;</span>
+<span class="identifier">static_mpfr_float_50</span>  <span class="identifier">e</span><span class="special">(</span><span class="number">5</span><span class="special">),</span> <span class="identifier">f</span><span class="special">;</span>
+<span class="identifier">mpz_int</span>               <span class="identifier">i</span><span class="special">(</span><span class="number">20</span><span class="special">);</span>
+
+<span class="identifier">d</span> <span class="special">=</span> <span class="identifier">a</span> <span class="special">*</span> <span class="identifier">c</span><span class="special">;</span>  <span class="comment">// OK, result of operand is an mpfr_float_100.</span>
+<span class="identifier">b</span> <span class="special">=</span> <span class="identifier">a</span> <span class="special">*</span> <span class="identifier">c</span><span class="special">;</span>  <span class="comment">// Error, can't convert the result to an mpfr_float_50 as it will lose digits.</span>
+<span class="identifier">f</span> <span class="special">=</span> <span class="identifier">e</span> <span class="special">*</span> <span class="identifier">i</span><span class="special">;</span>  <span class="comment">// OK, unambiguous conversion from mpz_int to static_mpfr_float_50</span>
+</pre>
+<h5>
+<a name="boost_multiprecision.tut.mixed.h1"></a>
+        <span class="phrase"><a name="boost_multiprecision.tut.mixed.operands_of_the_same_precision"></a></span><a class="link" href="mixed.html#boost_multiprecision.tut.mixed.operands_of_the_same_precision">相同精度操作数的混合运算</a>
+      </h5>
+<p>有时你希望对两个相同精度的参数应用运算符, 并得到更高精度的结果. 最常见的情况出现在定点精度整数上: 你想把两个 N 位数相乘得到 2N 位结果. 本库通过以下自由函数支持这一点:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">ResultType</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Source1</span> <span class="keyword">class</span> <span class="identifier">Source2</span><span class="special">&gt;</span>
+<span class="identifier">ResultType</span><span class="special">&amp;</span> <span class="identifier">add</span><span class="special">(</span><span class="identifier">ResultType</span><span class="special">&amp;</span> <span class="identifier">result</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">Source1</span><span class="special">&amp;</span> <span class="identifier">a</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">Source2</span><span class="special">&amp;</span> <span class="identifier">b</span><span class="special">);</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">ResultType</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Source1</span> <span class="keyword">class</span> <span class="identifier">Source2</span><span class="special">&gt;</span>
+<span class="identifier">ResultType</span><span class="special">&amp;</span> <span class="identifier">subtract</span><span class="special">(</span><span class="identifier">ResultType</span><span class="special">&amp;</span> <span class="identifier">result</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">Source1</span><span class="special">&amp;</span> <span class="identifier">a</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">Source2</span><span class="special">&amp;</span> <span class="identifier">b</span><span class="special">);</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">ResultType</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Source1</span> <span class="keyword">class</span> <span class="identifier">Source2</span><span class="special">&gt;</span>
+<span class="identifier">ResultType</span><span class="special">&amp;</span> <span class="identifier">multiply</span><span class="special">(</span><span class="identifier">ResultType</span><span class="special">&amp;</span> <span class="identifier">result</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">Source1</span><span class="special">&amp;</span> <span class="identifier">a</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">Source2</span><span class="special">&amp;</span> <span class="identifier">b</span><span class="special">);</span>
+</pre>
+<p>这些函数将所指名的运算符作用于参数<span class="emphasis"><em>a</em></span> 和<span class="emphasis"><em>b</em></span> 并把结果存入<span class="emphasis"><em>result</em></span> 中, 返回<span class="emphasis"><em>result</em></span>. 在所有情况下, 它们的行为都表现得"好像"参数<span class="emphasis"><em>a</em></span> 和<span class="emphasis"><em>b</em></span> 先被提升为类型<code class="computeroutput"><span class="identifier">ResultType</span></code> 再应用该运算符, 尽管特定后端完全可能通过优化避免这一步.</p>
+<p>类型<code class="computeroutput"><span class="identifier">ResultType</span></code> 必须是类<code class="computeroutput"><span class="identifier">number</span></code> 的实例, 而类型<code class="computeroutput"><span class="identifier">Source1</span></code> 和<code class="computeroutput"><span class="identifier">Source2</span></code> 可以是类<code class="computeroutput"><span class="identifier">number</span></code> 的实例, 也可以是原生整数类型. 后者是一种优化, 允许对原生整数类型执行算术运算并产生扩展精度的结果.</p>
+<p>例如:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">multiprecision</span><span class="special">/</span><span class="identifier">cpp_int</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">()</span>
+<span class="special">{</span>
+   <span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">multiprecision</span><span class="special">;</span>
+
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">uint64_t</span> <span class="identifier">i</span> <span class="special">=</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">numeric_limits</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">uint64_t</span><span class="special">&gt;::</span><span class="identifier">max</span><span class="special">)();</span>
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">uint64_t</span> <span class="identifier">j</span> <span class="special">=</span> <span class="number">1</span><span class="special">;</span>
+
+   <span class="identifier">uint128_t</span> <span class="identifier">ui128</span><span class="special">;</span>
+   <span class="identifier">uint256_t</span> <span class="identifier">ui256</span><span class="special">;</span>
+   <span class="comment">//</span>
+   <span class="comment">// Start by performing arithmetic on 64-bit integers to yield 128-bit results:</span>
+   <span class="comment">//</span>
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">hex</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">showbase</span> <span class="special">&lt;&lt;</span> <span class="identifier">i</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">hex</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">showbase</span> <span class="special">&lt;&lt;</span> <span class="identifier">add</span><span class="special">(</span><span class="identifier">ui128</span><span class="special">,</span> <span class="identifier">i</span><span class="special">,</span> <span class="identifier">j</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">hex</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">showbase</span> <span class="special">&lt;&lt;</span> <span class="identifier">multiply</span><span class="special">(</span><span class="identifier">ui128</span><span class="special">,</span> <span class="identifier">i</span><span class="special">,</span> <span class="identifier">i</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+   <span class="comment">//</span>
+   <span class="comment">// The try squaring a 128-bit integer to yield a 256-bit result:</span>
+   <span class="comment">//</span>
+   <span class="identifier">ui128</span> <span class="special">=</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">numeric_limits</span><span class="special">&lt;</span><span class="identifier">uint128_t</span><span class="special">&gt;::</span><span class="identifier">max</span><span class="special">)();</span>
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">hex</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">showbase</span> <span class="special">&lt;&lt;</span> <span class="identifier">multiply</span><span class="special">(</span><span class="identifier">ui256</span><span class="special">,</span> <span class="identifier">ui128</span><span class="special">,</span> <span class="identifier">ui128</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>产生输出:</p>
+<pre class="programlisting"><span class="number">0</span><span class="identifier">xffffffffffffffff</span>
+<span class="number">0</span><span class="identifier">x10000000000000000</span>
+<span class="number">0</span><span class="identifier">xFFFFFFFFFFFFFFFE0000000000000001</span>
+<span class="number">0</span><span class="identifier">xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE00000000000000000000000000000001</span>
+</pre>
+<h5>
+<a name="boost_multiprecision.tut.mixed.h2"></a>
+        <span class="phrase"><a name="boost_multiprecision.tut.mixed.mixing_different_but_equivalent_"></a></span><a class="link" href="mixed.html#boost_multiprecision.tut.mixed.mixing_different_but_equivalent_">混合不同但"等价"的类型</a>
+      </h5>
+<p>通常, 混合相同精度的类型会产生编译器错误, 因为不存在无歧义的结果类型. 不过有一个特征类:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">multiprecision</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">NumberType1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">NumberType2</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">is_equivalent_number_type</span><span class="special">;</span>
+
+<span class="special">}</span>
+<span class="special">}</span>
+</pre>
+<p>当其<code class="computeroutput"><span class="identifier">value</span></code> 常量成员的值为<code class="computeroutput"><span class="keyword">true</span></code> 时, 库会把类型<code class="computeroutput"><span class="identifier">NumberType1</span></code> 和<code class="computeroutput"><span class="identifier">NumberType2</span></code> 视为可互换的. 这通常用于优化内存管理: 让两种采用不同内存分配策略的类型扮演不同角色. 典型做法是, 主存储类型(想想大型数组或矩阵)使用带动态内存分配且内存占用最小的类型, 而少数精选计算则使用内部存储、无动态分配(但内存占用较大)的类型.</p>
+<p>默认定义此特征的三个后端是:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <a class="link" href="ints/cpp_int.html" title="cpp_int">cpp_int</a>(前提是两种类型仅在内部缓存大小上不同).</li>
+<li class="listitem">
+            <a class="link" href="floats/cpp_bin_float.html" title="cpp_bin_float">cpp_bin_float</a>(前提是精度相同).</li>
+<li class="listitem">
+            <a class="link" href="floats/mpfr_float.html" title="mpfr_float">mpfr_float</a>(前提是精度相同).</li>
+</ul></div>
+<p>此外, 虽然此特性可以在关闭表达式模板的情况下使用, 但当表达式模板开启时, 此特性能最少化临时对象, 从而减少内存分配.</p>
+<p>举个例子, 考虑两个<a class="link" href="ints/cpp_int.html" title="cpp_int">cpp_int</a> 向量的点积, 我们第一个相当朴素的实现可能是这样:</p>
+<pre class="programlisting"><span class="identifier">cpp_int</span> <span class="identifier">dot_product_1</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">cpp_int</span><span class="special">&gt;&amp;</span> <span class="identifier">v1</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">cpp_int</span><span class="special">&gt;&amp;</span> <span class="identifier">v2</span><span class="special">)</span>
+<span class="special">{</span>
+   <span class="keyword">if</span> <span class="special">(</span><span class="identifier">v1</span><span class="special">.</span><span class="identifier">size</span><span class="special">()</span> <span class="special">!=</span> <span class="identifier">v2</span><span class="special">.</span><span class="identifier">size</span><span class="special">())</span>
+      <span class="keyword">throw</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">domain_error</span><span class="special">(</span><span class="string">"Mismatched arguments"</span><span class="special">);</span>
+
+   <span class="identifier">cpp_int</span> <span class="identifier">result</span><span class="special">;</span>
+   <span class="keyword">for</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">v1</span><span class="special">.</span><span class="identifier">size</span><span class="special">();</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span>
+      <span class="identifier">result</span> <span class="special">+=</span> <span class="identifier">v1</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">*</span> <span class="identifier">v2</span><span class="special">[</span><span class="identifier">i</span><span class="special">];</span>
+   <span class="comment">//</span>
+   <span class="comment">// Named-return value optimisation (even better than a move):</span>
+   <span class="comment">//</span>
+   <span class="keyword">return</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>不过, 为了减少在乘加运算所需的临时对象构造时的内存分配需求, 我们可以像这样使用一个内部缓存更大的等价类型:</p>
+<pre class="programlisting"><span class="identifier">cpp_int</span> <span class="identifier">dot_product_2</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">cpp_int</span><span class="special">&gt;&amp;</span> <span class="identifier">v1</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">cpp_int</span><span class="special">&gt;&amp;</span> <span class="identifier">v2</span><span class="special">)</span>
+<span class="special">{</span>
+   <span class="keyword">if</span> <span class="special">(</span><span class="identifier">v1</span><span class="special">.</span><span class="identifier">size</span><span class="special">()</span> <span class="special">!=</span> <span class="identifier">v2</span><span class="special">.</span><span class="identifier">size</span><span class="special">())</span>
+      <span class="keyword">throw</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">domain_error</span><span class="special">(</span><span class="string">"Mismatched arguments"</span><span class="special">);</span>
+   <span class="comment">//</span>
+   <span class="comment">// If we know that most of our data is of a certain range of values, then we can use a cpp_int type</span>
+   <span class="comment">// with an internal cache large enough to *probably* not require an allocation:</span>
+   <span class="comment">//</span>
+   <span class="identifier">number</span><span class="special">&lt;</span><span class="identifier">cpp_int_backend</span><span class="special">&lt;</span><span class="number">1024</span><span class="special">&gt;</span> <span class="special">&gt;</span> <span class="identifier">result</span><span class="special">;</span>
+   <span class="keyword">for</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">v1</span><span class="special">.</span><span class="identifier">size</span><span class="special">();</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span>
+      <span class="identifier">result</span> <span class="special">+=</span> <span class="identifier">v1</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">*</span> <span class="identifier">v2</span><span class="special">[</span><span class="identifier">i</span><span class="special">];</span>
+   <span class="comment">//</span>
+   <span class="comment">// We can't rely on the named-return-value optimisation here, since the variable being returned</span>
+   <span class="comment">// is a different type to the return value.  However, since these are "equivalent" types we</span>
+   <span class="comment">// can move the result to the return value and get all the expected move-optimisations should</span>
+   <span class="comment">// variable result have dynamically allocated:</span>
+   <span class="comment">//</span>
+   <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">result</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>不过在比较性能之前, 还有一件显而易见的事可以尝试: 只需为中间乘法的结果声明一个变量, 并在循环中每次复用该变量, 我们也可以预期大幅减少所需的分配次数.</p>
+<pre class="programlisting"><span class="identifier">cpp_int</span> <span class="identifier">dot_product_3</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">cpp_int</span><span class="special">&gt;&amp;</span> <span class="identifier">v1</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">cpp_int</span><span class="special">&gt;&amp;</span> <span class="identifier">v2</span><span class="special">)</span>
+<span class="special">{</span>
+   <span class="keyword">if</span> <span class="special">(</span><span class="identifier">v1</span><span class="special">.</span><span class="identifier">size</span><span class="special">()</span> <span class="special">!=</span> <span class="identifier">v2</span><span class="special">.</span><span class="identifier">size</span><span class="special">())</span>
+      <span class="keyword">throw</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">domain_error</span><span class="special">(</span><span class="string">"Mismatched arguments"</span><span class="special">);</span>
+
+   <span class="identifier">cpp_int</span> <span class="identifier">result</span><span class="special">,</span> <span class="identifier">term</span><span class="special">;</span>
+   <span class="keyword">for</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">v1</span><span class="special">.</span><span class="identifier">size</span><span class="special">();</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span>
+   <span class="special">{</span>
+      <span class="comment">//</span>
+      <span class="comment">// Re-use the same variable for the result of the multiplications, rather than rely on </span>
+      <span class="comment">// an internally generated temporary.  Depending on the input data, this may allocate</span>
+      <span class="comment">// a few times depending how soon in the input vector's we encounter the largest values.</span>
+      <span class="comment">// In the best case though, or for fairly uniformly sized input data, we will allocate </span>
+      <span class="comment">// only once:</span>
+      <span class="comment">//</span>
+      <span class="identifier">term</span> <span class="special">=</span> <span class="identifier">v1</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">*</span> <span class="identifier">v2</span><span class="special">[</span><span class="identifier">i</span><span class="special">];</span>
+      <span class="identifier">result</span> <span class="special">+=</span> <span class="identifier">term</span><span class="special">;</span>
+   <span class="special">}</span>
+   <span class="comment">//</span>
+   <span class="comment">// Named-return value optimisation (even better than a move):</span>
+   <span class="comment">//</span>
+   <span class="keyword">return</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>我们先来比较一下, 对各种位数的随机数据计算 1000 个值的向量的点积, 各需要多少次实际分配:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>位数</p>
+              </th>
+<th>
+                <p>分配次数 版本 1</p>
+              </th>
+<th>
+                <p>分配次数 版本 2</p>
+              </th>
+<th>
+                <p>分配次数 版本 3</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  32
+                </p>
+              </td>
+<td>
+                <p>
+                  1<a href="#ftn.boost_multiprecision.tut.mixed.f0" class="footnote" name="boost_multiprecision.tut.mixed.f0"><sup class="footnote">[1]</sup></a>
+                </p>
+              </td>
+<td>
+                <p>
+                  0
+                </p>
+              </td>
+<td>
+                <p>
+                  0
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  64
+                </p>
+              </td>
+<td>
+                <p>
+                  1001
+                </p>
+              </td>
+<td>
+                <p>
+                  1<a href="#ftn.boost_multiprecision.tut.mixed.f1" class="footnote" name="boost_multiprecision.tut.mixed.f1"><sup class="footnote">[2]</sup></a>
+                </p>
+              </td>
+<td>
+                <p>
+                  1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  128
+                </p>
+              </td>
+<td>
+                <p>
+                  1002
+                </p>
+              </td>
+<td>
+                <p>
+                  1
+                </p>
+              </td>
+<td>
+                <p>
+                  2
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  256
+                </p>
+              </td>
+<td>
+                <p>
+                  1002
+                </p>
+              </td>
+<td>
+                <p>
+                  1
+                </p>
+              </td>
+<td>
+                <p>
+                  3<a href="#ftn.boost_multiprecision.tut.mixed.f2" class="footnote" name="boost_multiprecision.tut.mixed.f2"><sup class="footnote">[3]</sup></a>
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  512
+                </p>
+              </td>
+<td>
+                <p>
+                  1002
+                </p>
+              </td>
+<td>
+                <p>
+                  1
+                </p>
+              </td>
+<td>
+                <p>
+                  3
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  1024
+                </p>
+              </td>
+<td>
+                <p>
+                  1002
+                </p>
+              </td>
+<td>
+                <p>
+                  1001<a href="#ftn.boost_multiprecision.tut.mixed.f3" class="footnote" name="boost_multiprecision.tut.mixed.f3"><sup class="footnote">[4]</sup></a>
+                </p>
+              </td>
+<td>
+                <p>
+                  3
+                </p>
+              </td>
+</tr>
+</tbody>
+<tbody class="footnotes"><tr><td colspan="4">
+<div id="ftn.boost_multiprecision.tut.mixed.f0" class="footnote"><p><a href="#boost_multiprecision.tut.mixed.f0" class="para"><sup class="para">[1]</sup></a> 这里一切都适合<a class="link" href="ints/cpp_int.html" title="cpp_int">cpp_int</a> 的默认内部缓存, 因此无需分配.</p></div>
+<div id="ftn.boost_multiprecision.tut.mixed.f1" class="footnote"><p><a href="#boost_multiprecision.tut.mixed.f1" class="para"><sup class="para">[2]</sup></a> 返回值只需一次分配.</p></div>
+<div id="ftn.boost_multiprecision.tut.mixed.f2" class="footnote"><p><a href="#boost_multiprecision.tut.mixed.f2" class="para"><sup class="para">[3]</sup></a> 这里输入数据的情况使得临时对象需要不止一次分配.</p></div>
+<div id="ftn.boost_multiprecision.tut.mixed.f3" class="footnote"><p><a href="#boost_multiprecision.tut.mixed.f3" class="para"><sup class="para">[4]</sup></a> 此时我们超出了内部计算类型的内部缓存.</p></div>
+</td></tr></tbody>
+</table></div>
+<p>三种方法的耗时如下(MSVC-16.8.0, x64):</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>位数</p>
+              </th>
+<th>
+                <p>耗时/ms 版本 1</p>
+              </th>
+<th>
+                <p>耗时/ms 版本 2</p>
+              </th>
+<th>
+                <p>耗时/ms 版本 3</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  32
+                </p>
+              </td>
+<td>
+                <p>
+                  0.021
+                </p>
+              </td>
+<td>
+                <p>
+                  0.021
+                </p>
+              </td>
+<td>
+                <p>
+                  0.021
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  64
+                </p>
+              </td>
+<td>
+                <p>
+                  0.032
+                </p>
+              </td>
+<td>
+                <p>
+                  0.032
+                </p>
+              </td>
+<td>
+                <p>
+                  0.029
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  128
+                </p>
+              </td>
+<td>
+                <p>
+                  0.099
+                </p>
+              </td>
+<td>
+                <p>
+                  0.041
+                </p>
+              </td>
+<td>
+                <p>
+                  0.041
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  256
+                </p>
+              </td>
+<td>
+                <p>
+                  0.154
+                </p>
+              </td>
+<td>
+                <p>
+                  0.091
+                </p>
+              </td>
+<td>
+                <p>
+                  0.094
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  512
+                </p>
+              </td>
+<td>
+                <p>
+                  0.323
+                </p>
+              </td>
+<td>
+                <p>
+                  0.270
+                </p>
+              </td>
+<td>
+                <p>
+                  0.269
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  1024
+                </p>
+              </td>
+<td>
+                <p>
+                  0.998
+                </p>
+              </td>
+<td>
+                <p>
+                  0.995
+                </p>
+              </td>
+<td>
+                <p>
+                  0.949
+                </p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+<p>可以看到, 对于中等大小的整数存在一个我们能获益的最优点: 若值较小,<a class="link" href="ints/cpp_int.html" title="cpp_int">cpp_int</a> 自己的内部缓存就已足够大, 不会发生分配. 相反, 若值足够大, 实际算术的成本会远超内存分配时间. 在这个特定案例中, 仔细编写代码(版本 3)显然至少与使用带更大缓存的独立类型一样好. 不过, 有时纯粹为了 multiprecision 用例而重写现有代码并不现实.</p>
+<p>无法通过重写代码来避免不必要分配的典型例子出现在调用外部例程时. 例如, 半径为<span class="emphasis"><em>a</em></span> 和<span class="emphasis"><em>b</em></span> 的椭圆的弧长由下式给出:</p>
+<pre class="programlisting">L(a, b) = 4aE(k)</pre>
+<p>其中:</p>
+<pre class="programlisting">k = √(1 - b<sup>2</sup>/a<sup>2</sup>)</pre>
+<p>其中<span class="emphasis"><em>E(k)</em></span> 是第二类完全椭圆积分, 在 Boost.Math 中以模板函数<code class="computeroutput"><span class="identifier">ellint_2</span></code> 的形式提供.</p>
+<p>朴素地, 我们可以这样实现以便搭配<a class="link" href="floats/mpfr_float.html" title="mpfr_float">mpfr_float</a> 使用:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">unsigned</span> <span class="identifier">N</span><span class="special">&gt;</span>
+<span class="identifier">number</span><span class="special">&lt;</span><span class="identifier">mpfr_float_backend</span><span class="special">&lt;</span><span class="identifier">N</span><span class="special">&gt;</span> <span class="special">&gt;</span> <span class="identifier">elliptic_arc_length_1</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">number</span><span class="special">&lt;</span><span class="identifier">mpfr_float_backend</span><span class="special">&lt;</span><span class="identifier">N</span><span class="special">&gt;</span> <span class="special">&gt;&amp;</span> <span class="identifier">a</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">number</span><span class="special">&lt;</span><span class="identifier">mpfr_float_backend</span><span class="special">&lt;</span><span class="identifier">N</span><span class="special">&gt;</span> <span class="special">&gt;&amp;</span> <span class="identifier">b</span><span class="special">)</span>
+<span class="special">{</span>
+   <span class="identifier">number</span><span class="special">&lt;</span><span class="identifier">mpfr_float_backend</span><span class="special">&lt;</span><span class="identifier">N</span><span class="special">&gt;</span> <span class="special">&gt;</span> <span class="identifier">k</span> <span class="special">=</span> <span class="identifier">sqrt</span><span class="special">(</span><span class="number">1</span> <span class="special">-</span> <span class="identifier">b</span> <span class="special">*</span> <span class="identifier">b</span> <span class="special">/</span> <span class="special">(</span><span class="identifier">a</span> <span class="special">*</span> <span class="identifier">a</span><span class="special">));</span>
+   <span class="keyword">return</span> <span class="number">4</span> <span class="special">*</span> <span class="identifier">a</span> <span class="special">*</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">ellint_2</span><span class="special">(</span><span class="identifier">k</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>但我们也可以尝试混合使用算术类型 - 接口使用常规动态分配的<a class="link" href="floats/mpfr_float.html" title="mpfr_float">mpfr_float</a>, 以最小化外部存储的内存占用; 内部算术使用静态分配的<a class="link" href="floats/mpfr_float.html" title="mpfr_float">mpfr_float</a>:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">unsigned</span> <span class="identifier">N</span><span class="special">&gt;</span>
+<span class="identifier">number</span><span class="special">&lt;</span><span class="identifier">mpfr_float_backend</span><span class="special">&lt;</span><span class="identifier">N</span><span class="special">&gt;</span> <span class="special">&gt;</span> <span class="identifier">elliptic_arc_length_2</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">number</span><span class="special">&lt;</span><span class="identifier">mpfr_float_backend</span><span class="special">&lt;</span><span class="identifier">N</span><span class="special">&gt;</span> <span class="special">&gt;&amp;</span> <span class="identifier">a</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">number</span><span class="special">&lt;</span><span class="identifier">mpfr_float_backend</span><span class="special">&lt;</span><span class="identifier">N</span><span class="special">&gt;</span> <span class="special">&gt;&amp;</span> <span class="identifier">b</span><span class="special">)</span>
+<span class="special">{</span>
+   <span class="identifier">number</span><span class="special">&lt;</span><span class="identifier">mpfr_float_backend</span><span class="special">&lt;</span><span class="identifier">N</span><span class="special">,</span> <span class="identifier">allocate_stack</span><span class="special">&gt;</span> <span class="special">&gt;</span> <span class="identifier">k</span> <span class="special">=</span> <span class="identifier">sqrt</span><span class="special">(</span><span class="number">1</span> <span class="special">-</span> <span class="identifier">b</span> <span class="special">*</span> <span class="identifier">b</span> <span class="special">/</span> <span class="special">(</span><span class="identifier">a</span> <span class="special">*</span> <span class="identifier">a</span><span class="special">));</span>
+   <span class="keyword">return</span> <span class="number">4</span> <span class="special">*</span> <span class="identifier">a</span> <span class="special">*</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">ellint_2</span><span class="special">(</span><span class="identifier">k</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>性能对比出奇地悬殊:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>
+                  N
+                </p>
+              </th>
+<th>
+                <p>
+                  <code class="computeroutput"><span class="identifier">number</span><span class="special">&lt;</span><span class="identifier">mpfr_float_backend</span><span class="special">&lt;</span><span class="identifier">N</span><span class="special">&gt;&gt;</span></code>
+                  / ms
+                </p>
+              </th>
+<th>
+                <p>
+                  <code class="computeroutput"><span class="identifier">number</span><span class="special">&lt;</span><span class="identifier">mpfr_float_backend</span><span class="special">&lt;</span><span class="identifier">N</span><span class="special">,</span>
+                  <span class="identifier">allocate_stack</span><span class="special">&gt;&gt;</span></code>
+                  / ms
+                </p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  30
+                </p>
+              </td>
+<td>
+                <p>
+                  19.5
+                </p>
+              </td>
+<td>
+                <p>
+                  3.1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  40
+                </p>
+              </td>
+<td>
+                <p>
+                  12.5
+                </p>
+              </td>
+<td>
+                <p>
+                  6.2
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  50
+                </p>
+              </td>
+<td>
+                <p>
+                  14.4
+                </p>
+              </td>
+<td>
+                <p>
+                  6.6
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  60
+                </p>
+              </td>
+<td>
+                <p>
+                  18.0
+                </p>
+              </td>
+<td>
+                <p>
+                  9.5
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  70
+                </p>
+              </td>
+<td>
+                <p>
+                  18.0
+                </p>
+              </td>
+<td>
+                <p>
+                  9.6
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  80
+                </p>
+              </td>
+<td>
+                <p>
+                  20.0
+                </p>
+              </td>
+<td>
+                <p>
+                  12.8
+                </p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+<p>与之前一样, 结果基于 MSVC-16.8.0/x64. 实际上, 结果并不总是如此偏向非分配类型, 这在很大程度上取决于所调用的特殊函数和/或所用的参数.</p>
+<h5>
+<a name="boost_multiprecision.tut.mixed.h3"></a>
+        <span class="phrase"><a name="boost_multiprecision.tut.mixed.backends_with_optimized_mixed_pr"></a></span><a class="link" href="mixed.html#boost_multiprecision.tut.mixed.backends_with_optimized_mixed_pr">针对混合精度算术优化的后端</a>
+      </h5>
+<p>以下后端对混合精度算术至少有一些直接支持, 因此在使用上述接口时可避免创建不必要的临时对象. 所以使用这些类型时, 直接使用混合精度算术比把操作数显式转换为结果类型更高效:</p>
+<p>
+        <a class="link" href="floats/mpfr_float.html" title="mpfr_float">mpfr_float</a>,<a class="link" href="floats/gmp_float.html" title="gmp_float">gmp_float</a>,<a class="link" href="ints/cpp_int.html" title="cpp_int">cpp_int</a>.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2002-2020 John Maddock 和 Christopher Kormanyos<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="rounding.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../tut.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="variable.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

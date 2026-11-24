@@ -1,0 +1,254 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>教程 5: UPDATE、事务与分号分隔的查询</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="up" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="prev" href="tutorial_static_interface.html" title="教程 4: 静态接口">
+<link rel="next" href="tutorial_connection_pool.html" title="教程 6: 连接池">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="tutorial_static_interface.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="tutorial_connection_pool.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="mysql.tutorial_updates_transactions"></a><a class="link" href="tutorial_updates_transactions.html" title="教程 5: UPDATE、事务与分号分隔的查询">教程 5: UPDATE、事务与分号分隔的查询</a>
+</h2></div></div></div>
+<p>前面的所有教程都只使用了 <code class="computeroutput"><span class="identifier">SELECT</span></code> 语句, 但 Boost.MySQL 并不局限于这些. 使用 <a class="link" href="ref/boost__mysql__any_connection/async_execute.html" title="any_connection::async_execute"><code class="literal">async_execute</code></a> 可以运行 MySQL 支持的任何 SQL 语句.</p>
+<p>在本教程中, 我们将编写一个程序, 根据员工 ID 修改其名字, 并打印更新后的员工详细信息. 我们将使用一个 <code class="computeroutput"><span class="identifier">UPDATE</span></code> 语句和事务管理语句. <code class="computeroutput"><span class="identifier">INSERT</span></code> 和 <code class="computeroutput"><span class="identifier">DELETE</span></code> 语句具有类似的机制.</p>
+<h4>
+<a name="mysql.tutorial_updates_transactions.h0"></a>
+      <span class="phrase"><a name="mysql.tutorial_updates_transactions.a_simple_update"></a></span><a class="link" href="tutorial_updates_transactions.html#mysql.tutorial_updates_transactions.a_simple_update">简单的 UPDATE</a>
+    </h4>
+<p>我们可以使用与前面教程相同的工具和函数:</p>
+<pre class="programlisting"><span class="comment">// Run an UPDATE. We can use with_params to compose it, too</span>
+<span class="comment">// If new_first_name contains 'John' and employee_id contains 42, this will run:</span>
+<span class="comment">//    UPDATE employee SET first_name = 'John' WHERE id = 42</span>
+<span class="comment">// result contains an empty resultset: it has no rows</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span>
+        <span class="string">"UPDATE employee SET first_name = {} WHERE id = {}"</span><span class="special">,</span>
+        <span class="identifier">new_first_name</span><span class="special">,</span>
+        <span class="identifier">employee_id</span>
+    <span class="special">),</span>
+    <span class="identifier">result</span>
+<span class="special">);</span>
+</pre>
+<p>默认情况下, 自动提交 (auto-commit) 处于启用状态, 这意味着当 <code class="computeroutput"><span class="identifier">async_execute</span></code> 返回时, <code class="computeroutput"><span class="identifier">UPDATE</span></code> 所做的更改对其他客户端连接可见.</p>
+<h4>
+<a name="mysql.tutorial_updates_transactions.h1"></a>
+      <span class="phrase"><a name="mysql.tutorial_updates_transactions.checking_that_the_update_took_ef"></a></span><a class="link" href="tutorial_updates_transactions.html#mysql.tutorial_updates_transactions.checking_that_the_update_took_ef">检查 UPDATE 是否生效</a>
+    </h4>
+<p>即使不存在具有给定 ID 的员工, 上面的查询也会成功. 我们希望在成功时检索更新后的员工详细信息, 并在未匹配到任何员工时发出有用的错误消息.</p>
+<p>起初我们可能想使用 <a class="link" href="ref/boost__mysql__results/affected_rows.html" title="results::affected_rows"><code class="literal">results::affected_rows</code></a>, 但它并不能传达我们要找的信息: 一行可能被匹配但未被影响. 例如, 如果你尝试将 <code class="computeroutput"><span class="identifier">first_name</span></code> 设置为它已有的相同值, MySQL 会把该行计为已匹配, 但未受影响.</p>
+<p>MySQL 不支持 <code class="computeroutput"><span class="identifier">UPDATE</span>
+      <span class="special">...</span> <span class="identifier">RETURNING</span></code> 语法, 因此我们必须在更新之后手动检索该员工. 我们可以在 <code class="computeroutput"><span class="identifier">UPDATE</span></code> 之后添加以下内容:</p>
+<pre class="programlisting"><span class="comment">// Retrieve the newly created employee.</span>
+<span class="comment">// As we will see, this is a potential race condition</span>
+<span class="comment">// that can be avoided with transactions.</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"SELECT first_name, last_name FROM employee WHERE id = {}"</span><span class="special">,</span> <span class="identifier">employee_id</span><span class="special">),</span>
+    <span class="identifier">result</span>
+<span class="special">);</span>
+
+<span class="keyword">if</span> <span class="special">(</span><span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">empty</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"No employee with ID = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">employee_id</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+<span class="keyword">else</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Updated: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">).</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="string">" "</span> <span class="special">&lt;&lt;</span> <span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">).</span><span class="identifier">at</span><span class="special">(</span><span class="number">1</span><span class="special">)</span>
+              <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>然而, 上面的代码包含一个竞争条件. 设想以下情形:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"> <code class="computeroutput"><span class="identifier">UPDATE</span></code> 已发出. 未匹配到任何员工.</li>
+<li class="listitem">在我们的程序发出 <code class="computeroutput"><span class="identifier">SELECT</span></code> 查询之前, 另一个程序插入了一个具有我们要更新的 ID 的员工.</li>
+<li class="listitem">我们的程序运行 <code class="computeroutput"><span class="identifier">SELECT</span></code> 语句, 并检索到新插入的行.</li>
+</ul></div>
+<p>对我们的程序来说, 这看起来像是更新成功了, 而实际上并没有. 根据程序的性质, 这可能会也可能不会造成严重后果, 但这是我们应该避免的.</p>
+<h4>
+<a name="mysql.tutorial_updates_transactions.h2"></a>
+      <span class="phrase"><a name="mysql.tutorial_updates_transactions.avoiding_the_race_condition_with"></a></span><a class="link" href="tutorial_updates_transactions.html#mysql.tutorial_updates_transactions.avoiding_the_race_condition_with">用事务块避免竞争条件</a>
+    </h4>
+<p>我们可以使用事务来修复竞争条件. 在 MySQL 中, 事务块用 <code class="computeroutput"><span class="identifier">START</span> <span class="identifier">TRANSACTION</span></code> 打开. 之后的语句都将属于该事务块, 直到事务提交或回滚. <code class="computeroutput"><span class="identifier">COMMIT</span></code> 语句提交事务. 如果发起事务的连接关闭, 或者使用了显式的 <code class="computeroutput"><span class="identifier">ROLLBACK</span></code> 语句, 则会发生回滚.</p>
+<p>我们将把 <code class="computeroutput"><span class="identifier">UPDATE</span></code> 和 <code class="computeroutput"><span class="identifier">SELECT</span></code> 语句放进一个事务块中. 这将确保 <code class="computeroutput"><span class="identifier">SELECT</span></code> 能取到更新后的行 (如果有):</p>
+<pre class="programlisting"><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">empty_result</span><span class="special">,</span> <span class="identifier">select_result</span><span class="special">;</span>
+
+<span class="comment">// Start a transaction block. Subsequent statements will belong</span>
+<span class="comment">// to the transaction block, until a COMMIT or ROLLBACK is encountered,</span>
+<span class="comment">// or the connection is closed.</span>
+<span class="comment">// START TRANSACTION returns no rows.</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="string">"START TRANSACTION"</span><span class="special">,</span> <span class="identifier">empty_result</span><span class="special">);</span>
+
+<span class="comment">// Run the UPDATE as we did before</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span>
+        <span class="string">"UPDATE employee SET first_name = {} WHERE id = {}"</span><span class="special">,</span>
+        <span class="identifier">new_first_name</span><span class="special">,</span>
+        <span class="identifier">employee_id</span>
+    <span class="special">),</span>
+    <span class="identifier">empty_result</span>
+<span class="special">);</span>
+
+<span class="comment">// Run the SELECT. If a row is returned here, it is the one</span>
+<span class="comment">// that we modified.</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"SELECT first_name, last_name FROM employee WHERE id = {}"</span><span class="special">,</span> <span class="identifier">employee_id</span><span class="special">),</span>
+    <span class="identifier">select_result</span>
+<span class="special">);</span>
+
+<span class="comment">// Commit the transaction. This makes the updated row visible</span>
+<span class="comment">// to other transactions and releases any locked rows.</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="string">"COMMIT"</span><span class="special">,</span> <span class="identifier">empty_result</span><span class="special">);</span>
+
+<span class="comment">// Process the retrieved rows</span>
+<span class="keyword">if</span> <span class="special">(</span><span class="identifier">select_result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">empty</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"No employee with ID = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">employee_id</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+<span class="keyword">else</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Updated: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">select_result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">).</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="string">" "</span>
+              <span class="special">&lt;&lt;</span> <span class="identifier">select_result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">).</span><span class="identifier">at</span><span class="special">(</span><span class="number">1</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<h4>
+<a name="mysql.tutorial_updates_transactions.h3"></a>
+      <span class="phrase"><a name="mysql.tutorial_updates_transactions.using_multi_queries"></a></span><a class="link" href="tutorial_updates_transactions.html#mysql.tutorial_updates_transactions.using_multi_queries">使用多查询</a>
+    </h4>
+<p>虽然我们编写的代码是正确的, 但性能并不好: 我们的查询并不依赖先前查询的结果, 却要对服务器进行 4 次往返. 这些往返发生在事务块内, 会导致某些数据库行被锁定, 加剧争用. 我们可以通过把四条语句放在一个批次中运行来改善这种情况.</p>
+<p>多查询是一种协议特性, 允许你一次执行多个查询. 各个查询必须用分号分隔.</p>
+<p>多查询默认是禁用的. 要启用它们, 请在连接前将 <a class="link" href="ref/boost__mysql__connect_params/multi_queries.html" title="connect_params::multi_queries"><code class="literal">connect_params::multi_queries</code></a> 设置为 <code class="computeroutput"><span class="keyword">true</span></code>:</p>
+<pre class="programlisting"><span class="comment">// The server host, username, password and database to use.</span>
+<span class="comment">// Setting multi_queries to true makes it possible to run several</span>
+<span class="comment">// semicolon-separated queries with async_execute.</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">connect_params</span> <span class="identifier">params</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">server_address</span><span class="special">.</span><span class="identifier">emplace_host_and_port</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">(</span><span class="identifier">server_hostname</span><span class="special">));</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">username</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">username</span><span class="special">);</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">password</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">password</span><span class="special">);</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">database</span> <span class="special">=</span> <span class="string">"boost_mysql_examples"</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">multi_queries</span> <span class="special">=</span> <span class="keyword">true</span><span class="special">;</span>
+
+<span class="comment">// Connect to the server</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_connect</span><span class="special">(</span><span class="identifier">params</span><span class="special">);</span>
+</pre>
+<p>可以使用我们一直在用的相同函数来组合并执行多查询:</p>
+<pre class="programlisting"><span class="comment">// Run the 4 statements in a single round-trip.</span>
+<span class="comment">// If an error is encountered, successive statements won't be executed</span>
+<span class="comment">// and the transaction won't be committed.</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span>
+        <span class="string">"START TRANSACTION;"</span>
+        <span class="string">"UPDATE employee SET first_name = {} WHERE id = {};"</span>
+        <span class="string">"SELECT first_name, last_name FROM employee WHERE id = {};"</span>
+        <span class="string">"COMMIT"</span><span class="special">,</span>
+        <span class="identifier">new_first_name</span><span class="special">,</span>
+        <span class="identifier">employee_id</span><span class="special">,</span>
+        <span class="identifier">employee_id</span>
+    <span class="special">),</span>
+    <span class="identifier">result</span>
+<span class="special">);</span>
+</pre>
+<p>访问结果的方式稍有不同. MySQL 返回 4 个结果集, 每个查询对应一个. 在 Boost.MySQL 中, 这种操作被称为 <a class="link" href="multi_resultset.html" title="多结果集: 存储过程与多查询">多结果集</a>. <a class="link" href="ref/boost__mysql__results.html" title="results"><code class="literal">results</code></a> 实际上可以存储多个结果集. <a class="link" href="ref/boost__mysql__results/rows.html" title="results::rows"><code class="literal">results::rows</code></a> 实际访问的是第一个结果集中的行, 因为这是最常见的用例.</p>
+<p>我们想获取 <code class="computeroutput"><span class="identifier">SELECT</span></code> 语句检索到的行, 它对应第三个结果集. <a class="link" href="ref/boost__mysql__results/at.html" title="results::at"><code class="literal">results::at</code></a> 返回一个 <a class="link" href="ref/boost__mysql__resultset_view.html" title="resultset_view"><code class="literal">resultset_view</code></a>, 其中包含所请求结果集的数据:</p>
+<pre class="programlisting"><span class="comment">// Get the 3rd resultset. resultset_view API is similar to results</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">resultset_view</span> <span class="identifier">select_result</span> <span class="special">=</span> <span class="identifier">result</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">2</span><span class="special">);</span>
+<span class="keyword">if</span> <span class="special">(</span><span class="identifier">select_result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">empty</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"No employee with ID = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">employee_id</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+<span class="keyword">else</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Updated: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">select_result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">).</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="string">" "</span>
+              <span class="special">&lt;&lt;</span> <span class="identifier">select_result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">).</span><span class="identifier">at</span><span class="special">(</span><span class="number">1</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<h4>
+<a name="mysql.tutorial_updates_transactions.h4"></a>
+      <span class="phrase"><a name="mysql.tutorial_updates_transactions.using_manual_indices_in_with_par"></a></span><a class="link" href="tutorial_updates_transactions.html#mysql.tutorial_updates_transactions.using_manual_indices_in_with_par">在 with_params 中使用手工索引</a>
+    </h4>
+<p>把 <code class="computeroutput"><span class="identifier">employee_id</span></code> 重复写进传递给 <code class="computeroutput"><span class="identifier">with_params</span></code> 的参数列表, 这违反了 DRY 原则. 与 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">format</span></code> 一样, 我们可以使用手工索引来多次引用同一个格式化参数:</p>
+<pre class="programlisting"><span class="comment">// {0} will be replaced by the first format arg, {1} by the second</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span>
+        <span class="string">"START TRANSACTION;"</span>
+        <span class="string">"UPDATE employee SET first_name = {0} WHERE id = {1};"</span>
+        <span class="string">"SELECT first_name, last_name FROM employee WHERE id = {1};"</span>
+        <span class="string">"COMMIT"</span><span class="special">,</span>
+        <span class="identifier">new_first_name</span><span class="special">,</span>
+        <span class="identifier">employee_id</span>
+    <span class="special">),</span>
+    <span class="identifier">result</span>
+<span class="special">);</span>
+</pre>
+<h4>
+<a name="mysql.tutorial_updates_transactions.h5"></a>
+      <span class="phrase"><a name="mysql.tutorial_updates_transactions.using_the_static_interface_with_"></a></span><a class="link" href="tutorial_updates_transactions.html#mysql.tutorial_updates_transactions.using_the_static_interface_with_">将静态接口用于多结果集</a>
+    </h4>
+<p>最后, 我们可以重写代码以使用静态接口, 这样更安全. 在多结果集场景中, 我们可以给 <a class="link" href="ref/boost__mysql__static_results.html" title="static_results"><code class="literal">static_results</code></a> 传入与预期结果集数量相同的行类型. 我们可以使用空元组 (<code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">tuple</span><span class="special">&lt;&gt;</span></code>) 作为不返回行的操作 (如 <code class="computeroutput"><span class="identifier">UPDATE</span></code>) 的行类型. 我们的代码变为:</p>
+<pre class="programlisting"><span class="comment">// MySQL returns one resultset for each query, so we pass 4 params to static_results</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">static_results</span><span class="special">&lt;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">tuple</span><span class="special">&lt;&gt;,</span>                  <span class="comment">// START TRANSACTION doesn't generate rows</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">tuple</span><span class="special">&lt;&gt;,</span>                  <span class="comment">// The UPDATE doesn't generate rows</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pfr_by_name</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;,</span>  <span class="comment">// The SELECT generates employees</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">tuple</span><span class="special">&lt;&gt;</span>                   <span class="comment">// The COMMIT doesn't generate rows</span>
+<span class="special">&gt;</span> <span class="identifier">result</span><span class="special">;</span>
+
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span>
+        <span class="string">"START TRANSACTION;"</span>
+        <span class="string">"UPDATE employee SET first_name = {0} WHERE id = {1};"</span>
+        <span class="string">"SELECT first_name, last_name FROM employee WHERE id = {1};"</span>
+        <span class="string">"COMMIT"</span><span class="special">,</span>
+        <span class="identifier">new_first_name</span><span class="special">,</span>
+        <span class="identifier">employee_id</span>
+    <span class="special">),</span>
+    <span class="identifier">result</span>
+<span class="special">);</span>
+
+<span class="comment">// We've run 4 SQL queries, so MySQL has returned us 4 resultsets.</span>
+<span class="comment">// The SELECT is the 3rd resultset. Retrieve the generated rows.</span>
+<span class="comment">// employees is a span&lt;const employee&gt;</span>
+<span class="keyword">auto</span> <span class="identifier">employees</span> <span class="special">=</span> <span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">&lt;</span><span class="number">2</span><span class="special">&gt;();</span>
+<span class="keyword">if</span> <span class="special">(</span><span class="identifier">employees</span><span class="special">.</span><span class="identifier">empty</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"No employee with ID = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">employee_id</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+<span class="keyword">else</span>
+<span class="special">{</span>
+    <span class="keyword">const</span> <span class="identifier">employee</span><span class="special">&amp;</span> <span class="identifier">emp</span> <span class="special">=</span> <span class="identifier">employees</span><span class="special">[</span><span class="number">0</span><span class="special">];</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Updated: employee is now "</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">first_name</span> <span class="special">&lt;&lt;</span> <span class="string">" "</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">last_name</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<h4>
+<a name="mysql.tutorial_updates_transactions.h6"></a>
+      <span class="phrase"><a name="mysql.tutorial_updates_transactions.wrapping_up"></a></span><a class="link" href="tutorial_updates_transactions.html#mysql.tutorial_updates_transactions.wrapping_up"> </a>收尾</h4>
+<p>本教程的完整程序清单见 <a class="link" href="examples/tutorial_updates_transactions.html" title="教程 5 清单: UPDATE、事务与多查询">此处</a>.</p>
+<p>现在可以继续阅读 <a class="link" href="tutorial_connection_pool.html" title="教程 6: 连接池">下一个教程</a>.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2019-2024 Ruben Perez<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="tutorial_static_interface.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="tutorial_connection_pool.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

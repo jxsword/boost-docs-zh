@@ -1,0 +1,111 @@
+<!doctype HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!--
+(C) Copyright 2002-4 Robert Ramey - http://www.rrsd.com . 
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt)
+-->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<link rel="stylesheet" type="text/css" href="../../../boost.css">
+<link rel="stylesheet" type="text/css" href="style.css">
+<title>Serialization - 数据流迭代器</title>
+</head>
+<body link="#0000ff" vlink="#800080">
+<table border="0" cellpadding="7" cellspacing="0" width="100%" summary="header">
+  <tr> 
+    <td valign="top" width="300"> 
+      <h3><a href="../../../index.htm"><img height="86" width="277" alt="C++ Boost" src="../../../boost.png" border="0"></a></h3>
+    </td>
+    <td valign="top"> 
+      <h1 align="center">序列化</h1>
+      <h2 align="center">数据流迭代器</h2>
+    </td>
+  </tr>
+</table>
+<hr>
+<h3>动机</h3> 考虑把任意长度的 8 位字节序列转换为 base64 文本的问题. 这样的过程可以概括为: <p>
+source =&gt; 8 bit bytes =&gt; 6 bit integers =&gt; encode to base64 characters =&gt; insert line breaks =&gt; destination
+<p>我们更倾向于这样的解决方案:<ul>
+  <li>可分解. 这样我们可以独立地编写、测试、验证和使用转换的每个 (简单) 阶段.<li>可组合. 这样我们可以把这个组合体在其他地方当作新组件使用.<li>高效. 这样我们不必重新实现一遍.<li>可伸缩. 这样它对短的以及任意长的序列都能良好工作.</ul> 最接近满足这些要求的方法是 <a href="../../iterator/doc/index.html"> Iterator Adaptors </a> 所描述并实现的方法. Iterator Adaptor 模板使我们感兴趣的基本特性是: 它接受一个基迭代器作为参数, 并从中获得输入. 这表明类似下面的事情也许是可能的. <pre><code>
+typedef 
+    insert_linebreaks&lt;         // insert line breaks every 76 characters
+        base64_from_binary&lt;    // convert binary values to base64 characters
+            transform_width&lt;   // retrieve 6 bit integers from a sequence of 8 bit bytes
+                const char *,
+                6,
+                8
+            &gt;
+        &gt; 
+        ,76
+    &gt; 
+    base64_text; // compose all the above operations in to a new iterator
+
+std::copy(
+    base64_text(address),
+    base64_text(address + count),
+    ostream_iterator&lt;CharType&gt;(os)
+);
+</code></pre> 的确, 这看起来正是迭代器适配器旨在解决的那类问题. Iterator Adaptor 库已经包含可以配置来实现上述部分操作的模块. 例如, 其中包含 <a target="transform_iterator" href="../../iterator/doc/transform_iterator.html"> transform_iterator </a>, 可用于实现 6 位整数 =&gt; base64 编码. <h3>数据流迭代器</h3> 遗憾的是, 并非所有继承自 Iterator Adaptors 的迭代器都能保证满足上述可组合性目标. 为达到这一目的, 编写它们时必须考虑一些额外事项. 我们把数据流迭代器定义为继承自 <code style="white-space: normal">iterator_adaptor</code> 并满足一小组额外要求的类. <h4>模板化构造函数</h4>
+<p>模板化构造函数的形式为: <pre><code>
+template&lt;class T&gt;
+dataflow_iterator(T start) :
+    iterator_adaptor(Base(start))
+{}
+</code></pre> 把这些构造函数应用于上面的示例时, 会生成以下代码: <pre><code>
+std::copy(
+    insert_linebreaks(
+        base64_from_binary(
+            transform_width(
+                address
+            ),
+        )
+    ),
+    insert_linebreaks(
+        base64_from_binary(
+            transform_width(
+                address + count
+            )
+        )
+    )
+    ostream_iterator&lt;char&gt;(os)
+);
+</code></pre> 该模板的递归应用正是自动生成上例中构造函数 <code style="white-space: normal">base64_text(const char *)</code> 的机制. 最初的 Iterator Adaptors 包含一个 <code style="white-space: normal">make_xxx_iterator</code> 来实现这一功能. 不过我认为, 与上面使用模板化构造函数的方案相比, 它们用起来很笨重.<h4>解引用</h4> 解引用某些迭代器可能引发问题. 例如, 编写 <code style="white-space: normal">remove_whitespace</code> 迭代器的一种自然方式是在构造迭代器时跳过开头的空白字符. 如果传给构造函数的迭代器"指向"字符串末尾, 这将会失败. <a target="filter_iterator" href="../../iterator/doc/filter_iterator.html">
+<code style="white-space: normal">filter_iterator</code></a> 就是以这种方式实现的, 因此不能用于我们的场景. 所以, 在实现该迭代器时, 空白移除被推迟到迭代器真正被解引用之时. <h4>比较</h4> <code style="white-space: normal">iterator_adaptor</code> 的迭代器相等性的默认实现只是对基迭代器调用相等运算符. 一般来说这是令人满意的. 但这意味着其他操作 (例如解引用) 不得提前递增基迭代器. 避免这一点在某些情况下可能非常棘手 (例如 transform_width) . <p>满足上述要求的迭代器应当是可组合的, 上面的示例代码应当能实现我们的二进制到 base64 转换.<h3>库中包含的迭代器</h3> 序列化库的数据流迭代器都定义在命名空间 <code style="white-space: normal">boost::archive::iterators</code> 中, 这里包含的有: <dl class="index">
+  <dt><a target="base64_from_binary" href="../../../boost/archive/iterators/base64_from_binary.hpp"> base64_from_binary </a></dt>
+  <dd>把整数序列转换为 base64 文本</dd>
+
+  <dt><a target="base64_from_binary" href="../../../boost/archive/iterators/binary_from_base64.hpp"> binary_from_base64 </a></dt>
+  <dd>把 base64 字符序列转换为整数序列</dd>
+
+  <dt><a target="insert_linebreaks" href="../../../boost/archive/iterators/insert_linebreaks.hpp"> insert_linebreaks </a></dt>
+  <dd>给定一个序列, 创建一个插入了换行符的序列</dd>
+
+  <dt><a target="mb_from_wchar" href="../../../boost/archive/iterators/mb_from_wchar.hpp"> mb_from_wchar </a></dt>
+  <dd>把宽字符序列转换为多字节字符序列</dd>
+
+  <dt><a target="remove_whitespace" href="../../../boost/archive/iterators/remove_whitespace.hpp"> remove_whitespace </a></dt>
+  <dd>给定一个字符序列, 返回一个移除了空白字符的序列. 这是一个派生, 来自 <code style="white-space: normal">boost::filter_iterator</code></dd>
+
+  <dt><a target="transform_width" href="../../../boost/archive/iterators/transform_width.hpp"> transform_width </a></dt>
+  <dd>把 x 位元素序列转换为 y 位元素序列. 这是在 base64 文本之间相互转换的迭代器的关键组件.</dd>
+
+  <dt><a target="wchar_from_mb" href="../../../boost/archive/iterators/wchar_from_mb.hpp"> wchar_from_mb </a></dt>
+  <dd>把当前 locale 中的多字节字符序列转换为宽字符.</dd>
+
+  <dt><a target="xml_escape" href="../../../boost/archive/iterators/xml_escape.hpp"> xml_escape </a></dt>
+  <dd>转义 xml 文本中的 xml 元字符</dd>
+
+  <dt><a target="xml_unescape" href="../../../boost/archive/iterators/xml_unescape.hpp"> xml_unescape </a></dt>
+  <dd>反转义 xml 转义序列以生成普通文本序列<dd>
+</dl>
+<p>标准流迭代器对我们来说不太适用. 在把 <code style="white-space: normal">wchar_t</code> 实现为无符号短整数的系统上 (例如 VC 6) , 它们不能按我预期的方式工作. 我还做了一些调整以与我们的数据流迭代器概念保持一致. 与其余迭代器一样, 它们位于命名空间 <code style="white-space: normal">boost::archive::interators</code> 中, 以避免与标准库版本冲突.<dl class = "index">
+  <dt><a target="istream_iterator" href="../../../boost/archive/iterators/istream_iterator.hpp"> istream_iterator </a></dt>
+  <dt><a target="ostream_iterator" href="../../../boost/archive/iterators/ostream_iterator.hpp"> ostream_iterator </a></dt>
+</dl>
+
+<hr>
+<p><i> 版权所有 © <a href="http://www.rrsd.com"> Robert Ramey </a> 2002-2004. 按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt) </i></p>
+</body>
+</html>

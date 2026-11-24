@@ -1,0 +1,174 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+<HEAD>
+    <TITLE>Tutorial</TITLE>
+    <LINK REL="stylesheet" HREF="../../../../boost.css">
+    <LINK REL="stylesheet" HREF="../theme/iostreams.css">
+</HEAD>
+<BODY>
+
+<!-- Begin Banner -->
+
+    <H1 CLASS="title">Tutorial</H1>
+    <HR CLASS="banner">
+
+<!-- End Banner -->
+
+<!-- Begin Nav -->
+
+<DIV CLASS='nav'>
+    <A HREF='writing_devices.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/prev.png'></A>
+    <A HREF='tutorial.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/up.png'></A>
+    <A HREF='container_sink.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/next.png'></A>
+</DIV>
+
+<!-- End Nav -->
+
+        <!-- Container Source -->
+
+<A NAME="container_source"></A>
+<H2>2.1.2. 编写 <CODE>container_source</CODE></H2>
+
+<P>假设你想编写一个从 STL 容器读取字符的设备. 只支持读取的设备称为 <A HREF="../concepts/source.html">源</A>. 典型的窄字符源如下所示: <PRE CLASS="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <SPAN CLASS="literal">&lt;iosfwd&gt;</SPAN>                          <SPAN CLASS='comment'>// streamsize</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="HEADER" HREF="../../../../boost/iostreams/categories.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/categories.hpp&gt;</SPAN></A>  <SPAN CLASS='comment'>// source_tag
+</SPAN>
+<SPAN CLASS='keyword'>namespace</SPAN> io = boost::iostreams;
+
+<SPAN CLASS='keyword'>class</SPAN> my_source {
+<SPAN CLASS='keyword'>public</SPAN>:
+    <SPAN CLASS='keyword'>typedef</SPAN> <SPAN CLASS='keyword'>char</SPAN>        char_type;
+    <SPAN CLASS='keyword'>typedef</SPAN> source_tag  category;
+
+    std::streamsize read(<SPAN CLASS='keyword'>char</SPAN>* s, std::streamsize n)
+    {
+        <SPAN CLASS='comment'>// Read up to n characters from the underlying data source</SPAN>
+        <SPAN CLASS='comment'>// into the buffer s, returning the number of characters</SPAN>
+        <SPAN CLASS='comment'>// read; return -1 to indicate EOF</SPAN>
+    }
+
+    <SPAN CLASS='comment'>/* Other members */</SPAN>
+};</PRE>
+
+<P>此处成员类型 <A HREF="../guide/traits.html#char_type"><CODE>char_type</CODE></A> 指示 my_source 所处理字符的类型, 几乎总是 <CODE>char</CODE> 或 <CODE>wchar_t</CODE>. 成员类型 <A HREF="../guide/traits.html#char_type">category</A> 指示设备支持哪些基本 I/O 操作. 类别标签 <A HREF="../guide/traits.html#category_tags"><CODE>source_tag</CODE></A> 表示仅支持 <A HREF="../functions/read.html"><CODE>read</CODE></A>.</P>
+
+<P>成员函数 <CODE>read</CODE> 将至多 <CODE>n</CODE> 个字符读入缓冲区 <CODE>s</CODE> 并返回读取的字符数 — 除非该数为 <CODE>0</CODE> 且已到达流末尾, 此时返回特殊值 <CODE>-1</CODE>. 一般而言, 即使尚未到达流末尾, 源的成员函数 <CODE>read</CODE> 返回的字符也可能少于请求的数量; 这类源被称为 <I>非阻塞</I>. 不过, 非阻塞设备与标准流和流缓冲的交互不佳, 因此大多数设备应是 <A HREF="../concepts/blocking.html">Blocking</A> 的. <I>参见</I> <A HREF="../guide/asynchronous.html">异步与非阻塞 I/O</A>.</P>
+
+<P>你也可以将上面的示例写为如下形式:</P>
+
+<PRE CLASS="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="HEADER" HREF="../../../../boost/iostreams/concepts.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/concepts.hpp&gt;</SPAN></A>  <SPAN CLASS='comment'>// source</SPAN>
+
+<SPAN CLASS='keyword'>class</SPAN> my_source : <SPAN CLASS='keyword'>public</SPAN> source {
+<SPAN CLASS='keyword'>public</SPAN>:
+    std::streamsize read(<SPAN CLASS='keyword'>char</SPAN>* s, std::streamsize n);
+
+    <SPAN CLASS='comment'>/* Other members */</SPAN>
+};</PRE>
+
+<P>此处 <A HREF="../classes/device.html#synopsis"><CODE>source</CODE></A> 是一个便利基类, 它提供成员类型 <CODE>char_type</CODE> 与 <CODE>category</CODE>, 以及成员函数 <CODE>close</CODE> 与 <CODE>imbue</CODE> 的空操作实现 — 此处并不需要.<P>现在你可以开始编写你的 <CODE>container_source</CODE> 了. 为简单起见, 假设你的容器的迭代器是 RandomAccessIterator.</P>
+
+<PRE CLASS="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <SPAN CLASS='literal'>&lt;algorithm&gt;</SPAN>                       <SPAN CLASS='comment'>// copy, min</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <SPAN CLASS='literal'>&lt;iosfwd&gt;</SPAN>                          <SPAN CLASS='comment'>// streamsize</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS='header' HREF="../../../../boost/iostreams/categories.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/categories.hpp&gt;</SPAN></A>  <SPAN CLASS='comment'>// source_tag</SPAN>
+
+<SPAN CLASS='keyword'>namespace</SPAN> boost { <SPAN CLASS='keyword'>namespace</SPAN> iostreams { <SPAN CLASS='keyword'>namespace</SPAN> example {
+
+<SPAN CLASS='keyword'>template</SPAN>&lt;<SPAN CLASS='keyword'>typename</SPAN> Container&gt;
+<SPAN CLASS='keyword'>class</SPAN> container_source {
+<SPAN CLASS='keyword'>public</SPAN>:
+    <SPAN CLASS='keyword'>typedef</SPAN> <SPAN CLASS='keyword'>typename</SPAN> Container::value_type  char_type;
+    <SPAN CLASS='keyword'>typedef</SPAN> source_tag                      category;
+    container_source(Container&amp; container)
+        : container_(container), pos_(<SPAN CLASS='numeric_literal'>0</SPAN>)
+        { }
+    std::streamsize read(char_type* s, std::streamsize n)
+    {
+        <SPAN CLASS='keyword'>using</SPAN> <SPAN CLASS='keyword'>namespace</SPAN> std;
+        streamsize amt = <SPAN CLASS='keyword'>static_cast</SPAN>&lt;streamsize&gt;(container_.size() - pos_);
+        streamsize result = (min)(n, amt);
+        <SPAN CLASS='keyword'>if</SPAN> (result != <SPAN CLASS='numeric_literal'>0</SPAN>) {
+            std::copy( container_.begin() + pos_, 
+                       container_.begin() + pos_ + result, 
+                       s );
+            pos_ += result;
+            <SPAN CLASS='keyword'>return</SPAN> result;
+        } <SPAN CLASS='keyword'>else</SPAN> {
+            <SPAN CLASS='keyword'>return</SPAN> <SPAN CLASS='numeric_literal'>-1</SPAN>; <SPAN CLASS='comment'>// EOF</SPAN>
+        }
+    }
+    Container&amp; container() { <SPAN CLASS='keyword'>return</SPAN> container_; }
+<SPAN CLASS='keyword'>private</SPAN>:
+    <SPAN CLASS='keyword'>typedef</SPAN> <SPAN CLASS='keyword'>typename</SPAN> Container::size_type   size_type;
+    Container&amp;  container_;
+    size_type   pos_;
+};
+
+} } } <SPAN CLASS='comment'>// End namespace boost::iostreams:example</SPAN></PRE>
+
+<P>此处注意</P>
+<UL>
+<LI>成员类型 <CODE>char_type</CODE> 被定义为等于容器的 <CODE>value_type</CODE>;<LI>成员类型 <CODE>category</CODE> 告诉 Iostreams 库: <CODE>container_source</CODE> 是 <A HREF="../concepts/source.html">Source</A> 的模型; 且<LI> <CODE>container_source</CODE> 可以由 <CODE>Container</CODE> 的实例构造 — 该实例以引用方式传入并存储, 可<I>经由</I>成员函数 <CODE>container()</CODE> 访问.</UL>
+
+<P> <CODE>read()</CODE> 实现背后的主要思想很简单: 首先, 计算要读取的字符数, 即容器中剩余未读字符数与请求字符数两者的最小值. 其次, 若要读取的字符数非零, 则从容器复制该数量的字符到提供的缓冲区, 并更新当前读取位置. 若字符数为零 — 即容器中的所有字符已被之前的 read 调用消费 (或容器本来就是空的) — 则返回 <CODE>-1</CODE> 以表示流末尾.</P>
+
+<P>可以如下从 container_source 读取</P>
+
+<PRE CLASS="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <SPAN CLASS='literal'>&lt;cassert&gt;</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <SPAN CLASS='literal'>&lt;string&gt;</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="HEADER" HREF="../../../../boost/iostreams/stream.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/stream.hpp&gt;</SPAN></A>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="HEADER" HREF="../../example/container_device.hpp"><SPAN CLASS='literal'>&lt;libs/iostreams/example/container_device.hpp&gt;</SPAN></A> <SPAN CLASS='comment'>// container_source</SPAN>
+
+<SPAN CLASS='keyword'>namespace</SPAN> io = boost::iostreams;
+<SPAN CLASS='keyword'>namespace</SPAN> ex = boost::iostreams::example;
+
+<SPAN CLASS='keyword'>int</SPAN> main()
+{
+    <SPAN CLASS='keyword'>using</SPAN> <SPAN CLASS='keyword'>namespace</SPAN> std;
+    <SPAN CLASS='keyword'>typedef</SPAN> ex::container_source&lt;string&gt; string_source;
+
+    string                     input = <SPAN CLASS='literal'>"Hello World!"</SPAN>;
+    string                     output;
+    io::stream&lt;string_source&gt;  in(input);
+    getline(in, output);
+    assert(input == output);
+}</PRE>
+
+<P>最后, 我应指出 Iostreams 库提供了更简便的从 STL 容器读取的方式: <A HREF="../../../range/doc/html/range/reference/utilities/iterator_range.html" TARGET="_top"><CODE>boost::iterator_range</CODE></A> 的实例可以直接添加到 <A HREF="../guide/filtering_streams.html">过滤流与流缓冲</A>. 因此可以写:</P>
+
+<PRE CLASS="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <SPAN CLASS='literal'>&lt;cassert&gt;</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <SPAN CLASS='literal'>&lt;string&gt;</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="HEADER" HREF="../../../../boost/iostreams/filtering_stream.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/filtering_stream.hpp&gt;</SPAN></A>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="HEADER" HREF="../../../../boost/range/iterator_range.hpp"><SPAN CLASS='literal'>&lt;boost/range/iterator_range.hpp&gt;</SPAN></A>
+
+<SPAN CLASS='keyword'>namespace</SPAN> io = boost::iostreams;
+
+<SPAN CLASS='keyword'>int</SPAN> main()
+{
+    <SPAN CLASS='keyword'>using</SPAN> <SPAN CLASS='keyword'>namespace</SPAN> std;
+
+    string                 input = <SPAN CLASS='literal'>"Hello World!"</SPAN>;
+    string                 output;
+    io::filtering_istream  in(boost::make_iterator_range(input));
+    getline(in, output);
+    assert(input == output);
+}</PRE>
+
+<!-- Begin Nav -->
+
+<DIV CLASS='nav'>
+    <A HREF='writing_devices.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/prev.png'></A>
+    <A HREF='tutorial.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/up.png'></A>
+    <A HREF='container_sink.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/next.png'></A>
+</DIV>
+
+<!-- End Nav -->
+
+<!-- Begin Footer -->
+
+<HR>
+
+
+<P CLASS="copyright">© 版权所有 2008 <a href="http://www.coderage.com/" target="_top">CodeRage, LLC</a><br/>© 版权所有 2004-2007 <a href="https://www.boost.org/users/people/jonathan_turkanis.html" target="_top">Jonathan Turkanis</a></P>
+<P CLASS="copyright">使用、修改与分发受 Boost 软件许可 2.0 版约束. (随附文件 <A HREF="../../../../LICENSE_1_0.txt">LICENSE_1_0.txt</A> 或复制于 <A HREF="http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</A>)</P>
+<!-- End Footer -->
+
+</BODY>

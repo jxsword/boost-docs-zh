@@ -1,0 +1,62 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>如何包装需要取得裸指针所有权的函数?</title>
+<link rel="stylesheet" href="../boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost.Python">
+<link rel="up" href="../faq.html" title="第 5 章 常见问题 (FAQ)">
+<link rel="prev" href="how_can_i_find_the_existing_pyob.html" title="如何找到持有某个 C++ 对象的既有 PyObject?">
+<link rel="next" href="compilation_takes_too_much_time_.html" title="编译耗时太长、占用内存太多! 我该怎么做才能更快?">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr><td valign="top"><img alt="" width="" height="" src="../images/boost.png"></td></tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="how_can_i_find_the_existing_pyob.html"><img src="../images/prev.png" alt="上一页"></a><a accesskey="u" href="../faq.html"><img src="../images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="compilation_takes_too_much_time_.html"><img src="../images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="faq.how_can_i_wrap_a_function_which0"></a><a class="link" href="how_can_i_wrap_a_function_which0.html" title="如何包装需要取得裸指针所有权的函数?">如何包装需要取得裸指针所有权的函数?</a>
+</h3></div></div></div>
+<p>
+        <span class="bold"><strong>问:</strong></span> 我正在包装的一个 API 的一部分大致如下:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">A</span> <span class="special">{};</span> <span class="keyword">struct</span> <span class="identifier">B</span> <span class="special">{</span> <span class="keyword">void</span> <span class="identifier">add</span><span class="special">(</span> <span class="identifier">A</span><span class="special">*</span> <span class="special">);</span> <span class="special">}</span>
+<span class="identifier">where</span> <span class="identifier">B</span><span class="special">::</span><span class="identifier">add</span><span class="special">()</span> <span class="identifier">takes</span> <span class="identifier">ownership</span> <span class="identifier">of</span> <span class="identifier">the</span> <span class="identifier">pointer</span> <span class="identifier">passed</span> <span class="identifier">to</span> <span class="identifier">it</span><span class="special">.</span>
+</pre>
+<p>然而:</p>
+<pre class="programlisting"><span class="identifier">a</span> <span class="special">=</span> <span class="identifier">mod</span><span class="special">.</span><span class="identifier">A</span><span class="special">()</span>
+<span class="identifier">b</span> <span class="special">=</span> <span class="identifier">mod</span><span class="special">.</span><span class="identifier">B</span><span class="special">()</span>
+<span class="identifier">b</span><span class="special">.</span><span class="identifier">add</span><span class="special">(</span> <span class="identifier">a</span> <span class="special">)</span>
+<span class="identifier">del</span> <span class="identifier">a</span>
+<span class="identifier">del</span> <span class="identifier">b</span>
+<span class="preprocessor"># python</span> <span class="identifier">interpreter</span> <span class="identifier">crashes</span>
+<span class="preprocessor"># later</span> <span class="identifier">due</span> <span class="identifier">to</span> <span class="identifier">memory</span> <span class="identifier">corruption</span><span class="special">.</span>
+</pre>
+<p>即使通过 <code class="computeroutput"><span class="identifier">with_custodian_and_ward</span></code> 把 a 的生存期绑定到 b, 也无法阻止 Python 对象 a 最终尝试删除它所指向的对象. 有没有办法实现被包装 C++ 对象的 "所有权转移"?</p>
+<p>
+        --Bruce Lowery
+      </p>
+<p>有: 确保 C++ 对象由 auto_ptr 持有:</p>
+<pre class="programlisting"><span class="identifier">class_</span><span class="special">&lt;</span><span class="identifier">A</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">auto_ptr</span><span class="special">&lt;</span><span class="identifier">A</span><span class="special">&gt;</span> <span class="special">&gt;(</span><span class="string">"A"</span><span class="special">)</span>
+  <span class="special">...</span>
+  <span class="special">;</span>
+</pre>
+<p>然后创建一个接受 auto_ptr 参数的薄包装函数:</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">b_insert</span><span class="special">(</span><span class="identifier">B</span> <span class="special">&amp;</span><span class="identifier">b</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">auto_ptr</span><span class="special">&lt;</span><span class="identifier">A</span><span class="special">&gt;</span> <span class="identifier">a</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="identifier">b</span><span class="special">.</span><span class="identifier">insert</span><span class="special">(</span><span class="identifier">a</span><span class="special">.</span><span class="identifier">get</span><span class="special">());</span>
+  <span class="identifier">a</span><span class="special">.</span><span class="identifier">release</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<p>把它包装为 B.add. 注意, 通过 <code class="computeroutput"><span class="identifier">manage_new_object</span></code> 返回的指针也将由 <code class="computeroutput"><span class="identifier">auto_ptr</span></code> 持有, 因而这种所有权转移也能正确工作.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2002-2015 David Abrahams, Stefan Seefeld<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="how_can_i_find_the_existing_pyob.html"><img src="../images/prev.png" alt="上一页"></a><a accesskey="u" href="../faq.html"><img src="../images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="compilation_takes_too_much_time_.html"><img src="../images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

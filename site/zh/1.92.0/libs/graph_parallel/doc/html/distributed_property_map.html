@@ -1,0 +1,463 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.6: http://docutils.sourceforge.net/" />
+<title>Parallel BGL 分布式属性映射</title>
+<link rel="stylesheet" href="../../../../rst.css" type="text/css" />
+</head>
+<body>
+<div class="document" id="logo-distributed-property-map">
+<h1 class="title"><a class="reference external" href="http://www.osl.iu.edu/research/pbgl"><img align="middle" alt="Parallel BGL" class="align-middle" src="pbgl-logo.png" /></a> 分布式属性映射</h1>
+
+<!-- Copyright (C) 2004-2008 The Trustees of Indiana University.
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt) -->
+<p>分布式属性映射适配器是这样一种属性映射: 其存储的值分布在多个进程上互不重叠的内存空间中. 当前进程本地的值存储在本地属性映射中, 可以通过 <tt class="docutils literal"><span class="pre">get</span></tt> 与 <tt class="docutils literal"><span class="pre">put</span></tt> 立即访问. 存储在远程进程上的值也可以通过 <tt class="docutils literal"><span class="pre">get</span></tt> 与 <tt class="docutils literal"><span class="pre">put</span></tt> 访问, 但行为略有不同:</p>
+<blockquote>
+<ul class="simple">
+<li><tt class="docutils literal"><span class="pre">put</span></tt> 操作更新一个本地幽灵单元 (ghost cell), 并向拥有该值的进程发送一条 "put" 消息. 属主可以随意更新自己的 "官方" 值, 也可以忽略该 put 请求.</li>
+<li><tt class="docutils literal"><span class="pre">get</span></tt> 操作返回本地幽灵单元的内容. 如果没有可用的幽灵单元, 则使用一个 (可定制的) 默认值创建一个.</li>
+</ul>
+</blockquote>
+<p>使用分布式属性映射比使用本地顺序属性映射需要多加小心. 尽管语法与语义相似, 但分布式属性映射可能包含过期的信息, 只有通过在所有进程中调用 <tt class="docutils literal"><span class="pre">synchronize</span></tt> 函数才能保证同步.</p>
+<p>为了解决值过期的问题, 分布式属性映射支持多种 <a class="reference internal" href="#consistency-models">一致性模型</a>, 并可为其提供 <a class="reference internal" href="#reduction-operation">归并操作</a>.</p>
+<p>分布式属性映射满足 <a class="reference external" href="http://www.boost.org/libs/property_map/ReadablePropertyMap.html">可读属性映射</a> 的要求, 并可能满足 <a class="reference external" href="http://www.boost.org/libs/property_map/WritablePropertyMap.html">可写属性映射</a> 与 <a class="reference external" href="http://www.boost.org/libs/property_map/ReadWritePropertyMap.html">读/写属性映射</a> 概念的要求. 但是, 分布式属性映射 <em>不</em> 满足 <a class="reference external" href="http://www.boost.org/libs/property_map/LvaluePropertyMap.html">左值属性映射</a> 概念的要求, 因为驻留在另一进程中的元素无法直接寻址. 分布式属性映射有以下几种形式:</p>
+<blockquote>
+<ul class="simple">
+<li><a class="reference internal" href="#distributed-property-map-adaptor">分布式属性映射适配器</a></li>
+<li><a class="reference internal" href="#distributed-iterator-property-map">分布式迭代器属性映射</a></li>
+<li><a class="reference internal" href="#distributed-safe-iterator-property-map">分布式安全迭代器属性映射</a></li>
+<li><a class="reference internal" href="#local-property-map">本地属性映射</a></li>
+</ul>
+</blockquote>
+<div class="section" id="consistency-models">
+<h1>一致性模型</h1>
+<p>分布式属性映射提供多种一致性模型, 它们影响从远程键读取与写入的值同属主进程中存储的该键 "官方" 值之间的关系. 分布式属性映射的一致性模型可通过成员函数 <tt class="docutils literal"><span class="pre">set_consistency_model</span></tt> 设为 <tt class="docutils literal"><span class="pre">boost::parallel::consistency_model</span></tt> 枚举中各标志的按位或. 各个标志为:</p>
+<blockquote>
+<ul class="simple">
+<li><tt class="docutils literal"><span class="pre">cm_forward</span></tt>: 默认的一致性模型, 它把远程处理器上 <tt class="docutils literal"><span class="pre">put</span></tt> 操作的值向前传播给被更改值的属主.</li>
+<li><tt class="docutils literal"><span class="pre">cm_backward</span></tt>: 在所有值都被转发或刷写到属主进程之后, 每个进程会收到其每个幽灵单元的更新值. 同步之后, 保证幽灵单元中的值与属主处理器上存储的值一致.</li>
+<li><tt class="docutils literal"><span class="pre">cm_bidirectional</span></tt>: <tt class="docutils literal"><span class="pre">cm_forward</span></tt> 与 <tt class="docutils literal"><span class="pre">cm_backward</span></tt> 的组合.</li>
+<li><tt class="docutils literal"><span class="pre">cm_flush</span></tt>: 在同步开始时, 把本地存储在幽灵单元中的所有值发送给其属主处理器.</li>
+<li><tt class="docutils literal"><span class="pre">cm_reset</span></tt>: 在同步之后执行 <tt class="docutils literal"><span class="pre">reset()</span></tt> 操作, 把每个幽灵单元中的值设为默认值.</li>
+<li><tt class="docutils literal"><span class="pre">cm_clear</span></tt>: 在同步之后执行 <tt class="docutils literal"><span class="pre">clear()</span></tt> 操作, 消除所有幽灵单元.</li>
+</ul>
+</blockquote>
+<p>有几种常见的标志组合会产生有意义的一致性模型. 其中一些组合为:</p>
+<blockquote>
+<ul class="simple">
+<li><tt class="docutils literal"><span class="pre">cm_forward</span></tt>: 单独使用时, 向前一致性模型可使 <a class="reference external" href="dijkstra_shortest_paths.html">Dijkstra 最短路径</a> 与 <a class="reference external" href="breadth_first_search.html">广度优先搜索</a> 等算法正确运作.</li>
+<li><tt class="docutils literal"><span class="pre">cm_flush</span> <span class="pre">&amp;</span> <span class="pre">cm_reset</span></tt>: 所有更新值先在本地排队, 然后在同步步骤中刷写. 一旦刷写完成, 幽灵单元将恢复为其默认值. <a class="reference external" href="page_rank.html">PageRank</a> 实现使用该一致性模型在本地为每个节点累计排名.</li>
+</ul>
+</blockquote>
+</div>
+<div class="section" id="reduction-operation">
+<h1>归并操作</h1>
+<p>归并操作通过决定对属性映射的多次写入如何解析、以及在请求未知值时属性映射应当做什么, 来维持一致性. 更具体地说, 归并操作在两种情况下被使用:</p>
+<blockquote>
+<ol class="arabic simple">
+<li>当需要一个远程键的值但当前没有可用的值时, 归并操作提供一个合适的默认值. 例如, 存储距离的分布式属性映射可以有返回无穷大作为默认值的归并操作, 而顶点颜色的分布式属性映射可能返回白色作为默认值.</li>
+<li>当从远程进程收到一个值时, 拥有与该值相关联的键的进程必须决定哪个值——本地存储的值、从远程进程收到的值、或两者的某种组合——将作为 "官方" 值存储在属性映射中. 归并操作把本地值与远程值变换为要存储的 "官方" 值.</li>
+</ol>
+</blockquote>
+<p>分布式属性映射的归并操作可通过 <tt class="docutils literal"><span class="pre">distributed_property_map</span></tt> 的 <tt class="docutils literal"><span class="pre">set_reduce</span></tt> 方法设置. 归并操作是带有两个签名的函数对象. 第一个签名接受一个 (远程) 键并返回其默认值, 而第二个签名接受一个键与两个值 (先本地后远程), 并返回将存储在本地属性映射中的组合值. 归并操作还必须包含一个静态常量 <tt class="docutils literal"><span class="pre">non_default_resolver</span> <span class="pre">, 它声明归并操作的默认值是否真正表现得像默认值. 它应为</span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span>
+<span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span>
+<span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre">``true</span></tt>, 当默认值有意义时 (例如距离的无穷值); 当不应使用默认值时为 <tt class="docutils literal"><span class="pre">false</span></tt>.</p>
+<p>分布式 PageRank 算法使用以下归并操作. 远程节点的默认排名为 0. 排名先在本地累计, 然后归并操作通过相加来组合本地值与远程值. 与 "把所有值刷写到属主然后本地重置" 的一致性模型相结合, 由此得到的属性映射将在每个处理器上计算部分和, 然后在属主处理器上累计结果. PageRank 归并操作定义如下.</p>
+<pre class="literal-block">
+template&lt;typename T&gt;
+struct rank_accumulate_reducer {
+  static const bool non_default_resolver = true;
+
+  // The default rank of an unknown node
+  template&lt;typename K&gt;
+  T operator()(const K&amp;) const { return T(0); }
+
+  template&lt;typename K&gt;
+  T operator()(const K&amp;, const T&amp; x, const T&amp; y) const { return x + y; }
+};
+</pre>
+</div>
+<div class="section" id="distributed-property-map-adaptor">
+<h1>分布式属性映射适配器</h1>
+<p>分布式属性映射适配器从一个本地属性映射、一个应在其上进行分布的 <a class="reference external" href="process_group.html">进程组</a>、以及一个索引该分布式属性映射的 <a class="reference external" href="GlobalDescriptor.html">全局描述符</a> 类型创建分布式属性映射.</p>
+<div class="section" id="synopsis">
+<h2>概要</h2>
+<pre class="literal-block">
+template&lt;typename ProcessGroup, typename LocalPropertyMap, typename Key,
+         typename GhostCellS = gc_mapS&gt;
+class distributed_property_map
+{
+public:
+  typedef ... ghost_regions_type;
+
+  distributed_property_map();
+
+  distributed_property_map(const ProcessGroup&amp; pg,
+                           const LocalPropertyMap&amp; pm);
+
+  template&lt;typename Reduce&gt;
+  distributed_property_map(const ProcessGroup&amp; pg,
+                           const LocalPropertyMap&amp; pm,
+                           const Reduce&amp; reduce);
+
+  template&lt;typename Reduce&gt; void set_reduce(const Reduce&amp; reduce);
+  void set_consistency_model(int model);
+
+  void flush();
+  void reset();
+  void clear();
+};
+
+reference get(distributed_property_map pm, const key_type&amp; key);
+
+void
+put(distributed_property_map pm, const key_type&amp; key, const value_type&amp; value);
+local_put(distributed_property_map pm, const key_type&amp; key, const value_type&amp; value);
+
+void request(distributed_property_map pm, const key_type&amp; key);
+
+void synchronize(distributed_property_map&amp; pm);
+
+template&lt;typename Key, typename ProcessGroup, typename LocalPropertyMap&gt;
+distributed_property_map&lt;ProcessGroup, LocalPropertyMap, Key&gt;
+make_distributed_property_map(const ProcessGroup&amp; pg, LocalPropertyMap pmap);
+
+template&lt;typename Key, typename ProcessGroup, typename LocalPropertyMap,
+         typename Reduce&gt;
+distributed_property_map&lt;ProcessGroup, LocalPropertyMap, Key&gt;
+make_distributed_property_map(const ProcessGroup&amp; pg, LocalPropertyMap pmap,
+                              Reduce reduce);
+</pre>
+</div>
+<div class="section" id="template-parameters">
+<h2>模板参数</h2>
+<dl class="docutils">
+<dt><strong>ProcessGroup</strong>:</dt>
+<dd>属性映射分布其上的进程组的类型, 同时也是通信的媒介.</dd>
+<dt><strong>LocalPropertyMap</strong>:</dt>
+<dd>将为该处理器本地的键存储值的属性映射的类型. 该属性映射的 <tt class="docutils literal"><span class="pre">value_type</span></tt> 将成为分布式属性映射的 <tt class="docutils literal"><span class="pre">value_type</span></tt>. 分布式属性映射对与 <tt class="docutils literal"><span class="pre">LocalPropertyMap</span></tt> 相同的属性映射概念建模, 但有一个例外: 分布式属性映射不能是 <a class="reference external" href="http://www.boost.org/libs/property_map/LvaluePropertyMap.html">左值属性映射</a> (因为远程值不可寻址), 因此限于 <a class="reference external" href="http://www.boost.org/libs/property_map/ReadWritePropertyMap.html">读/写属性映射</a>.</dd>
+<dt><strong>Key</strong>:</dt>
+<dd>分布式属性映射的 <tt class="docutils literal"><span class="pre">key_type</span></tt>, 它必须对 <a class="reference external" href="GlobalDescriptor.html">全局描述符</a> 概念建模. <tt class="docutils literal"><span class="pre">Key</span></tt> 参数的进程 ID 类型必须与 <tt class="docutils literal"><span class="pre">ProcessGroup</span></tt> 的进程 ID 类型一致, 且 <tt class="docutils literal"><span class="pre">Key</span></tt> 的本地描述符类型必须可转换为 <tt class="docutils literal"><span class="pre">LocalPropertyMap</span></tt> 的 <tt class="docutils literal"><span class="pre">key_type</span></tt>.</dd>
+<dt><strong>GhostCellS</strong>:</dt>
+<dd><p class="first">一个选择器类型, 指示幽灵单元应如何存储在分布式属性映射中. 视编译器而定, 有两到三个选项:</p>
+<blockquote class="last">
+<ul class="simple">
+<li><tt class="docutils literal"><span class="pre">boost::parallel::gc_mapS</span></tt> (默认): 使用 STL <tt class="docutils literal"><span class="pre">map</span></tt> 存储每个进程的幽灵单元.</li>
+<li><tt class="docutils literal"><span class="pre">boost::parallel::gc_vector_mapS</span></tt>: 使用排序的 STL <tt class="docutils literal"><span class="pre">vector</span></tt> 存储每个进程的幽灵单元. 该选项适用于幽灵单元中可能只有少量插入的情形; 例如, 如果使用的唯一幽灵单元是用于相邻顶点的, 属性映射可以用每个相邻顶点的单元来初始化, 提供比 <tt class="docutils literal"><span class="pre">map</span></tt> 更快的查找并使用更少的空间.</li>
+<li><tt class="docutils literal"><span class="pre">boost::parallel::gc_hash_mapS</span></tt>: 使用 GCC 的 <tt class="docutils literal"><span class="pre">hash_map</span></tt> 存储幽灵单元. 对于幽灵单元集合无法预先确定的大问题规模, 该选项可能比 <tt class="docutils literal"><span class="pre">map</span></tt> 提升性能.</li>
+</ul>
+</blockquote>
+</dd>
+</dl>
+</div>
+<div class="section" id="member-functions">
+<h2>成员函数</h2>
+<pre class="literal-block">
+distributed_property_map();
+</pre>
+<p>默认构造一个分布式属性映射. 该属性映射处于无效状态, 只有在重新赋值为有效属性映射后才能使用.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+distributed_property_map(const ProcessGroup&amp; pg,
+                         const LocalPropertyMap&amp; pm);
+
+template&lt;typename Reduce&gt;
+distributed_property_map(const ProcessGroup&amp; pg,
+                         const LocalPropertyMap&amp; pm,
+                         const Reduce&amp; reduce);
+</pre>
+<p>从一个进程组与一个本地属性映射构造属性映射. 如果未提供 <tt class="docutils literal"><span class="pre">reduce</span></tt> 操作, 将使用默认的 <tt class="docutils literal"><span class="pre">basic_reduce&lt;value_type&gt;</span></tt>.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template&lt;typename Reduce&gt; void set_reduce(const Reduce&amp; reduce);
+</pre>
+<p>用新操作 <tt class="docutils literal"><span class="pre">reduce</span></tt> 替换当前的归并操作.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void set_consistency_model(int model);
+</pre>
+<p>设置分布式属性映射的一致性模型, 它将在下一个同步步骤生效. 各种一致性模型标志的效果说明参见 <a class="reference internal" href="#consistency-models">一致性模型</a> 一节.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void flush();
+</pre>
+<p>发出一条消息, 把所有本地幽灵单元的内容发送给这些单元的属主.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void reset();
+</pre>
+<p>把存储在每个幽灵单元中的值替换为由归并操作生成的默认值.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void clear();
+</pre>
+<p>从属性映射中移除所有幽灵单元.</p>
+</div>
+<div class="section" id="free-functions">
+<h2>自由函数</h2>
+<pre class="literal-block">
+reference get(distributed_property_map pm, const key_type&amp; key);
+</pre>
+<p>获取 <tt class="docutils literal"><span class="pre">pm</span></tt> 中与给定 <tt class="docutils literal"><span class="pre">key</span></tt> 相关联的元素. 如果键指向本地存储的数据, 返回与该键相关联的实际值. 如果键指向非本地数据, 返回幽灵单元的值. 如果幽灵单元不存在, 行为取决于当前的归并操作: 如果已设置归并操作且其 <tt class="docutils literal"><span class="pre">non_default_resolver</span></tt> 设为 <tt class="docutils literal"><span class="pre">true</span></tt>, 则将按照归并操作提供的默认值创建一个幽灵单元. 否则, 对 <tt class="docutils literal"><span class="pre">get</span></tt> 的调用将中止, 因为该远程单元不存在值. 要避免此问题, 可以设置一个生成默认值的归并操作, 或对该值调用 <tt class="docutils literal"><span class="pre">request()</span></tt> 然后执行同步步骤, 或在读取之前向该单元 <tt class="docutils literal"><span class="pre">put</span></tt> 一个值.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void
+put(distributed_property_map pm, const key_type&amp; key, const value_type&amp; value);
+</pre>
+<p>把与 <tt class="docutils literal"><span class="pre">key</span></tt> 相关联的给定 <tt class="docutils literal"><span class="pre">value</span></tt> 放入属性映射 <tt class="docutils literal"><span class="pre">pm</span></tt>. 如果键指向本地存储的数据, 该值会被立即更新. 如果键指向存储在远程进程中的数据, 则更新 (或创建) 包含该键此值的本地幽灵单元, 并把新值发送给属主进程. 注意, 属主进程可能基于归并操作拒绝该值, 但这要到下一个同步步骤才会被检测到.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void
+local_put(distributed_property_map pm, const key_type&amp; key, const value_type&amp; value);
+</pre>
+<p>等价于 <tt class="docutils literal"><span class="pre">put(pm,</span> <span class="pre">key,</span> <span class="pre">value)</span></tt>, 但当非本地键的值被更改时, 不会向属主进程发送消息.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void synchronize(distributed_property_map&amp; pm);
+</pre>
+<p>同步存储在分布式属性映射中的值. 每个进程必须同时执行 <tt class="docutils literal"><span class="pre">synchronize</span></tt>, 之后每个进程中的幽灵单元将反映属主进程中存储的实际值.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void request(distributed_property_map pm, const key_type&amp; key);
+</pre>
+<p>请求在下一个同步步骤之后元素 "key" 可用. 对于非本地键, 这意味着建立幽灵单元并发起请求.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template&lt;typename Key, typename ProcessGroup, typename LocalPropertyMap&gt;
+distributed_property_map&lt;ProcessGroup, LocalPropertyMap, Key&gt;
+make_distributed_property_map(const ProcessGroup&amp; pg, LocalPropertyMap pmap);
+
+template&lt;typename Key, typename ProcessGroup, typename LocalPropertyMap,
+         typename Reduce&gt;
+distributed_property_map&lt;ProcessGroup, LocalPropertyMap, Key&gt;
+make_distributed_property_map(const ProcessGroup&amp; pg, LocalPropertyMap pmap,
+                              Reduce reduce);
+</pre>
+<p>在进程组 <tt class="docutils literal"><span class="pre">pg</span></tt> 与本地属性映射 <tt class="docutils literal"><span class="pre">pmap</span></tt> 之上创建分布式属性映射. 如果未提供归并操作, 将生成默认的归并操作.</p>
+</div>
+</div>
+<div class="section" id="distributed-iterator-property-map">
+<h1>分布式迭代器属性映射</h1>
+<p>分布式迭代器属性映射适配器允许使用与非分布式迭代器属性映射相同的语法, 从随机访问迭代器创建分布式属性映射. 该特化基于一个 <a class="reference internal" href="#local-property-map">本地属性映射</a>, 后者包含本地描述符的索引, 通常返回用于描述分布式图的顶点索引.</p>
+<div class="section" id="id1">
+<h2>概要</h2>
+<pre class="literal-block">
+template&lt;typename RandomAccessIterator, typename ProcessGroup,
+         typename GlobalKey, typename LocalMap, typename ValueType,
+         typename Reference&gt;
+class iterator_property_map&lt;RandomAccessIterator,
+                            local_property_map&lt;ProcessGroup, GlobalKey, LocalMap&gt;,
+                            ValueType, Reference&gt;
+{
+public:
+  typedef local_property_map&lt;ProcessGroup, GlobalKey, LocalMap&gt; index_map_type;
+
+  iterator_property_map();
+  iterator_property_map(RandomAccessIterator iter, const index_map_type&amp; id);
+};
+
+reference get(iterator_property_map pm, const key_type&amp; key);
+void put(iterator_property_map pm, const key_type&amp; key, const value_type&amp; value);
+
+template&lt;typename RandomAccessIterator, typename ProcessGroup,
+         typename GlobalKey, typename LocalMap&gt;
+iterator_property_map&lt;RandomAccessIterator,
+                      local_property_map&lt;ProcessGroup, GlobalKey, LocalMap&gt; &gt;
+make_iterator_property_map(RandomAccessIterator iter,
+                           local_property_map&lt;ProcessGroup, GlobalKey, LocalMap&gt; id);
+</pre>
+</div>
+<div class="section" id="id2">
+<h2>成员函数</h2>
+<pre class="literal-block">
+iterator_property_map();
+</pre>
+<p>默认构造一个分布式迭代器属性映射. 该属性映射处于无效状态, 必须先重新赋值才能使用.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+iterator_property_map(RandomAccessIterator iter, const index_map_type&amp; id);
+</pre>
+<p>使用属性映射 <tt class="docutils literal"><span class="pre">id</span></tt> 把全局描述符映射到本地索引, 构造一个分布式迭代器属性映射. 随机访问迭代器序列 <tt class="docutils literal"><span class="pre">[iter,</span> <span class="pre">iter</span> <span class="pre">+</span> <span class="pre">n)</span></tt> 必须是有效范围, 其中 <tt class="docutils literal"><span class="pre">[0,</span> <span class="pre">n)</span></tt> 是本地索引的范围.</p>
+</div>
+<div class="section" id="id3">
+<h2>自由函数</h2>
+<pre class="literal-block">
+reference get(iterator_property_map pm, const key_type&amp; key);
+</pre>
+<p>从分布式属性映射返回与给定 <tt class="docutils literal"><span class="pre">key</span></tt> 相关联的值.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void put(iterator_property_map pm, const key_type&amp; key, const value_type&amp; value);
+</pre>
+<p>在分布式属性映射中把该值与给定键相关联.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template&lt;typename RandomAccessIterator, typename ProcessGroup,
+         typename GlobalKey, typename LocalMap, typename ValueType,
+         typename Reference&gt;
+iterator_property_map&lt;RandomAccessIterator,
+                      local_property_map&lt;ProcessGroup, GlobalKey, LocalMap&gt;,
+                                         ValueType, Reference&gt;
+make_iterator_property_map(RandomAccessIterator iter,
+                           local_property_map&lt;ProcessGroup, GlobalKey, LocalMap&gt;,
+                                              ValueType, Reference&gt; id);
+</pre>
+<p>使用给定的迭代器 <tt class="docutils literal"><span class="pre">iter</span></tt> 与本地索引属性映射 <tt class="docutils literal"><span class="pre">id</span></tt> 创建一个分布式迭代器属性映射.</p>
+</div>
+</div>
+<div class="section" id="distributed-safe-iterator-property-map">
+<h1>分布式安全迭代器属性映射</h1>
+<p>分布式安全迭代器属性映射适配器允许使用与非分布式安全迭代器属性映射相同的语法, 从随机访问迭代器创建分布式属性映射. 该特化基于一个 <a class="reference internal" href="#local-property-map">本地属性映射</a>, 后者包含本地描述符的索引, 通常返回用于描述分布式图的顶点索引. 安全迭代器属性映射会在尝试访问值之前检查访问的索引, 以确保它们不越界.</p>
+<div class="section" id="id4">
+<h2>概要</h2>
+<pre class="literal-block">
+template&lt;typename RandomAccessIterator, typename ProcessGroup,
+         typename GlobalKey, typename LocalMap, typename ValueType,
+         typename Reference&gt;
+class safe_iterator_property_map&lt;RandomAccessIterator,
+                                 local_property_map&lt;ProcessGroup, GlobalKey, LocalMap&gt;,
+                                 ValueType, Reference&gt;
+{
+public:
+  typedef local_property_map&lt;ProcessGroup, GlobalKey, LocalMap&gt; index_map_type;
+
+  safe_iterator_property_map();
+  safe_iterator_property_map(RandomAccessIterator iter, std::size_t n,
+                             const index_map_type&amp; id);
+};
+
+reference get(safe_iterator_property_map pm, const key_type&amp; key);
+void put(safe_iterator_property_map pm, const key_type&amp; key, const value_type&amp; value);
+
+template&lt;typename RandomAccessIterator, typename ProcessGroup,
+         typename GlobalKey, typename LocalMap, typename ValueType,
+         typename Reference&gt;
+safe_iterator_property_map&lt;RandomAccessIterator,
+                           local_property_map&lt;ProcessGroup, GlobalKey, LocalMap&gt;,
+                                              ValueType, Reference&gt;
+make_safe_iterator_property_map(RandomAccessIterator iter,
+                                std::size_t n,
+                                local_property_map&lt;ProcessGroup, GlobalKey, LocalMap&gt;,
+                                                   ValueType, Reference&gt; id);
+</pre>
+</div>
+<div class="section" id="id5">
+<h2>成员函数</h2>
+<pre class="literal-block">
+safe_iterator_property_map();
+</pre>
+<p>默认构造一个分布式安全迭代器属性映射. 该属性映射处于无效状态, 必须先重新赋值才能使用.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+safe_iterator_property_map(RandomAccessIterator iter, std::size_t n,
+                           const index_map_type&amp; id);
+</pre>
+<p>使用属性映射 <tt class="docutils literal"><span class="pre">id</span></tt> 把全局描述符映射到本地索引, 构造一个分布式安全迭代器属性映射. 随机访问迭代器序列为 <tt class="docutils literal"><span class="pre">[iter,</span> <span class="pre">iter</span> <span class="pre">+</span> <span class="pre">n)</span></tt>.</p>
+</div>
+<div class="section" id="id6">
+<h2>自由函数</h2>
+<pre class="literal-block">
+reference get(safe_iterator_property_map pm, const key_type&amp; key);
+</pre>
+<p>从分布式属性映射返回与给定 <tt class="docutils literal"><span class="pre">key</span></tt> 相关联的值.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void put(safe_iterator_property_map pm, const key_type&amp; key, const value_type&amp; value);
+</pre>
+<p>在分布式属性映射中把该值与给定键相关联.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template&lt;typename RandomAccessIterator, typename ProcessGroup,
+         typename GlobalKey, typename LocalMap, typename ValueType,
+         typename Reference&gt;
+safe_iterator_property_map&lt;RandomAccessIterator,
+                           local_property_map&lt;ProcessGroup, GlobalKey, LocalMap&gt;,
+                                              ValueType, Reference&gt;
+make_safe_iterator_property_map(RandomAccessIterator iter,
+                                std::size_t n,
+                                local_property_map&lt;ProcessGroup, GlobalKey, LocalMap&gt;,
+                                                   ValueType, Reference&gt; id);
+</pre>
+<p>使用给定的迭代器 <tt class="docutils literal"><span class="pre">iter</span></tt> 与本地索引属性映射 <tt class="docutils literal"><span class="pre">id</span></tt> 创建一个分布式安全迭代器属性映射. <tt class="docutils literal"><span class="pre">id</span></tt> 中的索引必须</p>
+</div>
+</div>
+<div class="section" id="local-property-map">
+<h1>本地属性映射</h1>
+<p>一种属性映射适配器, 它访问底层属性映射, 后者的键类型为 <tt class="docutils literal"><span class="pre">Key</span></tt> 类型的本地部分, 用于键的本地子集. 本地属性映射通常由分布式图类型用于顶点索引属性.</p>
+<div class="section" id="id7">
+<h2>概要</h2>
+<pre class="literal-block">
+template&lt;typename ProcessGroup, typename GlobalKey, typename LocalMap&gt;
+  class local_property_map
+  {
+  public:
+  typedef typename property_traits&lt;LocalMap&gt;::value_type value_type;
+  typedef GlobalKey                                      key_type;
+  typedef typename property_traits&lt;LocalMap&gt;::reference  reference;
+  typedef typename property_traits&lt;LocalMap&gt;::category   category;
+
+  explicit
+  local_property_map(const ProcessGroup&amp; process_group = ProcessGroup(),
+                     const LocalMap&amp; local_map = LocalMap());
+
+  reference operator[](const key_type&amp; key);
+};
+
+reference get(const local_property_map&amp; pm, key_type key);
+void put(local_property_map pm, const key_type&amp; key, const value_type&amp; value);
+</pre>
+</div>
+<div class="section" id="id8">
+<h2>模板参数</h2>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field"><th class="field-name">ProcessGroup:</th><td class="field-body">全局键分布其上的进程组的类型.</td>
+</tr>
+<tr class="field"><th class="field-name">GlobalKey:</th><td class="field-body">本地属性映射的 <tt class="docutils literal"><span class="pre">key_type</span></tt>, 它必须对 <a class="reference external" href="GlobalDescriptor.html">全局描述符</a> 概念建模. <tt class="docutils literal"><span class="pre">GlobalKey</span></tt> 参数的进程 ID 类型必须与 <tt class="docutils literal"><span class="pre">ProcessGroup</span></tt> 的进程 ID 类型一致, 且 <tt class="docutils literal"><span class="pre">GlobalKey</span></tt> 的本地描述符类型必须可转换为 <tt class="docutils literal"><span class="pre">LocalMap</span></tt> 的 <tt class="docutils literal"><span class="pre">key_type</span></tt>.</td>
+</tr>
+<tr class="field"><th class="field-name">LocalMap:</th><td class="field-body">将为该处理器本地的键存储值的属性映射的类型. 该属性映射的 <tt class="docutils literal"><span class="pre">value_type</span></tt> 将成为本地属性映射的 <tt class="docutils literal"><span class="pre">value_type</span></tt>. 本地属性映射对与 <tt class="docutils literal"><span class="pre">LocalMap</span></tt> 相同的属性映射概念建模.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="id9">
+<h2>成员函数</h2>
+<pre class="literal-block">
+explicit
+local_property_map(const ProcessGroup&amp; process_group = ProcessGroup(),
+                   const LocalMap&amp; local_map = LocalMap());
+</pre>
+<p>构造一个本地属性映射, 其键分布在给定的进程组上, 且访问给定的本地映射.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+reference operator[](const key_type&amp; key);
+</pre>
+<p>访问与给定键相关联的值, 该键必须对本进程是本地的.</p>
+</div>
+<div class="section" id="id10">
+<h2>自由函数</h2>
+<pre class="literal-block">
+reference get(const local_property_map&amp; pm, key_type key);
+</pre>
+<p>返回与给定键相关联的值, 该键必须对本进程是本地的.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void put(local_property_map pm, const key_type&amp; key, const value_type&amp; value);
+</pre>
+<p>设置与给定键相关联的值, 该键必须对本进程是本地的.</p>
+<hr class="docutils" />
+<p>版权所有 (C) 2004, 2005 The Trustees of Indiana University.</p>
+<p>作者: Douglas Gregor 和 Andrew Lumsdaine</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr class="footer" /> 生成时间: 2009-05-31 00:22 UTC. 由 <a class="reference external" href="http://docutils.sourceforge.net/">Docutils</a> 依据 <a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> 源生成.</div>
+</body>
+</html>

@@ -1,0 +1,345 @@
+<!doctype HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!--
+(C) Copyright 2002-4 Robert Ramey - http://www.rrsd.com .
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt)
+-->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<link rel="stylesheet" type="text/css" href="../../../boost.css">
+<link rel="stylesheet" type="text/css" href="style.css">
+<title>Serialization - 教程</title>
+</head>
+<body link="#0000ff" vlink="#800080">
+<table border="0" cellpadding="7" cellspacing="0" width="100%" summary="header">
+  <tr>
+    <td valign="top" width="300">
+       <h3><a href="../../../index.htm"><img height="86" width="277" alt="C++ Boost" src="../../../boost.png" border="0"></a></h3>
+    </td>
+    <td valign="top">
+      <h1 align="center">序列化</h1>
+      <h2 align="center">Tutorial</h2>
+    </td>
+  </tr>
+</table>
+<hr>
+<dl class="page-index">
+  <dt><a href="#simplecase"> 一个非常简单的例子 </a>
+  <dt><a href="#nonintrusiveversion"> 非侵入版本 </a>
+  <dt><a href="#serializablemembers"> 可序列化成员 </a>
+  <dt><a href="#derivedclasses"> 派生类 </a>
+  <dt><a href="#pointers"> 指针 </a>
+  <dt><a href="#arrays"> 数组 </a>
+  <dt><a href="#stl"> STL 集合 </a>
+  <dt><a href="#versioning"> 类版本控制 </a>
+  <dt><a href="#splitting"> 把 <code style="white-space: normal">serialize</code> 拆分为 <code style="white-space: normal">save/load</code></a>
+  <dt><a href="#archives"> 档案 </a>
+  <dt><a href="#examples"> 示例列表 </a>
+</dl> 输出档案类似于输出数据流. 数据可以用 &lt;&lt; 或 &amp; 运算符保存到档案: <pre><code>
+ar &lt;&lt; data;
+ar &amp; data;
+</code></pre> 输入档案类似于输入数据流. 数据可以用 &gt;&gt; 或 &amp; 运算符从档案加载. <pre><code>
+ar &gt;&gt; data;
+ar &amp; data;
+</code></pre>
+<p>当这些运算符用于原始数据类型时, 数据只是简单地保存到档案/从档案加载. 当用于类数据类型时, 会调用类的 <code style="white-space: normal">serialize</code> 函数. 每个 <code style="white-space: normal">serialize</code> 函数使用上述运算符保存/加载其数据成员. 这一过程将以递归方式继续, 直到类中包含的所有数据都被保存/加载.<h3><a name="simplecase"> 一个非常简单的例子 </a></h3> 这些运算符在 <code style="white-space: normal">serialize</code> 函数内部使用, 用于保存和加载类数据成员. <p>本库包含一个名为 <a href="../example/demo.cpp" target="demo_cpp"> demo.cpp </a> 的程序, 演示如何使用本系统. 下面我们从该程序中摘录代码, 用尽可能最简单的情形说明本库的预期用法. <pre>
+<code>
+#include &lt;fstream&gt;
+
+// include headers that implement a archive in simple text format
+#include &lt;boost/archive/text_oarchive.hpp&gt;
+#include &lt;boost/archive/text_iarchive.hpp&gt;
+
+/////////////////////////////////////////////////////////////
+// gps coordinate
+//
+// illustrates serialization for a simple type
+//
+class gps_position
+{
+private:
+    friend class boost::serialization::access;
+    // When the class Archive corresponds to an output archive, the
+    // &amp; operator is defined similar to &lt;&lt;.  Likewise, when the class Archive
+    // is a type of input archive the &amp; operator is defined similar to &gt;&gt;.
+    template&lt;class Archive&gt;
+    void serialize(Archive &amp; ar, const unsigned int version)
+    {
+        ar &amp; degrees;
+        ar &amp; minutes;
+        ar &amp; seconds;
+    }
+    int degrees;
+    int minutes;
+    float seconds;
+public:
+    gps_position(){};
+    gps_position(int d, int m, float s) :
+        degrees(d), minutes(m), seconds(s)
+    {}
+};
+
+int main() {
+    // create and open a character archive for output
+    std::ofstream ofs("filename");
+
+    // create class instance
+    const gps_position g(35, 59, 24.567f);
+
+    // save data to archive
+    {
+        boost::archive::text_oarchive oa(ofs);
+        // write class instance to archive
+        oa &lt;&lt; g;
+    	// archive and stream closed when destructors are called
+    }
+
+    // ... some time later restore the class instance to its orginal state
+    gps_position newg;
+    {
+        // create and open an archive for input
+        std::ifstream ifs("filename");
+        boost::archive::text_iarchive ia(ifs);
+        // read class state from archive
+        ia &gt;&gt; newg;
+        // archive and stream closed when destructors are called
+    }
+    return 0;
+}
+</code>
+</pre>
+<p>对每个要通过序列化保存的类, 必须存在一个函数来保存定义类状态的所有类成员. 对每个要通过序列化加载的类, 必须存在一个函数按保存时的相同顺序加载这些类成员. 在上面的示例中, 这些函数由模板成员函数 <code style="white-space: normal">serialize</code> 生成.<h3><a name="nonintrusiveversion"> 非侵入版本 </a></h3>
+<p>上面的写法是侵入式的. 也就是说, 它要求改动其实例将被序列化的类. 在某些情况下这可能不方便. 系统允许的等价的另一种写法是: <pre><code>
+#include &lt;boost/archive/text_oarchive.hpp&gt;
+#include &lt;boost/archive/text_iarchive.hpp&gt;
+
+class gps_position
+{
+public:
+    int degrees;
+    int minutes;
+    float seconds;
+    gps_position(){};
+    gps_position(int d, int m, float s) :
+        degrees(d), minutes(m), seconds(s)
+    {}
+};
+
+namespace boost {
+namespace serialization {
+
+template&lt;class Archive&gt;
+void serialize(Archive &amp; ar, gps_position &amp; g, const unsigned int version)
+{
+    ar &amp; g.degrees;
+    ar &amp; g.minutes;
+    ar &amp; g.seconds;
+}
+
+} // namespace serialization
+} // namespace boost
+</code></pre>
+<p>在这种情况下, 生成的 serialize 函数不是 <code style="white-space: normal">gps_position</code> 类的成员. 两种写法的功能完全相同.<p>非侵入式序列化的主要用途是: 在不改变类定义的情况下为类实现序列化. 要做到这一点, 类必须暴露足够的信息以重构类状态. 在本例中, 我们假定该类有 <code style="white-space: normal">public</code> 成员——这并不常见. 只有暴露了足够信息以保存和恢复类状态的类才能在不改变类定义的情况下可序列化.<h3><a name="serializablemembers"> 可序列化成员 </a></h3>
+<p>一个带可序列化成员的可序列化类看起来像这样: <pre><code>
+class bus_stop
+{
+    friend class boost::serialization::access;
+    template&lt;class Archive&gt;
+    void serialize(Archive &amp; ar, const unsigned int version)
+    {
+        ar &amp; latitude;
+        ar &amp; longitude;
+    }
+    gps_position latitude;
+    gps_position longitude;
+protected:
+    bus_stop(const gps_position &amp; lat_, const gps_position &amp; long_) :
+    latitude(lat_), longitude(long_)
+    {}
+public:
+    bus_stop(){}
+    // See item # 14 in Effective C++ by Scott Meyers.
+    // re non-virtual destructors in base classes.
+    virtual ~bus_stop(){}
+};
+</code></pre>
+<p>也就是说, 类类型的成员与原始类型的成员一样被序列化.<p>注意, 用档案运算符保存类 <code style="white-space: normal">bus_stop</code> 的实例会调用 <code style="white-space: normal">serialize</code> 函数, 它保存 <code style="white-space: normal">latitude</code> 和 <code style="white-space: normal">longitude</code>. 而这两个又会通过调用 <code style="white-space: normal">serialize</code> (在 <code style="white-space: normal">gps_position</code> 的定义中) 来保存. 这样, 只需对根条目应用档案运算符即可保存整个数据结构.<h3><a name="derivedclasses"> 派生类 </a></h3>
+<p>派生类应当包含其基类的序列化. <pre><code>
+#include &lt;boost/serialization/base_object.hpp&gt;
+
+class bus_stop_corner : public bus_stop
+{
+    friend class boost::serialization::access;
+    template&lt;class Archive&gt;
+    void serialize(Archive &amp; ar, const unsigned int version)
+    {
+        // serialize base class information
+        ar &amp; boost::serialization::base_object&lt;bus_stop&gt;(*this);
+        ar &amp; street1;
+        ar &amp; street2;
+    }
+    std::string street1;
+    std::string street2;
+    virtual std::string description() const
+    {
+        return street1 + " and " + street2;
+    }
+public:
+    bus_stop_corner(){}
+    bus_stop_corner(const gps_position &amp; lat_, const gps_position &amp; long_,
+        const std::string &amp; s1_, const std::string &amp; s2_
+    ) :
+        bus_stop(lat_, long_), street1(s1_), street2(s2_)
+    {}
+};
+</code>
+</pre>
+<p>注意从派生类中对基类的序列化. <b> 不要 </b>直接调用基类的 serialize 函数. 这样做看似可行, 但会绕过用于跟踪写入存储的实例以消除冗余的代码, 还会绕过向档案写入类版本信息的操作. 因此, 建议始终把成员 <code style="white-space: normal">serialize</code> 函数设为 private. 声明 <code style="white-space: normal">friend boost::serialization::access</code> 将授予序列化库访问私有成员变量和函数的权限.<p>
+<h3><a name="pointers"> 指针 </a></h3> 假设我们把一条公交线路定义为一个公交站点的数组. 鉴于 <ol>
+    <li>我们可能有多种类型的公交站点 (记住 bus_stop 是基类)<li>给定的公交站点可能出现在不止一条线路中.</ol>, 用一个指向 <code style="white-space: normal">bus_stop</code> 的指针数组来表示公交线路很方便. <pre>
+<code>
+class bus_route
+{
+    friend class boost::serialization::access;
+    bus_stop * stops[10];
+    template&lt;class Archive&gt;
+    void serialize(Archive &amp; ar, const unsigned int version)
+    {
+        int i;
+        for(i = 0; i &lt; 10; ++i)
+            ar &amp; stops[i];
+    }
+public:
+    bus_route(){}
+};
+</code>
+</pre> 数组 <code style="white-space: normal">stops</code> 的每个成员都会被序列化. 但请记住, 每个成员都是指针——这究竟意味着什么? 序列化的全部目的就是允许在另一个地点和时间重构原始数据结构. 要通过指针做到这一点, 仅保存指针的值是不够的, 还必须保存它所指向的对象. 之后加载该成员时, 必须创建一个新对象, 并把一个新指针加载到类成员中. <p>如果同一个指针被序列化多次, 档案中只会加入一个实例. 读回时不读入任何数据. 唯一发生的操作是: 第二个指针被设为与第一个相等<p>注意, 在本例中, 数组由多态指针组成. 也就是说, 每个数组元素指向若干种可能类型的公交站点之一. 因此保存指针时, 必须保存某种类标识符. 加载指针时, 必须读取类标识符并构造对应类的实例. 最后, 数据可以加载到新建的正确类型实例中. 如 <a href="../example/demo.cpp" target="demo_cpp"> demo.cpp </a> 所示, 通过基类指针序列化指向派生类的指针可能需要显式列举要序列化的派生类. 这称为派生类的"注册"或"导出". 这一要求及其满足方法在 <a href="serialization.html#derivedpointers"> 此处 </a> 有详细解释.<p>所有这些都由序列化库自动完成. 要通过指针访问对象的保存和加载, 上面的代码就是所需的全部.<p>
+<h3><a name="arrays"> 数组 </a></h3> 上面的写法实际上比必要的更复杂. 序列化库会检测被序列化的对象是否为数组, 并生成与上面等价的代码. 因此上面可以简写为: <pre>
+<code>
+class bus_route
+{
+    friend class boost::serialization::access;
+    bus_stop * stops[10];
+    template&lt;class Archive&gt;
+    void serialize(Archive &amp; ar, const unsigned int version)
+    {
+        ar &amp; stops;
+    }
+public:
+    bus_route(){}
+};
+</code>
+</pre>
+<h3><a name="stl"> STL 集合 </a></h3> 上面的示例使用了成员数组. 更可能的是, 这类应用会为此使用 STL 集合. 序列化库包含所有 STL 类的序列化代码. 因此, 下面的改写也会像预期那样工作. <pre>
+<code>
+#include &lt;boost/serialization/list.hpp&gt;
+
+class bus_route
+{
+    friend class boost::serialization::access;
+    std::list&lt;bus_stop *&gt; stops;
+    template&lt;class Archive&gt;
+    void serialize(Archive &amp; ar, const unsigned int version)
+    {
+        ar &amp; stops;
+    }
+public:
+    bus_route(){}
+};
+</code>
+</pre>
+<h3><a name="versioning"> 类版本控制 </a></h3>
+<p>假设我们对 <code style="white-space: normal">bus_route</code> 类感到满意, 构建了一个使用它的程序并发布了产品. 过了一段时间, 决定需要增强程序, <code style="white-space: normal">bus_route</code> 类被改动以加入线路司机的姓名. 于是新版本看起来像: <pre>
+<code>
+#include &lt;boost/serialization/list.hpp&gt;
+#include &lt;boost/serialization/string.hpp&gt;
+
+class bus_route
+{
+    friend class boost::serialization::access;
+    std::list&lt;bus_stop *&gt; stops;
+    std::string driver_name;
+    template&lt;class Archive&gt;
+    void serialize(Archive &amp; ar, const unsigned int version)
+    {
+        ar &amp; driver_name;
+        ar &amp; stops;
+    }
+public:
+    bus_route(){}
+};
+</code>
+</pre> 很好, 全部完成. 但是……那些使用我们应用程序、手头有一堆在先前程序下创建的文件的人怎么办? 这些文件如何与我们的新程序版本一起使用?<p>一般而言, 序列化库在档案中为每个被序列化的类存储一个版本号. 默认此版本号为 0. 加载档案时, 会读取保存它时使用的版本号. 可以修改上面的代码来利用这一点 <pre>
+<code>
+#include &lt;boost/serialization/list.hpp&gt;
+#include &lt;boost/serialization/string.hpp&gt;
+#include &lt;boost/serialization/version.hpp&gt;
+
+class bus_route
+{
+    friend class boost::serialization::access;
+    std::list&lt;bus_stop *&gt; stops;
+    std::string driver_name;
+    template&lt;class Archive&gt;
+    void serialize(Archive &amp; ar, const unsigned int version)
+    {
+        // only save/load driver_name for newer archives
+        if(version &gt; 0)
+            ar &amp; driver_name;
+        ar &amp; stops;
+    }
+public:
+    bus_route(){}
+};
+
+BOOST_CLASS_VERSION(bus_route, 1)
+</code>
+</pre> 通过对每个类应用版本控制, 无需再试图维护文件的版本. 也就是说, 文件版本是其所有组成类版本的组合. 这一系统使程序始终与该程序所有先前版本创建的档案兼容, 所需工作不比本例更多.<h3><a name="splitting"> 把 <code style="white-space: normal">serialize</code> 拆分为 <code style="white-space: normal">save/load</code></a></h3> <code style="white-space: normal">serialize</code> 函数简单、精炼, 并保证类成员按相同顺序保存和加载——这是序列化系统的关键. 不过, 有些情况下加载与保存操作不像这里的示例那样相似. 例如, 这会发生在经过多个版本演化的类上. 上面的类可以改写为: <pre>
+<code>
+#include &lt;boost/serialization/list.hpp&gt;
+#include &lt;boost/serialization/string.hpp&gt;
+#include &lt;boost/serialization/version.hpp&gt;
+#include &lt;boost/serialization/split_member.hpp&gt;
+
+class bus_route
+{
+    friend class boost::serialization::access;
+    std::list&lt;bus_stop *&gt; stops;
+    std::string driver_name;
+    template&lt;class Archive&gt;
+    void save(Archive &amp; ar, const unsigned int version) const
+    {
+        // note, version is always the latest when saving
+        ar  &amp; driver_name;
+        ar  &amp; stops;
+    }
+    template&lt;class Archive&gt;
+    void load(Archive &amp; ar, const unsigned int version)
+    {
+        if(version &gt; 0)
+            ar &amp; driver_name;
+        ar  &amp; stops;
+    }
+    BOOST_SERIALIZATION_SPLIT_MEMBER()
+public:
+    bus_route(){}
+};
+
+BOOST_CLASS_VERSION(bus_route, 1)
+</code>
+</pre> 宏 <code style="white-space: normal">BOOST_SERIALIZATION_SPLIT_MEMBER()</code> 生成这样的代码: 根据档案是用于保存还是加载, 调用 <code style="white-space: normal">save</code> 或 <code style="white-space: normal">load</code>. <h3><a name="archives"> 档案 </a></h3> 我们这里的讨论集中在为类添加序列化能力上. 待序列化数据的实际呈现由档案类实现. 因此, 序列化数据流是类的序列化与所选档案共同作用的结果. 让这两个组件相互独立是一个关键的设计决策. 这使得任何序列化规定都可以用于任何档案. <p>在本教程中, 我们使用了一个特定的档案类——保存用 <code style="white-space: normal">text_oarchive</code>, 加载用 <code style="white-space: normal">text_iarchive</code>. 文本档案把数据呈现为文本, 并且跨平台可移植. 除文本档案外, 本库还包括用于原生二进制数据和 xml 格式数据的档案类. 所有档案类的接口完全相同. 一旦为某个类定义了序列化, 该类就可以被序列化到任何类型的档案.<p>如果当前的档案类集合没有提供特定应用所需的属性、格式或行为, 可以制作一个新的档案类, 或从现有的派生. 这在本手册后文有描述.<h3><a name="examples"> 示例列表</h3>
+<dl>
+    <dt><a href="../example/demo.cpp" target="demo_cpp"> demo.cpp </a>
+    <dd>这是本教程使用的完整示例. 它做以下事情: <ol>
+        <li>创建由不同类型的站点、线路和时刻表组成的结构<li>显示它<li>用一条语句把它序列化到名为 "testfile.txt" 的文件<li>恢复到另一个结构<li>显示恢复后的结构</ol>
+    <a href="../example/demo_output.txt" target="demo_output"> 本程序的输出 </a> 足以验证最初对序列化系统提出的所有要求都得到满足. <a href="../example/demofile.txt"
+    target="test_file"> 档案文件的内容 </a> 也可以显示出来, 因为序列化文件是 ASCII 文本.<dt><a href="../example/demo_xml.cpp" target="demo_xml_cpp"> demo_xml.cpp </a>
+    <dd>这是原始示例的一个变体, 除其他格式外还支持 xml 档案. 额外的包装宏 BOOST_SERIALIZATION_NVP(name) 用于把数据项名称与相应的 xml 标签关联. 重要的是 'name' 必须是有效的 xml 标签, 否则将无法恢复档案. 更多信息参见 <a target="detail" href="wrappers.html#nvp"> 名值对 </a>. <a href="../example/demo_save.xml" target="demo_save_xml"> 此处 </a> 是一个 xml 档案的样子.<dt><a href="../example/demo_xml_save.cpp" target="demo_xml_save_cpp"> demo_xml_save.cpp </a> 和 <a href="../example/demo_xml_load.cpp" target="demo_xml_load_cpp"> demo_xml_load.cpp </a>
+    <dd>另请注意, 尽管我们的示例在同一程序内把程序数据保存到档案并从中加载, 这只是为了便于说明. 一般而言, 档案可能由创建它的同一程序加载, 也可能不是.</dl>
+<p>敏锐的读者可能注意到这些示例包含一个微妙而重要的缺陷. 它们泄漏内存. 公交站点在 <code style="white-space: normal">
+main</code> 函数中创建. 公交时刻表可能多次引用这些站点. 在 main 函数末尾, 公交时刻表被销毁之后, 公交站点被销毁. 这看起来没问题. 但通过从档案加载的过程创建的 <code style="white-space: normal">new_schedule</code> 数据项结构呢? 它包含自己单独的一组公交站点, 这些站点在公交时刻表之外没有被引用. 它们在程序中任何地方都不会被销毁——内存泄漏.<p>有几种修复方法. 一种是显式管理公交站点. 不过, 更健壮、更透明的做法是使用 <code style="white-space: normal">shared_ptr</code> 而不是裸指针. 连同标准库的序列化实现一起, 序列化库包含了 <code style="white-space: normal">boost::shared ptr</code> 的序列化实现. 鉴于此, 修改这些示例中的任何一个以消除内存泄漏应当很容易. 这留给读者作为练习. <hr>
+<p><i> 版权所有 © <a href="http://www.rrsd.com"> Robert Ramey </a> 2002-2004. 按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt) </i></p>
+</body>
+</html>

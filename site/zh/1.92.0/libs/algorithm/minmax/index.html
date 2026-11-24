@@ -1,0 +1,219 @@
+<!DOCTYPE html public "-//w3c//dtd html 4.0 transitional//en">
+<HTML>
+<HEAD>
+   <LINK REL="stylesheet" TYPE="text/css" HREF="../../../boost.css">
+   <META http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+   <META name="GENERATOR" content="Mozilla/4.77 [en] (X11; U; Linux 2.2.19 i686) [Netscape]">
+   <META name="Author" content="Herve Bronnimann">
+   <META name="Description" content="提议 minmax_element 算法的小型库.">
+   <title>Boost Minmax 库</title>
+</HEAD>
+<body text="#000000" bgcolor="#FFFFFF" link="#0000EE" vlink="#551A8B" alink="#FF0000">
+
+<h2><img src="../../../boost.png" WIDTH="276" HEIGHT="86">头文件 &lt;<A
+HREF="../../../boost/algorithm/minmax.hpp">boost/algorithm/minmax.hpp</A>&gt;</H2>
+
+<quote>
+<b>
+<a href="#minmax_element">动机</a><br>
+<a href="#synopsis">概要</a><br>
+<a href="#description">函数模板说明</a><br>
+<a href="#definition">定义</a><br>
+<a href="#reqs">对类型的要求</a><br>
+<a href="#precond">前置条件</a><br>
+<a href="#postcond">后置条件</a><br>
+<a href="#complexity">复杂度</a><br>
+<a href="#example">示例</a><br>
+<a href="#notes">注释</a><br>
+<a href="#rationale">设计理由</a><br>
+<a href="#perf">关于性能的说明</a><br>
+<a href="#acks">致谢</a>
+</b>
+</quote>
+
+
+<a name="minmax_element">
+<h3>动机</h3>
+
+<p>minmax 库由两个头文件组成: <a
+href="../../../boost/algorithm/minmax.hpp">&lt;boost/algorithm/minmax.hpp&gt;</a> 和 <a
+href="../../../boost/algorithm/minmax_element.hpp">&lt;boost/algorithm/minmax_element.hpp&gt;</a>.(见 <a href="#two_headers">设计理由</a>.) 该库解决的问题在于: 同时计算 min 和 max 只需要一次比较, 但使用 <tt>std::min</tt> 和 <tt>std::max</tt>会强制进行两次比较. 更糟的是, 计算一个含 <tt>n</tt> 个元素的范围的最小与最大元素本只需 <tt>3n/2+1</tt> 次比较, 而 <tt>std::min_element</tt> 与 <tt>std::max_element</tt>却强制 <tt>2n</tt> 次(两次遍历). 我一直觉得, 计算一个范围的大小本来一次就够, 却要调用两个函数, 对输入进行两遍遍历, 是一种浪费. 本库同时解决了这两个问题.</p>
+
+<p>第一个文件实现了函数模板 <tt>minmax</tt>, 作为对 C++ 标准的直接扩展. 由于它返回一个由 <tt>const&amp;</tt> 组成的 pair, 我们必须使用 <a
+href="../../tuple/index.html">Boost.tuple</a> 库来构造这样的 pair.(请注意: 其意图并不是修复 <tt>std::min</tt> 与 <tt>std::max</tt> 的已知缺陷, 而是新增一个把两者结合起来的算法; 见 <a href="#no-fix">设计理由</a>.)</p>
+
+<p>第二个文件实现了函数模板 <tt>minmax_element</tt>. 在第二部分中, 它还提出了一些通常无法由 minmax 算法计算, 且在元素相等时更为灵活的变体. 这些变体本也可以用基于策略的设计来提供, 但我否决了这种做法(见 <a href="#no-policy">设计理由</a>).</p>
+
+<p>如果你对 <a href="doc/minmax_benchs.html">性能</a>感兴趣, 你会看到 <tt>minmax_element</tt> 只比单独的 <tt>min_element</tt> 或 <tt>max_element</tt> 略低效, 因而比分别调用 <tt>min_element</tt> 和 <tt>max_element</tt> 高效一倍. 从理论角度看, 所有 <tt>minmax_element</tt> 函数至多执行 <tt>3n/2+1</tt> 次比较, 且恰好对 <tt>ForwardIterator</tt> 递增 n 次.</p>
+</a>
+
+<a name="synopsis">
+<h3>概要: <tt>&lt;boost/algorithm/minmax.hpp&gt;</tt></h3>
+
+<pre>#include &lt;boost/tuple/tuple.hpp>
+
+namespace boost {
+
+  template &lt;class T>
+  tuple&lt;T const&amp;, T const&amp;>
+  minmax(const T&amp; a, const T&amp; b);
+
+  template &lt;class T, class <a href="https://www.boost.org/sgi/stl/BinaryPredicate.html">BinaryPredicate</a>>
+  tuple&lt;T const&amp;, T const&amp;>
+  minmax(const T&amp; a, const T&amp; b, BinaryPredicate comp);
+
+}
+</pre>
+
+<h3>概要: <tt>&lt;boost/algorithm/minmax_element.hpp&gt;</tt></h3>
+
+<pre>#include &lt;utility> // for std::pair
+
+namespace boost {
+
+  template &lt;class <a href="https://www.boost.org/sgi/stl/ForwardIterator.html">ForwardIterator</a>>
+  std::pair&lt;ForwardIterator,ForwardIterator>
+  minmax_element(ForwardIterator first, ForwardIterator last);
+
+  template &lt;class <a href="https://www.boost.org/sgi/stl/ForwardIterator.html">ForwardIterator</a>, class <a href="https://www.boost.org/sgi/stl/BinaryPredicate.html">BinaryPredicate</a>>
+  std::pair&lt;ForwardIterator,ForwardIterator>
+  minmax_element(ForwardIterator first, ForwardIterator last,
+                 BinaryPredicate comp);
+
+}
+</pre> 此外, 还有一批扩展, 用于在元素相等时指定你想选取哪个(哪些)元素. 它们是: <ul>
+<li><tt>first_min_element</tt> 与 <tt>last_min_element</tt></li>
+<li><tt>first_max_element</tt> 与 <tt>last_max_element</tt></li>
+<li><tt>first_min_first_max_element</tt>, <tt>first_min_last_max_element</tt>, <tt>last_min_first_max_element</tt> 和 <tt>last_min_last_max_element</tt></li>
+</ul> 我不打算用完整的概要来烦你, 它们的声明与对应的 <tt>_element</tt> 函数完全相同. 不过, 你可以在 <a href="doc/minmax_synopsis.html">此处</a>找到完整概要. </a>
+
+<a name="description">
+<h3>函数模板说明</h3> <tt>minmax</tt> 算法返回一个 pair <tt>p</tt>, 其中包含 <i>(a,b)</i> 或 <i>(b,a)</i>, 使得第一个版本中 <tt>p.first&lt;p.second</tt>, 或第二个版本中 <tt>comp(p.first,p.second)</tt>. 若两元素等价, 则返回 pair <i>(a,b) </i>. <a href="#Note1">[1]</a>
+<p> <tt>minmax_element </tt>在语义上等价于 <tt>first_min_first_max_element</tt>.<p><tt>First_min_element</tt> 与 <tt>first_max_element</tt> 在范围 <tt>[first, last)</tt> 中查找最小和最大元素. 若存在多个这样的元素实例, 则返回第一个. 它们与 <tt>std::min_element</tt> 和 <tt>std::max_element</tt>完全相同, 仅出于对称性才收入本库.<p><tt>Last_min_element</tt> 与 <tt>last_max_element</tt> 在范围 <tt>[first, last)</tt> 中查找最小和最大元素. 它们与 <tt>std::min_element</tt> 和 <tt>std::max_element</tt>几乎相同, 区别在于它们返回最大元素的最后一个实例(而非像 <tt>first_min_element</tt> 与 <tt>last_max_element</tt>那样返回第一个).<p>由 <tt>first_min_first_max_element</tt>, <tt>first_min_last_max_element</tt>, <tt>last_min_first_max_element</tt> 和 <tt>last_min_last_max_element</tt> 组成的算法家族可以概括如下(用 <i><tt>which</tt></i> 与 <i><tt>what</tt></i> 表示 <tt>first</tt> 或 <tt>last</tt>): <tt><i>which</i>_min_<i>what</i>_max_element</tt> 按 <i><tt>which</tt></i>取第一个或最后一个地查找最小元素, 并按 <i><tt>what</tt></i>取第一个或最后一个地查找最大元素, 范围为 <tt>[first, last)</tt>. 第一个版本在语义上等价于: <pre><tt>  std::make_pair(boost::<i>which</i>_min_element(first,last),
+                 boost::<i>what</i>_max_element(first,last))</tt>,</pre> 第二个版本等价于: <pre><tt>  std::make_pair(boost::<i>which</i>_min_element(first,last,comp),
+                 boost::<i>what</i>_max_element(first,last,comp))</tt>.</pre>
+
+<p><br><b><i>注释</i></b>: <tt>first_min_last_max_element</tt> 也可以描述为: 在范围被稳定排序的情况下, 找到其中的第一个和最后一个元素. </a>
+
+<a name="definition">
+<h3>定义</h3> 定义于 <a href="../../../boost/algorithm/minmax.hpp">minmax.hpp</a> 与 <a href="../../../boost/algorithm/minmax_element.hpp">minmax_element.hpp</a>. </a>
+
+<a name="reqs">
+<h3>对类型的要求</h3> 对 minmax 而言, <tt>T</tt> 必须是 <a href="https://www.boost.org/sgi/stl/LessThanComparable.html">LessThan Comparable</a> 的一个模型. <p>对于所有其他函数模板, 带有两个模板参数的版本:<ul>
+<li>
+<tt>ForwardIterator</tt> 是 <a href="https://www.boost.org/sgi/stl/ForwardIterator.html">Forward Iterator</a> 的一个模型.</li>
+
+<li>
+<tt>ForwardIterator</tt> 的值类型是 <a href="https://www.boost.org/sgi/stl/LessThanComparable.html">LessThan Comparable</a>.</li>
+</ul> 对带三个模板参数的版本: <ul>
+<li>
+<tt>ForwardIterator</tt> 是 <a href="https://www.boost.org/sgi/stl/ForwardIterator.html">Forward Iterator</a> 的一个模型.</li>
+
+<li>
+<tt>BinaryPredicate</tt> 是 <a href="https://www.boost.org/sgi/stl/BinaryPredicate.html">Binary Predicate</a> 的一个模型.</li>
+
+<li>
+<tt>ForwardIterator</tt> 的值类型可转换为 <tt>BinaryPredicate</tt> 的第一实参类型与第二实参类型.</li>
+</ul>
+</a>
+
+<a name="precond">
+<h3>前置条件</h3>
+
+<ul>
+<li>
+<tt>[first, last)</tt> 是一个有效范围.</li>
+</ul>
+</a>
+
+<a name="postcond">
+<h3>后置条件</h3> 除上述语义说明之外, 对 <tt>minmax_element</tt> 与所有 <tt><i>which</i>_min_<i>what</i>_max_element</tt> 变体, 当且仅当 <tt>[first, last)</tt> 是空范围时, 返回值为 <tt>last</tt> 或 <tt>std::make_pair(last,last)</tt>. 否则, 返回值或结果 pair 的两个成员都是范围 <tt>[first, last)</tt> 中的迭代器. </a>
+
+<a name="complexity">
+<h3>复杂度</h3> Minmax 只执行一次比较, 除此之外复杂度为常量. 使用 <tt>boost::tuple&lt;T const&amp;&gt;</tt> 避免了在实参按引用传递时调用拷贝构造函数. <p>所有其他算法的复杂度都是线性的. 它们都恰好执行 n 次递增操作; 若 <tt>[first,last)</tt> 为空则比较次数为零, 否则:<ul>
+<li>所有 <tt>min_element</tt> 与 <tt>max_element</tt> 变体恰好执行 <tt>(n-1)</tt> 次比较,</li>
+
+<li>
+<tt>minmax_element</tt>, <tt>first_min_first_max_element</tt> 和 <tt>last_min_last_max_element</tt> 在 <tt>n</tt> 为偶数且非零时至多执行 <tt>3(n/2)-1</tt> 次比较, 在 <tt>n</tt> 为奇数时至多执行 <tt>3(n/2)+1</tt> 次, <a href="#Note2">[2]</a></li>
+
+<li>
+<tt>first_min_last_max_element</tt> 和 <tt>last_min_first_max_element</tt> 在 n 为偶数且非零时恰好执行 <tt>3n/2-2</tt> 次比较, 在 <tt>n</tt> 为奇数时至多执行 <tt>3(n/2)</tt> 次, <a href="#Note1">[3]</a></li>
+</ul> 其中 <tt>n</tt> 是 <tt>[first,last)</tt> 中元素的个数. </a>
+
+<a name="example">
+<h3>示例</h3> 该示例已收入发行包中, 位于本库的示例部分: <a href="example/minmax_ex.cpp">minmax_ex.cpp</a>. <pre>int main()
+{
+  using namespace std;
+  boost::tuple&lt;int const&amp;, int const&amp;> result1 = boost::minmax(1, 0);
+
+  assert( result1.get<0>() == 0 );
+  assert( result1.get<1>() == 1 );
+
+  <a href="https://www.boost.org/sgi/stl/List.html">list</a>&lt;int> L;
+  <a href="https://www.boost.org/sgi/stl/generate_n.html">generate_n</a>(<a href="https://www.boost.org/sgi/stl/front_insert_iterator.html">front_inserter</a>(L), 1000, rand);
+
+  typedef list&lt;int>::const_iterator iterator;
+  pair&lt; iterator, iterator > result2 = boost::minmax_element(L.begin(), L.end());
+  cout &lt;&lt; "The smallest element is " &lt;&lt; *(result2.first) &lt;&lt; endl;
+  cout &lt;&lt; "The largest element is  " &lt;&lt; *(result2.second) &lt;&lt; endl;
+
+  assert( result2.first  == std::min_element(L.begin(), L.end());
+  assert( result2.second == std::max_element(L.begin(), L.end());
+}</pre>
+</a>
+
+<a name="notes">
+<h3>注释</h3>
+<a NAME="Note1"></a><a href="#Note1">[1]</a> 我们不支持诸如 <tt><a href="../../tuple/doc/tuple_users_guide.html#tiers">tie</a>(a,b)=minmax(a,b)</tt> 这样给两个元素 <tt>a</tt>, <tt>b</tt> 排序的惯用法, 尽管如果我们返回引用而非常量引用, 它会具有期望的效果. 原因是: 若 a 和 b 本来有序, 就会执行两次多余的赋值. 要达到该效果, 更好的做法是坚持用 <tt>if (b&lt;a) swap(a,b)</tt>. <p><a NAME="Note2"></a><a href="#Note2">[2]</a> 这些算法总是至少执行 <tt>3n/2-2</tt> 次比较, 这是任何情况下比较次数的下界(Cormen, Leiserson, Rivest: "Introduction to Algorithms", 9.1 节, 练习 9.1-). 这些算法基本上成对比较元素: 对头两个元素做 1 次比较, 然后对其余每一对元素做 3 次比较(一次用于排序这两个元素, 一次用于更新最小值, 一次用于更新最大值). 当元素个数为奇数时, 最后一个元素需要与当前最小值以及当前最大值各比较一次. 此外, 对于 <tt>minmax</tt>, 在 pair 的两个成员可能相等, 且更新动作保存第二个元素的情况下, 我们会保存第一个元素, 以便最后检查更新是否本应保存第一个元素(在相等的情况下). 很难预测最后一次比较是否执行, 因此两种情况下都用了"至多".<p><a NAME="Note3"></a><a href="#Note3">[3]</a> 这些算法总是至少执行 <tt>3n/2-2</tt> 次比较, 这是任何情况下比较次数的下界. 方法与上文注释 <a href="#Note2">[2]</a>相同, 且与上文一样, 当元素个数为奇数时, 最后一个元素需要与当前最小值以及当前最大值各比较一次. 若前一次比较成功, 我们可以省去后一次比较, 因此奇数情形下用 <i>至多</i>而非 <i>恰好</i>. </a>
+
+<a name="rationale">
+<h3>
+<b>设计理由:</b></h3>
+
+<a name="two_headers">
+<h4><b>为什么不只用一个头文件 <tt>&lt;boost/algorithm/minmax.hpp&gt;</tt>?</b></h4>
+<p>这是在正式评审中最初提出并获批准的设计. 随着 Boost.tuple 的需求变得明朗(由于 <tt>std::pair</tt> 的局限), 要求不需要它的 <tt>minmax_element</tt> 也依赖另一个库就变得讨厌起来. 因此拆分为两个头文件.</p>
+
+<a name="no-fix">
+<h4><b>你的 minmax 与 std::min 和 std::max 存在同样的问题.</b></h4>
+<p>我了解 std::min 与 std::max 的问题, 以及围绕它们进行的一切争论(请参阅 <a href="#Alexandrescu">Alexandrescu 的论文</a>及其中的链接). 但我不认为本库的目的是修复属于 C++ 标准的东西. 我谦卑地认为这超出了本库的范围. 相反, 我遵循标准的方式, 只是提供同一家族的又一个函数. 如果有人想修复 std::min, 他们的修复多半也同样适用于 boost::minmax.</p>
+</a>
+
+<h4><b>为什么没有 <tt>min/max_element_if</tt>?</b></h4>
+<p>在本库的第一个版本中, 我曾提议所有算法的 <tt>_if</tt> 版本(嗯, 不是全部, 因为那会太多). 然而, 根本没有理由这样做, 我手头的所有版本用优秀的 <tt>&lt;boost/iterator_adaptors.hpp&gt;</tt> 库实现起来同样快. 也就是说, 对 <tt>min_element_if(first, last, pred)</tt> 的调用可以同样好地用如下方式实现: <pre>
+     // equivalent to min_element_if(first, last, pred)
+     min_element(boost::make_filter_iterator(first, last, pred),
+                 boost::make_filter_iterator(last, last, pred));
+</pre> 可以说, <tt>min_element_if</tt> 版本要短一些, 但迭代器适配器的开销并不大, 而且它们省去了大量代码(想想 first/last 之间的所有组合, 再用 _if 变体把它们翻倍!).</p>
+
+<h4><b>讨论: 关于 std::max_element</b></h4>
+<p>这条设计理由带有一定的历史色彩, 但它解释了为什么会有这么多 <tt>first/last_min/max_element</tt> 函数.</p>
+<p>C++ 标准规定 <tt>std::min_element</tt> 与 <tt>std::max_element</tt> 返回最小和最大元素的第一个实例(而不是, 比如说, 最后一个). 这一任意的选择有其一致性: 例如, 对类型为 vector&lt;int&gt; 的 v 来说, <tt>std::min_element(v.begin(),v.end(),std::less&lt;int&gt;()) == std::max_element(v.begin(),v.end(),std::greater&lt;int&gt;())</tt> 成立.<p>这当然没有什么错: 这只是一个选择问题. 指定 min_element 和 max_element 的另一种方式, 是把它们定义为: 若范围被稳定排序, 则分别为其第一个和最后一个元素.(<i>稳定</i>排序是必要的, 用于区分具有相同值的迭代器.) 在那种情况下, min 应返回第一个实例, max 应返回最后一个. 于是, 两个函数通过 <tt>reverse_iterator(std::first_min_element(v.begin(),v.end(),std::less&lt;int&gt;())) == std::last_max_element(v.rbegin(),v.rend(),std::greater&lt;int&gt;())</tt> 相互关联. 这一定义与前一判断有微妙的不同.</p>
+<p>当人们尝试按照(Cormen, Leiserson, Rivest: "Introduction to Algorithms", 9.1 节)中提出的过程设计一个 minmax_element 时, 定义问题就浮出水面. 本 <i>应当</i>有可能推导出一个只用 <tt>3n/2</tt> 次比较的算法 —— 若 <tt>[first,last) </tt>有 <tt>n</tt> 个元素的话 —— 但若有人尝试编写一个名为 <tt>first_min_first_max_element()</tt> 的函数, 在一个 pair 中同时返回 <tt>std::min_element</tt> 与 <tt>std::max_element</tt>, 平凡的实现却行不通. 问题相当微妙地出在相等元素上: 我花了相当一段时间才找到每对只做三次比较并返回第一个最小与第一个最大元素的办法. 有很长一段时间, 任何这样的尝试在最坏情形下似乎都要消耗每对四次比较. 这个实现做到了三次.</p>
+<p>改变 <tt>max_element</tt> 的含义是不可能的(甚至是不可取的), 但提供一个名为 <tt>minmax_element</tt>, 返回 <tt>min_element</tt> 与 <tt>max_element</tt> 组成的 pair 的函数仍然是有益的. 尽管调用 <tt>min_element</tt> 与 <tt>max_element</tt> 足够容易, 但这会执行 <tt>2(n-1)</tt> 次比较, 并且需要对输入进行 <b>两</b>次遍历. 相比之下, <tt>minmax_element</tt> 将执行更少的比较, 并对输入只做 <b>单</b>次遍历. 当迭代器类型不是裸指针, 甚至只是 InputIterator 概念的一个模型时, 节省可能很可观(不过那种情况下接口将不得不改变, 因为返回类型无法被拷贝, 比如可以改为返回一个值).</p>
+<p>为了从该算法的所有变体中获益, 我提议同时引入 <tt>first_min_element</tt> 与 <tt>last_min_element</tt>, 以及它们的对应物 <tt>first_max_element</tt> 与 <tt>last_max_element</tt>. 然后我还提议所有的变体算法: <tt>first_min_last_max_element</tt> 与 <tt>last_min_first_max_element</tt>, 它们至多只执行 <tt>3n/2</tt> 次比较, 且对输入只做单次遍历. 事实上, 可以证明, 在该问题的任何实例上, 计算 minmax 至少需要 <tt>3(n/2)-2</tt> 次比较(Cormen, Leiserson, Rivest, 第 2 版, 9.1 节). 我给出的实现不会执行多余的比较(其结果本可以由之前比较的传递性推得).</p>
+<p>看起来 <tt>first_min_last_max_element</tt> 可能只比单独的 <tt>first_min_element</tt> 略慢一点, 仍然远低于分别调用 <tt>first_min_element</tt> 与 <tt>last_max_element</tt>. <a href="#Note2">[2]</a>
+
+<h4><b>为什么是算法而不是累加器(accumulator)?</b></h4>
+<p>minmax 算法可用于计算一个范围的大小. 在计算机图形学中, 我们需要一组对象的包围盒. 那种情况下对单次遍历的需求更加严苛, 因为三个方向必须一次完成. 值得思考的是: 有潜力做一个漂亮的泛型编程库, 它带有可堆叠的 <tt>update_min</tt> 与 <tt>update_max</tt> 函数对象 —— 它们保存对 <tt>min_result</tt>与 <tt>max_result</tt> 变量的引用 —— 并与 <tt>for_each</tt> 算法配合使用).</p>
+<p>我相信许多标准顺序算法都可以用累加器重新表述(还有许多其他算法, 如统计学中的期望/方差/等). 看起来还有容纳另一个库的空间, 但我不认为它会与 minmax 竞争, 相反, 它会把若干算法(包括 minmax)扩展到累加器框架. 不过, 我觉得提供这样的累加器超出了本库的范围.</p>
+
+<a NAME="no-policy">
+<h4><b>这种 first/last 是基于策略的设计的完美应用场景.</b></h4>
+<p>没错, 我本可以走那条路, 让 <tt>min_element</tt> 与 <tt>max_element</tt> 的默认策略选取结果的第一次出现. 这本可以减少 minmax_element 变体的组合数量. 但那也意味着要改变 <tt>boost::minmax_element</tt> 的接口. <tt>minmax_element</tt> 算法的目标之一是最终加入 C++ 标准, 与 <tt>std::min_element</tt> 和 <tt>std::max_element</tt> 并列(我觉得考虑到实现的简短, 以及把它做对所需的那些并非微不足道的细节, 这会很自然). 因此, 通过添加策略来改变接口, 遗憾的是将意味着背离标准, 并给那个目标制造障碍. 此外, 不用策略时代码仍然相当易读且简单. 所以我很乐意保持现状.</p></a>
+</a>
+
+<a name="perf">
+<a href="doc/minmax_benchs.html"><h3><b>关于性能</b></h3></a>
+</a>
+
+<a name="acks">
+<h3>致谢</h3>
+
+<a name="Alexandrescu">
+<a href="http://www.drdobbs.com/generic-min-and-max-redivivus/184403774">Generic: Min and Max Redivivus, by Andrei Alexandrescu</a> Dr. Dobbs, 2001 年 4 月 <p>我 CS903(Polytechnic Univ., <a href="http://photon.poly.edu/~hbr/cs903/">http://photon.poly.edu/~hbr/cs903/</a>)的学生们把 <tt>minmax_element</tt> 作为作业, 他们帮助澄清了问题, 还得出了 <tt>first_min_last_max_element</tt> 的最优比较次数. 围绕 <tt>max_element</tt> 的问题的辨识则完全归功于我个人.<p>一个 <tt>minmax_element</tt> 实现, 当元素被 <tt>random_shuffle</tt>打乱时平均执行 <tt>3(n/2)+O(log n)</tt> 次比较, 由我的学生 Marc Glisse 提出. 目前的实现最坏情形执行 <tt>3(n/2)+1</tt> 次比较, 由 John Iacono 提出.<p>
+<p>最后, Matthew Wilson 与 Jeremy Siek 提供了评审前的意见, 而 Gennadiy Rozental, John Maddock, Craig Henderson, Gary Powell 参与了本库的评审, 评审由 Thomas Witt 主持. 特别是, Gennadiy 建议对代码做因式分解; 虽然我没有完全照做, 他的建议确实让代码更易读, 并且仍能在较老的编译器上工作. 评审之后很久, 当我终于勉强为本库的发布做准备时, Eric Niebler 注意到了 <tt>std::pair</tt> 用于 <tt>minmax</tt> 的不良行为, 并建议改用 Boost.tuple. 对所有人出色的建议与评审, 我深表感谢.<h3>参见</h3>
+<tt><a href="https://www.boost.org/sgi/stl/min.html">min</a></tt>, <tt><a href="https://www.boost.org/sgi/stl/max.html">max</a></tt>, <tt><a href="https://www.boost.org/sgi/stl/min_element.html">min_element</a></tt>, <tt><a href="https://www.boost.org/sgi/stl/max_element.html">max_element</a></tt>, <tt><a href="https://www.boost.org/sgi/stl/LessThanComparable.html">LessThan Comparable</a></tt>, <tt><a href="https://www.boost.org/sgi/stl/sort.html">sort</a></tt>, <tt><a href="https://www.boost.org/sgi/stl/nth_element.html">nth_element</a></tt> . <hr SIZE="6">
+<br>Last modified 2012-12-10 <p><font face="Arial,Helvetica"><font size=-1>© Copyright Hervé Brönnimann, Polytechnic University, 2002--2004. 使用、修改与分发受 Boost 软件许可 1.0 版(Boost Software License, Version 1.0)约束. (随附文件 <a href="../../../LICENSE_1_0.txt">License_1_0.txt</a> 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</a>) </font></font>
+</body>
+</html>

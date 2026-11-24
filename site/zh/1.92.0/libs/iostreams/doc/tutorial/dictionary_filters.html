@@ -1,0 +1,299 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+<HEAD>
+    <TITLE>Tutorial</TITLE>
+    <LINK REL="stylesheet" HREF="../../../../boost.css">
+    <LINK REL="stylesheet" HREF="../theme/iostreams.css">
+</HEAD>
+<BODY>
+
+<!-- Begin Banner -->
+
+    <H1 CLASS="title">Tutorial</H1>
+    <HR CLASS="banner">
+
+<!-- End Banner -->
+
+<!-- Begin Nav -->
+
+<DIV CLASS='nav'>
+    <A HREF='tab_expanding_filters.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/prev.png'></A>
+    <A HREF='tutorial.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/up.png'></A>
+    <A HREF='unix2dos_filters.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/next.png'></A>
+</DIV>
+
+<!-- End Nav -->
+
+<H2>2.2.6. 词典过滤器</H2>
+
+<P> <SPAN CLASS='term'>词典过滤器</SPAN> 是一种按如下方式执行文本替换的过滤器. 它维护一个字符串对的集合: 对的第一分量是单词, 第二分量表示替换文本 — 我将这样的集合称为 <SPAN CLASS='term'>词典</SPAN>, 并将其中的对称为 <SPAN CLASS='term'>定义</SPAN>. 当词典过滤器遇到一个作为某定义第一分量出现的单词时, 它转发替换文本而非原单词. 其他单词、空白和标点则原样转发.</P>
+
+<P>基本算法如下: 你逐个检查字符, 将它们追加到一个字符串 — 我称之为 <SPAN CLASS='term'>当前单词</SPAN>. 当你遇到非字母字符时, 查询词典以确定当前单词是否作为某定义的第一分量出现. 若是, 则转发替换文本, 后跟该非字母字符; 否则, 转发当前单词, 后跟该非字母字符. 到达流末尾时, 再次查询词典, 并视情况转发当前单词或其替换文本.</P>
+
+<P>在下面几节中, 我将把这一算法分别表述为一个 <A HREF="../classes/stdio_filter.html"><CODE>stdio_filter</CODE></A>、一个 <A HREF="../concepts/input_filter.html">InputFilter</A> 和一个 <A HREF="../concepts/output_filter.html">OutputFilter</A>. 源代码可在头文件 <A HREF="../../example/dictionary_filter.hpp"><CODE>&lt;libs/iostreams/example/dictionary_filter.hpp&gt;</CODE></A> 中找到.</P>
+
+<A NAME="dictionary"></A>
+<H4><CODE>dictionary</CODE></H4>
+
+<P>你可以用下面的类来表示词典:</P>
+
+<PRE class="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <SPAN CLASS="literal">&lt;map&gt;</SPAN>
+<SPAN CLASS="preprocessor">#include</SPAN> <SPAN CLASS="literal">&lt;string&gt;</SPAN>
+
+<SPAN CLASS='keyword'>namespace</SPAN> boost { <SPAN CLASS='keyword'>namespace</SPAN> iostreams { <SPAN CLASS='keyword'>namespace</SPAN> example {
+
+<SPAN CLASS="keyword">class</SPAN> dictionary {
+<SPAN CLASS="keyword">public</SPAN>:
+    <SPAN CLASS="keyword">void</SPAN> add(std::string key, <SPAN CLASS="keyword">const</SPAN> std::string&amp; value);
+    <SPAN CLASS="keyword">void</SPAN> replace(std::string&amp; key);
+
+    <SPAN CLASS='comment'>/* ... */</SPAN>
+};
+
+} } } <SPAN CLASS="comment">// End namespace boost::iostreams:example</SPAN></PRE>
+
+<P>成员函数 <CODE>add</CODE> 将 <CODE>key</CODE> 转换为小写, 并将 <CODE>key</CODE>、<CODE>value</CODE> 这一对添加到词典. 成员函数 <CODE>replace</CODE> 搜索第一分量等于将 <CODE>key</CODE> 转换为小写之结果的定义. 若找到这样的定义, 则将替换文本赋给 <CODE>key</CODE>, 并调整第一个字符的大小写以匹配 <CODE>key</CODE> 第一个字符的大小写. 否则, 它什么也不做.</P>
+
+<A NAME="dictionary_stdio_filter"></A>
+<H4><CODE>dictionary_stdio_filter</CODE></H4>
+
+<P>你可以将词典过滤器表述为一个 <A HREF="../classes/stdio_filter.html"><CODE>stdio_filter</CODE></A>, 如下:</P>
+
+<PRE class="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <SPAN CLASS="literal">&lt;cstdio&gt;</SPAN>    <SPAN CLASS="comment">// EOF</SPAN>
+<SPAN CLASS="preprocessor">#include</SPAN> <SPAN CLASS="literal">&lt;iostream&gt;</SPAN>  <SPAN CLASS="comment">// cin, cout</SPAN>
+<SPAN CLASS="preprocessor">#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/filter/stdio.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/filter/stdio.hpp&gt;</SPAN></A>
+
+<SPAN CLASS='keyword'>namespace</SPAN> boost { <SPAN CLASS='keyword'>namespace</SPAN> iostreams { <SPAN CLASS='keyword'>namespace</SPAN> example {
+
+<SPAN CLASS="keyword">class</SPAN> dictionary_stdio_filter : <SPAN CLASS="keyword"><SPAN CLASS="keyword"><SPAN CLASS="keyword">public</SPAN></SPAN></SPAN> stdio_filter {
+<SPAN CLASS="keyword">public</SPAN>:
+    dictionary_stdio_filter(dictionary&amp; d) : dictionary_(d) { }
+<SPAN CLASS="keyword">private</SPAN>:
+    <SPAN CLASS="keyword">void</SPAN> do_filter()
+    {
+        <SPAN CLASS="keyword">using</SPAN> <SPAN CLASS="keyword">namespace</SPAN> std;
+        <SPAN CLASS="keyword">while</SPAN> (<SPAN CLASS="keyword">true</SPAN>) {
+            <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> c = std::cin.get();
+            <SPAN CLASS="keyword">if</SPAN> (c == <SPAN CLASS="numeric_literal">EOF</SPAN> || !std::isalpha((<SPAN CLASS="keyword">unsigned</SPAN> <SPAN CLASS="keyword">char</SPAN>) c)) {
+                dictionary_.replace(current_word_);
+                cout.write( current_word_.data(),
+                            <SPAN CLASS="keyword">static_cast</SPAN>&lt;streamsize&gt;(current_word_.size()) );
+                current_word_.erase();
+                <SPAN CLASS="keyword">if</SPAN> (c == <SPAN CLASS="numeric_literal">EOF</SPAN>)
+                    break;
+                cout.put(c);
+            } <SPAN CLASS="keyword">else</SPAN> {
+                current_word_ += c;
+            }
+        }
+    }
+    dictionary&amp;  dictionary_;
+    std::string  current_word_;
+};
+
+} } } <SPAN CLASS="comment">// End namespace boost::iostreams:example</SPAN></PRE>
+
+<P> <CODE>do_filter</CODE> 的实现只是循环, 从 <CODE>std::cin</CODE> 读取字符并将它们 <CODE>appending</CODE> 到成员变量 <CODE>current_word_</CODE>, 直到遇到非字母字符或流末尾指示. 此时, 它使用其词典 — 存储在成员变量 <CODE>dictionary_</CODE> 中 — 在必要时替换当前单词. 最后, 它将当前单词 (后跟非字母字符, 若有) 写入 <CODE>std::cout</CODE>.</P>
+
+<A NAME="dictionary_input_filter"></A>
+<H4><CODE>dictionary_input_filter</CODE></H4>
+
+<P>你可以将词典过滤器表述为一个 <A HREF="../concepts/input_filter.html">InputFilter</A>, 如下:</P>
+
+<PRE class="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/char_traits.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/char_traits.hpp&gt;</SPAN></A> <SPAN CLASS="comment">// EOF, WOULD_BLOCK</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/concepts.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/concepts.hpp&gt;</SPAN></A>    <SPAN CLASS="comment">// input_filter</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/operations.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/operations.hpp&gt;</SPAN></A>  <SPAN CLASS="comment">// get</SPAN>
+
+<SPAN CLASS='keyword'>namespace</SPAN> boost { <SPAN CLASS='keyword'>namespace</SPAN> iostreams { <SPAN CLASS='keyword'>namespace</SPAN> example {
+
+<SPAN CLASS="keyword">class</SPAN> dictionary_input_filter : <SPAN CLASS="keyword"><SPAN CLASS="keyword"><SPAN CLASS="keyword">public</SPAN></SPAN></SPAN> input_filter {
+<SPAN CLASS="keyword">public</SPAN>:
+    dictionary_input_filter(dictionary&amp; d)
+        : dictionary_(d), off_(std::string::npos), eof_(<SPAN CLASS="keyword">false</SPAN>)
+        { }
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> get(Source&amp; src);
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS="keyword">void</SPAN> close(Source&amp;);
+<SPAN CLASS="keyword">private</SPAN>:
+    dictionary&amp;             dictionary_;
+    std::string             current_word_;
+    std::string::size_type  off_;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">bool</SPAN></SPAN>                    eof_;
+};
+
+} } } <SPAN CLASS="comment">// End namespace boost::iostreams:example</SPAN></PRE>
+
+<P>函数 <CODE>get</CODE> 的实现如下:</P>
+
+<PRE class="broken_ie">    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> get(Source&amp; src)
+    {
+        <SPAN CLASS='comment'>// Handle unfinished business.</SPAN>
+        <SPAN CLASS="keyword">if</SPAN> (off_ != std::string::npos &amp;&amp; off_ &lt; current_word_.size())
+            <SPAN CLASS="keyword">return</SPAN> current_word_[off_++];
+        <SPAN CLASS="keyword">if</SPAN> (off_ == current_word_.size()) {
+            current_word_.erase();
+            off_ = std::string::npos;
+        }
+        <SPAN CLASS="keyword">if</SPAN> (eof_)
+            <SPAN CLASS="keyword">return</SPAN> <SPAN CLASS="numeric_literal">EOF</SPAN>;
+
+        <SPAN CLASS='comment'>// Compute curent word.</SPAN>
+        <SPAN CLASS="keyword">while</SPAN> (<SPAN CLASS="keyword">true</SPAN>) {
+            <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> c;
+            <SPAN CLASS="keyword">if</SPAN> ((c = iostreams::get(src)) == WOULD_BLOCK)
+                <SPAN CLASS="keyword">return</SPAN> WOULD_BLOCK;
+
+            <SPAN CLASS="keyword">if</SPAN> (c == <SPAN CLASS="numeric_literal">EOF</SPAN> || !std::isalpha((<SPAN CLASS="keyword">unsigned</SPAN> <SPAN CLASS="keyword">char</SPAN>) c)) {
+                dictionary_.replace(current_word_);
+                off_ = 0;
+                <SPAN CLASS="keyword">if</SPAN> (c == <SPAN CLASS="numeric_literal">EOF</SPAN>)
+                    eof_ = <SPAN CLASS="keyword">true</SPAN>;
+                <SPAN CLASS="keyword">else</SPAN>
+                    current_word_ += c;
+                break;
+            } <SPAN CLASS="keyword">else</SPAN> {
+                current_word_ += c;
+            }
+        }
+
+        <SPAN CLASS="keyword">return</SPAN> this-&gt;get(src); <SPAN CLASS='comment'>// Note: current_word_ is not empty.</SPAN>
+    }</PRE>
+
+<P>你首先检查是否有上次调用 <CODE>get</CODE> 遗留下来的字符. 若有, 则更新一些簿记信息并返回其中第一个字符.</P>
+<P> <CODE>while</CODE> 循环与 <A HREF="#dictionary_stdio_filter"><CODE>dictionary_stdio_filter::do_filter</CODE></A> 的循环非常相似: 它从 <A HREF="../concepts/source.html">源</A> <CODE>src</CODE> 读取字符, 将它们追加到 <CODE>current_word_</CODE>, 直到遇到非字母字符、<CODE>EOF</CODE> 或 <CODE>WOULD_BLOCK</CODE>. 值 <CODE>WOULD_BLOCK</CODE> 会传给调用者. 在其余情形中, 会查询词典以确定适当的替换文本.</P>
+
+ <P>最后, 递归调用 <CODE>get</CODE> 以返回当前单词的第一个字符.</P>
+
+<P>照例, 函数 <CODE>close</CODE> 重置过滤器的状态:</P>
+
+<PRE class="broken_ie">    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS="keyword">void</SPAN> close(Source&amp;)
+    {
+        current_word_.erase();
+        off_ = std::string::npos;
+        eof_ = <SPAN CLASS="keyword">false</SPAN>;
+    }</PRE>
+
+<A NAME="dictionary_output_filter"></A>
+<H4><CODE>dictionary_output_filter</CODE></H4>
+
+<P>你可以将词典过滤器表述为一个 <A HREF="../concepts/output_filter.html">OutputFilter</A>, 如下:</P>
+
+<PRE class="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <SPAN CLASS='literal'>&lt;algorithm&gt;</SPAN>                      <SPAN CLASS='comment'>// swap</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/concepts.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/concepts.hpp&gt;</SPAN></A>   <SPAN CLASS="comment">// output_filter</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/operations.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/operations.hpp&gt;</SPAN></A> <SPAN CLASS="comment">// write</SPAN>
+
+<SPAN CLASS='keyword'>namespace</SPAN> boost { <SPAN CLASS='keyword'>namespace</SPAN> iostreams { <SPAN CLASS='keyword'>namespace</SPAN> example {
+
+<SPAN CLASS="keyword">class</SPAN> dictionary_output_filter : <SPAN CLASS="keyword"><SPAN CLASS="keyword"><SPAN CLASS="keyword">public</SPAN></SPAN></SPAN> output_filter {
+<SPAN CLASS="keyword">public</SPAN>:
+    <SPAN CLASS="keyword">typedef</SPAN> std::map&lt;std::string, std::string&gt; map_type;
+    dictionary_output_filter(dictionary&amp; d)
+        : dictionary_(d), off_(std::string::npos)
+        { }
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">bool</SPAN></SPAN> put(Sink&amp; dest, <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> c);
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS="keyword">void</SPAN> close(Sink&amp; dest);
+<SPAN CLASS="keyword">private</SPAN>:
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">bool</SPAN></SPAN> write_current_word(Sink&amp; dest);
+    dictionary&amp;             dictionary_;
+    std::string             current_word_;
+    std::string::size_type  off_;
+};
+
+} } } <SPAN CLASS="comment">// End namespace boost::iostreams:example</SPAN></PRE>
+
+<P>我们先看辅助函数 <CODE>write_current_word</CODE>:</P>
+
+<PRE class="broken_ie">    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">bool</SPAN></SPAN> write_current_word(Sink&amp; dest)
+    {
+        <SPAN CLASS="keyword">using</SPAN> <SPAN CLASS="keyword">namespace</SPAN> std;
+        streamsize amt = <SPAN CLASS="keyword">static_cast</SPAN>&lt;streamsize&gt;(current_word_.size() - off_);
+        streamsize result =
+            iostreams::write(dest, current_word_.data() + off_, amt);
+        <SPAN CLASS="keyword">if</SPAN> (result == amt) {
+            current_word_.erase();
+            off_ = string::npos;
+            <SPAN CLASS="keyword">return</SPAN> <SPAN CLASS="keyword">true</SPAN>;
+        } <SPAN CLASS="keyword">else</SPAN> {
+            off_ += <SPAN CLASS="keyword">static_cast</SPAN>&lt;string::size_type&gt;(result);
+            <SPAN CLASS="keyword">return</SPAN> <SPAN CLASS="keyword">false</SPAN>;
+        }
+    }</PRE>
+
+<P>此函数尝试将 <CODE>current_word_</CODE> 从偏移量 <CODE>off_</CODE> 开始写入提供的 <A HREF="../concepts/sink.html">汇</A>. 若整个序列写入成功, 则清空 <CODE>current_word_</CODE> 且函数返回 <CODE>true</CODE>. 否则, 成员变量 <CODE>off_</CODE> 被更新为指向第一个未写入的字符, 且函数失败.</P>
+
+<P>使用 <CODE>write_current_word</CODE>, 你可以按如下方式实现 <CODE>put</CODE>:</P>
+
+<PRE class="broken_ie">    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">bool</SPAN></SPAN> put(Sink&amp; dest, <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> c)
+    {
+        <SPAN CLASS="keyword">if</SPAN> (off_ != std::string::npos &amp;&amp; !write_current_word(dest))
+            <SPAN CLASS="keyword">return</SPAN> <SPAN CLASS="keyword">false</SPAN>;
+        <SPAN CLASS="keyword">if</SPAN> (!std::isalpha((<SPAN CLASS="keyword">unsigned</SPAN> <SPAN CLASS="keyword">char</SPAN>) c)) {
+            dictionary_.replace(current_word_);
+            off_ = 0;
+        }
+
+        current_word_ += c;
+        <SPAN CLASS="keyword">return</SPAN> <SPAN CLASS="keyword">true</SPAN>;
+    }</PRE>
+
+<P>与 <A HREF="#dictionary_input_filter"><CODE>dictionary_input_filter::get</CODE></A> 的实现一样, 你首先检查是否有上次调用 <CODE>put</CODE> 遗留下来尚待写入的字符. 若有, 则尝试使用 <CODE>write_current_word</CODE> 写入这些字符. 若成功, 接着检查给定字符 <CODE>c</CODE>. 若它是非字母字符, 则查询词典以确定适当的替换文本. 无论如何, 你都将 <CODE>c</CODE> 追加到 <CODE>current_word_</CODE> 并返回 <CODE>true</CODE>.</P>
+
+<P>在此情形下, 函数 <CODE>close</CODE> 要做的工作不只是重置过滤器的状态. 除非未过滤序列的最后一个字符恰好是非字母字符, 否则 current_word_ 的内容尚未被写入:</P>
+
+<PRE class="broken_ie">    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    void close(Sink&amp; dest)
+    {
+        <SPAN CLASS='comment'>// Reset current_word_ and off_, saving old values.</SPAN>
+        std::string             current_word;
+        std::string::size_type  off = <SPAN CLASS='numeric_literal'>0</SPAN>;
+        current_word.swap(current_word_);
+        std::swap(off, off_);
+
+        <SPAN CLASS='comment'>// Write remaining characters to dest.</SPAN>
+        <SPAN CLASS="keyword">if</SPAN> (off == std::string::npos) {
+            dictionary_.replace(current_word);
+            off = <SPAN CLASS='numeric_literal'>0</SPAN>;
+        }
+        <SPAN CLASS="keyword">if</SPAN> (!current_word.empty())
+            iostreams::write( 
+                dest,
+                current_word.data() + off, 
+                <SPAN CLASS="keyword">static_cast</SPAN>&lt;std::streamsize&gt;(current_word.size() - off) 
+            );
+    }</PRE>
+
+<P>注意, 你可以假定模板参数是 <A HREF="../concepts/blocking.html">Blocking</A> 的 <A HREF="../concepts/sink.html">汇</A>, 并且你必须重置 <CODE>current_word_</CODE> 与 <CODE>off_</CODE> 的值 — 在调用 <A HREF="../functions/write.html"><CODE>write</CODE></A> 之前 — 以防 <A HREF="../functions/write.html"><CODE>write</CODE></A> 抛出异常.</P>
+
+<!-- Begin Nav -->
+
+<DIV CLASS='nav'>
+    <A HREF='tab_expanding_filters.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/prev.png'></A>
+    <A HREF='tutorial.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/up.png'></A>
+    <A HREF='unix2dos_filters.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/next.png'></A>
+</DIV>
+
+<!-- End Nav -->
+
+<!-- Begin Footer -->
+
+
+<HR>
+
+
+<P CLASS="copyright">© 版权所有 2008 <a href="http://www.coderage.com/" target="_top">CodeRage, LLC</a><br/>© 版权所有 2004-2007 <a href="https://www.boost.org/users/people/jonathan_turkanis.html" target="_top">Jonathan Turkanis</a></P>
+<P CLASS="copyright">使用、修改与分发受 Boost 软件许可 2.0 版约束. (随附文件 <A HREF="../../../../LICENSE_1_0.txt">LICENSE_1_0.txt</A> 或复制于 <A HREF="http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</A>)</P>
+<!-- End Footer -->
+
+</BODY>

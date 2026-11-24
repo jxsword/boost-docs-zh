@@ -1,0 +1,81 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<!-- Copyright (c) Jeremy Siek and Andrew Lumsdaine 2000 -->
+<!-- Distributed under the Boost -->
+<!-- Software License, Version 1.0. (See accompanying -->
+<!-- file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt) -->
+
+<head>
+  <meta name="generator" content=
+  "HTML Tidy for Linux/x86 (vers 1 September 2005), see www.w3.org" />
+
+  <title>概念覆盖与原型类</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <link rel="stylesheet" href="../../rst.css" type="text/css" />
+</head>
+
+<body bgcolor="#FFFFFF" link="#0000EE" text="#000000" vlink="#551A8B" alink=
+"#FF0000">
+  <img src="../../boost.png" alt="C++ Boost" width="277" height=
+  "86" /><br clear="none" />
+
+  <h2><a name="concept-covering" id="concept-covering">概念覆盖与原型</a></h2>
+
+  <p>我们已经讨论过为组件的输入选择最小要求 (概念) 有多么重要, 但同样重要的是验证所选概念能否 <i>覆盖</i> 该算法. 也就是说, 任何可能的用户错误都应当被概念检查捕获, 而不能漏过去. 概念覆盖可以通过使用 <i>原型类</i> (archetype class) 来验证. 原型类是与特定概念关联的接口的精确实现. 原型类的运行期行为并不重要, 其函数可以留空. 然后可以编写一个简单的测试程序, 以原型类作为组件的输入进行编译. 如果程序能编译通过, 就可以确定概念覆盖了该组件. 下面的代码给出了 <a href="http://www.boost.org/sgi/stl/InputIterator.html">Input Iterator</a> 概念的原型类. 必须小心确保原型与概念精确匹配. 例如, 概念规定 <tt>operator*()</tt> 的返回类型必须可转换为值类型, 但并未规定更严格的要求, 即返回类型必须是 <tt>T&amp;</tt> 或 <tt>const T&amp;</tt>. 这意味着在原型类的返回类型上使用 <tt>T&amp;</tt> 或 <tt>const T&amp;</tt> 将是一个错误. 正确的做法是创建一个人工的、可转换为 <tt>T</tt> 的返回类型, 正如我们在这里用 <tt>reference</tt> 所做的那样. 原型类测试的有效性完全取决于它与概念精确匹配, 这必须通过仔细的 (人工) 检查来验证.</p>
+  <pre>
+template &lt;class T&gt;
+class input_iterator_archetype
+{
+private:
+  typedef input_iterator_archetype self;
+public:
+  typedef std::input_iterator_tag iterator_category;
+  typedef T value_type;
+  struct reference {
+    operator const value_type&amp;() const { return static_object&lt;T&gt;::get(); }
+  };
+  typedef const T* pointer;
+  typedef std::ptrdiff_t difference_type;
+  self&amp; operator=(const self&amp;) { return *this;  }
+  bool operator==(const self&amp;) const { return true; }
+  bool operator!=(const self&amp;) const { return true; }
+  reference operator*() const { return reference(); }
+  self&amp; operator++() { return *this; }
+  self operator++(int) { return *this; }
+};
+</pre>
+
+  <p>泛型算法通常通过用若干常见输入类型实例化来进行测试. 例如, 可以以基本指针类型作为迭代器来调用 <tt>std::stable_sort()</tt>. 尽管这适合测试算法的运行期行为, 但对确保概念覆盖没有帮助, 因为 C++ 类型永远不会精确匹配特定概念. 相反, 它们通常提供比任何一个概念所需的最小功能更多的功能. 即使函数模板带有概念检查并能用给定类型编译, 这些检查仍可能不足以覆盖实际使用的全部功能. 这就是为什么除了用常见输入类型测试之外, 还要用原型类编译测试, 这一点很重要.</p>
+
+  <p>下面摘录自 <a href=
+  "./stl_concept_covering.cpp"><tt>stl_concept_covering.cpp</tt></a>, 展示了如何用原型类检查 <a href=
+  "http://www.boost.org/sgi/stl/stable_sort.html"><tt>std::stable_sort()</tt></a> 的要求文档. 在这个例子中, SGI STL 文档似乎遗漏了 <a href=
+  "../utility/CopyConstructible.html">CopyConstructible</a> 和 <a href=
+  "../utility/Assignable.html">Assignable</a> 要求 (试着移除那些原型). Boost 的原型类经过设计可以分层. 在此例中, 迭代器的值类型由三个原型复合而成. 在 <a href="reference.htm#basic-archetype">原型类参考</a>中, 名为 <tt>Base</tt> 的模板参数指出了可以使用分层原型范式之处.</p>
+  <pre>
+{
+  typedef less_than_comparable_archetype&lt; 
+      sgi_assignable_archetype&lt;&gt; &gt; ValueType;
+  random_access_iterator_archetype&lt;ValueType&gt; ri;
+  std::stable_sort(ri, ri);
+}
+</pre>
+
+  <p><a href="./prog_with_concepts.htm">下一页: 用概念编程</a><br />
+  <a href="./creating_concepts.htm">上一页: 创建概念检查类</a><br />
+  <hr />
+
+  <table>
+    <tr valign="top">
+      <td nowrap="nowrap">版权所有 © 2000</td>
+
+      <td><a href="http://www.boost.org/people/jeremy_siek.htm">Jeremy Siek</a>(<a href=
+      "mailto:jsiek@osl.iu.edu">jsiek@osl.iu.edu</a>) Andrew
+      Lumsdaine(<a href="mailto:lums@osl.iu.edu">lums@osl.iu.edu</a>),
+        2007 <a href="mailto:dave@boost-consulting.com">David Abrahams</a>.
+    </tr>
+  </table>
+</body>
+</html>

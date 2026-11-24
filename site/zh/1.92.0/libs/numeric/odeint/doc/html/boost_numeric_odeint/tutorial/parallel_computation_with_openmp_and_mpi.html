@@ -1,0 +1,703 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>OpenMP 与 MPI 并行计算</title>
+<link rel="stylesheet" href="../../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Boost.Numeric.Odeint">
+<link rel="up" href="../tutorial.html" title="Tutorial">
+<link rel="prev" href="using_opencl_via_vexcl.html" title="通过 VexCL 使用 OpenCL">
+<link rel="next" href="all_examples.html" title="全部示例">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../logo.jpg"></td>
+<td align="center"><a href="../../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="using_opencl_via_vexcl.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../tutorial.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="all_examples.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi"></a><a class="link" href="parallel_computation_with_openmp_and_mpi.html" title="OpenMP 与 MPI 并行计算">OpenMP 与 MPI 并行计算</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.openmp">OpenMP</a></span></dt>
+<dt><span class="section"><a href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.mpi">MPI</a></span></dt>
+<dt><span class="section"><a href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts">概念</a></span></dt>
+</dl></div>
+<p>由于如今多核 (甚至在笔记本电脑上) 非常普及, 并行化是现代数值库的一项关键特性. odeint 目前支持 OpenMP 和 MPI 并行化, 将在以下小节中介绍. 不过, 首先应当明确: 在多核/多机上高效分配 ODE 积分的难点在于系统函数的并行化, 这仍然是用户的职责. 仅仅使用并行的 odeint 后端而不对系统函数做并行化, 几乎不会带来任何性能提升.</p>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.openmp"></a><a class="link" href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.openmp" title="OpenMP">OpenMP</a>
+</h4></div></div></div>
+<p>odeint 的 OpenMP 支持以外部后端的形式实现, 需要手动包含. 视编译器而定, 可能需要一些额外的编译标志, 例如 GCC 的 <code class="literal">-fopenmp</code>.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">omp</span><span class="special">.</span><span class="identifier">h</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">numeric</span><span class="special">/</span><span class="identifier">odeint</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">numeric</span><span class="special">/</span><span class="identifier">odeint</span><span class="special">/</span><span class="identifier">external</span><span class="special">/</span><span class="identifier">openmp</span><span class="special">/</span><span class="identifier">openmp</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<p>
+        </p>
+<p>在最简单的 OpenMP 并行化方案中, 我们使用标准的 <code class="computeroutput"><span class="identifier">vector</span></code> 作为状态类型:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">&gt;</span> <span class="identifier">state_type</span><span class="special">;</span>
+</pre>
+<p>
+        </p>
+<p>我们用一些随机数据初始化状态:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">size_t</span> <span class="identifier">N</span> <span class="special">=</span> <span class="number">131101</span><span class="special">;</span>
+<span class="identifier">state_type</span> <span class="identifier">x</span><span class="special">(</span> <span class="identifier">N</span> <span class="special">);</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">random</span><span class="special">::</span><span class="identifier">uniform_real_distribution</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">&gt;</span> <span class="identifier">distribution</span><span class="special">(</span> <span class="number">0.0</span> <span class="special">,</span> <span class="number">2.0</span><span class="special">*</span><span class="identifier">pi</span> <span class="special">);</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">random</span><span class="special">::</span><span class="identifier">mt19937</span> <span class="identifier">engine</span><span class="special">(</span> <span class="number">0</span> <span class="special">);</span>
+<span class="identifier">generate</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span> <span class="identifier">distribution</span> <span class="special">,</span> <span class="identifier">engine</span> <span class="special">)</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+<p>现在必须配置步进器以使用 OpenMP 后端. 具体做法是显式提供 <code class="computeroutput"><span class="identifier">openmp_range_algebra</span></code> 作为步进器的模板参数. 该代数要求状态类型是 Random Access Range 的模型, 并会被多个线程使用.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="identifier">runge_kutta4</span><span class="special">&lt;</span>
+                  <span class="identifier">state_type</span> <span class="special">,</span> <span class="keyword">double</span> <span class="special">,</span>
+                  <span class="identifier">state_type</span> <span class="special">,</span> <span class="keyword">double</span> <span class="special">,</span>
+                  <span class="identifier">openmp_range_algebra</span>
+                <span class="special">&gt;</span> <span class="identifier">stepper_type</span><span class="special">;</span>
+</pre>
+<p>
+        </p>
+<p>除了为步进器提供 OpenMP 并行化之外, 我们还需要一个并行化的系统函数来利用可用内核. 这里以一个最近邻耦合的简单一维相位振子链为例展示:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">phase_chain</span>
+<span class="special">{</span>
+    <span class="identifier">phase_chain</span><span class="special">(</span> <span class="keyword">double</span> <span class="identifier">gamma</span> <span class="special">=</span> <span class="number">0.5</span> <span class="special">)</span>
+    <span class="special">:</span> <span class="identifier">m_gamma</span><span class="special">(</span> <span class="identifier">gamma</span> <span class="special">)</span> <span class="special">{</span> <span class="special">}</span>
+
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">x</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">dxdt</span> <span class="special">,</span> <span class="keyword">double</span> <span class="comment">/* t */</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">const</span> <span class="identifier">size_t</span> <span class="identifier">N</span> <span class="special">=</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">size</span><span class="special">();</span>
+        <span class="preprocessor">#pragma</span> <span class="identifier">omp</span> <span class="identifier">parallel</span> <span class="keyword">for</span> <span class="identifier">schedule</span><span class="special">(</span><span class="identifier">runtime</span><span class="special">)</span>
+        <span class="keyword">for</span><span class="special">(</span><span class="identifier">size_t</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">1</span> <span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">N</span> <span class="special">-</span> <span class="number">1</span> <span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="identifier">dxdt</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">coupling_func</span><span class="special">(</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">i</span><span class="special">+</span><span class="number">1</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">)</span> <span class="special">+</span>
+                      <span class="identifier">coupling_func</span><span class="special">(</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">i</span><span class="special">-</span><span class="number">1</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">);</span>
+        <span class="special">}</span>
+        <span class="identifier">dxdt</span><span class="special">[</span><span class="number">0</span>  <span class="special">]</span> <span class="special">=</span> <span class="identifier">coupling_func</span><span class="special">(</span> <span class="identifier">x</span><span class="special">[</span><span class="number">1</span>  <span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="number">0</span>  <span class="special">]</span> <span class="special">);</span>
+        <span class="identifier">dxdt</span><span class="special">[</span><span class="identifier">N</span><span class="special">-</span><span class="number">1</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">coupling_func</span><span class="special">(</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">N</span><span class="special">-</span><span class="number">2</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">N</span><span class="special">-</span><span class="number">1</span><span class="special">]</span> <span class="special">);</span>
+    <span class="special">}</span>
+
+    <span class="keyword">double</span> <span class="identifier">coupling_func</span><span class="special">(</span> <span class="keyword">double</span> <span class="identifier">x</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">sin</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">)</span> <span class="special">-</span> <span class="identifier">m_gamma</span> <span class="special">*</span> <span class="special">(</span> <span class="number">1.0</span> <span class="special">-</span> <span class="identifier">cos</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">)</span> <span class="special">);</span>
+    <span class="special">}</span>
+
+    <span class="keyword">double</span> <span class="identifier">m_gamma</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>在 OpenMP 后端中, 系统函数总是由启动积分的线程顺序调用.</p></td></tr>
+</table></div>
+<p>最后, 我们使用 odeint 的某个 integrate 函数执行积分. 可以看到, 并行化完全隐藏在步进器和系统函数之中. OpenMP 会负责在线程间分配工作并自动汇合.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">integrate_n_steps</span><span class="special">(</span> <span class="identifier">stepper_type</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">phase_chain</span><span class="special">(</span> <span class="number">1.2</span> <span class="special">)</span> <span class="special">,</span>
+                   <span class="identifier">x</span> <span class="special">,</span> <span class="number">0.0</span> <span class="special">,</span> <span class="number">0.01</span> <span class="special">,</span> <span class="number">100</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+<p>积分完成后, 数据可以立即访问并做进一步处理. 注意, 你可以在程序开头调用 <code class="computeroutput"><span class="identifier">omp_set_schedule</span></code> 来指定 OpenMP 调度方式:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">chunk_size</span> <span class="special">=</span> <span class="identifier">N</span><span class="special">/</span><span class="identifier">omp_get_max_threads</span><span class="special">();</span>
+<span class="identifier">omp_set_schedule</span><span class="special">(</span> <span class="identifier">omp_sched_static</span> <span class="special">,</span> <span class="identifier">chunk_size</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+<p>完整示例见 <a href="https://github.com/headmyshoulder/odeint-v2/blob/master/examples/openmp/phase_chain.cpp" target="_top">openmp/phase_chain.cpp</a>.</p>
+<h6>
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.openmp.h0"></a>
+          <span class="phrase"><a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.openmp.split_state"></a></span><a class="link" href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.openmp.split_state">拆分状态</a>
+        </h6>
+<p>对于高级场景, odeint 提供了另一种使用 OpenMP 的方式, 可以更精确地控制并行化. 例如, 对于奇数大小的数据, OpenMP 的线程边界与缓存行不匹配会损害性能, 此时建议把数据从连续的 <code class="computeroutput"><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code> 复制到单独的、各自对齐的向量中. 为此, odeint 提供了 <code class="computeroutput"><span class="identifier">openmp_state</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code> 类型, 它本质上是 <code class="computeroutput"><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;&gt;</span></code> 的别名.</p>
+<p>这里, 初始化用一个 <code class="computeroutput"><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">&gt;</span></code> 完成, 然后我们使用 odeint 的 <code class="computeroutput"><span class="identifier">split</span></code> 函数填充一个 <code class="computeroutput"><span class="identifier">openmp_state</span></code>. 拆分方式使各子区域的大小至多相差 1, 以使计算尽可能均匀.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">const</span> <span class="identifier">size_t</span> <span class="identifier">N</span> <span class="special">=</span> <span class="number">131101</span><span class="special">;</span>
+<span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">&gt;</span> <span class="identifier">x</span><span class="special">(</span> <span class="identifier">N</span> <span class="special">);</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">random</span><span class="special">::</span><span class="identifier">uniform_real_distribution</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">&gt;</span> <span class="identifier">distribution</span><span class="special">(</span> <span class="number">0.0</span> <span class="special">,</span> <span class="number">2.0</span><span class="special">*</span><span class="identifier">pi</span> <span class="special">);</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">random</span><span class="special">::</span><span class="identifier">mt19937</span> <span class="identifier">engine</span><span class="special">(</span> <span class="number">0</span> <span class="special">);</span>
+<span class="identifier">generate</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span> <span class="identifier">distribution</span> <span class="special">,</span> <span class="identifier">engine</span> <span class="special">)</span> <span class="special">);</span>
+<span class="keyword">const</span> <span class="identifier">size_t</span> <span class="identifier">blocks</span> <span class="special">=</span> <span class="identifier">omp_get_max_threads</span><span class="special">();</span>
+<span class="identifier">state_type</span> <span class="identifier">x_split</span><span class="special">(</span> <span class="identifier">blocks</span> <span class="special">);</span>
+<span class="identifier">split</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">x_split</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+<p>当然, 系统函数必须改为处理 <code class="computeroutput"><span class="identifier">openmp_state</span></code>. 注意, 状态的每个子区域在单个任务中计算, 但在边界处需要对相邻区域的读访问.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">phase_chain_omp_state</span>
+<span class="special">{</span>
+    <span class="identifier">phase_chain_omp_state</span><span class="special">(</span> <span class="keyword">double</span> <span class="identifier">gamma</span> <span class="special">=</span> <span class="number">0.5</span> <span class="special">)</span>
+    <span class="special">:</span> <span class="identifier">m_gamma</span><span class="special">(</span> <span class="identifier">gamma</span> <span class="special">)</span> <span class="special">{</span> <span class="special">}</span>
+
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">x</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">dxdt</span> <span class="special">,</span> <span class="keyword">double</span> <span class="comment">/* t */</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">const</span> <span class="identifier">size_t</span> <span class="identifier">N</span> <span class="special">=</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">size</span><span class="special">();</span>
+        <span class="preprocessor">#pragma</span> <span class="identifier">omp</span> <span class="identifier">parallel</span> <span class="keyword">for</span> <span class="identifier">schedule</span><span class="special">(</span><span class="identifier">runtime</span><span class="special">)</span>
+        <span class="keyword">for</span><span class="special">(</span><span class="identifier">size_t</span> <span class="identifier">n</span> <span class="special">=</span> <span class="number">0</span> <span class="special">;</span> <span class="identifier">n</span> <span class="special">&lt;</span> <span class="identifier">N</span> <span class="special">;</span> <span class="special">++</span><span class="identifier">n</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="keyword">const</span> <span class="identifier">size_t</span> <span class="identifier">M</span> <span class="special">=</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">n</span><span class="special">].</span><span class="identifier">size</span><span class="special">();</span>
+            <span class="keyword">for</span><span class="special">(</span><span class="identifier">size_t</span> <span class="identifier">m</span> <span class="special">=</span> <span class="number">1</span> <span class="special">;</span> <span class="identifier">m</span> <span class="special">&lt;</span> <span class="identifier">M</span><span class="special">-</span><span class="number">1</span> <span class="special">;</span> <span class="special">++</span><span class="identifier">m</span><span class="special">)</span>
+            <span class="special">{</span>
+                <span class="identifier">dxdt</span><span class="special">[</span><span class="identifier">n</span><span class="special">][</span><span class="identifier">m</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">coupling_func</span><span class="special">(</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">n</span><span class="special">][</span><span class="identifier">m</span><span class="special">+</span><span class="number">1</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">n</span><span class="special">][</span><span class="identifier">m</span><span class="special">]</span> <span class="special">)</span> <span class="special">+</span>
+                             <span class="identifier">coupling_func</span><span class="special">(</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">n</span><span class="special">][</span><span class="identifier">m</span><span class="special">-</span><span class="number">1</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">n</span><span class="special">][</span><span class="identifier">m</span><span class="special">]</span> <span class="special">);</span>
+            <span class="special">}</span>
+            <span class="identifier">dxdt</span><span class="special">[</span><span class="identifier">n</span><span class="special">][</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">coupling_func</span><span class="special">(</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">n</span><span class="special">][</span><span class="number">1</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">n</span><span class="special">][</span><span class="number">0</span><span class="special">]</span> <span class="special">);</span>
+            <span class="keyword">if</span><span class="special">(</span> <span class="identifier">n</span> <span class="special">&gt;</span> <span class="number">0</span> <span class="special">)</span>
+            <span class="special">{</span>
+                <span class="identifier">dxdt</span><span class="special">[</span><span class="identifier">n</span><span class="special">][</span><span class="number">0</span><span class="special">]</span> <span class="special">+=</span> <span class="identifier">coupling_func</span><span class="special">(</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">n</span><span class="special">-</span><span class="number">1</span><span class="special">].</span><span class="identifier">back</span><span class="special">()</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">n</span><span class="special">].</span><span class="identifier">front</span><span class="special">()</span> <span class="special">);</span>
+            <span class="special">}</span>
+            <span class="identifier">dxdt</span><span class="special">[</span><span class="identifier">n</span><span class="special">][</span><span class="identifier">M</span><span class="special">-</span><span class="number">1</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">coupling_func</span><span class="special">(</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">n</span><span class="special">][</span><span class="identifier">M</span><span class="special">-</span><span class="number">2</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">n</span><span class="special">][</span><span class="identifier">M</span><span class="special">-</span><span class="number">1</span><span class="special">]</span> <span class="special">);</span>
+            <span class="keyword">if</span><span class="special">(</span> <span class="identifier">n</span> <span class="special">&lt;</span> <span class="identifier">N</span><span class="special">-</span><span class="number">1</span> <span class="special">)</span>
+            <span class="special">{</span>
+                <span class="identifier">dxdt</span><span class="special">[</span><span class="identifier">n</span><span class="special">][</span><span class="identifier">M</span><span class="special">-</span><span class="number">1</span><span class="special">]</span> <span class="special">+=</span> <span class="identifier">coupling_func</span><span class="special">(</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">n</span><span class="special">+</span><span class="number">1</span><span class="special">].</span><span class="identifier">front</span><span class="special">()</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">[</span><span class="identifier">n</span><span class="special">].</span><span class="identifier">back</span><span class="special">()</span> <span class="special">);</span>
+            <span class="special">}</span>
+        <span class="special">}</span>
+    <span class="special">}</span>
+
+    <span class="keyword">double</span> <span class="identifier">coupling_func</span><span class="special">(</span> <span class="keyword">double</span> <span class="identifier">x</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">sin</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">)</span> <span class="special">-</span> <span class="identifier">m_gamma</span> <span class="special">*</span> <span class="special">(</span> <span class="number">1.0</span> <span class="special">-</span> <span class="identifier">cos</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">)</span> <span class="special">);</span>
+    <span class="special">}</span>
+
+    <span class="keyword">double</span> <span class="identifier">m_gamma</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>使用 <code class="computeroutput"><span class="identifier">openmp_state</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code> 状态类型会自动选择 <code class="computeroutput"><span class="identifier">openmp_algebra</span></code>, 它在并行区域上执行 odeint 的内部计算. 因此无需手动配置步进器. 积分结束时, 我们使用 <code class="computeroutput"><span class="identifier">unsplit</span></code> 把各子区域重新拼接成单个向量.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">integrate_n_steps</span><span class="special">(</span> <span class="identifier">runge_kutta4</span><span class="special">&lt;</span><span class="identifier">state_type</span><span class="special">&gt;()</span> <span class="special">,</span> <span class="identifier">phase_chain_omp_state</span><span class="special">(</span> <span class="number">1.2</span> <span class="special">)</span> <span class="special">,</span>
+                   <span class="identifier">x_split</span> <span class="special">,</span> <span class="number">0.0</span> <span class="special">,</span> <span class="number">0.01</span> <span class="special">,</span> <span class="number">100</span> <span class="special">);</span>
+<span class="identifier">unsplit</span><span class="special">(</span> <span class="identifier">x_split</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>对于高级用例, 你其实不需要使用 <code class="computeroutput"><span class="identifier">openmp_state</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code>, <code class="computeroutput"><span class="identifier">openmp_algebra</span></code> 只是 <code class="computeroutput"><span class="identifier">openmp_nested_algebra</span><span class="special">&lt;</span><span class="identifier">range_algebra</span><span class="special">&gt;</span></code> 的别名, 它支持任何 Random Access Range 模型作为外层并行状态类型, 并对元素使用给定的代数.</p></td></tr>
+</table></div>
+<p>完整示例见 <a href="https://github.com/headmyshoulder/odeint-v2/blob/master/examples/openmp/phase_chain_omp_state.cpp" target="_top">openmp/phase_chain_omp_state.cpp</a>.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.mpi"></a><a class="link" href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.mpi" title="MPI">MPI</a>
+</h4></div></div></div>
+<p>要将并行计算扩展到多台机器, 可以使用 MPI.</p>
+<p>系统函数的实现与拆分数据的 OpenMP 变体类似, 主要区别在于: OpenMP 使用 spawn/join 模型, 所有未显式并行化的部分只在主线程中执行; 而 MPI 的模型中每个节点独立进入 <code class="computeroutput"><span class="identifier">main</span><span class="special">()</span></code> 方法, 依据其 rank 分道执行, 并通过消息传递和显式屏障同步.</p>
+<p>odeint 的 MPI 支持同样以外部后端的形式实现. 视 MPI 实现而定, 代码可能需要用例如 <code class="literal">mpic++</code> 编译.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">numeric</span><span class="special">/</span><span class="identifier">odeint</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">numeric</span><span class="special">/</span><span class="identifier">odeint</span><span class="special">/</span><span class="identifier">external</span><span class="special">/</span><span class="identifier">mpi</span><span class="special">/</span><span class="identifier">mpi</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<p>
+        </p>
+<p>我们不是读取其他线程的数据, 而是异步地向相邻节点发送和接收相关数据, 并在此期间执行一些计算以隐藏延迟.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">phase_chain_mpi_state</span>
+<span class="special">{</span>
+    <span class="identifier">phase_chain_mpi_state</span><span class="special">(</span> <span class="keyword">double</span> <span class="identifier">gamma</span> <span class="special">=</span> <span class="number">0.5</span> <span class="special">)</span>
+    <span class="special">:</span> <span class="identifier">m_gamma</span><span class="special">(</span> <span class="identifier">gamma</span> <span class="special">)</span> <span class="special">{</span> <span class="special">}</span>
+
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">x</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">dxdt</span> <span class="special">,</span> <span class="keyword">double</span> <span class="comment">/* t */</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">const</span> <span class="identifier">size_t</span> <span class="identifier">M</span> <span class="special">=</span> <span class="identifier">x</span><span class="special">().</span><span class="identifier">size</span><span class="special">();</span>
+        <span class="keyword">const</span> <span class="keyword">bool</span> <span class="identifier">have_left</span> <span class="special">=</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">world</span><span class="special">.</span><span class="identifier">rank</span><span class="special">()</span> <span class="special">&gt;</span> <span class="number">0</span><span class="special">,</span>
+                   <span class="identifier">have_right</span> <span class="special">=</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">world</span><span class="special">.</span><span class="identifier">rank</span><span class="special">()</span> <span class="special">&lt;</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">world</span><span class="special">.</span><span class="identifier">size</span><span class="special">()-</span><span class="number">1</span><span class="special">;</span>
+        <span class="keyword">double</span> <span class="identifier">x_left</span><span class="special">,</span> <span class="identifier">x_right</span><span class="special">;</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">mpi</span><span class="special">::</span><span class="identifier">request</span> <span class="identifier">r_left</span><span class="special">,</span> <span class="identifier">r_right</span><span class="special">;</span>
+        <span class="keyword">if</span><span class="special">(</span> <span class="identifier">have_left</span> <span class="special">)</span>
+        <span class="special">{</span>
+            <span class="identifier">x</span><span class="special">.</span><span class="identifier">world</span><span class="special">.</span><span class="identifier">isend</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">world</span><span class="special">.</span><span class="identifier">rank</span><span class="special">()-</span><span class="number">1</span> <span class="special">,</span> <span class="number">0</span> <span class="special">,</span> <span class="identifier">x</span><span class="special">().</span><span class="identifier">front</span><span class="special">()</span> <span class="special">);</span> <span class="comment">// send to x_right</span>
+            <span class="identifier">r_left</span> <span class="special">=</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">world</span><span class="special">.</span><span class="identifier">irecv</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">world</span><span class="special">.</span><span class="identifier">rank</span><span class="special">()-</span><span class="number">1</span> <span class="special">,</span> <span class="number">0</span> <span class="special">,</span> <span class="identifier">x_left</span> <span class="special">);</span> <span class="comment">// receive from x().back()</span>
+        <span class="special">}</span>
+        <span class="keyword">if</span><span class="special">(</span> <span class="identifier">have_right</span> <span class="special">)</span>
+        <span class="special">{</span>
+            <span class="identifier">x</span><span class="special">.</span><span class="identifier">world</span><span class="special">.</span><span class="identifier">isend</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">world</span><span class="special">.</span><span class="identifier">rank</span><span class="special">()+</span><span class="number">1</span> <span class="special">,</span> <span class="number">0</span> <span class="special">,</span> <span class="identifier">x</span><span class="special">().</span><span class="identifier">back</span><span class="special">()</span> <span class="special">);</span> <span class="comment">// send to x_left</span>
+            <span class="identifier">r_right</span> <span class="special">=</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">world</span><span class="special">.</span><span class="identifier">irecv</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">world</span><span class="special">.</span><span class="identifier">rank</span><span class="special">()+</span><span class="number">1</span> <span class="special">,</span> <span class="number">0</span> <span class="special">,</span> <span class="identifier">x_right</span> <span class="special">);</span> <span class="comment">// receive from x().front()</span>
+        <span class="special">}</span>
+        <span class="keyword">for</span><span class="special">(</span><span class="identifier">size_t</span> <span class="identifier">m</span> <span class="special">=</span> <span class="number">1</span> <span class="special">;</span> <span class="identifier">m</span> <span class="special">&lt;</span> <span class="identifier">M</span><span class="special">-</span><span class="number">1</span> <span class="special">;</span> <span class="special">++</span><span class="identifier">m</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="identifier">dxdt</span><span class="special">()[</span><span class="identifier">m</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">coupling_func</span><span class="special">(</span> <span class="identifier">x</span><span class="special">()[</span><span class="identifier">m</span><span class="special">+</span><span class="number">1</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">()[</span><span class="identifier">m</span><span class="special">]</span> <span class="special">)</span> <span class="special">+</span>
+                        <span class="identifier">coupling_func</span><span class="special">(</span> <span class="identifier">x</span><span class="special">()[</span><span class="identifier">m</span><span class="special">-</span><span class="number">1</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">()[</span><span class="identifier">m</span><span class="special">]</span> <span class="special">);</span>
+        <span class="special">}</span>
+        <span class="identifier">dxdt</span><span class="special">()[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">coupling_func</span><span class="special">(</span> <span class="identifier">x</span><span class="special">()[</span><span class="number">1</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">()[</span><span class="number">0</span><span class="special">]</span> <span class="special">);</span>
+        <span class="keyword">if</span><span class="special">(</span> <span class="identifier">have_left</span> <span class="special">)</span>
+        <span class="special">{</span>
+            <span class="identifier">r_left</span><span class="special">.</span><span class="identifier">wait</span><span class="special">();</span>
+            <span class="identifier">dxdt</span><span class="special">()[</span><span class="number">0</span><span class="special">]</span> <span class="special">+=</span> <span class="identifier">coupling_func</span><span class="special">(</span> <span class="identifier">x_left</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">().</span><span class="identifier">front</span><span class="special">()</span> <span class="special">);</span>
+        <span class="special">}</span>
+        <span class="identifier">dxdt</span><span class="special">()[</span><span class="identifier">M</span><span class="special">-</span><span class="number">1</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">coupling_func</span><span class="special">(</span> <span class="identifier">x</span><span class="special">()[</span><span class="identifier">M</span><span class="special">-</span><span class="number">2</span><span class="special">]</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">()[</span><span class="identifier">M</span><span class="special">-</span><span class="number">1</span><span class="special">]</span> <span class="special">);</span>
+        <span class="keyword">if</span><span class="special">(</span> <span class="identifier">have_right</span> <span class="special">)</span>
+        <span class="special">{</span>
+            <span class="identifier">r_right</span><span class="special">.</span><span class="identifier">wait</span><span class="special">();</span>
+            <span class="identifier">dxdt</span><span class="special">()[</span><span class="identifier">M</span><span class="special">-</span><span class="number">1</span><span class="special">]</span> <span class="special">+=</span> <span class="identifier">coupling_func</span><span class="special">(</span> <span class="identifier">x_right</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">().</span><span class="identifier">back</span><span class="special">()</span> <span class="special">);</span>
+        <span class="special">}</span>
+    <span class="special">}</span>
+
+    <span class="keyword">double</span> <span class="identifier">coupling_func</span><span class="special">(</span> <span class="keyword">double</span> <span class="identifier">x</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">sin</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">)</span> <span class="special">-</span> <span class="identifier">m_gamma</span> <span class="special">*</span> <span class="special">(</span> <span class="number">1.0</span> <span class="special">-</span> <span class="identifier">cos</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">)</span> <span class="special">);</span>
+    <span class="special">}</span>
+
+    <span class="keyword">double</span> <span class="identifier">m_gamma</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>与 <code class="computeroutput"><span class="identifier">openmp_state</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code> 类似, 我们使用 <code class="computeroutput"><span class="identifier">mpi_state</span><span class="special">&lt;</span> <span class="identifier">InnerState</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span> <span class="special">&gt;</span></code>, 它自动选择 <code class="computeroutput"><span class="identifier">mpi_nested_algebra</span></code> 以及合适的 MPI 无关内层代数 (由于我们的内层状态是 <code class="computeroutput"><span class="identifier">vector</span></code>, 内层代数将与 OpenMP 示例中一样是 <code class="computeroutput"><span class="identifier">range_algebra</span></code>).</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="identifier">mpi_state</span><span class="special">&lt;</span> <span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">&gt;</span> <span class="special">&gt;</span> <span class="identifier">state_type</span><span class="special">;</span>
+</pre>
+<p>
+        </p>
+<p>在主程序中, 我们构造一个 <code class="computeroutput"><span class="identifier">communicator</span></code>, 它告诉我们集群的 <code class="computeroutput"><span class="identifier">size</span></code> 以及当前节点在其内的 <code class="computeroutput"><span class="identifier">rank</span></code>. 我们只在主节点上生成输入数据, 避免在其他节点上做不必要的工作. <code class="computeroutput"><span class="identifier">split</span></code> 在这里充当 MPI 集合函数, 而不是简单地复制数据块, 它把区域从主节点发送/接收到每个从节点. 该输入参数在从节点上被忽略, 但主节点会在其输出中接收一个区域并参与计算.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">mpi</span><span class="special">::</span><span class="identifier">environment</span> <span class="identifier">env</span><span class="special">(</span> <span class="identifier">argc</span> <span class="special">,</span> <span class="identifier">argv</span> <span class="special">);</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">mpi</span><span class="special">::</span><span class="identifier">communicator</span> <span class="identifier">world</span><span class="special">;</span>
+
+<span class="keyword">const</span> <span class="identifier">size_t</span> <span class="identifier">N</span> <span class="special">=</span> <span class="number">131101</span><span class="special">;</span>
+<span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">&gt;</span> <span class="identifier">x</span><span class="special">;</span>
+<span class="keyword">if</span><span class="special">(</span> <span class="identifier">world</span><span class="special">.</span><span class="identifier">rank</span><span class="special">()</span> <span class="special">==</span> <span class="number">0</span> <span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">x</span><span class="special">.</span><span class="identifier">resize</span><span class="special">(</span> <span class="identifier">N</span> <span class="special">);</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">random</span><span class="special">::</span><span class="identifier">uniform_real_distribution</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">&gt;</span> <span class="identifier">distribution</span><span class="special">(</span> <span class="number">0.0</span> <span class="special">,</span> <span class="number">2.0</span><span class="special">*</span><span class="identifier">pi</span> <span class="special">);</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">random</span><span class="special">::</span><span class="identifier">mt19937</span> <span class="identifier">engine</span><span class="special">(</span> <span class="number">0</span> <span class="special">);</span>
+    <span class="identifier">generate</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span> <span class="identifier">distribution</span> <span class="special">,</span> <span class="identifier">engine</span> <span class="special">)</span> <span class="special">);</span>
+<span class="special">}</span>
+
+<span class="identifier">state_type</span> <span class="identifier">x_split</span><span class="special">(</span> <span class="identifier">world</span> <span class="special">);</span>
+<span class="identifier">split</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">x_split</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+<p>现在 <code class="computeroutput"><span class="identifier">x_split</span></code> 包含 (仅) 每个节点的本地数据块, 我们开始积分.</p>
+<p>为了在主节点上打印结果, 我们使用 <code class="computeroutput"><span class="identifier">unsplit</span></code> 把处理后的数据发回.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">integrate_n_steps</span><span class="special">(</span> <span class="identifier">runge_kutta4</span><span class="special">&lt;</span><span class="identifier">state_type</span><span class="special">&gt;()</span> <span class="special">,</span> <span class="identifier">phase_chain_mpi_state</span><span class="special">(</span> <span class="number">1.2</span> <span class="special">)</span> <span class="special">,</span>
+                   <span class="identifier">x_split</span> <span class="special">,</span> <span class="number">0.0</span> <span class="special">,</span> <span class="number">0.01</span> <span class="special">,</span> <span class="number">100</span> <span class="special">);</span>
+<span class="identifier">unsplit</span><span class="special">(</span> <span class="identifier">x_split</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>
+            <code class="computeroutput"><span class="identifier">mpi_nested_algebra</span><span class="special">::</span><span class="identifier">for_each</span></code><em class="replaceable"><code>N</code></em> 不使用任何 MPI 构造, 它只是对本地数据块调用内层代数, 系统函数也不受任何屏障保护, 因此如果你不手动放置屏障 (例如在参数研究中各元素完全独立的情形), 你可能会看到各节点分道执行, 在不同时刻从这个调用返回.</p></td></tr>
+</table></div>
+<p>完整示例见 <a href="https://github.com/headmyshoulder/odeint-v2/blob/master/examples/mpi/phase_chain.cpp" target="_top">mpi/phase_chain.cpp</a>.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts"></a><a class="link" href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts" title="概念">概念</a>
+</h4></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.mpi_state">MPI
+          State</a></span></dt>
+<dt><span class="section"><a href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.openmp_split_state">OpenMP
+          Split State</a></span></dt>
+<dt><span class="section"><a href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.splitter">Splitter</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.mpi_state"></a><a class="link" href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.mpi_state" title="MPI State">MPI
+          State</a>
+</h5></div></div></div>
+<p> <code class="computeroutput"><span class="identifier">mpi_nested_algebra</span></code> 所用的.</p>
+<h6>
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.mpi_state.h0"></a>
+            <span class="phrase"><a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.mpi_state.notation"></a></span><a class="link" href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.mpi_state.notation">记法约定</a>
+          </h6>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term"><code class="computeroutput"><span class="identifier">InnerState</span></code></span></dt>
+<dd><p>内层状态类型</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">State</span></code></span></dt>
+<dd><p>MPI 状态类型</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">state</span></code></span></dt>
+<dd><p> <code class="computeroutput"><span class="identifier">State</span></code> 类型的对象</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">world</span></code></span></dt>
+<dd><p> <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">mpi</span><span class="special">::</span><span class="identifier">communicator</span></code> 类型的对象</p></dd>
+</dl>
+</div>
+<h6>
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.mpi_state.h1"></a>
+            <span class="phrase"><a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.mpi_state.valid_expressions"></a></span><a class="link" href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.mpi_state.valid_expressions">有效表达式</a>
+          </h6>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                    <p>名称</p>
+                  </th>
+<th>
+                    <p>表达式</p>
+                  </th>
+<th>
+                    <p>类型</p>
+                  </th>
+<th>
+                    <p>语义</p>
+                  </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                    <p>用一个通信器构造状态</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">State</span><span class="special">(</span><span class="identifier">world</span><span class="special">)</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">State</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>构造该 State.</p>
+                  </td>
+</tr>
+<tr>
+<td>
+                    <p>用默认通信器构造状态</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">State</span><span class="special">()</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">State</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>构造该 State.</p>
+                  </td>
+</tr>
+<tr>
+<td>
+                    <p>获取当前节点的内层状态</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">state</span><span class="special">()</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">InnerState</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>返回一个 (const) 引用.</p>
+                  </td>
+</tr>
+<tr>
+<td>
+                    <p>获取通信器</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">state</span><span class="special">.</span><span class="identifier">world</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">mpi</span><span class="special">::</span><span class="identifier">communicator</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>见 <a href="http://www.boost.org/doc/libs/release/libs/mpi/" target="_top">Boost.MPI</a>.</p>
+                  </td>
+</tr>
+</tbody>
+</table></div>
+<h6>
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.mpi_state.h2"></a>
+            <span class="phrase"><a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.mpi_state.models"></a></span><a class="link" href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.mpi_state.models">模型</a>
+          </h6>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">
+                <code class="computeroutput"><span class="identifier">mpi_state</span><span class="special">&lt;</span><span class="identifier">InnerState</span><span class="special">&gt;</span></code>
+              </li></ul></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.openmp_split_state"></a><a class="link" href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.openmp_split_state" title="OpenMP Split State">OpenMP
+          Split State</a>
+</h5></div></div></div>
+<p> <code class="computeroutput"><span class="identifier">openmp_nested_algebra</span></code> 所用的, 本质上是一个 <code class="computeroutput"><span class="identifier">ValueType</span>
+            <span class="special">=</span> <span class="identifier">InnerState</span></code> 的 Random Access Container.</p>
+<h6>
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.openmp_split_state.h0"></a>
+            <span class="phrase"><a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.openmp_split_state.notation"></a></span><a class="link" href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.openmp_split_state.notation">记法约定</a>
+          </h6>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term"><code class="computeroutput"><span class="identifier">InnerState</span></code></span></dt>
+<dd><p>内层状态类型</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">State</span></code></span></dt>
+<dd><p>拆分状态类型</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">state</span></code></span></dt>
+<dd><p> <code class="computeroutput"><span class="identifier">State</span></code> 类型的对象</p></dd>
+</dl>
+</div>
+<h6>
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.openmp_split_state.h1"></a>
+            <span class="phrase"><a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.openmp_split_state.valid_expressions"></a></span><a class="link" href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.openmp_split_state.valid_expressions">有效表达式</a>
+          </h6>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                    <p>名称</p>
+                  </th>
+<th>
+                    <p>表达式</p>
+                  </th>
+<th>
+                    <p>类型</p>
+                  </th>
+<th>
+                    <p>语义</p>
+                  </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                    <p>为 <code class="computeroutput"><span class="identifier">n</span></code> 个数据块构造状态</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">State</span><span class="special">(</span><span class="identifier">n</span><span class="special">)</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">State</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>构造底层的 <code class="computeroutput"><span class="identifier">vector</span></code>.</p>
+                  </td>
+</tr>
+<tr>
+<td>
+                    <p>获取一个数据块</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">state</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">InnerState</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>访问底层的 <code class="computeroutput"><span class="identifier">vector</span></code>.</p>
+                  </td>
+</tr>
+<tr>
+<td>
+                    <p>获取数据块数量</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">state</span><span class="special">.</span><span class="identifier">size</span><span class="special">()</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">size_type</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>返回底层 <code class="computeroutput"><span class="identifier">vector</span></code> 的大小.</p>
+                  </td>
+</tr>
+</tbody>
+</table></div>
+<h6>
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.openmp_split_state.h2"></a>
+            <span class="phrase"><a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.openmp_split_state.models"></a></span><a class="link" href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.openmp_split_state.models">模型</a>
+          </h6>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">
+                <code class="computeroutput"><span class="identifier">openmp_state</span><span class="special">&lt;</span><span class="identifier">ValueType</span><span class="special">&gt;</span></code> 搭配 <code class="computeroutput"><span class="identifier">InnerState</span> <span class="special">=</span> <span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">ValueType</span><span class="special">&gt;</span></code>
+              </li></ul></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.splitter"></a><a class="link" href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.splitter" title="Splitter">Splitter</a>
+</h5></div></div></div>
+<h6>
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.splitter.h0"></a>
+            <span class="phrase"><a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.splitter.notation"></a></span><a class="link" href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.splitter.notation">记法约定</a>
+          </h6>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term"><code class="computeroutput"><span class="identifier">Container1</span></code></span></dt>
+<dd><p>连续数据容器类型</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">x</span></code></span></dt>
+<dd><p> <code class="computeroutput"><span class="identifier">Container1</span></code> 类型的对象</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">Container2</span></code></span></dt>
+<dd><p>分块数据容器类型</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">y</span></code></span></dt>
+<dd><p> <code class="computeroutput"><span class="identifier">Container2</span></code> 类型的对象</p></dd>
+</dl>
+</div>
+<h6>
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.splitter.h1"></a>
+            <span class="phrase"><a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.splitter.valid_expressions"></a></span><a class="link" href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.splitter.valid_expressions">有效表达式</a>
+          </h6>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                    <p>名称</p>
+                  </th>
+<th>
+                    <p>表达式</p>
+                  </th>
+<th>
+                    <p>类型</p>
+                  </th>
+<th>
+                    <p>语义</p>
+                  </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                    <p>把输入的数据块复制到输出元素</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">split</span><span class="special">(</span><span class="identifier">x</span><span class="special">,</span>
+                      <span class="identifier">y</span><span class="special">)</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="keyword">void</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>调用 <code class="computeroutput"><span class="identifier">split_impl</span><span class="special">&lt;</span><span class="identifier">Container1</span><span class="special">,</span> <span class="identifier">Container2</span><span class="special">&gt;::</span><span class="identifier">split</span><span class="special">(</span><span class="identifier">x</span><span class="special">,</span> <span class="identifier">y</span><span class="special">)</span></code>, 将 <code class="computeroutput"><span class="identifier">x</span></code> 拆分为 <code class="computeroutput"><span class="identifier">y</span><span class="special">.</span><span class="identifier">size</span><span class="special">()</span></code> 个数据块.</p>
+                  </td>
+</tr>
+<tr>
+<td>
+                    <p>把输入的数据块拼接到输出</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">unsplit</span><span class="special">(</span><span class="identifier">y</span><span class="special">,</span>
+                      <span class="identifier">x</span><span class="special">)</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="keyword">void</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>调用 <code class="computeroutput"><span class="identifier">unsplit_impl</span><span class="special">&lt;</span><span class="identifier">Container2</span><span class="special">,</span> <span class="identifier">Container1</span><span class="special">&gt;::</span><span class="identifier">unsplit</span><span class="special">(</span><span class="identifier">y</span><span class="special">,</span> <span class="identifier">x</span><span class="special">)</span></code>, 假定 <code class="computeroutput"><span class="identifier">x</span></code> 具有正确的大小 <span class="emphasis"><em>σ <code class="computeroutput"><span class="identifier">y</span><span class="special">[</span><span class="identifier">i</span><span class="special">].</span><span class="identifier">size</span><span class="special">()</span></code></em></span>, 不调整 <code class="computeroutput"><span class="identifier">x</span></code> 的大小.</p>
+                  </td>
+</tr>
+</tbody>
+</table></div>
+<h6>
+<a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.splitter.h2"></a>
+            <span class="phrase"><a name="boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.splitter.models"></a></span><a class="link" href="parallel_computation_with_openmp_and_mpi.html#boost_numeric_odeint.tutorial.parallel_computation_with_openmp_and_mpi.concepts.splitter.models">模型</a>
+          </h6>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">为 <code class="computeroutput"><span class="identifier">Container1</span></code> = <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a> 和 <code class="computeroutput"><span class="identifier">Container2</span> <span class="special">=</span>
+                <span class="identifier">openmp_state</span></code> 定义</li>
+<li class="listitem">以及 <code class="computeroutput"><span class="identifier">Container2</span> <span class="special">=</span>
+                <span class="identifier">mpi_state</span></code>.</li>
+</ul></div>
+<p>要为与 <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a> 不兼容的容器实现拆分器, 请特化 <code class="computeroutput"><span class="identifier">split_impl</span></code> 和 <code class="computeroutput"><span class="identifier">unsplit_impl</span></code> 类型:</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">class</span> <span class="identifier">Container1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Container2</span> <span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Enabler</span> <span class="special">=</span> <span class="keyword">void</span> <span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">split_impl</span> <span class="special">{</span>
+    <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">split</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">Container1</span> <span class="special">&amp;</span><span class="identifier">from</span> <span class="special">,</span> <span class="identifier">Container2</span> <span class="special">&amp;</span><span class="identifier">to</span> <span class="special">);</span>
+<span class="special">};</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">class</span> <span class="identifier">Container2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Container1</span> <span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Enabler</span> <span class="special">=</span> <span class="keyword">void</span> <span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">unsplit_impl</span> <span class="special">{</span>
+    <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">unsplit</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">Container2</span> <span class="special">&amp;</span><span class="identifier">from</span> <span class="special">,</span> <span class="identifier">Container1</span> <span class="special">&amp;</span><span class="identifier">to</span> <span class="special">);</span>
+<span class="special">};</span>
+</pre>
+<p>
+          </p>
+</div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2009-2015 Karsten Ahnert 和 Mario Mulansky<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="using_opencl_via_vexcl.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../tutorial.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="all_examples.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

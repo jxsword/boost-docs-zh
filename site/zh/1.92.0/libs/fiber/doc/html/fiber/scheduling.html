@@ -1,0 +1,1493 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>调度</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Fiber">
+<link rel="up" href="../index.html" title="第 1 章 Fiber">
+<link rel="prev" href="fiber_mgmt/this_fiber.html" title="this_fiber 命名空间">
+<link rel="next" href="stack.html" title="Stack allocation">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="fiber_mgmt/this_fiber.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="stack.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="fiber.scheduling"></a><a name="scheduling"></a><a class="link" href="scheduling.html" title="调度">调度</a>
+</h2></div></div></div>
+<p>线程中的纤程由纤程管理器协调. 纤程以协作方式而非抢占方式交接控制权: 当前运行的纤程保持控制权, 直到它调用某个把控制权交给管理器的操作. 每当纤程挂起 (或让出) 时, 纤程管理器会咨询调度器以确定下一个运行的纤程.</p>
+<p>
+      <span class="bold"><strong>Boost.Fiber</strong></span> 提供纤程管理器, 但调度器是一个定制点. (参见 <a class="link" href="custom.html#custom">定制</a>.)</p>
+<p>每个线程都有自己的调度器. 进程中的不同线程可以使用不同的调度器. 默认情况下, <span class="bold"><strong>Boost.Fiber</strong></span> 会为每个线程隐式实例化 <a class="link" href="scheduling.html#class_round_robin"><code class="computeroutput">round_robin</code></a> 作为调度器.</p>
+<p>明确允许你编写自己的 <a class="link" href="scheduling.html#class_algorithm"><code class="computeroutput">algorithm</code></a> 子类. 在大多数情况下, 你的 <code class="computeroutput"><span class="identifier">algorithm</span></code> 子类无需防御跨线程调用: 纤程管理器会拦截并推迟这类调用. 大多数 <code class="computeroutput"><span class="identifier">algorithm</span></code> 方法只会从其管理的纤程所在线程被直接调用——例外情况见下文说明.</p>
+<p>你的 <code class="computeroutput"><span class="identifier">algorithm</span></code> 子类通过调用 <a class="link" href="fiber_mgmt/fiber.html#use_scheduling_algorithm"><code class="computeroutput">use_scheduling_algorithm()</code></a> 在特定线程上启用:</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">thread_fn</span><span class="special">()</span> <span class="special">{</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">use_scheduling_algorithm</span><span class="special">&lt;</span> <span class="identifier">my_fiber_scheduler</span> <span class="special">&gt;();</span>
+    <span class="special">...</span>
+<span class="special">}</span>
+</pre>
+<p>调度器类必须实现接口 <a class="link" href="scheduling.html#class_algorithm"><code class="computeroutput">algorithm</code></a>. <span class="bold"><strong>Boost.Fiber</strong></span> 提供的调度器有: <a class="link" href="scheduling.html#class_round_robin"><code class="computeroutput">round_robin</code></a>, <a class="link" href="scheduling.html#class_work_stealing"><code class="computeroutput">work_stealing</code></a>, <a class="link" href="numa.html#class_numa_work_stealing"><code class="computeroutput">numa::work_stealing</code></a> 和 <a class="link" href="scheduling.html#class_shared_work"><code class="computeroutput">shared_work</code></a>.</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">thread</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">uint32_t</span> <span class="identifier">thread_count</span><span class="special">)</span> <span class="special">{</span>
+    <span class="comment">// thread registers itself at work-stealing scheduler</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">use_scheduling_algorithm</span><span class="special">&lt;</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">algo</span><span class="special">::</span><span class="identifier">work_stealing</span> <span class="special">&gt;(</span> <span class="identifier">thread_count</span><span class="special">);</span>
+    <span class="special">...</span>
+<span class="special">}</span>
+
+<span class="comment">// count of logical cpus</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">uint32_t</span> <span class="identifier">thread_count</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">thread</span><span class="special">::</span><span class="identifier">hardware_concurrency</span><span class="special">();</span>
+<span class="comment">// start worker-threads first</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">thread</span> <span class="special">&gt;</span> <span class="identifier">threads</span><span class="special">;</span>
+<span class="keyword">for</span> <span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">uint32_t</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">1</span> <span class="comment">/* count start-thread */</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">thread_count</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span> <span class="special">{</span>
+    <span class="comment">// spawn thread</span>
+    <span class="identifier">threads</span><span class="special">.</span><span class="identifier">emplace_back</span><span class="special">(</span> <span class="identifier">thread</span><span class="special">,</span> <span class="identifier">thread_count</span><span class="special">);</span>
+<span class="special">}</span>
+<span class="comment">// start-thread registers itself at work-stealing scheduler</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">use_scheduling_algorithm</span><span class="special">&lt;</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">algo</span><span class="special">::</span><span class="identifier">work_stealing</span> <span class="special">&gt;(</span> <span class="identifier">thread_count</span><span class="special">);</span>
+<span class="special">...</span>
+</pre>
+<p>该示例生成与 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">thread</span><span class="special">::</span><span class="identifier">hardware_concurrency</span><span class="special">()</span></code> 返回值一样多的线程. 每个线程运行一个 <a class="link" href="scheduling.html#class_work_stealing"><code class="computeroutput">work_stealing</code></a> 调度器. 该调度器的每个实例都需要知道程序中有多少个线程运行工作窃取调度器. 如果某个线程的本地队列耗尽了就绪纤程, 该线程会尝试从运行此调度器的另一个线程窃取就绪纤程.</p>
+<p>
+      </p>
+<h5>
+<a name="class_algorithm_bridgehead"></a>
+  <span class="phrase"><a name="class_algorithm"></a></span>
+  <a class="link" href="scheduling.html#class_algorithm"> <code class="computeroutput">algorithm</code></a> 类</h5>
+<p>
+    </p>
+<p>
+      <code class="computeroutput"><span class="identifier">algorithm</span></code> 是定义纤程调度器必须实现的接口的抽象基类.</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">fiber</span><span class="special">/</span><span class="identifier">algo</span><span class="special">/</span><span class="identifier">algorithm</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">fibers</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">algo</span> <span class="special">{</span>
+
+<span class="keyword">struct</span> <span class="identifier">algorithm</span> <span class="special">{</span>
+    <span class="keyword">virtual</span> <span class="special">~</span><span class="identifier">algorithm</span><span class="special">();</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">awakened</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*)</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">pick_next</span><span class="special">()</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">bool</span> <span class="identifier">has_ready_fibers</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">suspend_until</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">steady_clock</span><span class="special">::</span><span class="identifier">time_point</span> <span class="keyword">const</span><span class="special">&amp;)</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">notify</span><span class="special">()</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="special">}}}</span>
+</pre>
+<p>
+      </p>
+<h5>
+<a name="algorithm_awakened_bridgehead"></a>
+  <span class="phrase"><a name="algorithm_awakened"></a></span>
+  <a class="link" href="scheduling.html#algorithm_awakened">Member function
+      <code class="computeroutput">awakened</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">awakened</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">f</span><span class="special">)</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>告知调度器纤程 <code class="computeroutput"><span class="identifier">f</span></code> 已就绪可运行. 纤程 <code class="computeroutput"><span class="identifier">f</span></code> 可能是新启动的, 也可能曾被阻塞但刚刚被唤醒, 还可能调用了 <a class="link" href="fiber_mgmt/this_fiber.html#this_fiber_yield"><code class="computeroutput">this_fiber::yield()</code></a>.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>此方法建议调度器把纤程 <code class="computeroutput"><span class="identifier">f</span></code> 加入其就绪可运行纤程的集合. 典型的调度器实现会把 <code class="computeroutput"><span class="identifier">f</span></code> 放入队列.</p></dd>
+<dt><span class="term">参见:</span></dt>
+<dd><p>
+            <a class="link" href="scheduling.html#class_round_robin"><code class="computeroutput">round_robin</code></a>
+          </p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="algorithm_pick_next_bridgehead"></a>
+  <span class="phrase"><a name="algorithm_pick_next"></a></span>
+  <a class="link" href="scheduling.html#algorithm_pick_next">Member
+      function <code class="computeroutput">pick_next</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">pick_next</span><span class="special">()</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>下一个要恢复的纤程; 若没有就绪纤程则为 <code class="computeroutput"><span class="keyword">nullptr</span></code>.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>调度器在此实际指定下一个要运行的纤程. 典型的调度器实现会选择就绪队列的队首.</p></dd>
+<dt><span class="term">参见:</span></dt>
+<dd><p>
+            <a class="link" href="scheduling.html#class_round_robin"><code class="computeroutput">round_robin</code></a>
+          </p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="algorithm_has_ready_fibers_bridgehead"></a>
+  <span class="phrase"><a name="algorithm_has_ready_fibers"></a></span>
+  <a class="link" href="scheduling.html#algorithm_has_ready_fibers">Member
+      function <code class="computeroutput">has_ready_fibers</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">bool</span> <span class="identifier">has_ready_fibers</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>如果调度器有就绪可运行的纤程, 则为 <code class="computeroutput"><span class="keyword">true</span></code>.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="algorithm_suspend_until_bridgehead"></a>
+  <span class="phrase"><a name="algorithm_suspend_until"></a></span>
+  <a class="link" href="scheduling.html#algorithm_suspend_until">Member
+      function <code class="computeroutput">suspend_until</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">suspend_until</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">steady_clock</span><span class="special">::</span><span class="identifier">time_point</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">abs_time</span><span class="special">)</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>告知调度器: 在时间点 <code class="computeroutput"><span class="identifier">abs_time</span></code> 之前不会有纤程就绪.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>此方法允许自定义调度器以任何合理的方式把控制权让给其所处的环境. 纤程管理器表示 <code class="computeroutput"><span class="identifier">suspend_until</span><span class="special">()</span></code> 直到 <code class="computeroutput"><span class="identifier">abs_time</span></code>——或调用了 <a class="link" href="scheduling.html#algorithm_notify"><code class="computeroutput">algorithm::notify()</code></a>——之前无需返回, 以先到者为准. 与 <code class="computeroutput"><span class="identifier">notify</span><span class="special">()</span></code> 的交互意味着, 例如, 调用 <a href="http://en.cppreference.com/w/cpp/thread/sleep_until" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">this_thread</span><span class="special">::</span><span class="identifier">sleep_until</span><span class="special">(</span><span class="identifier">abs_time</span><span class="special">)</span></code></a> 会过于简单. <a class="link" href="scheduling.html#round_robin_suspend_until"><code class="computeroutput">round_robin::suspend_until()</code></a> 使用 <a href="http://en.cppreference.com/w/cpp/thread/condition_variable" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">condition_variable</span></code></a> 与 <a class="link" href="scheduling.html#round_robin_notify"><code class="computeroutput">round_robin::notify()</code></a> 协调.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>鉴于 <code class="computeroutput"><span class="identifier">notify</span><span class="special">()</span></code> 可能从另一个线程被调用, 你的 <code class="computeroutput"><span class="identifier">suspend_until</span><span class="special">()</span></code> 实现——与你的 <code class="computeroutput"><span class="identifier">algorithm</span></code> 实现的其余部分一样——必须保护它与你的 <code class="computeroutput"><span class="identifier">notify</span><span class="special">()</span></code> 实现共享的任何数据.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="algorithm_notify_bridgehead"></a>
+  <span class="phrase"><a name="algorithm_notify"></a></span>
+  <a class="link" href="scheduling.html#algorithm_notify">Member function
+      <code class="computeroutput">notify</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">notify</span><span class="special">()</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>请求调度器从对 <a class="link" href="scheduling.html#algorithm_suspend_until"><code class="computeroutput">algorithm::suspend_until()</code></a> 的挂起调用中返回.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>在所有 <code class="computeroutput"><span class="identifier">algorithm</span></code> 方法中, 唯有 <code class="computeroutput"><span class="identifier">notify</span><span class="special">()</span></code> 可以从另一个线程调用. 你的 <code class="computeroutput"><span class="identifier">notify</span><span class="special">()</span></code> 实现必须保护它与你的 <code class="computeroutput"><span class="identifier">algorithm</span></code> 实现的其余部分共享的任何数据.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="class_round_robin_bridgehead"></a>
+  <span class="phrase"><a name="class_round_robin"></a></span>
+  <a class="link" href="scheduling.html#class_round_robin"> <code class="computeroutput">round_robin</code></a> 类</h5>
+<p>
+    </p>
+<p>该类实现 <a class="link" href="scheduling.html#class_algorithm"><code class="computeroutput">algorithm</code></a>, 以轮转方式调度纤程.</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">fiber</span><span class="special">/</span><span class="identifier">algo</span><span class="special">/</span><span class="identifier">round_robin</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">fibers</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">algo</span> <span class="special">{</span>
+
+<span class="keyword">class</span> <span class="identifier">round_robin</span> <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">algorithm</span> <span class="special">{</span>
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">awakened</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">pick_next</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">bool</span> <span class="identifier">has_ready_fibers</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">suspend_until</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">steady_clock</span><span class="special">::</span><span class="identifier">time_point</span> <span class="keyword">const</span><span class="special">&amp;)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">notify</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="special">}}}</span>
+</pre>
+<p>
+      </p>
+<h5>
+<a name="round_robin_awakened_bridgehead"></a>
+  <span class="phrase"><a name="round_robin_awakened"></a></span>
+  <a class="link" href="scheduling.html#round_robin_awakened">Member
+      function <code class="computeroutput">awakened</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">awakened</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">f</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>把纤程 <code class="computeroutput"><span class="identifier">f</span></code> 入队到就绪队列.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="round_robin_pick_next_bridgehead"></a>
+  <span class="phrase"><a name="round_robin_pick_next"></a></span>
+  <a class="link" href="scheduling.html#round_robin_pick_next">Member
+      function <code class="computeroutput">pick_next</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">pick_next</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>就绪队列队首的纤程; 若队列为空则为 <code class="computeroutput"><span class="keyword">nullptr</span></code>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>把就绪纤程放到队列尾部, 并从队列头部取出, 以轮转方式在线程上共享就绪纤程.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="round_robin_has_ready_fibers_bridgehead"></a>
+  <span class="phrase"><a name="round_robin_has_ready_fibers"></a></span>
+  <a class="link" href="scheduling.html#round_robin_has_ready_fibers">Member
+      function <code class="computeroutput">has_ready_fibers</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">bool</span> <span class="identifier">has_ready_fibers</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>如果调度器有就绪可运行的纤程, 则为 <code class="computeroutput"><span class="keyword">true</span></code>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="round_robin_suspend_until_bridgehead"></a>
+  <span class="phrase"><a name="round_robin_suspend_until"></a></span>
+  <a class="link" href="scheduling.html#round_robin_suspend_until">Member
+      function <code class="computeroutput">suspend_until</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">suspend_until</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">steady_clock</span><span class="special">::</span><span class="identifier">time_point</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">abs_time</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>告知 <code class="computeroutput"><span class="identifier">round_robin</span></code>: 在时间点 <code class="computeroutput"><span class="identifier">abs_time</span></code> 之前不会有就绪纤程可用. 本实现在 <a href="http://en.cppreference.com/w/cpp/thread/condition_variable/wait_until" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">condition_variable</span><span class="special">::</span><span class="identifier">wait_until</span><span class="special">()</span></code></a> 中阻塞.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="round_robin_notify_bridgehead"></a>
+  <span class="phrase"><a name="round_robin_notify"></a></span>
+  <a class="link" href="scheduling.html#round_robin_notify">Member function
+      <code class="computeroutput">notify</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">notify</span><span class="special">()</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>唤醒对 <a class="link" href="scheduling.html#round_robin_suspend_until"><code class="computeroutput">round_robin::suspend_until()</code></a> 的挂起调用, 某些纤程可能已经就绪. 本实现唤醒 <code class="computeroutput"><span class="identifier">suspend_until</span><span class="special">()</span></code>, 办法是通过 <a href="http://en.cppreference.com/w/cpp/thread/condition_variable/notify_all" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">condition_variable</span><span class="special">::</span><span class="identifier">notify_all</span><span class="special">()</span></code></a>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="class_work_stealing_bridgehead"></a>
+  <span class="phrase"><a name="class_work_stealing"></a></span>
+  <a class="link" href="scheduling.html#class_work_stealing"> <code class="computeroutput">work_stealing</code></a> 类</h5>
+<p>
+    </p>
+<p>该类实现 <a class="link" href="scheduling.html#class_algorithm"><code class="computeroutput">algorithm</code></a>; 如果本地就绪队列耗尽了就绪纤程, 就会从其他调度器窃取就绪纤程.<br> 受害调度器 (从中窃取就绪纤程的调度器) 是随机选取的.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>工作线程存储在静态变量中, 不支持动态添加/移除工作线程, 也不支持同时存在多个不同的工作线程域.</p></td></tr>
+</table></div>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">fiber</span><span class="special">/</span><span class="identifier">algo</span><span class="special">/</span><span class="identifier">work_stealing</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">fibers</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">algo</span> <span class="special">{</span>
+
+<span class="keyword">class</span> <span class="identifier">work_stealing</span> <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">algorithm</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">work_stealing</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">uint32_t</span> <span class="identifier">thread_count</span><span class="special">,</span> <span class="keyword">bool</span> <span class="identifier">suspend</span> <span class="special">=</span> <span class="keyword">false</span><span class="special">);</span>
+
+    <span class="identifier">work_stealing</span><span class="special">(</span> <span class="identifier">work_stealing</span> <span class="keyword">const</span><span class="special">&amp;)</span> <span class="special">=</span> <span class="keyword">delete</span><span class="special">;</span>
+    <span class="identifier">work_stealing</span><span class="special">(</span> <span class="identifier">work_stealing</span> <span class="special">&amp;&amp;)</span> <span class="special">=</span> <span class="keyword">delete</span><span class="special">;</span>
+
+    <span class="identifier">work_stealing</span> <span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">=(</span> <span class="identifier">work_stealing</span> <span class="keyword">const</span><span class="special">&amp;)</span> <span class="special">=</span> <span class="keyword">delete</span><span class="special">;</span>
+    <span class="identifier">work_stealing</span> <span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">=(</span> <span class="identifier">work_stealing</span> <span class="special">&amp;&amp;)</span> <span class="special">=</span> <span class="keyword">delete</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">awakened</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">pick_next</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">bool</span> <span class="identifier">has_ready_fibers</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">suspend_until</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">steady_clock</span><span class="special">::</span><span class="identifier">time_point</span> <span class="keyword">const</span><span class="special">&amp;)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">notify</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="special">}}}</span>
+</pre>
+<h4>
+<a name="fiber.scheduling.h0"></a>
+      <span class="phrase"><a name="fiber.scheduling.constructor"></a></span><a class="link" href="scheduling.html#fiber.scheduling.constructor">构造函数</a>
+    </h4>
+<pre class="programlisting"><span class="identifier">work_stealing</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">uint32_t</span> <span class="identifier">thread_count</span><span class="special">,</span> <span class="keyword">bool</span> <span class="identifier">suspend</span> <span class="special">=</span> <span class="keyword">false</span><span class="special">);</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>构造工作窃取调度算法. <code class="computeroutput"><span class="identifier">thread_count</span></code> 表示运行此算法的线程数量.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="identifier">system_error</span></code>
+          </p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>如果 <code class="computeroutput"><span class="identifier">suspend</span></code> 被设为 <code class="computeroutput"><span class="keyword">true</span></code>, 那么当无法窃取到就绪纤程时, 调度器会挂起. 当某个休眠纤程超时或收到来自远程 (其他线程或纤程调度器) 的通知时, 调度器会被唤醒.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="work_stealing_awakened_bridgehead"></a>
+  <span class="phrase"><a name="work_stealing_awakened"></a></span>
+  <a class="link" href="scheduling.html#work_stealing_awakened">Member
+      function <code class="computeroutput">awakened</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">awakened</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">f</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>把纤程 <code class="computeroutput"><span class="identifier">f</span></code> 入队到共享就绪队列.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="work_stealing_pick_next_bridgehead"></a>
+  <span class="phrase"><a name="work_stealing_pick_next"></a></span>
+  <a class="link" href="scheduling.html#work_stealing_pick_next">Member
+      function <code class="computeroutput">pick_next</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">pick_next</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>就绪队列队首的纤程; 若队列为空则为 <code class="computeroutput"><span class="keyword">nullptr</span></code>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>把就绪纤程放到共享队列的尾部, 并从该队列的头部取出, 以轮转方式在线程上共享就绪纤程.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="work_stealing_has_ready_fibers_bridgehead"></a>
+  <span class="phrase"><a name="work_stealing_has_ready_fibers"></a></span>
+  <a class="link" href="scheduling.html#work_stealing_has_ready_fibers">Member
+      function <code class="computeroutput">has_ready_fibers</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">bool</span> <span class="identifier">has_ready_fibers</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>如果调度器有就绪可运行的纤程, 则为 <code class="computeroutput"><span class="keyword">true</span></code>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="work_stealing_suspend_until_bridgehead"></a>
+  <span class="phrase"><a name="work_stealing_suspend_until"></a></span>
+  <a class="link" href="scheduling.html#work_stealing_suspend_until">Member
+      function <code class="computeroutput">suspend_until</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">suspend_until</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">steady_clock</span><span class="special">::</span><span class="identifier">time_point</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">abs_time</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>告知 <code class="computeroutput"><span class="identifier">work_stealing</span></code>: 在时间点 <code class="computeroutput"><span class="identifier">abs_time</span></code> 之前不会有就绪纤程可用. 本实现在 <a href="http://en.cppreference.com/w/cpp/thread/condition_variable/wait_until" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">condition_variable</span><span class="special">::</span><span class="identifier">wait_until</span><span class="special">()</span></code></a> 中阻塞.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="work_stealing_notify_bridgehead"></a>
+  <span class="phrase"><a name="work_stealing_notify"></a></span>
+  <a class="link" href="scheduling.html#work_stealing_notify">Member
+      function <code class="computeroutput">notify</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">notify</span><span class="special">()</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>唤醒对 <a class="link" href="scheduling.html#work_stealing_suspend_until"><code class="computeroutput">work_stealing::suspend_until()</code></a> 的挂起调用, 某些纤程可能已经就绪. 本实现唤醒 <code class="computeroutput"><span class="identifier">suspend_until</span><span class="special">()</span></code>, 办法是通过 <a href="http://en.cppreference.com/w/cpp/thread/condition_variable/notify_all" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">condition_variable</span><span class="special">::</span><span class="identifier">notify_all</span><span class="special">()</span></code></a>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="class_shared_work_bridgehead"></a>
+  <span class="phrase"><a name="class_shared_work"></a></span>
+  <a class="link" href="scheduling.html#class_shared_work"> <code class="computeroutput">shared_work</code></a> 类</h5>
+<p>
+    </p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>由于数据的非局部性, <span class="emphasis"><em>shared_work</em></span> 的性能不如 <a class="link" href="scheduling.html#class_work_stealing"><code class="computeroutput">work_stealing</code></a>.</p></td></tr>
+</table></div>
+<p>该类实现 <a class="link" href="scheduling.html#class_algorithm"><code class="computeroutput">algorithm</code></a>, 以轮转方式调度纤程. 就绪纤程在 shared_work 的所有实例 (运行在不同线程上) 之间共享, 因此工作被均匀分布到所有线程上.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>工作线程存储在静态变量中, 不支持动态添加/移除工作线程, 也不支持同时存在多个不同的工作线程域.</p></td></tr>
+</table></div>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">fiber</span><span class="special">/</span><span class="identifier">algo</span><span class="special">/</span><span class="identifier">shared_work</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">fibers</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">algo</span> <span class="special">{</span>
+
+<span class="keyword">class</span> <span class="identifier">shared_work</span> <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">algorithm</span> <span class="special">{</span>
+    <span class="identifier">shared_work</span><span class="special">();</span>
+    <span class="identifier">shared_work</span><span class="special">(</span> <span class="keyword">bool</span> <span class="identifier">suspend</span><span class="special">);</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">awakened</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">pick_next</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">bool</span> <span class="identifier">has_ready_fibers</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">suspend_until</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">steady_clock</span><span class="special">::</span><span class="identifier">time_point</span> <span class="keyword">const</span><span class="special">&amp;)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">notify</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="special">}}}</span>
+</pre>
+<h4>
+<a name="fiber.scheduling.h1"></a>
+      <span class="phrase"><a name="fiber.scheduling.constructor0"></a></span><a class="link" href="scheduling.html#fiber.scheduling.constructor0">构造函数</a>
+    </h4>
+<pre class="programlisting"><span class="identifier">shared_work</span><span class="special">();</span>
+<span class="identifier">shared_work</span><span class="special">(</span> <span class="keyword">bool</span> <span class="identifier">suspend</span><span class="special">);</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>构造工作共享调度算法.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="identifier">system_error</span></code>
+          </p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>如果 <code class="computeroutput"><span class="identifier">suspend</span></code> 被设为 <code class="computeroutput"><span class="keyword">true</span></code> (默认为 <code class="computeroutput"><span class="keyword">false</span></code>), 那么当无法窃取到就绪纤程时, 调度器会挂起. 当某个休眠纤程超时或收到来自远程 (其他线程或纤程调度器) 的通知时, 调度器会被唤醒.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="shared_work_awakened_bridgehead"></a>
+  <span class="phrase"><a name="shared_work_awakened"></a></span>
+  <a class="link" href="scheduling.html#shared_work_awakened">Member
+      function <code class="computeroutput">awakened</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">awakened</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">f</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>把纤程 <code class="computeroutput"><span class="identifier">f</span></code> 入队到共享就绪队列.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="shared_work_pick_next_bridgehead"></a>
+  <span class="phrase"><a name="shared_work_pick_next"></a></span>
+  <a class="link" href="scheduling.html#shared_work_pick_next">Member
+      function <code class="computeroutput">pick_next</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">pick_next</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>就绪队列队首的纤程; 若队列为空则为 <code class="computeroutput"><span class="keyword">nullptr</span></code>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>把就绪纤程放到共享队列的尾部, 并从该队列的头部取出, 以轮转方式在线程上共享就绪纤程.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="shared_work_has_ready_fibers_bridgehead"></a>
+  <span class="phrase"><a name="shared_work_has_ready_fibers"></a></span>
+  <a class="link" href="scheduling.html#shared_work_has_ready_fibers">Member
+      function <code class="computeroutput">has_ready_fibers</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">bool</span> <span class="identifier">has_ready_fibers</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>如果调度器有就绪可运行的纤程, 则为 <code class="computeroutput"><span class="keyword">true</span></code>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="shared_work_suspend_until_bridgehead"></a>
+  <span class="phrase"><a name="shared_work_suspend_until"></a></span>
+  <a class="link" href="scheduling.html#shared_work_suspend_until">Member
+      function <code class="computeroutput">suspend_until</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">suspend_until</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">steady_clock</span><span class="special">::</span><span class="identifier">time_point</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">abs_time</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>告知 <code class="computeroutput"><span class="identifier">shared_work</span></code>: 在时间点 <code class="computeroutput"><span class="identifier">abs_time</span></code> 之前不会有就绪纤程可用. 本实现在 <a href="http://en.cppreference.com/w/cpp/thread/condition_variable/wait_until" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">condition_variable</span><span class="special">::</span><span class="identifier">wait_until</span><span class="special">()</span></code></a> 中阻塞.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="shared_work_notify_bridgehead"></a>
+  <span class="phrase"><a name="shared_work_notify"></a></span>
+  <a class="link" href="scheduling.html#shared_work_notify">Member function
+      <code class="computeroutput">notify</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">notify</span><span class="special">()</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>唤醒对 <a class="link" href="scheduling.html#shared_work_suspend_until"><code class="computeroutput">shared_work::suspend_until()</code></a> 的挂起调用, 某些纤程可能已经就绪. 本实现唤醒 <code class="computeroutput"><span class="identifier">suspend_until</span><span class="special">()</span></code>, 办法是通过 <a href="http://en.cppreference.com/w/cpp/thread/condition_variable/notify_all" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">condition_variable</span><span class="special">::</span><span class="identifier">notify_all</span><span class="special">()</span></code></a>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+</dl>
+</div>
+<h4>
+<a name="fiber.scheduling.h2"></a>
+      <span class="phrase"><a name="fiber.scheduling.custom_scheduler_fiber_properties"></a></span><a class="link" href="scheduling.html#fiber.scheduling.custom_scheduler_fiber_properties">自定义调度器纤程属性</a>
+    </h4>
+<p>直接从 <a class="link" href="scheduling.html#class_algorithm"><code class="computeroutput">algorithm</code></a> 派生的调度器类可以使用 <a class="link" href="scheduling.html#class_context"><code class="computeroutput">context</code></a> 提供的任何信息来实现 <code class="computeroutput"><span class="identifier">algorithm</span></code> 接口. 但自定义调度器可能需要为纤程跟踪额外的属性. 例如, 基于优先级的调度器需要跟踪纤程的优先级.</p>
+<p>
+      <span class="bold"><strong>Boost.Fiber</strong></span> 提供了一种机制, 使你的自定义调度器可以为每个纤程关联自定义属性.</p>
+<p>
+      </p>
+<h5>
+<a name="class_fiber_properties_bridgehead"></a>
+  <span class="phrase"><a name="class_fiber_properties"></a></span>
+  <a class="link" href="scheduling.html#class_fiber_properties"> <code class="computeroutput">fiber_properties</code></a> 类</h5>
+<p>
+    </p>
+<p>自定义纤程属性类必须从 <code class="computeroutput"><span class="identifier">fiber_properties</span></code> 派生.</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">fiber</span><span class="special">/</span><span class="identifier">properties</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">fibers</span> <span class="special">{</span>
+
+<span class="keyword">class</span> <span class="identifier">fiber_properties</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">fiber_properties</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="special">~</span><span class="identifier">fiber_properties</span><span class="special">();</span>
+
+<span class="keyword">protected</span><span class="special">:</span>
+    <span class="keyword">void</span> <span class="identifier">notify</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="special">}}</span>
+</pre>
+<h4>
+<a name="fiber.scheduling.h3"></a>
+      <span class="phrase"><a name="fiber.scheduling.constructor1"></a></span><a class="link" href="scheduling.html#fiber.scheduling.constructor1">构造函数</a>
+    </h4>
+<pre class="programlisting"><span class="identifier">fiber_properties</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">f</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>构造自定义子类的基类组件.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>你的子类构造函数必须接受一个 <code class="computeroutput"><span class="identifier">context</span><span class="special">*</span></code>, 并把它传给基类的 <code class="computeroutput"><span class="identifier">fiber_properties</span></code> 构造函数.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="fiber_properties_notify_bridgehead"></a>
+  <span class="phrase"><a name="fiber_properties_notify"></a></span>
+  <a class="link" href="scheduling.html#fiber_properties_notify">Member
+      function <code class="computeroutput">notify</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">notify</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>把控制权交给自定义 <a class="link" href="scheduling.html#class_algorithm_with_properties"><code class="computeroutput">algorithm_with_properties&lt;&gt;</code></a> 子类的 <a class="link" href="scheduling.html#algorithm_with_properties_property_change"><code class="computeroutput">algorithm_with_properties::property_change()</code></a> 方法.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>自定义调度器的 <a class="link" href="scheduling.html#algorithm_with_properties_pick_next"><code class="computeroutput">algorithm_with_properties::pick_next()</code></a> 方法可以从就绪纤程中动态选取, 或者 <a class="link" href="scheduling.html#algorithm_with_properties_awakened"><code class="computeroutput">algorithm_with_properties::awakened()</code></a> 也可以把每个就绪纤程插入某种形式的就绪队列, 供 <code class="computeroutput"><span class="identifier">pick_next</span><span class="special">()</span></code> 使用. 在后一种情况下, 如果应用程序代码修改了某个纤程属性 (例如优先级), 而该属性会影响该纤程与其他就绪纤程的关系, 则必须给自定义调度器机会重新排列其就绪队列. 自定义属性子类应当实现一个访问方法来修改此类属性; 在存储新属性值之后, 该访问方法应调用 <code class="computeroutput"><span class="identifier">notify</span><span class="special">()</span></code>. 这会把控制权交给自定义调度器的 <code class="computeroutput"><span class="identifier">property_change</span><span class="special">()</span></code> 方法, 使自定义调度器能够恰当地重新排列其就绪队列. 是否使用由你自行决定. 当然, 如果你定义的属性不影响 <code class="computeroutput"><span class="identifier">pick_next</span><span class="special">()</span></code> 方法的行为, 那么在该属性被修改时无需调用 <code class="computeroutput"><span class="identifier">notify</span><span class="special">()</span></code>.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="class_algorithm_with_properties_bridgehead"></a>
+  <span class="phrase"><a name="class_algorithm_with_properties"></a></span>
+  <a class="link" href="scheduling.html#class_algorithm_with_properties">模板 <code class="computeroutput">algorithm_with_properties&lt;&gt;</code></a>
+</h5>
+<p>
+    </p>
+<p>依赖于自定义属性类 <code class="computeroutput"><span class="identifier">PROPS</span></code> 的自定义调度器应当从 <code class="computeroutput"><span class="identifier">algorithm_with_properties</span><span class="special">&lt;</span><span class="identifier">PROPS</span><span class="special">&gt;</span></code> 派生. <code class="computeroutput"><span class="identifier">PROPS</span></code> 应当从 <a class="link" href="scheduling.html#class_fiber_properties"><code class="computeroutput">fiber_properties</code></a> 派生.</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">fiber</span><span class="special">/</span><span class="identifier">algorithm</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">fibers</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">algo</span> <span class="special">{</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">PROPS</span> <span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">algorithm_with_properties</span> <span class="special">{</span>
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">awakened</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*,</span> <span class="identifier">PROPS</span> <span class="special">&amp;)</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">pick_next</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">bool</span> <span class="identifier">has_ready_fibers</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">suspend_until</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">steady_clock</span><span class="special">::</span><span class="identifier">time_point</span> <span class="keyword">const</span><span class="special">&amp;)</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">notify</span><span class="special">()</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+
+    <span class="identifier">PROPS</span> <span class="special">&amp;</span> <span class="identifier">properties</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">property_change</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*,</span> <span class="identifier">PROPS</span> <span class="special">&amp;)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">virtual</span> <span class="identifier">fiber_properties</span> <span class="special">*</span> <span class="identifier">new_properties</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*);</span>
+<span class="special">};</span>
+
+<span class="special">}}}</span>
+</pre>
+<p>
+      </p>
+<h5>
+<a name="algorithm_with_properties_awakened_bridgehead"></a>
+  <span class="phrase"><a name="algorithm_with_properties_awakened"></a></span>
+  <a class="link" href="scheduling.html#algorithm_with_properties_awakened">Member
+      function <code class="computeroutput">awakened</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">awakened</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">f</span><span class="special">,</span> <span class="identifier">PROPS</span> <span class="special">&amp;</span> <span class="identifier">properties</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>告知调度器纤程 <code class="computeroutput"><span class="identifier">f</span></code> 已就绪可运行, 类似于 <a class="link" href="scheduling.html#algorithm_awakened"><code class="computeroutput">algorithm::awakened()</code></a>. 同时传入该纤程关联的 <code class="computeroutput"><span class="identifier">PROPS</span></code> 实例.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p> <code class="computeroutput"><span class="identifier">algorithm_with_properties</span><span class="special">&lt;&gt;</span></code> 子类必须重写此方法, 而不是 <code class="computeroutput"><span class="identifier">algorithm</span><span class="special">::</span><span class="identifier">awakened</span><span class="special">()</span></code>.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="algorithm_with_properties_pick_next_bridgehead"></a>
+  <span class="phrase"><a name="algorithm_with_properties_pick_next"></a></span>
+  <a class="link" href="scheduling.html#algorithm_with_properties_pick_next">Member
+      function <code class="computeroutput">pick_next</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">pick_next</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>下一个要恢复的纤程; 若没有就绪纤程则为 <code class="computeroutput"><span class="keyword">nullptr</span></code>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>与 <a class="link" href="scheduling.html#algorithm_pick_next"><code class="computeroutput">algorithm::pick_next()</code></a> 相同</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="algorithm_with_properties_has_ready_fibers_bridgehead"></a>
+  <span class="phrase"><a name="algorithm_with_properties_has_ready_fibers"></a></span>
+  <a class="link" href="scheduling.html#algorithm_with_properties_has_ready_fibers">Member
+      function <code class="computeroutput">has_ready_fibers</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">bool</span> <span class="identifier">has_ready_fibers</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>如果调度器有就绪可运行的纤程, 则为 <code class="computeroutput"><span class="keyword">true</span></code>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>与 <a class="link" href="scheduling.html#algorithm_has_ready_fibers"><code class="computeroutput">algorithm::has_ready_fibers()</code></a> 相同</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="algorithm_with_properties_suspend_until_bridgehead"></a>
+  <span class="phrase"><a name="algorithm_with_properties_suspend_until"></a></span>
+  <a class="link" href="scheduling.html#algorithm_with_properties_suspend_until">Member
+      function <code class="computeroutput">suspend_until</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">suspend_until</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">steady_clock</span><span class="special">::</span><span class="identifier">time_point</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">abs_time</span><span class="special">)</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>告知调度器: 在时间点 <code class="computeroutput"><span class="identifier">abs_time</span></code> 之前不会有纤程就绪.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>与 <a class="link" href="scheduling.html#algorithm_suspend_until"><code class="computeroutput">algorithm::suspend_until()</code></a> 相同</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="algorithm_with_properties_notify_bridgehead"></a>
+  <span class="phrase"><a name="algorithm_with_properties_notify"></a></span>
+  <a class="link" href="scheduling.html#algorithm_with_properties_notify">Member
+      function <code class="computeroutput">notify</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">notify</span><span class="special">()</span> <span class="keyword">noexcept</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>请求调度器从对 <a class="link" href="scheduling.html#algorithm_with_properties_suspend_until"><code class="computeroutput">algorithm_with_properties::suspend_until()</code></a> 的挂起调用中返回.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>与 <a class="link" href="scheduling.html#algorithm_notify"><code class="computeroutput">algorithm::notify()</code></a> 相同</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="algorithm_with_properties_properties_bridgehead"></a>
+  <span class="phrase"><a name="algorithm_with_properties_properties"></a></span>
+  <a class="link" href="scheduling.html#algorithm_with_properties_properties">Member
+      function <code class="computeroutput">properties</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="identifier">PROPS</span><span class="special">&amp;</span> <span class="identifier">properties</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">f</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p> <code class="computeroutput"><span class="identifier">PROPS</span></code> 实例 (与纤程 <code class="computeroutput"><span class="identifier">f</span></code> 关联).</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>纤程关联的 <code class="computeroutput"><span class="identifier">PROPS</span></code> 实例已经传给了 <a class="link" href="scheduling.html#algorithm_with_properties_awakened"><code class="computeroutput">algorithm_with_properties::awakened()</code></a> 和 <a class="link" href="scheduling.html#algorithm_with_properties_property_change"><code class="computeroutput">algorithm_with_properties::property_change()</code></a>. 然而, 每个 <a class="link" href="scheduling.html#class_algorithm"><code class="computeroutput">algorithm</code></a> 子类都需要跟踪一个就绪 <a class="link" href="scheduling.html#class_context"><code class="computeroutput">context</code></a> 实例的集合. 此方法允许你的自定义调度器取回 <a class="link" href="scheduling.html#class_fiber_properties"><code class="computeroutput">fiber_properties</code></a> 子类实例——对应其集合中的任何 <code class="computeroutput"><span class="identifier">context</span></code>.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="algorithm_with_properties_property_change_bridgehead"></a>
+  <span class="phrase"><a name="algorithm_with_properties_property_change"></a></span>
+  <a class="link" href="scheduling.html#algorithm_with_properties_property_change">Member
+      function <code class="computeroutput">property_change</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">property_change</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">f</span><span class="special">,</span> <span class="identifier">PROPS</span> <span class="special">&amp;</span> <span class="identifier">properties</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>就属于纤程 <code class="computeroutput"><span class="identifier">f</span></code> 的某个属性的可能相关变更通知自定义调度器. <code class="computeroutput"><span class="identifier">properties</span></code> 包含所有相关属性的新值.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>只有当自定义 <a class="link" href="scheduling.html#class_fiber_properties"><code class="computeroutput">fiber_properties</code></a> 子类显式调用 <a class="link" href="scheduling.html#fiber_properties_notify"><code class="computeroutput">fiber_properties::notify()</code></a> 时, 才会调用此方法.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="algorithm_with_properties_new_properties_bridgehead"></a>
+  <span class="phrase"><a name="algorithm_with_properties_new_properties"></a></span>
+  <a class="link" href="scheduling.html#algorithm_with_properties_new_properties">Member
+      function <code class="computeroutput">new_properties</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">virtual</span> <span class="identifier">fiber_properties</span> <span class="special">*</span> <span class="identifier">new_properties</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">f</span><span class="special">);</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p> <a class="link" href="scheduling.html#class_fiber_properties"><code class="computeroutput">fiber_properties</code></a> 子类的一个新实例 <code class="computeroutput"><span class="identifier">PROPS</span></code>.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>默认情况下, <code class="computeroutput"><span class="identifier">algorithm_with_properties</span><span class="special">&lt;&gt;::</span><span class="identifier">new_properties</span><span class="special">()</span></code> 只是返回 <code class="computeroutput"><span class="keyword">new</span>
+            <span class="identifier">PROPS</span><span class="special">(</span><span class="identifier">f</span><span class="special">)</span></code>, 把 <code class="computeroutput"><span class="identifier">PROPS</span></code> 实例放到堆上. 重写此方法可以以其他某种方式分配 <code class="computeroutput"><span class="identifier">PROPS</span></code>. 返回的 <code class="computeroutput"><span class="identifier">fiber_properties</span></code> 指针必须指向 <code class="computeroutput"><span class="identifier">PROPS</span></code> 实例, 该实例将与纤程 <code class="computeroutput"><span class="identifier">f</span></code> 关联.</p></dd>
+</dl>
+</div>
+<p>
+      <a name="context"></a></p>
+<h5>
+<a name="class_context_bridgehead"></a>
+  <span class="phrase"><a name="class_context"></a></span>
+  <a class="link" href="scheduling.html#class_context"> <code class="computeroutput">context</code></a> 类</h5>
+<p>
+    </p>
+<p>尽管你可以自由地把 <code class="computeroutput"><span class="identifier">context</span><span class="special">*</span></code> 当作不透明令牌, 但某些 <code class="computeroutput"><span class="identifier">context</span></code> 成员可能对自定义调度器实现有用.</p>
+<p>
+      <a name="ready_queue_t"></a>特别值得注意的是, <code class="computeroutput"><span class="identifier">context</span></code> 包含一个挂钩 (hook), 用于参与 <a href="http://www.boost.org/doc/libs/release/doc/html/intrusive/list.html" target="_top"><code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">intrusive</span><span class="special">::</span><span class="identifier">list</span></code></a>
+      <code class="literal">typedef</code>'ed as <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">scheduler</span><span class="special">::</span><span class="identifier">ready_queue_t</span></code>. 该挂钩保留给 <a class="link" href="scheduling.html#class_algorithm"><code class="computeroutput">algorithm</code></a> 实现使用. (例如, <a class="link" href="scheduling.html#class_round_robin"><code class="computeroutput">round_robin</code></a> 包含一个 <code class="computeroutput"><span class="identifier">ready_queue_t</span></code> 实例来管理其就绪纤程.) 参见 <a class="link" href="scheduling.html#context_ready_is_linked"><code class="computeroutput">context::ready_is_linked()</code></a>, <a class="link" href="scheduling.html#context_ready_link"><code class="computeroutput">context::ready_link()</code></a>, <a class="link" href="scheduling.html#context_ready_unlink"><code class="computeroutput">context::ready_unlink()</code></a>.</p>
+<p>你的 <code class="computeroutput"><span class="identifier">algorithm</span></code> 实现可以使用你想要的任何容器来管理传入的 <code class="computeroutput"><span class="identifier">context</span></code> 实例. <code class="computeroutput"><span class="identifier">ready_queue_t</span></code> 可以避免典型 STL 容器的一部分开销.</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">fiber</span><span class="special">/</span><span class="identifier">context</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">fibers</span> <span class="special">{</span>
+
+<span class="keyword">enum</span> <span class="keyword">class</span> <span class="identifier">type</span> <span class="special">{</span>
+  <span class="identifier">none</span>               <span class="special">=</span> <span class="emphasis"><em>unspecified</em></span><span class="special">,</span>
+  <span class="identifier">main_context</span>       <span class="special">=</span> <span class="emphasis"><em>unspecified</em></span><span class="special">,</span> <span class="comment">// fiber associated with thread's stack</span>
+  <span class="identifier">dispatcher_context</span> <span class="special">=</span> <span class="emphasis"><em>unspecified</em></span><span class="special">,</span> <span class="comment">// special fiber for maintenance operations</span>
+  <span class="identifier">worker_context</span>     <span class="special">=</span> <span class="emphasis"><em>unspecified</em></span><span class="special">,</span> <span class="comment">// fiber not special to the library</span>
+  <span class="identifier">pinned_context</span>     <span class="special">=</span> <span class="emphasis"><em>unspecified</em></span>  <span class="comment">// fiber must not be migrated to another thread</span>
+<span class="special">};</span>
+
+<span class="keyword">class</span> <span class="identifier">context</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="keyword">class</span> <span class="identifier">id</span><span class="special">;</span>
+
+    <span class="keyword">static</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">active</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="identifier">context</span><span class="special">(</span> <span class="identifier">context</span> <span class="keyword">const</span><span class="special">&amp;)</span> <span class="special">=</span> <span class="keyword">delete</span><span class="special">;</span>
+    <span class="identifier">context</span> <span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">=(</span> <span class="identifier">context</span> <span class="keyword">const</span><span class="special">&amp;)</span> <span class="special">=</span> <span class="keyword">delete</span><span class="special">;</span>
+
+    <span class="identifier">id</span> <span class="identifier">get_id</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">void</span> <span class="identifier">detach</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+    <span class="keyword">void</span> <span class="identifier">attach</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">bool</span> <span class="identifier">is_context</span><span class="special">(</span> <span class="identifier">type</span><span class="special">)</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">bool</span> <span class="identifier">is_terminated</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">bool</span> <span class="identifier">ready_is_linked</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+    <span class="keyword">bool</span> <span class="identifier">remote_ready_is_linked</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+    <span class="keyword">bool</span> <span class="identifier">wait_is_linked</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">List</span> <span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="identifier">ready_link</span><span class="special">(</span> <span class="identifier">List</span> <span class="special">&amp;)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+    <span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">List</span> <span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="identifier">remote_ready_link</span><span class="special">(</span> <span class="identifier">List</span> <span class="special">&amp;)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+    <span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">List</span> <span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="identifier">wait_link</span><span class="special">(</span> <span class="identifier">List</span> <span class="special">&amp;)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">void</span> <span class="identifier">ready_unlink</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+    <span class="keyword">void</span> <span class="identifier">remote_ready_unlink</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+    <span class="keyword">void</span> <span class="identifier">wait_unlink</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    <span class="keyword">void</span> <span class="identifier">suspend</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+    <span class="keyword">void</span> <span class="identifier">schedule</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="keyword">bool</span> <span class="keyword">operator</span><span class="special">&lt;(</span> <span class="identifier">context</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">l</span><span class="special">,</span> <span class="identifier">context</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">r</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+<span class="special">}}</span>
+</pre>
+<p>
+      </p>
+<h5>
+<a name="context_active_bridgehead"></a>
+  <span class="phrase"><a name="context_active"></a></span>
+  <a class="link" href="scheduling.html#context_active">Static member function
+      <code class="computeroutput">active</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">static</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">active</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>指向当前纤程实例的指针.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_get_id_bridgehead"></a>
+  <span class="phrase"><a name="context_get_id"></a></span>
+  <a class="link" href="scheduling.html#context_get_id">Member function <code class="computeroutput">get_id</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="identifier">context</span><span class="special">::</span><span class="identifier">id</span> <span class="identifier">get_id</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>如果 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 引用一个执行纤程, 则为表示该纤程的 <a class="link" href="fiber_mgmt.html#class_fiber_id"><code class="computeroutput"><span class="identifier">fiber</span><span class="special">::</span><span class="identifier">id</span></code></a> 实例; 否则返回默认构造的 <a class="link" href="fiber_mgmt.html#class_fiber_id"><code class="computeroutput"><span class="identifier">fiber</span><span class="special">::</span><span class="identifier">id</span></code></a>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+<dt><span class="term">参见:</span></dt>
+<dd><p>
+            <a class="link" href="fiber_mgmt/fiber.html#fiber_get_id"><code class="computeroutput">fiber::get_id()</code></a>
+          </p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_attach_bridgehead"></a>
+  <span class="phrase"><a name="context_attach"></a></span>
+  <a class="link" href="scheduling.html#context_attach">Member function <code class="computeroutput">attach</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">attach</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">f</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">get_scheduler</span><span class="special">()</span>
+            <span class="special">==</span> <span class="keyword">nullptr</span></code>
+          </p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd><p>把纤程 <code class="computeroutput"><span class="identifier">f</span></code> 附加到运行 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 的调度器.</p></dd>
+<dt><span class="term">后置条件:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">get_scheduler</span><span class="special">()</span>
+            <span class="special">!=</span> <span class="keyword">nullptr</span></code>
+          </p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>典型的调用: <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">context</span><span class="special">::</span><span class="identifier">active</span><span class="special">()-&gt;</span><span class="identifier">attach</span><span class="special">(</span><span class="identifier">f</span><span class="special">);</span></code>
+          </p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="identifier">f</span></code> 不得是正在运行纤程的上下文. 它不得处于 <a class="link" href="overview.html#blocking"><span class="emphasis"><em>blocked</em></span></a> 状态或已终止. 它不得是 <code class="computeroutput"><span class="identifier">pinned_context</span></code>. 它当前必须是分离的. 它当前不得已链接进某个 <a class="link" href="scheduling.html#class_algorithm"><code class="computeroutput">algorithm</code></a> 实现的就绪队列. 这些条件大多由 <code class="computeroutput"><span class="identifier">f</span></code> 被某个 <code class="computeroutput"><span class="identifier">algorithm</span></code> 实现所拥有这一事实所蕴含: 即它已被传给 <a class="link" href="scheduling.html#algorithm_awakened"><code class="computeroutput">algorithm::awakened()</code></a> 但尚未被 <a class="link" href="scheduling.html#algorithm_pick_next"><code class="computeroutput">algorithm::pick_next()</code></a> 返回. 通常, 一个 <code class="computeroutput"><span class="identifier">pick_next</span><span class="special">()</span></code> 实现会在调用 <code class="computeroutput"><span class="identifier">attach</span><span class="special">()</span></code> 时, 传入它即将返回的 <code class="computeroutput"><span class="identifier">context</span><span class="special">*</span></code>. 它必须先从其就绪队列中移除 <code class="computeroutput"><span class="identifier">f</span></code>. 你绝不应把一个 <code class="computeroutput"><span class="identifier">pinned_context</span></code> 传给 <code class="computeroutput"><span class="identifier">attach</span><span class="special">()</span></code>, 因为首先你根本不应调用其 <code class="computeroutput"><span class="identifier">detach</span><span class="special">()</span></code> 方法.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_detach_bridgehead"></a>
+  <span class="phrase"><a name="context_detach"></a></span>
+  <a class="link" href="scheduling.html#context_detach">Member function <code class="computeroutput">detach</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">detach</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="special">(</span><span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">get_scheduler</span><span class="special">()</span> <span class="special">!=</span> <span class="keyword">nullptr</span><span class="special">)</span> <span class="special">&amp;&amp;</span> <span class="special">!</span>
+            <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">is_context</span><span class="special">(</span><span class="identifier">pinned_context</span><span class="special">)</span></code>
+          </p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd><p>把纤程 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 从运行 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 的调度器中分离.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+<dt><span class="term">后置条件:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">get_scheduler</span><span class="special">()</span>
+            <span class="special">==</span> <span class="keyword">nullptr</span></code>
+          </p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>必须在当前与该纤程关联的线程上调用此方法. <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 不得是正在运行纤程的上下文. 它不得处于 <a class="link" href="overview.html#blocking"><span class="emphasis"><em>blocked</em></span></a> 状态或已终止. 它不得是 <code class="computeroutput"><span class="identifier">pinned_context</span></code>. 它不得已经被分离. 它当前不得已链接进某个 <a class="link" href="scheduling.html#class_algorithm"><code class="computeroutput">algorithm</code></a> 实现的就绪队列. 这些条件大多由 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 被传给 <a class="link" href="scheduling.html#algorithm_awakened"><code class="computeroutput">algorithm::awakened()</code></a> 这一事实所蕴含; 不过, <code class="computeroutput"><span class="identifier">awakened</span><span class="special">()</span></code> 实现仍必须测试 <code class="computeroutput"><span class="identifier">pinned_context</span></code>. 它必须调用 <code class="computeroutput"><span class="identifier">detach</span><span class="special">()</span></code>, <span class="emphasis"><em>早于</em></span> 把 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 链接进其就绪队列的操作.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>特别要指出的是, 同时调用 <code class="computeroutput"><span class="identifier">detach</span><span class="special">()</span></code> 和 <code class="computeroutput"><span class="identifier">attach</span><span class="special">()</span></code> (在 <a class="link" href="scheduling.html#algorithm_pick_next"><code class="computeroutput">algorithm::pick_next()</code></a> 方法中) 以把纤程从一个线程迁移到另一个线程是错误的. <code class="computeroutput"><span class="identifier">pick_next</span><span class="special">()</span></code> 在预期的目标线程上调用. <code class="computeroutput"><span class="identifier">detach</span><span class="special">()</span></code> 必须在该纤程的原始线程上调用. 你必须调用 <code class="computeroutput"><span class="identifier">detach</span><span class="special">()</span></code>——位置在对应的 <code class="computeroutput"><span class="identifier">awakened</span><span class="special">()</span></code> 方法中.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>除非你打算让某个纤程可供潜在迁移到不同线程, 否则不应调用 <code class="computeroutput"><span class="identifier">detach</span><span class="special">()</span></code> 或 <code class="computeroutput"><span class="identifier">attach</span><span class="special">()</span></code> 中的任何一个——即不要带着它的 <code class="computeroutput"><span class="identifier">context</span></code> 调用.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_is_context_bridgehead"></a>
+  <span class="phrase"><a name="context_is_context"></a></span>
+  <a class="link" href="scheduling.html#context_is_context">Member function
+      <code class="computeroutput">is_context</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">bool</span> <span class="identifier">is_context</span><span class="special">(</span> <span class="identifier">type</span> <span class="identifier">t</span><span class="special">)</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="keyword">true</span></code>——若 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 属于指定类型.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="identifier">type</span><span class="special">::</span><span class="identifier">worker_context</span></code> 在此指任何对库而言非特殊的纤程. 对于 <code class="computeroutput"><span class="identifier">type</span><span class="special">::</span><span class="identifier">main_context</span></code>, <code class="computeroutput"><span class="identifier">context</span></code> 与线程的 <span class="quote">"<span class="quote">main</span>"</span> 纤程关联: 即由线程自身隐式创建的那个纤程, 而不是 <span class="bold"><strong>Boost.Fiber</strong></span> 显式创建的纤程. 对于 <code class="computeroutput"><span class="identifier">type</span><span class="special">::</span><span class="identifier">dispatcher_context</span></code>, <code class="computeroutput"><span class="identifier">context</span></code> 与一个 <span class="quote">"<span class="quote">dispatching</span>"</span> 纤程关联, 该纤程负责把被唤醒的纤程分派到调度器的就绪队列. <span class="quote">"<span class="quote">dispatching</span>"</span> 纤程是纤程管理器的一个实现细节. <span class="quote">"<span class="quote">main</span>"</span> 纤程或 <span class="quote">"<span class="quote">dispatching</span>"</span> 纤程的上下文——任何满足 <code class="computeroutput"><span class="identifier">is_context</span><span class="special">(</span><span class="identifier">pinned_context</span><span class="special">)</span></code> 为 <code class="computeroutput"><span class="keyword">true</span></code> 的纤程——绝不能传给 <a class="link" href="scheduling.html#context_detach"><code class="computeroutput">context::detach()</code></a>.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_is_terminated_bridgehead"></a>
+  <span class="phrase"><a name="context_is_terminated"></a></span>
+  <a class="link" href="scheduling.html#context_is_terminated">Member
+      function <code class="computeroutput">is_terminated</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">bool</span> <span class="identifier">is_terminated</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="keyword">true</span></code>——若 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 不再是有效上下文.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p> <code class="computeroutput"><span class="identifier">context</span></code> 已从其纤程函数返回, 不再被视为有效上下文.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_ready_is_linked_bridgehead"></a>
+  <span class="phrase"><a name="context_ready_is_linked"></a></span>
+  <a class="link" href="scheduling.html#context_ready_is_linked">Member
+      function <code class="computeroutput">ready_is_linked</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">bool</span> <span class="identifier">ready_is_linked</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="keyword">true</span></code>——若 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 被存储在某个 <a class="link" href="scheduling.html#class_algorithm"><code class="computeroutput">algorithm</code></a> 实现的就绪队列中.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>具体而言, 此方法表明 <a class="link" href="scheduling.html#context_ready_link"><code class="computeroutput">context::ready_link()</code></a> 是否已在 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 上被调用过. <code class="computeroutput"><span class="identifier">ready_is_linked</span><span class="special">()</span></code> 不掌握参与任何其他容器的信息.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_remote_ready_is_linked_bridgehead"></a>
+  <span class="phrase"><a name="context_remote_ready_is_linked"></a></span>
+  <a class="link" href="scheduling.html#context_remote_ready_is_linked">Member
+      function <code class="computeroutput">remote_ready_is_linked</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">bool</span> <span class="identifier">remote_ready_is_linked</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="keyword">true</span></code>——若 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 被存储在纤程管理器的远程就绪队列中.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>由另一个线程通知为就绪的 <code class="computeroutput"><span class="identifier">context</span></code> 会先被存储在纤程管理器的远程就绪队列中. 这就是纤程管理器保护 <a class="link" href="scheduling.html#class_algorithm"><code class="computeroutput">algorithm</code></a> 实现免受跨线程 <a class="link" href="scheduling.html#algorithm_awakened"><code class="computeroutput">algorithm::awakened()</code></a> 调用的机制.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_wait_is_linked_bridgehead"></a>
+  <span class="phrase"><a name="context_wait_is_linked"></a></span>
+  <a class="link" href="scheduling.html#context_wait_is_linked">Member
+      function <code class="computeroutput">wait_is_linked</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">bool</span> <span class="identifier">wait_is_linked</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="keyword">true</span></code>——若 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 被存储在某个同步对象的等待队列中.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>某个纤程的 <code class="computeroutput"><span class="identifier">context</span></code>——该纤程正在等待一个同步对象 (例如 <code class="computeroutput"><span class="identifier">mutex</span></code>, <code class="computeroutput"><span class="identifier">condition_variable</span></code> 等)——会被存储在该同步对象的等待队列中.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_ready_link_bridgehead"></a>
+  <span class="phrase"><a name="context_ready_link"></a></span>
+  <a class="link" href="scheduling.html#context_ready_link">Member function
+      <code class="computeroutput">ready_link</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">List</span> <span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">ready_link</span><span class="special">(</span> <span class="identifier">List</span> <span class="special">&amp;</span> <span class="identifier">lst</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>把 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 存入就绪队列 <code class="computeroutput"><span class="identifier">lst</span></code>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>实参 <code class="computeroutput"><span class="identifier">lst</span></code> 必须是来自 <a href="http://www.boost.org/doc/libs/release/libs/intrusive/index.html" target="_top">Boost.Intrusive</a> 的双向链表, 例如 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">scheduler</span><span class="special">::</span><span class="identifier">ready_queue_t</span></code> 的实例. 具体而言, 它必须是 <a href="http://www.boost.org/doc/libs/release/doc/html/intrusive/list.html" target="_top"><code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">intrusive</span><span class="special">::</span><span class="identifier">list</span></code></a>, 且与 <code class="computeroutput"><span class="identifier">list_member_hook</span></code> (存储于 <code class="computeroutput"><span class="identifier">context</span></code> 对象中) 兼容.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_remote_ready_link_bridgehead"></a>
+  <span class="phrase"><a name="context_remote_ready_link"></a></span>
+  <a class="link" href="scheduling.html#context_remote_ready_link">Member
+      function <code class="computeroutput">remote_ready_link</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">List</span> <span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">remote_ready_link</span><span class="special">(</span> <span class="identifier">List</span> <span class="special">&amp;</span> <span class="identifier">lst</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>把 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 存入远程就绪队列 <code class="computeroutput"><span class="identifier">lst</span></code>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>实参 <code class="computeroutput"><span class="identifier">lst</span></code> 必须是来自 <a href="http://www.boost.org/doc/libs/release/libs/intrusive/index.html" target="_top">Boost.Intrusive</a> 的双向链表.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_wait_link_bridgehead"></a>
+  <span class="phrase"><a name="context_wait_link"></a></span>
+  <a class="link" href="scheduling.html#context_wait_link">Member function
+      <code class="computeroutput">wait_link</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">List</span> <span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">wait_link</span><span class="special">(</span> <span class="identifier">List</span> <span class="special">&amp;</span> <span class="identifier">lst</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>把 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 存入等待队列 <code class="computeroutput"><span class="identifier">lst</span></code>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>实参 <code class="computeroutput"><span class="identifier">lst</span></code> 必须是来自 <a href="http://www.boost.org/doc/libs/release/libs/intrusive/index.html" target="_top">Boost.Intrusive</a> 的双向链表.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_ready_unlink_bridgehead"></a>
+  <span class="phrase"><a name="context_ready_unlink"></a></span>
+  <a class="link" href="scheduling.html#context_ready_unlink">Member
+      function <code class="computeroutput">ready_unlink</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">ready_unlink</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>从就绪队列中移除 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code>: 撤销 <a class="link" href="scheduling.html#context_ready_link"><code class="computeroutput">context::ready_link()</code></a> 的效果.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_remote_ready_unlink_bridgehead"></a>
+  <span class="phrase"><a name="context_remote_ready_unlink"></a></span>
+  <a class="link" href="scheduling.html#context_remote_ready_unlink">Member
+      function <code class="computeroutput">remote_ready_unlink</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">remote_ready_unlink</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>从远程就绪队列中移除 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_wait_unlink_bridgehead"></a>
+  <span class="phrase"><a name="context_wait_unlink"></a></span>
+  <a class="link" href="scheduling.html#context_wait_unlink">Member
+      function <code class="computeroutput">wait_unlink</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">wait_unlink</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>从等待队列中移除 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_suspend_bridgehead"></a>
+  <span class="phrase"><a name="context_suspend"></a></span>
+  <a class="link" href="scheduling.html#context_suspend">Member function <code class="computeroutput">suspend</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">suspend</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>挂起正在运行的纤程 (与 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 关联的纤程), 直到其他某个纤程把 <code class="computeroutput"><span class="keyword">this</span></code> 传给 <a class="link" href="scheduling.html#context_schedule"><code class="computeroutput">context::schedule()</code></a>. <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 被标记为非就绪, 控制权交给调度器以选择另一个纤程运行.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>这是一个可能对与其他框架集成有用的低层 API. 它并非供典型应用程序直接调用.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>调用方需要负担起如下责任: 安排在将来某个时刻调用 <code class="computeroutput"><span class="identifier">schedule</span><span class="special">()</span></code>, 并传入指向 <code class="computeroutput"><span class="keyword">this</span></code> 的指针.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_schedule_bridgehead"></a>
+  <span class="phrase"><a name="context_schedule"></a></span>
+  <a class="link" href="scheduling.html#context_schedule">Member function
+      <code class="computeroutput">schedule</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">schedule</span><span class="special">(</span> <span class="identifier">context</span> <span class="special">*</span> <span class="identifier">ctx</span> <span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>把与上下文 <code class="computeroutput"><span class="special">*</span><span class="identifier">ctx</span></code> 关联的纤程标记为就绪可运行. 这不会立即恢复该纤程; 而是把该纤程交给调度器以便后续恢复. 如果调度器处于空闲状态 (尚未从对 <a class="link" href="scheduling.html#algorithm_suspend_until"><code class="computeroutput">algorithm::suspend_until()</code></a> 的调用中返回), 则调用 <a class="link" href="scheduling.html#algorithm_notify"><code class="computeroutput">algorithm::notify()</code></a> 唤醒它.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>这是一个可能对与其他框架集成有用的低层 API. 它并非供典型应用程序直接调用.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>明确支持调用 <code class="computeroutput"><span class="identifier">schedule</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">)</span></code>——即便 <code class="computeroutput"><span class="special">*</span><span class="identifier">ctx</span></code> 当前挂起在另一个线程上. 对应的纤程届时会在其原始线程上恢复.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="context_less_bridgehead"></a>
+  <span class="phrase"><a name="context_less"></a></span>
+  <a class="link" href="scheduling.html#context_less">Non-member function <code class="computeroutput">operator&lt;()</code></a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">bool</span> <span class="keyword">operator</span><span class="special">&lt;(</span> <span class="identifier">context</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">l</span><span class="special">,</span> <span class="identifier">context</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">r</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">返回:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="keyword">true</span></code>——若 <code class="computeroutput"><span class="identifier">l</span><span class="special">.</span><span class="identifier">get_id</span><span class="special">()</span> <span class="special">&lt;</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">get_id</span><span class="special">()</span></code> 为 <code class="computeroutput"><span class="keyword">true</span></code>; 否则为 <code class="computeroutput"><span class="keyword">false</span></code>.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+</dl>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2013 Oliver Kowalke<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="fiber_mgmt/this_fiber.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="stack.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

@@ -1,0 +1,334 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>教程</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">
+<link rel="up" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">
+<link rel="prev" href="getting_started.html" title="入门">
+<link rel="next" href="alternatives.html" title="附录: 替代方案">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="getting_started.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="alternatives.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="scope_exit.tutorial"></a><a class="link" href="tutorial.html" title="Tutorial">教程</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="tutorial.html#scope_exit.tutorial.capturing_variables">捕获变量</a></span></dt>
+<dt><span class="section"><a href="tutorial.html#scope_exit.tutorial.capturing_the_object__this_">捕获对象 <code class="computeroutput"><span class="keyword">this</span></code></a></span></dt>
+<dt><span class="section"><a href="tutorial.html#scope_exit.tutorial.capturing_no_variable">不捕获任何变量</a></span></dt>
+<dt><span class="section"><a href="tutorial.html#scope_exit.tutorial.capturing_all_variables__c__11_only_">捕获所有变量 (仅限 C++11)</a></span></dt>
+<dt><span class="section"><a href="tutorial.html#scope_exit.tutorial.template_workaround__gcc_">模板变通方案 (GCC)</a></span></dt>
+<dt><span class="section"><a href="tutorial.html#scope_exit.tutorial.same_line_expansions">同行展开</a></span></dt>
+</dl></div>
+<p>本节说明如何使用本库.</p>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="scope_exit.tutorial.capturing_variables"></a><a class="link" href="tutorial.html#scope_exit.tutorial.capturing_variables" title="捕获变量">捕获变量</a>
+</h3></div></div></div>
+<p>假设我们想在某个 <code class="computeroutput"><span class="identifier">world</span></code> 类的 <code class="computeroutput"><span class="identifier">world</span><span class="special">::</span><span class="identifier">add_person</span></code> 成员函数中对该类的数据成员做大量修改. 我们先向 persons 向量添加一个新的 <code class="computeroutput"><span class="identifier">person</span></code> 对象:</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">world</span><span class="special">::</span><span class="identifier">add_person</span><span class="special">(</span><span class="identifier">person</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a_person</span><span class="special">)</span> <span class="special">{</span>
+    <span class="keyword">bool</span> <span class="identifier">commit</span> <span class="special">=</span> <span class="keyword">false</span><span class="special">;</span>
+
+    <span class="identifier">persons_</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">a_person</span><span class="special">);</span>           <span class="comment">// (1) direct action</span>
+    <span class="special">...</span>
+</pre>
+<p>后续的某些操作可能会抛出异常, 此时对相关对象的所有更改都应回滚. 这种全部完成或全部不做 (all-or-nothing) 的语义也称为 <a href="http://www.research.att.com/~bs/glossary.html#Gstrong-guarantee" target="_top">强保证</a>.</p>
+<p>特别地, 如果函数抛出异常, 最后添加的 person 必须从 <code class="computeroutput"><span class="identifier">persons_</span></code> 中删除. 我们所需做的只是在直接动作 (资源获取) 之后紧接着定义一个延迟动作 (资源释放). 例如 (另见 <a href="../../../test/world.cpp" target="_top"><code class="literal">world.cpp</code></a>):</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">world</span><span class="special">::</span><span class="identifier">add_person</span><span class="special">(</span><span class="identifier">person</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a_person</span><span class="special">)</span> <span class="special">{</span>
+    <span class="keyword">bool</span> <span class="identifier">commit</span> <span class="special">=</span> <span class="keyword">false</span><span class="special">;</span>
+
+    <span class="identifier">persons_</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">a_person</span><span class="special">);</span>           <span class="comment">// (1) direct action</span>
+    <span class="comment">// Following block is executed when the enclosing scope exits.</span>
+    <span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(&amp;</span><span class="identifier">commit</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">persons_</span><span class="special">)</span> <span class="special">{</span>
+        <span class="keyword">if</span><span class="special">(!</span><span class="identifier">commit</span><span class="special">)</span> <span class="identifier">persons_</span><span class="special">.</span><span class="identifier">pop_back</span><span class="special">();</span>    <span class="comment">// (2) rollback action</span>
+    <span class="special">}</span> <span class="identifier">BOOST_SCOPE_EXIT_END</span>
+
+    <span class="comment">// ...                                  // (3) other operations</span>
+
+    <span class="identifier">commit</span> <span class="special">=</span> <span class="keyword">true</span><span class="special">;</span>                          <span class="comment">// (4) disable rollback actions</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>点 <code class="literal">(1)</code> 之后的代码块是一条 <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 声明. 与点 <code class="literal">(1)</code> 不同, <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 体的执行将被延迟到当前作用域结束之时. 在本例中, 它将在点 <code class="literal">(4)</code> 之后或发生任何异常时执行. (在 GCC 编译器的各个版本上, 在模板内部必须使用 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ab46e489b869d28c3e3e091168d2b775f.html" title="宏 BOOST_SCOPE_EXIT_TPL">BOOST_SCOPE_EXIT_TPL</a></code> 而非 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ae0a86562a607889be5c08af8ad6ead1b.html" title="宏 BOOST_SCOPE_EXIT">BOOST_SCOPE_EXIT</a></code>, 详情见本节后文.)</p>
+<p> <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 声明以调用宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ae0a86562a607889be5c08af8ad6ead1b.html" title="宏 BOOST_SCOPE_EXIT">BOOST_SCOPE_EXIT</a></code> 开始, 该宏接受一个以逗号分隔的捕获变量列表 (在不支持可变参数宏的编译器上, 以及为向后兼容本库旧版本, 也接受 <a href="http://www.boost.org/libs/preprocessor" target="_top">Boost.Preprocessor</a> 序列, 见 <a class="link" href="no_variadic_macros.html" title="附录: 无变参宏">无可变参数宏</a> 一节). 如果捕获以 <code class="computeroutput"><span class="special">&amp;</span></code> 符号开头, 则 <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 体内将可以使用对被捕获变量的引用; 否则, 变量的副本将在 <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 声明处 (即点 <code class="literal">(1)</code>) 制作, 体内将只有该副本可用 (此时, 被捕获变量的类型必须是 <a href="http://www.boost.org/doc/libs/release/doc/html/CopyConstructible.html" target="_top"><code class="computeroutput"><span class="identifier">CopyConstructible</span></code></a>).</p>
+<p>在上面的示例中, 变量 <code class="computeroutput"><span class="identifier">commit</span></code> 和 <code class="computeroutput"><span class="identifier">persons_</span></code> 以引用方式捕获, 因为需要用 <code class="computeroutput"><span class="identifier">commit</span></code> 变量的最终值来决定是否执行回滚动作, 并且该动作应当修改的是 <code class="computeroutput"><span class="identifier">persons_</span></code> 对象本身而非其副本. 这是最常见的情形, 但按值传递变量有时也同样有用.</p>
+<p>最后, <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 体的结尾必须用宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1afc2c5bf6e868d7d8d703c64a984d38cd.html" title="宏 BOOST_SCOPE_EXIT_END">BOOST_SCOPE_EXIT_END</a></code> 标记, 该宏必须紧跟在 <code class="computeroutput"><span class="special">}</span></code> 之后, 也就是紧跟在 <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 体末尾的闭花括号之后.</p>
+<div class="important"><table border="0" summary="Important">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[重要]" src="../../../../../doc/src/images/important.png"></td>
+<th align="left">重要</th>
+</tr>
+<tr><td align="left" valign="top"><p>为符合 <a href="http://www.stlport.org/doc/exception_safety.html" target="_top">STL 异常安全要求</a>, <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 体绝不能抛出异常 (因为本库的实现是在析构函数调用中执行该体的). 对于 C++03 和 C++11 上的所有 <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 宏 (包括下文将看到的 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ab46e489b869d28c3e3e091168d2b775f.html" title="宏 BOOST_SCOPE_EXIT_TPL">BOOST_SCOPE_EXIT_TPL</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code>) 都是如此.</p></td></tr>
+</table></div>
+<p>考虑一个更复杂的例子, 其中 <code class="computeroutput"><span class="identifier">world</span><span class="special">::</span><span class="identifier">add_person</span></code> 可以在某个时点保存中间状态, 并回滚到最后保存的状态. 我们用 <code class="computeroutput"><span class="identifier">person</span><span class="special">::</span><span class="identifier">evolution_</span></code> 来存储这些更改的一个版本号, 并通过递增它来取消与这些更改相关联的所有回滚动作. 如果我们按值传递 <code class="computeroutput"><span class="identifier">evolution_</span></code> 的当前值 (该值保存在 <code class="computeroutput"><span class="identifier">checkpoint</span></code> 变量中), 那么它在 <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 体内保持不变, 这样我们就可以将它与 <code class="computeroutput"><span class="identifier">evolution_</span></code> 的最终值进行比较. 如果后者自我们保存以来未被递增, 则应执行 <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 体内的回滚动作. 例如 (另见 <a href="../../../test/world_checkpoint.cpp" target="_top"><code class="literal">world_checkpoint.cpp</code></a>):</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">world</span><span class="special">::</span><span class="identifier">add_person</span><span class="special">(</span><span class="identifier">person</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a_person</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">persons_</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">a_person</span><span class="special">);</span>
+
+    <span class="comment">// This block must be no-throw.</span>
+    <span class="identifier">person</span><span class="special">&amp;</span> <span class="identifier">p</span> <span class="special">=</span> <span class="identifier">persons_</span><span class="special">.</span><span class="identifier">back</span><span class="special">();</span>
+    <span class="identifier">person</span><span class="special">::</span><span class="identifier">evolution_t</span> <span class="identifier">checkpoint</span> <span class="special">=</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">evolution</span><span class="special">;</span>
+    <span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(</span><span class="identifier">checkpoint</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">p</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">persons_</span><span class="special">)</span> <span class="special">{</span>
+        <span class="keyword">if</span><span class="special">(</span><span class="identifier">checkpoint</span> <span class="special">==</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">evolution</span><span class="special">)</span> <span class="identifier">persons_</span><span class="special">.</span><span class="identifier">pop_back</span><span class="special">();</span>
+    <span class="special">}</span> <span class="identifier">BOOST_SCOPE_EXIT_END</span>
+
+    <span class="comment">// ...</span>
+
+    <span class="identifier">checkpoint</span> <span class="special">=</span> <span class="special">++</span><span class="identifier">p</span><span class="special">.</span><span class="identifier">evolution</span><span class="special">;</span>
+
+    <span class="comment">// Assign new identifier to the person.</span>
+    <span class="identifier">person</span><span class="special">::</span><span class="identifier">id_t</span> <span class="keyword">const</span> <span class="identifier">prev_id</span> <span class="special">=</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">id</span><span class="special">;</span>
+    <span class="identifier">p</span><span class="special">.</span><span class="identifier">id</span> <span class="special">=</span> <span class="identifier">next_id_</span><span class="special">++;</span>
+    <span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(</span><span class="identifier">checkpoint</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">p</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">next_id_</span><span class="special">,</span> <span class="identifier">prev_id</span><span class="special">)</span> <span class="special">{</span>
+        <span class="keyword">if</span><span class="special">(</span><span class="identifier">checkpoint</span> <span class="special">==</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">evolution</span><span class="special">)</span> <span class="special">{</span>
+            <span class="identifier">next_id_</span> <span class="special">=</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">id</span><span class="special">;</span>
+            <span class="identifier">p</span><span class="special">.</span><span class="identifier">id</span> <span class="special">=</span> <span class="identifier">prev_id</span><span class="special">;</span>
+        <span class="special">}</span>
+    <span class="special">}</span> <span class="identifier">BOOST_SCOPE_EXIT_END</span>
+
+    <span class="comment">// ...</span>
+
+    <span class="identifier">checkpoint</span> <span class="special">=</span> <span class="special">++</span><span class="identifier">p</span><span class="special">.</span><span class="identifier">evolution</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>当在同一外围作用域中声明了多个 <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 块时, 各 <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 体将按其声明的相反顺序执行.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="scope_exit.tutorial.capturing_the_object__this_"></a><a class="link" href="tutorial.html#scope_exit.tutorial.capturing_the_object__this_" title="捕获对象 this">捕获对象 <code class="computeroutput"><span class="keyword">this</span></code></a>
+</h3></div></div></div>
+<p>在成员函数内部, 还可以捕获对象 <code class="computeroutput"><span class="keyword">this</span></code>. 不过, 必须使用特殊符号 <code class="computeroutput"><span class="identifier">this_</span></code> 而非 <code class="computeroutput"><span class="keyword">this</span></code>, 才能在 <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 声明和体中捕获并访问该对象. 例如 (另见 <a href="../../../test/world_this.cpp" target="_top"><code class="literal">world_this.cpp</code></a>):</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(&amp;</span><span class="identifier">commit</span><span class="special">,</span> <span class="identifier">this_</span><span class="special">)</span> <span class="special">{</span> <span class="comment">// Capture object `this_`.</span>
+    <span class="keyword">if</span><span class="special">(!</span><span class="identifier">commit</span><span class="special">)</span> <span class="identifier">this_</span><span class="special">-&gt;</span><span class="identifier">persons_</span><span class="special">.</span><span class="identifier">pop_back</span><span class="special">();</span>
+<span class="special">}</span> <span class="identifier">BOOST_SCOPE_EXIT_END</span>
+</pre>
+<p>
+      </p>
+<p>无法以引用方式捕获对象 <code class="computeroutput"><span class="identifier">this_</span></code>, 因为 C++ 不允许对 <code class="computeroutput"><span class="keyword">this</span></code> 取引用. 如果外围成员函数是 const 的, 则被捕获的对象也是 const 的; 否则被捕获的对象是可变的.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="scope_exit.tutorial.capturing_no_variable"></a><a class="link" href="tutorial.html#scope_exit.tutorial.capturing_no_variable" title="不捕获任何变量">不捕获任何变量</a>
+</h3></div></div></div>
+<p> <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 声明也可以不捕获任何变量. 在这种情况下, 捕获变量列表用关键字 <code class="computeroutput"><span class="keyword">void</span></code> 代替 (类似于 C++ 中用 <code class="literal"><span class="emphasis"><em>result-type function-name</em></span></code><code class="computeroutput"><span class="special">(</span><span class="keyword">void</span><span class="special">)</span></code> 声明无参数函数的语法). <a href="#ftn.scope_exit.tutorial.capturing_no_variable.f0" class="footnote" name="scope_exit.tutorial.capturing_no_variable.f0"><sup class="footnote">[3]</sup></a> 例如, 当 <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 体只需要访问全局变量时, 这会很有用 (另见 <a href="../../../test/world_void.cpp" target="_top"><code class="literal">world_void.cpp</code></a>):</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">world_t</span> <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">person</span><span class="special">&gt;</span> <span class="identifier">persons</span><span class="special">;</span>
+    <span class="keyword">bool</span> <span class="identifier">commit</span><span class="special">;</span>
+<span class="special">}</span> <span class="identifier">world</span><span class="special">;</span> <span class="comment">// Global variable.</span>
+
+<span class="keyword">void</span> <span class="identifier">add_person</span><span class="special">(</span><span class="identifier">person</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a_person</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">world</span><span class="special">.</span><span class="identifier">commit</span> <span class="special">=</span> <span class="keyword">false</span><span class="special">;</span>
+    <span class="identifier">world</span><span class="special">.</span><span class="identifier">persons</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">a_person</span><span class="special">);</span>
+
+    <span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(</span><span class="keyword">void</span><span class="special">)</span> <span class="special">{</span> <span class="comment">// No captures.</span>
+        <span class="keyword">if</span><span class="special">(!</span><span class="identifier">world</span><span class="special">.</span><span class="identifier">commit</span><span class="special">)</span> <span class="identifier">world</span><span class="special">.</span><span class="identifier">persons</span><span class="special">.</span><span class="identifier">pop_back</span><span class="special">();</span>
+    <span class="special">}</span> <span class="identifier">BOOST_SCOPE_EXIT_END</span>
+
+    <span class="comment">// ...</span>
+
+    <span class="identifier">world</span><span class="special">.</span><span class="identifier">commit</span> <span class="special">=</span> <span class="keyword">true</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>(支持与不支持可变参数宏的编译器都使用这一相同的语法来表示不捕获任何变量, 更多信息见 <a class="link" href="no_variadic_macros.html" title="附录: 无变参宏">无可变参数宏</a> 一节.)</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="scope_exit.tutorial.capturing_all_variables__c__11_only_"></a><a class="link" href="tutorial.html#scope_exit.tutorial.capturing_all_variables__c__11_only_" title="捕获所有变量 (仅限 C++11)">捕获所有变量 (仅限 C++11)</a>
+</h3></div></div></div>
+<p>在 C++11 编译器上, 还可以使用特殊宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code> 代替 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ae0a86562a607889be5c08af8ad6ead1b.html" title="宏 BOOST_SCOPE_EXIT">BOOST_SCOPE_EXIT</a></code>, 无需逐一列举即可捕获作用域内的所有变量. <a href="#ftn.scope_exit.tutorial.capturing_all_variables__c__11_only_.f0" class="footnote" name="scope_exit.tutorial.capturing_all_variables__c__11_only_.f0"><sup class="footnote">[4]</sup></a>
+      </p>
+<p>按照 C++11 lambda 函数所采用的相同语法, 宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code> 接受一个以逗号分隔的捕获列表, 该列表必须以 <code class="computeroutput"><span class="special">&amp;</span></code> 或 <code class="computeroutput"><span class="special">=</span></code> 开头, 分别表示按引用或按值捕获作用域内的所有变量 (注意, 这些前置捕获不指定任何变量名). 对特定变量的额外捕获可以跟在前置的 <code class="computeroutput"><span class="special">&amp;</span></code> 或 <code class="computeroutput"><span class="special">=</span></code> 之后, 并且它们将覆盖默认的引用或值捕获. 例如 (另见 <a href="../../../test/world_checkpoint_all.cpp" target="_top"><code class="literal">world_checkpoint_all.cpp</code></a>):</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">world</span><span class="special">::</span><span class="identifier">add_person</span><span class="special">(</span><span class="identifier">person</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a_person</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">persons_</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">a_person</span><span class="special">);</span>
+
+    <span class="comment">// This block must be no-throw.</span>
+    <span class="identifier">person</span><span class="special">&amp;</span> <span class="identifier">p</span> <span class="special">=</span> <span class="identifier">persons_</span><span class="special">.</span><span class="identifier">back</span><span class="special">();</span>
+    <span class="identifier">person</span><span class="special">::</span><span class="identifier">evolution_t</span> <span class="identifier">checkpoint</span> <span class="special">=</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">evolution</span><span class="special">;</span>
+    <span class="comment">// Capture all by reference `&amp;`, but `checkpoint` and `this` (C++11 only).</span>
+    <span class="identifier">BOOST_SCOPE_EXIT_ALL</span><span class="special">(&amp;,</span> <span class="identifier">checkpoint</span><span class="special">,</span> <span class="keyword">this</span><span class="special">)</span> <span class="special">{</span> <span class="comment">// Use `this` (not `this_`).</span>
+        <span class="keyword">if</span><span class="special">(</span><span class="identifier">checkpoint</span> <span class="special">==</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">evolution</span><span class="special">)</span> <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">persons_</span><span class="special">.</span><span class="identifier">pop_back</span><span class="special">();</span>
+    <span class="special">};</span> <span class="comment">// Use `;` (not `SCOPE_EXIT_END`).</span>
+
+    <span class="comment">// ...</span>
+
+    <span class="identifier">checkpoint</span> <span class="special">=</span> <span class="special">++</span><span class="identifier">p</span><span class="special">.</span><span class="identifier">evolution</span><span class="special">;</span>
+
+    <span class="comment">// Assign new identifier to the person.</span>
+    <span class="identifier">person</span><span class="special">::</span><span class="identifier">id_t</span> <span class="keyword">const</span> <span class="identifier">prev_id</span> <span class="special">=</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">id</span><span class="special">;</span>
+    <span class="identifier">p</span><span class="special">.</span><span class="identifier">id</span> <span class="special">=</span> <span class="identifier">next_id_</span><span class="special">++;</span>
+    <span class="comment">// Capture all by value `=`, but `p` (C++11 only).</span>
+    <span class="identifier">BOOST_SCOPE_EXIT_ALL</span><span class="special">(=,</span> <span class="special">&amp;</span><span class="identifier">p</span><span class="special">)</span> <span class="special">{</span>
+        <span class="keyword">if</span><span class="special">(</span><span class="identifier">checkpoint</span> <span class="special">==</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">evolution</span><span class="special">)</span> <span class="special">{</span>
+            <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">next_id_</span> <span class="special">=</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">id</span><span class="special">;</span>
+            <span class="identifier">p</span><span class="special">.</span><span class="identifier">id</span> <span class="special">=</span> <span class="identifier">prev_id</span><span class="special">;</span>
+        <span class="special">}</span>
+    <span class="special">};</span>
+
+    <span class="comment">// ...</span>
+
+    <span class="identifier">checkpoint</span> <span class="special">=</span> <span class="special">++</span><span class="identifier">p</span><span class="special">.</span><span class="identifier">evolution</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>第一个 <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 声明按引用捕获作用域内的所有变量, 但变量 <code class="computeroutput"><span class="identifier">checkpoint</span></code> 和对象 <code class="computeroutput"><span class="keyword">this</span></code> 被显式按值捕获 (特别地, <code class="computeroutput"><span class="identifier">p</span></code> 和 <code class="computeroutput"><span class="identifier">persons_</span></code> 在此处被隐式按引用捕获). 第二个 <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 声明则按值捕获作用域内的所有变量, 但 <code class="computeroutput"><span class="identifier">p</span></code> 被显式按引用捕获 (特别地, <code class="computeroutput"><span class="identifier">checkpoint</span></code>, <code class="computeroutput"><span class="identifier">prev_id</span></code> 和 <code class="computeroutput"><span class="keyword">this</span></code> 在此处被隐式按值捕获).</p>
+<p>注意, 宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code> 遵循的是 C++11 lambda 函数语法, 遗憾的是它与宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ae0a86562a607889be5c08af8ad6ead1b.html" title="宏 BOOST_SCOPE_EXIT">BOOST_SCOPE_EXIT</a></code> 的语法不同. 特别是:</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code> 在不捕获对象 <code class="computeroutput"><span class="keyword">this</span></code> 的情况下无法捕获数据成员, 而宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ae0a86562a607889be5c08af8ad6ead1b.html" title="宏 BOOST_SCOPE_EXIT">BOOST_SCOPE_EXIT</a></code> 则无此限制. <a href="#ftn.scope_exit.tutorial.capturing_all_variables__c__11_only_.f1" class="footnote" name="scope_exit.tutorial.capturing_all_variables__c__11_only_.f1"><sup class="footnote">[5]</sup></a>
+          </li>
+<li class="listitem">宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code> 使用 <code class="computeroutput"><span class="keyword">this</span></code> 而非 <code class="computeroutput"><span class="identifier">this_</span></code> 来捕获作用域中的对象. <a href="#ftn.scope_exit.tutorial.capturing_all_variables__c__11_only_.f2" class="footnote" name="scope_exit.tutorial.capturing_all_variables__c__11_only_.f2"><sup class="footnote">[6]</sup></a>
+          </li>
+<li class="listitem"> <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code> 体以分号 <code class="computeroutput"><span class="special">;</span></code> 结束, 而不是以宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1afc2c5bf6e868d7d8d703c64a984d38cd.html" title="宏 BOOST_SCOPE_EXIT_END">BOOST_SCOPE_EXIT_END</a></code> 结束.</li>
+</ol></div>
+<p>如果程序员定义了配置宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1a5f0a7005a4d789e0aa6459f35081844c.html" title="宏 BOOST_SCOPE_EXIT_CONFIG_USE_LAMBDAS">BOOST_SCOPE_EXIT_CONFIG_USE_LAMBDAS</a></code>, 则宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ae0a86562a607889be5c08af8ad6ead1b.html" title="宏 BOOST_SCOPE_EXIT">BOOST_SCOPE_EXIT</a></code> 的实现将使用 C++11 lambda 函数, 并且宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ae0a86562a607889be5c08af8ad6ead1b.html" title="宏 BOOST_SCOPE_EXIT">BOOST_SCOPE_EXIT</a></code> 将采用与宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code> 相同的语法, 即 C++11 lambda 函数语法. 不过, <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ae0a86562a607889be5c08af8ad6ead1b.html" title="宏 BOOST_SCOPE_EXIT">BOOST_SCOPE_EXIT</a></code> 将不再向后兼容, 使用 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ae0a86562a607889be5c08af8ad6ead1b.html" title="宏 BOOST_SCOPE_EXIT">BOOST_SCOPE_EXIT</a></code> 的旧代码可能无法再编译 (如果显式捕获了数据成员).</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="scope_exit.tutorial.template_workaround__gcc_"></a><a class="link" href="tutorial.html#scope_exit.tutorial.template_workaround__gcc_" title="模板变通方案 (GCC)">模板变通方案 (GCC)</a>
+</h3></div></div></div>
+<p>GCC 编译器的多个版本无法在模板内部编译 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ae0a86562a607889be5c08af8ad6ead1b.html" title="宏 BOOST_SCOPE_EXIT">BOOST_SCOPE_EXIT</a></code> (更多信息见 <a href="../reference.html" target="_top">参考</a> 一节). 作为变通方案, 在这些情况下应使用 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ab46e489b869d28c3e3e091168d2b775f.html" title="宏 BOOST_SCOPE_EXIT_TPL">BOOST_SCOPE_EXIT_TPL</a></code> 而非 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ae0a86562a607889be5c08af8ad6ead1b.html" title="宏 BOOST_SCOPE_EXIT">BOOST_SCOPE_EXIT</a></code>. <a href="#ftn.scope_exit.tutorial.template_workaround__gcc_.f0" class="footnote" name="scope_exit.tutorial.template_workaround__gcc_.f0"><sup class="footnote">[7]</sup></a> 宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ab46e489b869d28c3e3e091168d2b775f.html" title="宏 BOOST_SCOPE_EXIT_TPL">BOOST_SCOPE_EXIT_TPL</a></code> 的语法与 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ae0a86562a607889be5c08af8ad6ead1b.html" title="宏 BOOST_SCOPE_EXIT">BOOST_SCOPE_EXIT</a></code> 完全相同. 例如 (另见 <a href="../../../test/world_tpl.cpp" target="_top"><code class="literal">world_tpl.cpp</code></a>):</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Person</span><span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">world</span><span class="special">&lt;</span><span class="identifier">Person</span><span class="special">&gt;::</span><span class="identifier">add_person</span><span class="special">(</span><span class="identifier">Person</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a_person</span><span class="special">)</span> <span class="special">{</span>
+    <span class="keyword">bool</span> <span class="identifier">commit</span> <span class="special">=</span> <span class="keyword">false</span><span class="special">;</span>
+    <span class="identifier">persons_</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">a_person</span><span class="special">);</span>
+
+    <span class="identifier">BOOST_SCOPE_EXIT_TPL</span><span class="special">(&amp;</span><span class="identifier">commit</span><span class="special">,</span> <span class="identifier">this_</span><span class="special">)</span> <span class="special">{</span> <span class="comment">// Use `_TPL` postfix.</span>
+        <span class="keyword">if</span><span class="special">(!</span><span class="identifier">commit</span><span class="special">)</span> <span class="identifier">this_</span><span class="special">-&gt;</span><span class="identifier">persons_</span><span class="special">.</span><span class="identifier">pop_back</span><span class="special">();</span>
+    <span class="special">}</span> <span class="identifier">BOOST_SCOPE_EXIT_END</span>
+
+    <span class="comment">// ...</span>
+
+    <span class="identifier">commit</span> <span class="special">=</span> <span class="keyword">true</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>建议在模板内部始终使用 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ab46e489b869d28c3e3e091168d2b775f.html" title="宏 BOOST_SCOPE_EXIT_TPL">BOOST_SCOPE_EXIT_TPL</a></code>, 以便在不同编译器之间获得最大的可移植性.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="scope_exit.tutorial.same_line_expansions"></a><a class="link" href="tutorial.html#scope_exit.tutorial.same_line_expansions" title="同行展开">同行展开</a>
+</h3></div></div></div>
+<p>一般而言, 宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ae0a86562a607889be5c08af8ad6ead1b.html" title="宏 BOOST_SCOPE_EXIT">BOOST_SCOPE_EXIT</a></code>, <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ab46e489b869d28c3e3e091168d2b775f.html" title="宏 BOOST_SCOPE_EXIT_TPL">BOOST_SCOPE_EXIT_TPL</a></code>, <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1afc2c5bf6e868d7d8d703c64a984d38cd.html" title="宏 BOOST_SCOPE_EXIT_END">BOOST_SCOPE_EXIT_END</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code> 无法在同一行上展开多次. <a href="#ftn.scope_exit.tutorial.same_line_expansions.f0" class="footnote" name="scope_exit.tutorial.same_line_expansions.f0"><sup class="footnote">[8]</sup></a>
+      </p>
+<p>因此, 本库提供了附加宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1a4ea19ded1642bf122790823b237c0446.html" title="宏 BOOST_SCOPE_EXIT_ID">BOOST_SCOPE_EXIT_ID</a></code>, <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1a8a07c11243049c4548f88abe1e5130b0.html" title="宏 BOOST_SCOPE_EXIT_ID_TPL">BOOST_SCOPE_EXIT_ID_TPL</a></code>, <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1adda4fc0deb8b2c6083b7e893cb009ed4.html" title="宏 BOOST_SCOPE_EXIT_END_ID">BOOST_SCOPE_EXIT_END_ID</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abcb51e455c43fb3f66ec5d5ea165f85a.html" title="宏 BOOST_SCOPE_EXIT_ALL_ID">BOOST_SCOPE_EXIT_ALL_ID</a></code>, 只要程序员将一个唯一标识符指定为这些宏的第一个参数, 它们就可以在同一行上展开多次. 该唯一标识符可以是 C++ 预处理器能够拼接的任意记号 (不限于数字) (例如 <code class="computeroutput"><span class="identifier">scope_exit_number_1_at_line_123</span></code>). <a href="#ftn.scope_exit.tutorial.same_line_expansions.f1" class="footnote" name="scope_exit.tutorial.same_line_expansions.f1"><sup class="footnote">[9]</sup></a>
+      </p>
+<p>宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1a4ea19ded1642bf122790823b237c0446.html" title="宏 BOOST_SCOPE_EXIT_ID">BOOST_SCOPE_EXIT_ID</a></code>, <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1a8a07c11243049c4548f88abe1e5130b0.html" title="宏 BOOST_SCOPE_EXIT_ID_TPL">BOOST_SCOPE_EXIT_ID_TPL</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abcb51e455c43fb3f66ec5d5ea165f85a.html" title="宏 BOOST_SCOPE_EXIT_ALL_ID">BOOST_SCOPE_EXIT_ALL_ID</a></code> 接受捕获列表, 其语法分别与 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ae0a86562a607889be5c08af8ad6ead1b.html" title="宏 BOOST_SCOPE_EXIT">BOOST_SCOPE_EXIT</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code> 完全相同. 例如 (另见 <a href="../../../test/same_line.cpp" target="_top"><code class="literal">same_line.cpp</code></a>):</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#define</span> <span class="identifier">SCOPE_EXIT_INC_DEC</span><span class="special">(</span><span class="identifier">variable</span><span class="special">,</span> <span class="identifier">offset</span><span class="special">)</span> <span class="special">\</span>
+    <span class="identifier">BOOST_SCOPE_EXIT_ID</span><span class="special">(</span><span class="identifier">BOOST_PP_CAT</span><span class="special">(</span><span class="identifier">inc</span><span class="special">,</span> <span class="identifier">__LINE__</span><span class="special">),</span> <span class="comment">/* unique ID */</span> <span class="special">\</span>
+            <span class="special">&amp;</span><span class="identifier">variable</span><span class="special">,</span> <span class="identifier">offset</span><span class="special">)</span> <span class="special">{</span> <span class="special">\</span>
+        <span class="identifier">variable</span> <span class="special">+=</span> <span class="identifier">offset</span><span class="special">;</span> <span class="special">\</span>
+    <span class="special">}</span> <span class="identifier">BOOST_SCOPE_EXIT_END_ID</span><span class="special">(</span><span class="identifier">BOOST_PP_CAT</span><span class="special">(</span><span class="identifier">inc</span><span class="special">,</span> <span class="identifier">__LINE__</span><span class="special">))</span> <span class="special">\</span>
+    <span class="special">\</span>
+    <span class="identifier">BOOST_SCOPE_EXIT_ID</span><span class="special">(</span><span class="identifier">BOOST_PP_CAT</span><span class="special">(</span><span class="identifier">dec</span><span class="special">,</span> <span class="identifier">__LINE__</span><span class="special">),</span> <span class="special">\</span>
+            <span class="special">&amp;</span><span class="identifier">variable</span><span class="special">,</span> <span class="identifier">offset</span><span class="special">)</span> <span class="special">{</span> <span class="special">\</span>
+        <span class="identifier">variable</span> <span class="special">-=</span> <span class="identifier">offset</span><span class="special">;</span> <span class="special">\</span>
+    <span class="special">}</span> <span class="identifier">BOOST_SCOPE_EXIT_END_ID</span><span class="special">(</span><span class="identifier">BOOST_PP_CAT</span><span class="special">(</span><span class="identifier">dec</span><span class="special">,</span> <span class="identifier">__LINE__</span><span class="special">))</span>
+
+<span class="preprocessor">#define</span> <span class="identifier">SCOPE_EXIT_INC_DEC_TPL</span><span class="special">(</span><span class="identifier">variable</span><span class="special">,</span> <span class="identifier">offset</span><span class="special">)</span> <span class="special">\</span>
+    <span class="identifier">BOOST_SCOPE_EXIT_ID_TPL</span><span class="special">(</span><span class="identifier">BOOST_PP_CAT</span><span class="special">(</span><span class="identifier">inc</span><span class="special">,</span> <span class="identifier">__LINE__</span><span class="special">),</span> <span class="special">\</span>
+            <span class="special">&amp;</span><span class="identifier">variable</span><span class="special">,</span> <span class="identifier">offset</span><span class="special">)</span> <span class="special">{</span> <span class="special">\</span>
+        <span class="identifier">variable</span> <span class="special">+=</span> <span class="identifier">offset</span><span class="special">;</span> <span class="special">\</span>
+    <span class="special">}</span> <span class="identifier">BOOST_SCOPE_EXIT_END_ID</span><span class="special">(</span><span class="identifier">BOOST_PP_CAT</span><span class="special">(</span><span class="identifier">inc</span><span class="special">,</span> <span class="identifier">__LINE__</span><span class="special">))</span> <span class="special">\</span>
+    <span class="special">\</span>
+    <span class="identifier">BOOST_SCOPE_EXIT_ID_TPL</span><span class="special">(</span><span class="identifier">BOOST_PP_CAT</span><span class="special">(</span><span class="identifier">dec</span><span class="special">,</span> <span class="identifier">__LINE__</span><span class="special">),</span> <span class="special">\</span>
+            <span class="special">&amp;</span><span class="identifier">variable</span><span class="special">,</span> <span class="identifier">offset</span><span class="special">)</span> <span class="special">{</span> <span class="special">\</span>
+        <span class="identifier">variable</span> <span class="special">-=</span> <span class="identifier">offset</span><span class="special">;</span> <span class="special">\</span>
+    <span class="special">}</span> <span class="identifier">BOOST_SCOPE_EXIT_END_ID</span><span class="special">(</span><span class="identifier">BOOST_PP_CAT</span><span class="special">(</span><span class="identifier">dec</span><span class="special">,</span> <span class="identifier">__LINE__</span><span class="special">))</span>
+
+<span class="preprocessor">#define</span> <span class="identifier">SCOPE_EXIT_ALL_INC_DEC</span><span class="special">(</span><span class="identifier">variable</span><span class="special">,</span> <span class="identifier">offset</span><span class="special">)</span> <span class="special">\</span>
+    <span class="identifier">BOOST_SCOPE_EXIT_ALL_ID</span><span class="special">(</span><span class="identifier">BOOST_PP_CAT</span><span class="special">(</span><span class="identifier">inc</span><span class="special">,</span> <span class="identifier">__LINE__</span><span class="special">),</span> <span class="special">\</span>
+            <span class="special">=,</span> <span class="special">&amp;</span><span class="identifier">variable</span><span class="special">)</span> <span class="special">{</span> <span class="special">\</span>
+        <span class="identifier">variable</span> <span class="special">+=</span> <span class="identifier">offset</span><span class="special">;</span> <span class="special">\</span>
+    <span class="special">};</span> <span class="special">\</span>
+    <span class="identifier">BOOST_SCOPE_EXIT_ALL_ID</span><span class="special">(</span><span class="identifier">BOOST_PP_CAT</span><span class="special">(</span><span class="identifier">dec</span><span class="special">,</span> <span class="identifier">__LINE__</span><span class="special">),</span> <span class="special">\</span>
+            <span class="special">=,</span> <span class="special">&amp;</span><span class="identifier">variable</span><span class="special">)</span> <span class="special">{</span> <span class="special">\</span>
+        <span class="identifier">variable</span> <span class="special">-=</span> <span class="identifier">offset</span><span class="special">;</span> <span class="special">\</span>
+    <span class="special">};</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">T</span><span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">f</span><span class="special">(</span><span class="identifier">T</span><span class="special">&amp;</span> <span class="identifier">x</span><span class="special">,</span> <span class="identifier">T</span><span class="special">&amp;</span> <span class="identifier">delta</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">SCOPE_EXIT_INC_DEC_TPL</span><span class="special">(</span><span class="identifier">x</span><span class="special">,</span> <span class="identifier">delta</span><span class="special">)</span> <span class="comment">// Multiple scope exits on same line.</span>
+    <span class="identifier">BOOST_TEST</span><span class="special">(</span><span class="identifier">x</span> <span class="special">==</span> <span class="number">0</span><span class="special">);</span>
+<span class="special">}</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">void</span><span class="special">)</span> <span class="special">{</span>
+    <span class="keyword">int</span> <span class="identifier">x</span> <span class="special">=</span> <span class="number">0</span><span class="special">,</span> <span class="identifier">delta</span> <span class="special">=</span> <span class="number">10</span><span class="special">;</span>
+
+    <span class="special">{</span>
+        <span class="identifier">SCOPE_EXIT_INC_DEC</span><span class="special">(</span><span class="identifier">x</span><span class="special">,</span> <span class="identifier">delta</span><span class="special">)</span> <span class="comment">// Multiple scope exits on same line.</span>
+    <span class="special">}</span>
+    <span class="identifier">BOOST_TEST</span><span class="special">(</span><span class="identifier">x</span> <span class="special">==</span> <span class="number">0</span><span class="special">);</span>
+
+    <span class="identifier">f</span><span class="special">(</span><span class="identifier">x</span><span class="special">,</span> <span class="identifier">delta</span><span class="special">);</span>
+
+<span class="preprocessor">#ifndef</span> <span class="identifier">BOOST_NO_CXX11_LAMBDAS</span>
+    <span class="special">{</span>
+        <span class="identifier">SCOPE_EXIT_ALL_INC_DEC</span><span class="special">(</span><span class="identifier">x</span><span class="special">,</span> <span class="identifier">delta</span><span class="special">)</span> <span class="comment">// Multiple scope exits on same line.</span>
+    <span class="special">}</span>
+    <span class="identifier">BOOST_TEST</span><span class="special">(</span><span class="identifier">x</span> <span class="special">==</span> <span class="number">0</span><span class="special">);</span>
+<span class="preprocessor">#endif</span> <span class="comment">// LAMBDAS</span>
+
+    <span class="keyword">return</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">report_errors</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>如上例所示, 当需要在用户自定义宏内多次调用 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1a4ea19ded1642bf122790823b237c0446.html" title="宏 BOOST_SCOPE_EXIT_ID">BOOST_SCOPE_EXIT_ID</a></code>, <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1a8a07c11243049c4548f88abe1e5130b0.html" title="宏 BOOST_SCOPE_EXIT_ID_TPL">BOOST_SCOPE_EXIT_ID_TPL</a></code>, <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1adda4fc0deb8b2c6083b7e893cb009ed4.html" title="宏 BOOST_SCOPE_EXIT_END_ID">BOOST_SCOPE_EXIT_END_ID</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abcb51e455c43fb3f66ec5d5ea165f85a.html" title="宏 BOOST_SCOPE_EXIT_ALL_ID">BOOST_SCOPE_EXIT_ALL_ID</a></code> 这些宏时, 它们特别有用 (因为 C++ 预处理器是在同一行上展开所有嵌套宏的).</p>
+</div>
+<div class="footnotes">
+<br><hr style="width:100; text-align:left;margin-left: 0">
+<div id="ftn.scope_exit.tutorial.capturing_no_variable.f0" class="footnote"><p><a href="#scope_exit.tutorial.capturing_no_variable.f0" class="para"><sup class="para">[3] </sup></a>
+          <span class="bold"><strong>设计理由.</strong></span> 遗憾的是, 无法以无参数形式直接调用 <a class="link" href="../index.html" title="第 1 章 Boost.ScopeExit 1.1.0">Boost.ScopeExit</a> 宏, 即无法像 <code class="computeroutput"><span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">()</span></code> 那样调用, 因为当宏参数可能以非字母数字符号开头时 (按引用捕获变量 <code class="computeroutput"><span class="special">&amp;</span><span class="identifier">variable</span></code> 时即是如此), C++ 预处理器无法检测该参数是否为空.</p></div>
+<div id="ftn.scope_exit.tutorial.capturing_all_variables__c__11_only_.f0" class="footnote"><p><a href="#scope_exit.tutorial.capturing_all_variables__c__11_only_.f0" class="para"><sup class="para">[4] </sup></a>
+          <span class="bold"><strong>设计理由.</strong></span> 宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code> 仅为未定义 <a href="http://www.boost.org/libs/config" target="_top">Boost.Config</a> 宏 <code class="computeroutput"><span class="identifier">BOOST_NO_CXX11_LAMBDAS</span></code> 的 C++11 编译器而定义. 在 C++03 编译器上使用 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code>, 如果该编译器定义了 <code class="computeroutput"><span class="identifier">BOOST_NO_CXX11_LAMBDAS</span></code>, 将产生 (可能晦涩难懂的) 编译器错误. 注意, 之所以需要引入新宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code> 而不复用 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ae0a86562a607889be5c08af8ad6ead1b.html" title="宏 BOOST_SCOPE_EXIT">BOOST_SCOPE_EXIT</a></code>, 是因为用 C++ 预处理器无法把 <code class="computeroutput"><span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(&amp;)</span></code> 和 <code class="computeroutput"><span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(=)</span></code> 与 <code class="computeroutput"><span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(</span><span class="keyword">void</span><span class="special">)</span></code> 或 <code class="computeroutput"><span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(</span><span class="identifier">this_</span><span class="special">)</span></code> 区分开, 原因在于符号 <code class="computeroutput"><span class="special">&amp;</span></code> 和 <code class="computeroutput"><span class="special">=</span></code> 的前后都没有字母数字记号 (对于宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code> 这不是问题, 因为其第一个捕获始终是非字母数字的 <code class="computeroutput"><span class="special">&amp;</span></code> 或 <code class="computeroutput"><span class="special">=</span></code>, 因此对该宏而言, 第一个捕获的记号根本不会与 <code class="computeroutput"><span class="keyword">void</span></code> 和 <code class="computeroutput"><span class="identifier">this_</span></code> 中的任何一个进行比较).</p></div>
+<div id="ftn.scope_exit.tutorial.capturing_all_variables__c__11_only_.f1" class="footnote"><p><a href="#scope_exit.tutorial.capturing_all_variables__c__11_only_.f1" class="para"><sup class="para">[5] </sup></a> 目前似乎已有一些讨论, 拟允许 C++11 lambda 函数在不捕获对象 <code class="computeroutput"><span class="keyword">this</span></code> 的情况下捕获数据成员. 如果 C++11 标准将来被修改为允许这一点, 宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code> 的语法可以扩展为宏 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1ae0a86562a607889be5c08af8ad6ead1b.html" title="宏 BOOST_SCOPE_EXIT">BOOST_SCOPE_EXIT</a></code> 的超集, 同时保持完全向后兼容.</p></div>
+<div id="ftn.scope_exit.tutorial.capturing_all_variables__c__11_only_.f2" class="footnote"><p><a href="#scope_exit.tutorial.capturing_all_variables__c__11_only_.f2" class="para"><sup class="para">[6] </sup></a> 在支持按 C++11 标准所允许的那样在模板之外使用 <code class="computeroutput"><span class="keyword">typename</span></code> 的编译器上, <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code> 既可以用 <code class="computeroutput"><span class="keyword">this</span></code> 也可以用 <code class="computeroutput"><span class="identifier">this_</span></code> 来捕获作用域中的对象 (值得注意的是, MSVC 10.0 编译器并非如此).</p></div>
+<div id="ftn.scope_exit.tutorial.template_workaround__gcc_.f0" class="footnote"><p><a href="#scope_exit.tutorial.template_workaround__gcc_.f0" class="para"><sup class="para">[7] </sup></a>
+          <span class="bold"><strong>设计理由.</strong></span> 符合 C++11 的 GCC 版本不存在这一问题, 并且鉴于 <code class="computeroutput"><a class="link" href="../doxygen/reference/scope__exit_8hpp_1abe3e0c14285fc6303c6cd46884912608.html" title="宏 BOOST_SCOPE_EXIT_ALL">BOOST_SCOPE_EXIT_ALL</a></code> 仅在 C++11 编译器上可用, 因此不需要 <code class="computeroutput"><span class="identifier">BOOST_SCOPE_EXIT_ALL_TPL</span></code> 宏.</p></div>
+<div id="ftn.scope_exit.tutorial.same_line_expansions.f0" class="footnote"><p><a href="#scope_exit.tutorial.same_line_expansions.f0" class="para"><sup class="para">[8] </sup></a>
+          <span class="bold"><strong>设计理由.</strong></span> 本库的宏在内部使用 <code class="computeroutput"><span class="identifier">__LINE__</span></code> 来生成唯一标识符. 因此, 如果同一个宏在同一行上被展开多于一次, 生成的标识符将不再唯一, 代码将无法编译. (这一限制不适用于 MSVC 以及其他提供非标准宏 <code class="computeroutput"><span class="identifier">__COUNTER__</span></code> 的编译器.)</p></div>
+<div id="ftn.scope_exit.tutorial.same_line_expansions.f1" class="footnote"><p><a href="#scope_exit.tutorial.same_line_expansions.f1" class="para"><sup class="para">[9] </sup></a> 由于 C++ 预处理器能够拼接的记号集合存在限制, 且并非所有编译器都正确实现了这些限制, 因此一般建议将唯一标识符指定为字母数字记号的组合.</p></div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2006-2012 Alexander Nasonov, Lorenzo Caminiti<p>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发 (随附文件 LICENSE_1_0.txt 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="getting_started.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="alternatives.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

@@ -1,0 +1,113 @@
+<html>
+<head>
+<title>switch 解析器</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<link rel="stylesheet" href="theme/style.css" type="text/css">
+<style type="text/css">
+<!--
+.style1 {font-family: "Courier New", Courier, mono}
+.style3 {font-family: "Courier New", Courier, mono; color: #FF0000; }
+-->
+</style>
+</head>
+
+<body>
+<table width="100%" border="0" background="theme/bkd2.gif" cellspacing="2">
+  <tr>
+    <td width="10"> </td>
+    <td width="85%"> <font size="6" face="Verdana, Arial, Helvetica, sans-serif"><b>switch 解析器 </b></font></td>
+    <td width="112"><a href="http://spirit.sf.net"><img src="theme/spirit.gif" width="112" height="48" align="right" border="0"></a></td>
+  </tr>
+</table>
+<br>
+<table border="0">
+  <tr>
+    <td width="10"></td>
+    <td width="30"><a href="../index.html"><img src="theme/u_arr.gif" border="0"></a></td>
+    <td width="30"><a href="select_parser.html"><img src="theme/l_arr.gif" border="0"></a></td>
+    <td width="30"><a href="escape_char_parser.html"><img src="theme/r_arr.gif" border="0"></a></td>
+  </tr>
+</table>
+<p>switch 解析器可用于简化某些候选构造. 看下面的代码:</p>
+<pre>    rule<span class="special">&lt;&gt;</span> rule_overall <span class="special">=</span>
+            ch_p<span class="special">(</span><span class="literal">'a'</span><span class="special">)</span> <span class="special">&gt;&gt;</span> parser_a
+        <span class="special">|</span>   ch_p<span class="special">(</span><span class="literal">'b'</span><span class="special">)</span> <span class="special">&gt;&gt;</span> parser_b
+            <span class="comment">// ...</span>
+        <span class="special">|</span>   ch_p<span class="special">(</span><span class="literal">'n'</span><span class="special">)</span> <span class="special">&gt;&gt;</span> parser_n
+        <span class="special">;</span></pre>
+<p>各候选分支以顺序方式正常求值. 这往往效率低下, 尤其是候选分支数量很大时. 为避免这种低效, 并使这类构造能以更可读的形式书写, Spirit 提供了 <tt>switch_p</tt> 解析器家族. switch_p 解析器使我们能把前面的构造重写为:</p>
+<pre>    rule<span class="special">&lt;&gt;</span> rule_overall <span class="special">=</span>
+            switch_p
+            <span class="special">[</span>
+                case_p<span class="special">&lt;</span><span class="literal">'a'</span><span class="special">&gt;(</span>parser_a<span class="special">),</span>
+                case_p<span class="special">&lt;</span><span class="literal">'b'</span><span class="special">&gt;(</span>parser_b<span class="special">),</span>
+            <span class="comment">    // ...</span>
+                case_p<span class="special">&lt;</span><span class="literal">'n'</span><span class="special">&gt;(</span>parser_n<span class="special">)</span>
+            ]
+        ;</pre>
+<p>这个 <tt>switch_p</tt> 解析器从输入流中取下一个字符(或记号), 并尝试把它与作为 <tt>case_p</tt> 解析器模板参数提供的整型编译期常量进行匹配. 若该字符匹配某个 <tt>case_p</tt> 分支, 则执行关联的解析器(即: 若匹配 'a', 则执行 <tt>parser_a</tt>; 若匹配 'b', 则执行 <tt>parser_b</tt>, 依此类推). 若没有 <tt>case_p</tt> 分支匹配下一个输入字符, 则整个构造完全不匹配.</p>
+<table width="80%" border="0" align="center">
+  <tr>
+    <td class="note_box"><div align="justify"><img src="theme/bulb.gif" width="13" height="18"><strong> Nabialek 技巧 </strong><br>
+            <br> <strong><em><a href="techniques.html#nabialek_trick">"Nabialek trick" </a></em></strong>(以其发明者 Sam Nabialek 的名字命名)同样能把规则分派从线性非确定性改进为确定性. 它类似于 <tt>switch_p</tt> 解析器, 但能处理在产生式之前出现的是关键字(运算符等)而非单个字符或记号的文法.</div></td>
+  </tr>
+</table>
+<p>有时, 希望增加对默认情况(没有任何 <tt>case_p</tt> 分支匹配)的处理. 这可以借助 <tt>default_p</tt> 分支来实现:</p>
+<pre>    rule<span class="special">&lt;&gt;</span> rule_overall <span class="special">=</span>
+            switch_p
+            <span class="special">[</span>
+                case_p<span class="special">&lt;</span><span class="literal">'a'</span><span class="special">&gt;(</span>parser_a<span class="special">),</span>
+                case_p<span class="special">&lt;</span><span class="literal">'b'</span><span class="special">&gt;(</span>parser_b<span class="special">),</span>
+            <span class="comment">    // ...</span>
+                case_p<span class="special">&lt;</span><span class="literal">'n'</span><span class="special">&gt;(</span>parser_n<span class="special">),</span>
+                default_p<span class="special">(</span>parser_default<span class="special">)</span>
+            <span class="special">]
+        ;</span></pre>
+<p>这种形式在没有任何 case 分支匹配输入流的下一个字符时选择 <tt>parser_default</tt> 解析器. 请注意, 显然, <tt>switch_p</tt> 解析器构造中只能加入一个 <tt>default_p</tt> 分支.</p>
+<p>此外, <tt>default_p</tt> 构造可以省略圆括号和主体, 此时不会执行任何附加解析器, 整个 <tt>switch_p</tt> 构造对任何不匹配任何 <tt>case_p</tt> 分支的输入流字符直接返回一次匹配:</p>
+<pre>    rule<span class="special">&lt;&gt;</span> rule_overall <span class="special">=</span>
+            switch_p
+            <span class="special">[</span>
+                case_p<span class="special">&lt;</span><span class="literal">'a'</span><span class="special">&gt;(</span>parser_a<span class="special">),</span>
+                case_p<span class="special">&lt;</span><span class="literal">'b'</span><span class="special">&gt;(</span>parser_b<span class="special">),</span>
+                <span class="comment">// ...</span>
+                case_p<span class="special">&lt;</span><span class="literal">'n'</span><span class="special">&gt;(</span>parser_n<span class="special">),</span>
+                default_p
+            <span class="special">]</span>
+        ;</pre>
+<p>switch_p 构造还有另一种形式. 这种形式允许我们显式指定用于与 <tt>case_p</tt> 分支匹配的值:</p>
+<pre>    rule<span class="special">&lt;&gt;</span> rule_overall <span class="special">=</span>
+            switch_p<span class="special">(</span>cond<span class="special">)</span>
+            <span class="special">[</span>
+                case_p<span class="special">&lt;</span><span class="literal">'a'</span><span class="special">&gt;(</span>parser_a<span class="special">),</span>
+                case_p<span class="special">&lt;</span><span class="literal">'b'</span><span class="special">&gt;(</span>parser_b<span class="special">),</span>
+            <span class="comment">    // ...</span>
+                case_p<span class="special">&lt;</span><span class="literal">'n'</span><span class="special">&gt;(</span>parser_n<span class="special">)</span>
+            <span class="special">]</span>
+        ;</pre>
+<p>其中 <tt>cond</tt> 是一个解析器, 或一个零参函数或函数对象(functor). 若它是解析器, 则会尝试它, 并用其返回值与 <tt>case_p</tt> 分支匹配. 若它是零参函数或函数对象, 则使用其返回值.</p>
+<p>请注意, 在编译期间, <tt>switch_p</tt> 构造会被变换为真正的 C++ <tt>switch</tt> 语句. 这使运行期执行非常高效.</p>
+<table width="80%" border="0" align="center">
+  <tr>
+    <td class="note_box"><p><img src="theme/alert.gif" width="16" height="16"> <tt>BOOST_SPIRIT_SWITCH_CASE_LIMIT</tt><br>
+        <br> 可能的 <tt>case_p</tt>/<tt>default_p</tt> 分支数量受 Spirit 编译期常量 <tt>BOOST_SPIRIT_SWITCH_CASE_LIMIT</tt> 限制, 其默认值为 3. 该常量没有理论上限, 但大多数编译器不允许你指定非常大的数字.</p>
+    <p>示例:</p>
+    <p class="style1"><span class="comment">// Define these before including switch.hpp <br>
+      </span><span class="preprocessor">#define</span> BOOST_SPIRIT_SWITCH_CASE_LIMIT 10 </p></td>
+  </tr>
+</table><br>
+<table border="0">
+  <tr>
+    <td width="10"></td>
+    <td width="30"><a href="../index.html"><img src="theme/u_arr.gif" border="0"></a></td>
+    <td width="30"><a href="select_parser.html"><img src="theme/l_arr.gif" border="0"></a></td>
+    <td width="30"><a href="escape_char_parser.html"><img src="theme/r_arr.gif" border="0"></a></td>
+  </tr>
+</table>
+<br>
+<hr size="1">
+<p class="copyright">Copyright © 2003-2004 Hartmut Kaiser <br>
+  <br>
+  <font size="2">使用、修改与分发受 Boost 软件许可 1.0 版(Boost Software License, Version 1.0)约束. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt) </font> </p>
+</body>
+</html>

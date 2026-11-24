@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<!-- Copyright Aleksey Gurtovoy 2006. Distributed under the Boost -->
+<!-- Software License, Version 1.0. (See accompanying -->
+<!-- file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt) -->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.3.6: http://docutils.sourceforge.net/" />
+<title>BOOST MPL 库: 破损的整型常量表达式</title>
+<link rel="stylesheet" href="../style.css" type="text/css" />
+</head>
+<body class="docframe">
+<table class="header"><tr class="header"><td class="header-group navigation-bar"><span class="navigation-group"><a href="./portability.html" class="navigation-link">上一页</a> <a href="./incomplete-support-for.html" class="navigation-link">下一页</a></span><span class="navigation-group-separator"> | </span><span class="navigation-group"> <a href="./incomplete-support-for.html" class="navigation-link">沿原路返回</a></span><span class="navigation-group-separator"> | </span><span class="navigation-group"><a href="./portability.html" class="navigation-link">上一级</a> <a href="../index.html" class="navigation-link">首页</a></span><span class="navigation-group-separator"> | </span><span class="navigation-group"><a href="./tutorial_toc.html" class="navigation-link">完整目录</a></span></td>
+<td class="header-group page-location"><a href="../index.html" class="navigation-link">首页</a> / <a href="./technical-details.html" class="navigation-link">技术细节</a> / <a href="./portability.html" class="navigation-link">可移植性</a> / <a href="./broken-integral-constant.html" class="navigation-link">破损的整型常量表达式</a></td>
+</tr></table><div class="header-separator"></div>
+<div class="section" id="broken-integral-constant">
+<h1><a class="toc-backref" href="./portability.html#id74" name="broken-integral-constant">破损的整型常量表达式</a></h1>
+<p>这可能是我们要讨论的可移植性问题中最令人惊讶的一个, 尤其是因为对许多 C++ 程序员来说, 他们的日常经验似乎表明这一领域毫无问题. 毕竟, 类似如下的整数编译期计算:</p>
+<pre class="literal-block">
+enum flags {
+      flag1     = (1 &lt;&lt; 0)
+    , flag2     = (1 &lt;&lt; 1)
+    , flag3     = (1 &lt;&lt; 2)
+    ...
+    };
+</pre>
+<p>在 C++ 中<em>极其</em>常见, 几乎没有哪个编译器不能正确处理它. 虽然算术本身确实很少出问题, 但在某些残缺编译器上试图把它与模板混用时, 各种新问题便接踵而至. 所幸, 正如我们在此讨论的其他可移植性问题一样, 随着新编译器版本的发布, 这一问题正在成为过去. 许多厂商的最新编译器大多已不存在这些问题.</p>
+<div class="section" id="the-problem">
+<h2><a name="the-problem">The Problem</a></h2>
+<p>这个问题实际上是多方面的, 存在许多不同的子问题. 有些出现在这一批编译器上, 有些出现在另一批上, 而且对一个编译器有效的代码破坏另一个编译器的情况屡见不鲜, 反之亦然. 如果这听起来像是维护的噩梦, 那么它确实是! 如果你有兴趣了解具体的问题清单, 请参阅 John Maddock 出色的 "<a class="reference" href="http://www.boost.org/more/int_const_guidelines.htm" target="_top">Coding Guidelines for Integral Constant Expressions</a>" 总结. 就我们此处的讨论而言, 只需说明一点: 如果你的代码必须在被列为在这方面有问题的编译器上运行, 那么可以放心地认为, 如果你决定逐个案例与之搏斗, 你很可能撑不了多久就会崩溃.</p>
+</div>
+<div class="section" id="the-symptoms">
+<h2><a name="the-symptoms">症状</a></h2>
+<p>从好的方面看, 当你遇到整数算术问题时, 诊断几乎总是直截了当的: 通常错误消息会把你指向代码中引发问题的确切位置, 问题的实质从错误文本中显而易见, 或者在你遇到同样的错误几次后变得显而易见. 例如, 如果我们把下面这个良构的代码片段丢给 MSVC 7.1 (除此之外是一个出色的编译器!)</p>
+<pre class="literal-block">
+void value();
+
+// compares two Integral Constants
+template&lt; typename N1, typename N2 &gt; struct less
+    : bool_&lt; (N1::value &lt; N2::value) &gt; // line #8
+{
+};
+</pre>
+<p>输出如下:</p>
+<pre class="literal-block">
+portability.cpp(8) : warning C4346: 'N2::value' : dependent name is not a type
+        prefix with 'typename' to indicate a type
+        portability.cpp(10) : see reference to class template instantiation 'less&lt;N1,N2&gt;' being compiled
+portability.cpp(8) : error C2143: syntax error : missing ',' before ')'
+portability.cpp(9) : error C2143: syntax error : missing ';' before '{'
+portability.cpp(10) : error C2143: syntax error : missing ';' before '}'
+portability.cpp(10) : fatal error C1004: unexpected end of file found
+</pre>
+<p>错误本身远非理想, 但至少我们被指向了正确的行, 甚至是行中正确的部分. 上面的错误基本上是在说 "括号之间出了问题", 再加上 "syntax error" 部分, 通常已足够提供线索.</p>
+</div>
+<div class="section" id="the-solution">
+<h2><a name="the-solution">解决办法</a></h2>
+<p>尽管问题如此众多、如此多面, 且各种变通办法相互冲突, 这些问题仍可以被可靠地隐藏在库的抽象层之下. 底层思路非常简单: 我们总是可以把常量包装进类型并传递它们. 剩下的就是一次性实现作用于这类包装器的代数元函数, 从此高枕无忧.</p>
+<p>如果这听起来耳熟, 那可能是因为你已经看过 MPL, 并且知道我们刚描述的方法实际上就是该库中进行算术运算的<em>标准</em>方式. 虽然它源于更一般的考量, 但这一事实对关心其数值密集型元程序可移植性的库用户来说非常便利. MPL 原语已经就位, 更重要的是, 它们已经实现了必要的变通办法, 因此你的数值代码直接可用. 事实上, 只要你遵循库的类型包装惯用法, 这些特定问题就永远不会 "泄漏" 到其抽象层之外.</p>
+<p>最后值得一提的是, 完全避开内建算术是有代价的, 即可读性下降, 以及在某些编译器上编译期开销增加. 尽管如此, 在大多数情况下, 基于类型的算术的收益超过其小缺陷.</p>
+</div>
+</div>
+
+<div class="footer-separator"></div>
+<table class="footer"><tr class="footer"><td class="header-group navigation-bar"><span class="navigation-group"><a href="./portability.html" class="navigation-link">上一页</a> <a href="./incomplete-support-for.html" class="navigation-link">下一页</a></span><span class="navigation-group-separator"> | </span><span class="navigation-group"> <a href="./incomplete-support-for.html" class="navigation-link">沿原路返回</a></span><span class="navigation-group-separator"> | </span><span class="navigation-group"><a href="./portability.html" class="navigation-link">上一级</a> <a href="../index.html" class="navigation-link">首页</a></span><span class="navigation-group-separator"> | </span><span class="navigation-group"><a href="./tutorial_toc.html" class="navigation-link">完整目录</a></span></td>
+</tr></table></body>
+</html>

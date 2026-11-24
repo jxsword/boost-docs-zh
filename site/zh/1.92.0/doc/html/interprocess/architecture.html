@@ -1,0 +1,283 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>架构与内部机制</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../interprocess.html" title="第 15 章 Boost.Interprocess">
+<link rel="prev" href="interprocess_smart_ptr.html" title="所有权智能指针">
+<link rel="next" href="customizing_interprocess.html" title="定制 Boost.Interprocess">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="interprocess_smart_ptr.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../interprocess.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="customizing_interprocess.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="interprocess.architecture"></a><a class="link" href="architecture.html" title="架构与内部机制">架构与内部机制</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="architecture.html#interprocess.architecture.basic_guidelines">基本指导原则</a></span></dt>
+<dt><span class="section"><a href="architecture.html#interprocess.architecture.architecture_algorithm_to_managed">从内存算法到托管段</a></span></dt>
+<dt><span class="section"><a href="architecture.html#interprocess.architecture.allocators_containers">分配器与容器</a></span></dt>
+<dt><span class="section"><a href="architecture.html#interprocess.architecture.performance">Boost.Interprocess 的性能</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.architecture.basic_guidelines"></a><a class="link" href="architecture.html#interprocess.architecture.basic_guidelines" title="基本指导原则">基本指导原则</a>
+</h3></div></div></div>
+<p>在构建 <span class="bold"><strong>Boost.Interprocess</strong></span> 的架构时, 我遵循了一些基本指导原则, 可概括为以下几点:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <span class="bold"><strong>Boost.Interprocess</strong></span> 应当至少在 UNIX 和 Windows 系统上可移植. 这意味着不仅要统一接口, 还要统一行为. 这就是 <span class="bold"><strong>Boost.Interprocess</strong></span> 为共享内存和命名同步机制选择内核或文件系统生存期的原因. 共享内存的进程生存期也是理想的, 但在 UNIX 系统中难以实现.</li>
+<li class="listitem">
+            <span class="bold"><strong>Boost.Interprocess</strong></span> 的进程间同步原语应当与线程同步原语等同. <span class="bold"><strong>Boost.Interprocess</strong></span> 的目标是拥有与 C++ 标准线程 API 兼容的接口.</li>
+<li class="listitem">
+            <span class="bold"><strong>Boost.Interprocess</strong></span> 的架构应当模块化、可定制且高效. 这就是 <span class="bold"><strong>Boost.Interprocess</strong></span> 基于模板的原因: 内存算法、索引类型、互斥量类型和其他类都是可模板化的.</li>
+<li class="listitem">
+            <span class="bold"><strong>Boost.Interprocess</strong></span> 的架构应当允许与基于线程的编程同等的并发能力. 这里定义了不同的互斥级别, 使得一个进程可以在扩展共享内存 vector 时并发分配原始内存, 同时另一个进程可以安全地搜索命名对象.</li>
+<li class="listitem">
+            <span class="bold"><strong>Boost.Interprocess</strong></span> 容器对 <span class="bold"><strong>Boost.Interprocess</strong></span> 一无所知. 所有特定行为都包含在类 STL 的分配器中. 这使得 STL 厂商只需稍微修改 (或者说泛化) 其标准容器实现, 就能得到完全兼容 std::allocator 和 boost::interprocess::allocator 的容器. 这也使 <span class="bold"><strong>Boost.Interprocess</strong></span> 容器与标准算法兼容.</li>
+</ul></div>
+<p>
+        <span class="bold"><strong>Boost.Interprocess</strong></span> 构建于 3 个基本类之上: 一个 <span class="bold"><strong>内存算法</strong></span> 、一个 <span class="bold"><strong>段管理器</strong></span> 和一个 <span class="bold"><strong>托管内存段</strong></span>:</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.architecture.architecture_algorithm_to_managed"></a><a class="link" href="architecture.html#interprocess.architecture.architecture_algorithm_to_managed" title="从内存算法到托管段">从内存算法到托管段</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="architecture.html#interprocess.architecture.architecture_algorithm_to_managed.architecture_memory_algorithm">内存算法</a></span></dt>
+<dt><span class="section"><a href="architecture.html#interprocess.architecture.architecture_algorithm_to_managed.architecture_segment_manager">段管理器</a></span></dt>
+<dt><span class="section"><a href="architecture.html#interprocess.architecture.architecture_algorithm_to_managed.architecture_managed_memory">Boost.Interprocess 托管内存段</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.architecture.architecture_algorithm_to_managed.architecture_memory_algorithm"></a><a class="link" href="architecture.html#interprocess.architecture.architecture_algorithm_to_managed.architecture_memory_algorithm" title="内存算法">内存算法</a>
+</h4></div></div></div>
+<p> <span class="bold"><strong>内存算法</strong></span> 是一个放置在共享内存/内存映射文件段开头几个字节中的对象. <span class="bold"><strong>内存算法</strong></span> 可以把该段的一部分返回给用户并标记为已使用, 用户也可以把这些部分归还给 <span class="bold"><strong>内存算法</strong></span> , 由 <span class="bold"><strong>内存算法</strong></span> 重新标记为空闲. 但有一个例外: 内存算法对象结尾之后的某些字节是保留的, 不能用于这种动态分配. 这个"保留"区将用于在众所周知的位置放置其他附加对象.</p>
+<p>总之, <span class="bold"><strong>内存算法</strong></span> 的使命与标准 C 库的 malloc/free 相同, 但它只能返回它所在段的部分内存. 内存段的布局如下:</p>
+<pre class="programlisting"><span class="identifier">Layout</span> <span class="identifier">of</span> <span class="identifier">the</span> <span class="identifier">memory</span> <span class="identifier">segment</span><span class="special">:</span>
+ <span class="identifier">____________</span> <span class="identifier">__________</span> <span class="identifier">____________________________________________</span>
+<span class="special">|</span>            <span class="special">|</span>          <span class="special">|</span>                                            <span class="special">|</span>
+<span class="special">|</span>   <span class="identifier">memory</span>   <span class="special">|</span> <span class="identifier">reserved</span> <span class="special">|</span>  <span class="identifier">The</span> <span class="identifier">memory</span> <span class="identifier">algorithm</span> <span class="identifier">will</span> <span class="keyword">return</span> <span class="identifier">portions</span> <span class="special">|</span>
+<span class="special">|</span> <span class="identifier">algorithm</span>  <span class="special">|</span>          <span class="special">|</span>  <span class="identifier">of</span> <span class="identifier">the</span> <span class="identifier">rest</span> <span class="identifier">of</span> <span class="identifier">the</span> <span class="identifier">segment</span><span class="special">.</span>               <span class="special">|</span>
+<span class="special">|</span><span class="identifier">____________</span><span class="special">|</span><span class="identifier">__________</span><span class="special">|</span><span class="identifier">____________________________________________</span><span class="special">|</span>
+</pre>
+<p> <span class="bold"><strong>内存算法</strong></span> 负责内存同步, 就像 malloc/free 保证两个线程可以同时调用 malloc/free 一样. 这通常通过把一个进程共享互斥量作为内存算法的成员来实现. 请注意, 内存算法对段 <span class="bold"><strong>一无所知</strong></span> (不知道它是共享内存、共享内存文件等). 对内存算法而言, 段只是一个固定大小的内存缓冲区.</p>
+<p> <span class="bold"><strong>内存算法</strong></span> 也是 <span class="bold"><strong>Boost.Interprocess</strong></span> 框架其余部分的配置点, 因为它把两个基本类型定义为成员 typedef:</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="comment">/*implementation dependent*/</span> <span class="identifier">void_pointer</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="comment">/*implementation dependent*/</span> <span class="identifier">mutex_family</span><span class="special">;</span>
+</pre>
+<p> <code class="computeroutput"><span class="identifier">void_pointer</span></code> typedef 定义将在 <span class="bold"><strong>Boost.Interprocess</strong></span> 框架 (段管理器、分配器、容器) 中使用的指针类型. 如果内存算法已准备好放置在以不同基址映射的共享内存/映射文件中, 该指针类型将定义为 <code class="computeroutput"><span class="identifier">offset_ptr</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span></code> 或类似的相对指针. 如果 <span class="bold"><strong>内存算法</strong></span> 只用于固定地址映射, <code class="computeroutput"><span class="identifier">void_pointer</span></code> 可以定义为 <code class="computeroutput"><span class="keyword">void</span><span class="special">*</span></code>.</p>
+<p> <span class="bold"><strong>Boost.Interprocess</strong></span>
+          <span class="bold"><strong>内存算法</strong></span> 的其余接口在 <a class="link" href="customizing_interprocess.html#interprocess.customizing_interprocess.custom_interprocess_alloc" title="编写新的共享内存分配算法">编写新的共享内存分配算法</a> 一节中描述. 作为内存算法的例子, 可以查看 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1simple__seq__fit.html" title="类模板 simple_seq_fit">simple_seq_fit</a></code> 或 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1rbtree__best__fit.html" title="类模板 rbtree_best_fit">rbtree_best_fit</a></code> 类的实现.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.architecture.architecture_algorithm_to_managed.architecture_segment_manager"></a><a class="link" href="architecture.html#interprocess.architecture.architecture_algorithm_to_managed.architecture_segment_manager" title="段管理器">段管理器</a>
+</h4></div></div></div>
+<p> <span class="bold"><strong>段管理器</strong></span> 也是一个放置在托管内存段 (共享内存、内存映射文件) 开头几个字节中的对象, 它在 <span class="bold"><strong>内存算法</strong></span> 之上提供更复杂的服务. . <span class="bold"><strong> </strong></span>段管理器和内存算法怎么能都放在段的开头呢? 这是因为段管理器 <span class="bold"><strong>拥有</strong></span> 内存算法: 实际上, 内存算法是 <span class="bold"><strong>内嵌</strong></span> 在段管理器中的:</p>
+<pre class="programlisting"><span class="identifier">The</span> <span class="identifier">layout</span> <span class="identifier">of</span> <span class="identifier">managed</span> <span class="identifier">memory</span> <span class="identifier">segment</span><span class="special">:</span>
+ <span class="identifier">_______</span> <span class="identifier">_________________</span>
+<span class="special">|</span>       <span class="special">|</span>         <span class="special">|</span>       <span class="special">|</span>
+<span class="special">|</span> <span class="identifier">some</span>  <span class="special">|</span> <span class="identifier">memory</span>  <span class="special">|</span> <span class="identifier">other</span> <span class="special">|&lt;-</span> <span class="identifier">The</span> <span class="identifier">memory</span> <span class="identifier">algorithm</span> <span class="identifier">considers</span>
+<span class="special">|</span><span class="identifier">members</span><span class="special">|</span><span class="identifier">algorithm</span><span class="special">|</span><span class="identifier">members</span><span class="special">|</span>   <span class="string">"other members"</span> <span class="identifier">as</span> <span class="identifier">reserved</span> <span class="identifier">memory</span><span class="special">,</span> <span class="identifier">so</span>
+<span class="special">|</span><span class="identifier">_______</span><span class="special">|</span><span class="identifier">_________</span><span class="special">|</span><span class="identifier">_______</span><span class="special">|</span>   <span class="identifier">it</span> <span class="identifier">does</span> <span class="keyword">not</span> <span class="identifier">use</span> <span class="identifier">it</span> <span class="keyword">for</span> <span class="identifier">dynamic</span> <span class="identifier">allocation</span><span class="special">.</span>
+<span class="special">|</span><span class="identifier">_________________________</span><span class="special">|</span><span class="identifier">____________________________________________</span>
+<span class="special">|</span>                         <span class="special">|</span>                                            <span class="special">|</span>
+<span class="special">|</span>    <span class="identifier">segment</span> <span class="identifier">manager</span>      <span class="special">|</span>  <span class="identifier">The</span> <span class="identifier">memory</span> <span class="identifier">algorithm</span> <span class="identifier">will</span> <span class="keyword">return</span> <span class="identifier">portions</span> <span class="special">|</span>
+<span class="special">|</span>                         <span class="special">|</span>  <span class="identifier">of</span> <span class="identifier">the</span> <span class="identifier">rest</span> <span class="identifier">of</span> <span class="identifier">the</span> <span class="identifier">segment</span><span class="special">.</span>               <span class="special">|</span>
+<span class="special">|</span><span class="identifier">_________________________</span><span class="special">|</span><span class="identifier">____________________________________________</span><span class="special">|</span>
+</pre>
+<p> <span class="bold"><strong>段管理器</strong></span> 初始化内存算法, 并告诉内存管理器不要把放置 <span class="bold"><strong>段管理器</strong></span> 其余成员的内存用于动态分配. <span class="bold"><strong>段管理器</strong></span> 的其他成员是 <span class="bold"><strong>一个递归互斥量</strong></span> (由内存算法的 <span class="bold"><strong>mutex_family::recursive_mutex</strong></span> typedef 成员定义), 以及 <span class="bold"><strong>两个索引 (映射)</strong></span> : 一个用于实现命名分配, 另一个用于实现"唯一实例"分配.</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">第一个索引是一个映射: 键为指向 C 字符串的指针 (命名对象的名称), 值为包含动态分配对象信息的结构 (最重要的是对象的地址和大小).</li>
+<li class="listitem">第二个索引用于实现"唯一实例", 基本上与第一个索引相同, 只是对象名称来自 <code class="computeroutput"><span class="keyword">typeid</span><span class="special">(</span><span class="identifier">T</span><span class="special">).</span><span class="identifier">name</span><span class="special">()</span></code> 操作.</li>
+</ul></div>
+<p>在索引中存储 [名称指针, 对象信息] 对所需的内存也是通过 <span class="bold"><strong>内存算法</strong></span> 分配的, 因此可以说内部索引就像构建在段中的普通用户对象一样. 存储对象名称、对象本身以及用于析构/释放的元数据所需的其余内存, 则用 <span class="bold"><strong>内存算法</strong></span> 通过单次 <code class="computeroutput"><span class="identifier">allocate</span><span class="special">()</span></code> 调用分配.</p>
+<p>如前所述, <span class="bold"><strong>段管理器</strong></span> 对共享内存/内存映射文件 <span class="bold"><strong>一无所知</strong></span> . <span class="bold"><strong>段管理器</strong></span> 自身并不分配段的部分内存, 它只是请求 <span class="bold"><strong>内存算法</strong></span> 从段的其余部分分配所需的内存. <span class="bold"><strong>段管理器</strong></span> 是构建在内存算法之上的类, 提供命名对象构造、唯一实例构造以及许多其他服务.</p>
+<p> <span class="bold"><strong>段管理器</strong></span> 在 <span class="bold"><strong>Boost.Interprocess</strong></span> 中由 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1segment__manager.html" title="类模板 segment_manager">segment_manager</a></code> 类实现.</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">CharType</span>
+        <span class="special">,</span><span class="keyword">class</span> <span class="identifier">MemoryAlgorithm</span>
+        <span class="special">,</span><span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">IndexConfig</span><span class="special">&gt;</span> <span class="keyword">class</span> <span class="identifier">IndexType</span><span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">segment_manager</span><span class="special">;</span>
+</pre>
+<p>如前所述, 段管理器相当通用: 我们可以指定用于标识命名对象的字符类型, 可以指定动态控制内存段各部分的内存算法, 还可以指定存储 [名称指针, 对象信息] 映射的索引类型. 我们可以按照 <a class="link" href="customizing_interprocess.html#interprocess.customizing_interprocess.custom_indexes" title="构建自定义索引">构建自定义索引</a> 一节所述构建自己的索引类型.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.architecture.architecture_algorithm_to_managed.architecture_managed_memory"></a><a class="link" href="architecture.html#interprocess.architecture.architecture_algorithm_to_managed.architecture_managed_memory" title="Boost.Interprocess 托管内存段">Boost.Interprocess 托管内存段</a>
+</h4></div></div></div>
+<p> <span class="bold"><strong>Boost.Interprocess</strong></span> 托管内存段会构建共享内存/内存映射文件, 在其中放置段管理器, 并把用户请求转发给段管理器. 例如, <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1basic__managed__shared__memory.html" title="类模板 basic_managed_shared_memory">basic_managed_shared_memory</a></code> 是一个使用共享内存的 <span class="bold"><strong>Boost.Interprocess</strong></span> 托管内存段. <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1basic__managed__mapped__file.html" title="类模板 basic_managed_mapped_file">basic_managed_mapped_file</a></code> 使用内存映射文件, 等等.</p>
+<p>基本上, <span class="bold"><strong>Boost.Interprocess</strong></span> 托管内存段的接口与 <span class="bold"><strong>段管理器</strong></span> 相同, 但它还提供"打开"、"创建"或"打开或创建"共享内存/内存映射文件段并初始化所有所需资源的函数. 托管内存段类并不构建在共享内存或内存映射文件中, 它们是普通的 C++ 类, 存储一个指向段管理器的指针 (段管理器才构建在共享内存或内存映射文件中).</p>
+<p>除此之外, 托管内存段还提供特定函数: <code class="computeroutput"><span class="identifier">managed_mapped_file</span></code> 提供把内存内容刷新到文件的函数, <code class="computeroutput"><span class="identifier">managed_heap_memory</span></code> 提供扩展内存的函数, 等等.</p>
+<p> <span class="bold"><strong>Boost.Interprocess</strong></span> 托管内存段的大多数函数可以在所有托管内存段之间共享, 因为它们很多时候只是把函数转发给段管理器. 因此, 在 <span class="bold"><strong>Boost.Interprocess</strong></span> 中, 所有托管内存段都派生自一个公共类, 该类实现与内存无关的 (共享内存、内存映射文件) 函数: <a href="../../../boost/interprocess/detail/managed_memory_impl.hpp" target="_top">boost::interprocess::ipcdetail::basic_managed_memory_impl</a>
+        </p>
+<p>从这个类派生, <span class="bold"><strong>Boost.Interprocess</strong></span> 针对不同的内存后端实现了几个托管内存类:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+              <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1basic__managed__shared__memory.html" title="类模板 basic_managed_shared_memory">basic_managed_shared_memory</a></code> (用于共享内存).</li>
+<li class="listitem">
+              <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1basic__managed__mapped__file.html" title="类模板 basic_managed_mapped_file">basic_managed_mapped_file</a></code> (用于内存映射文件).</li>
+<li class="listitem">
+              <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1basic__managed__heap__memory.html" title="类模板 basic_managed_heap_memory">basic_managed_heap_memory</a></code> (用于堆分配内存).</li>
+<li class="listitem">
+              <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1basic__managed__external__buffer.html" title="类模板 basic_managed_external_buffer">basic_managed_external_buffer</a></code> (用于用户提供的外部缓冲区).</li>
+</ul></div>
+</div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.architecture.allocators_containers"></a><a class="link" href="architecture.html#interprocess.architecture.allocators_containers" title="分配器与容器">分配器与容器</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="architecture.html#interprocess.architecture.allocators_containers.allocators">Boost.Interprocess 分配器</a></span></dt>
+<dt><span class="section"><a href="architecture.html#interprocess.architecture.allocators_containers.implementation_segregated_storage_pools"> <span class="bold"><strong>Boost.Interprocess</strong></span> 隔离存储池的实现</a></span></dt>
+<dt><span class="section"><a href="architecture.html#interprocess.architecture.allocators_containers.implementation_adaptive_pools"> <span class="bold"><strong>Boost.Interprocess</strong></span> 自适应池的实现</a></span></dt>
+<dt><span class="section"><a href="architecture.html#interprocess.architecture.allocators_containers.architecture_containers">Boost.Interprocess 容器</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.architecture.allocators_containers.allocators"></a><a class="link" href="architecture.html#interprocess.architecture.allocators_containers.allocators" title="Boost.Interprocess 分配器">Boost.Interprocess 分配器</a>
+</h4></div></div></div>
+<p> <span class="bold"><strong>Boost.Interprocess</strong></span> 的类 STL 分配器相当简单, 遵循通常的 C++ 分配器方法. 通常, STL 容器的分配器构建在 new/delete 运算符之上, 并在其上实现池、arena 和其他分配技巧.</p>
+<p>在 <span class="bold"><strong>Boost.Interprocess</strong></span> 分配器中, 方法类似, 但所有分配器都基于 <span class="bold"><strong>段管理器</strong></span> . 段管理器是唯一一个从简单内存分配到命名对象创建都提供的组件. <span class="bold"><strong>Boost.Interprocess</strong></span> 分配器始终存储一个指向段管理器的指针, 以便从段中获取内存或在分配器之间共享公共池.</p>
+<p>可以想象, 分配器的成员指针不是原始指针, 而是由 <code class="computeroutput"><span class="identifier">segment_manager</span><span class="special">::</span><span class="identifier">void_pointer</span></code> 类型定义的指针类型. 除此之外, <code class="computeroutput"><span class="identifier">pointer</span></code> typedef (属于 <span class="bold"><strong>Boost.Interprocess</strong></span> 分配器) 也与 <code class="computeroutput"><span class="identifier">segment_manager</span><span class="special">::</span><span class="identifier">void_pointer</span></code> 类型相同.</p>
+<p>这意味着, 如果我们的分配算法定义 <code class="computeroutput"><span class="identifier">void_pointer</span></code> 为 <code class="computeroutput"><span class="identifier">offset_ptr</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span></code>, <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">::</span><span class="identifier">allocator</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code> 将存储一个 <code class="computeroutput"><span class="identifier">offset_ptr</span><span class="special">&lt;</span><span class="identifier">segment_manager</span><span class="special">&gt;</span></code> 来指向段管理器, 并且 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">::</span><span class="identifier">allocator</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;::</span><span class="identifier">pointer</span></code> 类型将是 <code class="computeroutput"><span class="identifier">offset_ptr</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code> . 这样, <span class="bold"><strong>Boost.Interprocess</strong></span> 分配器就可以放置在段管理器所管理的内存段中, 即共享内存、内存映射文件等.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.architecture.allocators_containers.implementation_segregated_storage_pools"></a><a class="link" href="architecture.html#interprocess.architecture.allocators_containers.implementation_segregated_storage_pools" title="Boost.Interprocess 隔离存储池的实现"> <span class="bold"><strong>Boost.Interprocess</strong></span> 隔离存储池的实现</a>
+</h4></div></div></div>
+<p>隔离存储池很简单, 遵循经典的隔离存储算法.</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">池使用段管理器的原始内存分配函数分配内存块.</li>
+<li class="listitem">块中包含一个指针, 用于形成块的单向链表. 池中保存一个指向第一个块的指针.</li>
+<li class="listitem">块的其余内存被划分为所请求大小的节点, 没有任何内存用作每个节点的负载. 由于空闲节点的内存未被使用, 该内存被用来放置一个指针, 形成空闲节点的单向链表. 池中保存一个指向第一个空闲节点的指针.</li>
+<li class="listitem">分配节点就是从链表中取第一个空闲节点. 如果链表为空, 则分配一个新块, 链入块链表, 并把新的空闲节点链入空闲节点链表.</li>
+<li class="listitem">释放把节点归还给空闲节点链表.</li>
+<li class="listitem">池被销毁时, 会遍历块链表并把内存归还给段管理器.</li>
+</ul></div>
+<p>该池由 <a href="../../../boost/interprocess/allocators/detail/node_pool.hpp" target="_top">private_node_pool 和 shared_node_pool</a> 类实现.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.architecture.allocators_containers.implementation_adaptive_pools"></a><a class="link" href="architecture.html#interprocess.architecture.allocators_containers.implementation_adaptive_pools" title="Boost.Interprocess 自适应池的实现"> <span class="bold"><strong>Boost.Interprocess</strong></span> 自适应池的实现</a>
+</h4></div></div></div>
+<p>自适应池是隔离链表的一种变体, 但方法更复杂:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">池不是使用原始分配, 而是使用段管理器分配 <span class="bold"><strong>对齐的</strong></span> 内存块. 这是一个 <span class="bold"><strong>关键</strong></span> 特性, 因为节点只需对地址应用一个简单的掩码就能找到其块信息.</li>
+<li class="listitem">块中包含形成块双向链表的指针, 以及一个附加指针, 用于为放置在该块上的空闲节点创建单向链表. 因此与隔离存储算法不同, 空闲节点链表是 <span class="bold"><strong>按块</strong></span> 实现的.</li>
+<li class="listitem">池按空闲节点数递增的顺序维护各块. 这改善了局部性, 并尽量减少节点分配在各块之间的分散, 便于产生完全空闲的块.</li>
+<li class="listitem">池保存一个指向空闲节点数最少 (但非零) 的块的指针. 该块称为"活动"块.</li>
+<li class="listitem">分配节点就是返回"活动"块的第一个空闲节点. 块链表会按空闲节点数重新排序. 必要时更新指向"活动"池的指针.</li>
+<li class="listitem">如果池的节点用尽, 则分配一个新块并压入块链表末尾. 必要时更新指向"活动"池的指针.</li>
+<li class="listitem">释放把节点归还给其所在块的空闲节点链表, 并相应地更新"活动"池.</li>
+<li class="listitem">如果完全空闲的块数量超过限制, 块将被归还给段管理器.</li>
+<li class="listitem">池被销毁时, 会遍历块链表并把内存归还给段管理器.</li>
+</ul></div>
+<p>自适应池由 <a href="../../../boost/interprocess/allocators/detail/adaptive_node_pool.hpp" target="_top">private_adaptive_node_pool 和 adaptive_node_pool</a> 类实现.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.architecture.allocators_containers.architecture_containers"></a><a class="link" href="architecture.html#interprocess.architecture.allocators_containers.architecture_containers" title="Boost.Interprocess 容器">Boost.Interprocess 容器</a>
+</h4></div></div></div>
+<p>
+          <span class="bold"><strong>Boost.Interprocess</strong></span> 容器是 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span></code> 命名空间中 STL 容器的符合标准的对应版本, 但有以下小细节:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+              <span class="bold"><strong>Boost.Interprocess</strong></span> STL 容器不假设用一个分配器分配的内存可以用同类型的另一个分配器释放. 它们总是用 <code class="computeroutput"><span class="keyword">operator</span><span class="special">==()</span></code> 比较分配器, 以判断是否可行.</li>
+<li class="listitem"> <span class="bold"><strong>Boost.Interprocess</strong></span> 容器内部结构的指针与容器的分配器所定义的 <code class="computeroutput"><span class="identifier">pointer</span></code> 类型相同. 这使容器可以放置在以不同基址映射的托管内存段中.</li>
+</ul></div>
+</div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.architecture.performance"></a><a class="link" href="architecture.html#interprocess.architecture.performance" title="Boost.Interprocess 的性能">Boost.Interprocess 的性能</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="architecture.html#interprocess.architecture.performance.performance_allocations">原始内存分配的性能</a></span></dt>
+<dt><span class="section"><a href="architecture.html#interprocess.architecture.performance.performance_named_allocation">命名分配的性能</a></span></dt>
+</dl></div>
+<p>本节试图解释 <span class="bold"><strong>Boost.Interprocess</strong></span> 的性能特征, 以便你在需要更高性能时优化 <span class="bold"><strong>Boost.Interprocess</strong></span> 的使用.</p>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.architecture.performance.performance_allocations"></a><a class="link" href="architecture.html#interprocess.architecture.performance.performance_allocations" title="原始内存分配的性能">原始内存分配的性能</a>
+</h4></div></div></div>
+<p>使用 <span class="bold"><strong>Boost.Interprocess</strong></span> 类可以进行两种原始内存分配:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+              <span class="bold"><strong>显式</strong></span>: 用户调用托管内存段 (managed_shared_memory/managed_mapped_file 等) 的 <code class="computeroutput"><span class="identifier">allocate</span><span class="special">()</span></code> 和 <code class="computeroutput"><span class="identifier">deallocate</span><span class="special">()</span></code> 函数. 该调用被转换为 <code class="computeroutput"><span class="identifier">MemoryAlgorithm</span><span class="special">::</span><span class="identifier">allocate</span><span class="special">()</span></code> 函数, 这意味着所需时间就是与托管内存段关联的内存算法分配数据所需的时间.</li>
+<li class="listitem">
+              <span class="bold"><strong>隐式</strong></span>: 例如, 你正在将 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">::</span><span class="identifier">allocator</span><span class="special">&lt;...&gt;</span></code> 与 <span class="bold"><strong>Boost.Interprocess</strong></span> 容器一起使用. 该分配器调用与显式方法相同的 <code class="computeroutput"><span class="identifier">MemoryAlgorithm</span><span class="special">::</span><span class="identifier">allocate</span><span class="special">()</span></code> 函数, <span class="bold"><strong>每次</strong></span> vector/string 需要重新分配其缓冲区时, 以及 <span class="bold"><strong>每次</strong></span> 向节点容器插入对象时, 都会调用该函数.</li>
+</ul></div>
+<p>如果你发现内存分配是应用程序的瓶颈, 可以考虑以下替代方案:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">如果你使用 map/set 关联容器, 且主要进行搜索而插入/删除主要在初始化阶段完成, 可以尝试使用 <code class="computeroutput"><span class="identifier">flat_map</span></code> 家族代替 map 家族. 此时开销出现在有序 vector 不得不重新分配存储并移动数据时. 如果事先知道要插入多少数据, 也可以调用这些容器的 <code class="computeroutput"><span class="identifier">reserve</span><span class="special">()</span></code> 方法. 不过, 这些容器在插入时会使迭代器失效, 因此这种替换只对某些应用程序有效.</li>
+<li class="listitem">为节点容器使用 <span class="bold"><strong>Boost.Interprocess</strong></span> 池化分配器, 因为池化分配器只在池的节点用尽时才调用 <code class="computeroutput"><span class="identifier">allocate</span><span class="special">()</span></code> . 这相当高效 (远胜于当前默认的通用算法), 并且可以节省大量内存. 详见 <a class="link" href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_segregated_storage" title="隔离存储节点分配器">隔离存储节点分配器</a> 和 <a class="link" href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_adaptive" title="自适应池节点分配器">自适应节点分配器</a> .</li>
+<li class="listitem">编写自己的内存算法. 如果你有内存分配算法的经验, 并且认为有比默认算法更适合你的应用程序的算法, 可以在所有 <span class="bold"><strong>Boost.Interprocess</strong></span> 托管内存段中指定它. 具体做法参见 <a class="link" href="customizing_interprocess.html#interprocess.customizing_interprocess.custom_interprocess_alloc" title="编写新的共享内存分配算法">编写新的共享内存分配算法</a> 一节. 如果你认为它比通用应用程序的默认算法更好, 请大方地把它捐给 <span class="bold"><strong>Boost.Interprocess</strong></span> 使其成为默认算法!</li>
+</ul></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.architecture.performance.performance_named_allocation"></a><a class="link" href="architecture.html#interprocess.architecture.performance.performance_named_allocation" title="命名分配的性能">命名分配的性能</a>
+</h4></div></div></div>
+<p>
+          <span class="bold"><strong>Boost.Interprocess</strong></span> 提供与两个线程写同一公共结构相同的并行性, 只有当用户创建/搜索命名/唯一对象时例外. 创建命名对象的步骤如下:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">锁定递归互斥量 (这样就可以在待创建对象的构造函数内进行命名分配).</li>
+<li class="listitem">尝试将 [名称指针, 对象信息] 插入名称/对象索引. 该查找必须确保名称以前未被使用过. 这通过调用索引的 <code class="computeroutput"><span class="identifier">insert</span><span class="special">()</span></code> 函数实现. 因此所需时间取决于索引类型 (有序 vector、树、哈希...). 如果索引必须重新分配, 或它是节点分配器、使用池化分配等, 则可能还需要调用内存算法的分配函数.</li>
+<li class="listitem">分配单个缓冲区, 用于容纳对象名称、对象本身以及析构所需的元数据 (对象数量等...).</li>
+<li class="listitem">调用正在创建对象的构造函数. 如果是数组, 则对每个数组元素调用一次构造函数.</li>
+<li class="listitem">解锁递归互斥量.</li>
+</ul></div>
+<p>使用对象名称 (<code class="computeroutput"><span class="identifier">destroy</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;(</span><span class="identifier">name</span><span class="special">)</span></code>) 销毁命名对象的步骤如下:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">锁定递归互斥量 .</li>
+<li class="listitem">在索引中搜索与该名称关联的条目. 复制该信息并擦除索引条目. 这通过索引的 <code class="computeroutput"><span class="identifier">find</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">key_type</span> <span class="special">&amp;)</span></code> 和 <code class="computeroutput"><span class="identifier">erase</span><span class="special">(</span><span class="identifier">iterator</span><span class="special">)</span></code> 成员完成. 如果索引是平衡树、有序 vector 等, 可能需要重新排列元素.</li>
+<li class="listitem">调用对象的析构函数 (数组则为多个).</li>
+<li class="listitem">用分配算法释放包含名称、元数据和对象本身的内存缓冲区.</li>
+<li class="listitem">解锁递归互斥量.</li>
+</ul></div>
+<p>使用对象指针 (<code class="computeroutput"><span class="identifier">destroy_ptr</span><span class="special">(</span><span class="identifier">T</span> <span class="special">*</span><span class="identifier">ptr</span><span class="special">)</span></code>) 销毁命名对象的步骤如下:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">锁定递归互斥量 .</li>
+<li class="listitem">根据索引类型, 这可能有所不同: <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; ">
+<li class="listitem">如果索引是节点索引 (以 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">::</span><span class="identifier">is_node_index</span></code> 特化标记): 取出存储在对象附近的迭代器并调用 <code class="computeroutput"><span class="identifier">erase</span><span class="special">(</span><span class="identifier">iterator</span><span class="special">)</span></code> . 如果索引是平衡树、有序 vector 等, 可能需要重新排列元素.</li>
+<li class="listitem">如果不是节点索引: 取出存储在对象附近的名称, 调用 `erase(const key &amp;) 擦除索引条目. 如果索引是平衡树、有序 vector 等, 可能需要重新排列元素...</li>
+</ul></div>
+            </li>
+<li class="listitem">调用对象的析构函数 (数组则为多个).</li>
+<li class="listitem">用分配算法释放包含名称、元数据和对象本身的内存缓冲区.</li>
+<li class="listitem">解锁递归互斥量.</li>
+</ul></div>
+<p>如果你发现性能不够好, 可以考虑以下替代方案:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">也许问题在于锁定时间过长, 损害了并行性. 尽量减少全局索引中的命名对象数量; 如果你的应用程序服务多个客户端, 尽量为每个客户端构建一个新的托管内存段, 而不是共用一个.</li>
+<li class="listitem">如果觉得默认索引类型不够快, 可以使用其他 <span class="bold"><strong>Boost.Interprocess</strong></span> 索引类型. 如果仍不满意, 就编写自己的索引类型. 参见 <a class="link" href="customizing_interprocess.html#interprocess.customizing_interprocess.custom_indexes" title="构建自定义索引">构建自定义索引</a> .</li>
+<li class="listitem">通过指针销毁至少与使用对象名称一样快, 甚至可能更快 (例如在节点容器中). 因此, 如果你的问题在于大量命名销毁操作, 请尝试使用指针. 如果索引是节点索引, 可以节省一些时间.</li>
+</ul></div>
+</div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2005-2024 Ion Gaztanaga<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="interprocess_smart_ptr.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../interprocess.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="customizing_interprocess.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

@@ -1,0 +1,203 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>设计原理</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../signals2.html" title="第 33 章 Boost.Signals2">
+<link rel="prev" href="faq.html" title="常见问题 (FAQ)">
+<link rel="next" href="api_changes.html" title="Signals2 API 变更">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="faq.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../signals2.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="api_changes.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="signals2.rationale"></a>设计理由</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="rationale.html#id-1.3.34.9.2">用户级连接管理</a></span></dt>
+<dt><span class="section"><a href="rationale.html#id-1.3.34.9.3">自动连接管理</a></span></dt>
+<dt><span class="section"><a href="rationale.html#id-1.3.34.9.4"><code class="computeroutput">optional_last_value</code> 作为默认组合器</a></span></dt>
+<dt><span class="section"><a href="rationale.html#id-1.3.34.9.5">组合器接口</a></span></dt>
+<dt><span class="section"><a href="rationale.html#id-1.3.34.9.6">连接接口: += 运算符</a></span></dt>
+<dt><span class="section"><a href="rationale.html#id-1.3.34.9.7">Signals2 互斥类</a></span></dt>
+<dt><span class="section"><a href="rationale.html#id-1.3.34.9.8">与其他信号/槽实现的比较</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="id-1.3.34.9.2"></a>用户级连接管理</h3></div></div></div>
+<p>用户需要对信号到槽的连接及其最终断开有精细的控制. Boost.Signals2 采取的主要做法是返回一个 <code class="computeroutput"><a class="link" href="../boost/signals2/connection.html" title="类 connection">signals2::connection</a></code> 对象, 该对象支持已连接/已断开查询、手动断开, 以及析构时自动断开模式 (<code class="computeroutput"><a class="link" href="../boost/signals2/scoped_connection.html" title="类 scoped_connection">signals2::scoped_connection</a></code>). 此外, <code class="computeroutput"><a class="link" href="../boost/signals2/signal.html#id-1_3_34_6_9_3_1_2_24_3-bb">signal::disconnect</a></code> 重载方法还支持另外两种接口:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p><span class="bold"><strong>把槽传给 disconnect</strong></span>: 在这一接口模型中, 对用 <code class="computeroutput">sig.<a class="link" href="../boost/signals2/signal.html#id-1_3_34_6_9_3_1_2_24_1-bb">connect</a>(typeof(sig)::slot_type(slot_func))</code> 连接的槽的断开通过 <code class="computeroutput">sig.<a class="link" href="../boost/signals2/signal.html#id-1_3_34_6_9_3_1_2_24_3-bb">disconnect</a>(slot_func)</code> 执行. 内部会使用槽比较进行一次线性搜索, 若找到该槽则将其从列表中移除. 遗憾的是, 查询连接状态最终成为一个线性时间操作.</p></li>
+<li class="listitem">
+<p><span class="bold"><strong>把令牌传给 disconnect</strong></span>: 这种方法用一个易于比较的令牌 (例如字符串) 来标识槽, 从而允许槽是任意的函数对象. 虽然这种方法在本质上等价于 Boost.Signals2 所采用的连接方式, 但由于以下几个原因, 它可能更容易出错:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; ">
+<li class="listitem"><p>连接与断开必须成对出现, 于是问题就变得类似于在动态内存分配中配对 <code class="computeroutput">new</code> 和 <code class="computeroutput">delete</code> 时遇到的问题. 虽然这类错误对信号槽实现而言并非灾难性的, 但对它们的检测通常并不容易.</p></li>
+<li class="listitem"><p>如果令牌不唯一, 两个槽可能同名而无法区分. 在会动态建立大量连接的环境中, 名称生成成了用户的额外任务.</p></li>
+</ul></div>
+<p>Boost.Signals2 通过槽分组机制以及 <code class="computeroutput"><a class="link" href="../boost/signals2/signal.html#id-1_3_34_6_9_3_1_2_24_3-bb">signal::disconnect</a></code> 的重载 (接受信号 <code class="computeroutput">Group</code> 类型的实参) 来支持这类接口.</p>
+</li>
+</ul></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="id-1.3.34.9.3"></a>自动连接管理</h3></div></div></div>
+<p>Signals2 中的自动连接管理依赖于使用 <code class="computeroutput">boost::shared_ptr</code> 来管理被跟踪对象的生命期. 这不同于原始的 Boost.Signals 库, 后者依赖的是从 <code class="computeroutput">boost::signals::trackable</code> 类派生. 库会通过 <code class="computeroutput">boost::signals::trackable</code> 析构函数得到对象销毁的通知.</p>
+<p>遗憾的是, 由于析构顺序的原因, <code class="computeroutput">boost::signals::trackable</code> 方案无法做到线程安全. 派生自 <code class="computeroutput">boost::signals::trackable</code> 的类的析构函数总是在基类 <code class="computeroutput">boost::signals::trackable</code> 的析构函数之前被调用. 然而, 为了线程安全, 信号与对象之间的连接需要在对象运行其析构函数之前断开. 否则, 若在一个线程中被销毁的对象连接到一个正在另一线程中并发调用的信号, 该信号可能调用到一个部分销毁的对象.</p>
+<p>我们通过要求被跟踪对象由 <code class="computeroutput">shared_ptr</code> 管理来解决这个问题. 槽为其依赖的每个对象保留一个 <code class="computeroutput">weak_ptr</code>. 当槽所跟踪的任何 <code class="computeroutput">weak_ptr</code> 过期时, 与该槽的连接就会断开. 此外, 信号在调用槽之前会为槽的所有被跟踪对象创建自己的临时 <code class="computeroutput">shared_ptr</code>. 这确保没有任何被跟踪对象在调用中途析构.</p>
+<p>新的连接管理方案具有非侵入式的优点. 任何类型的对象都可以用 <code class="computeroutput">shared_ptr</code>/<code class="computeroutput">weak_ptr</code> 方案来跟踪. 旧的 <code class="computeroutput">boost::signals::trackable</code> 方案要求被跟踪对象派生自 <code class="computeroutput">trackable</code> 基类, 而在与第三方库的类交互时这并不总是可行的.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="id-1.3.34.9.4"></a><code class="computeroutput">optional_last_value</code> 作为默认合并器</h3></div></div></div>
+<p>Boost.Signals2 的默认合并器已从原始 Boost.Signals 库默认使用的 <code class="computeroutput">last_value</code> 合并器变更而来. 这是因为 <code class="computeroutput">last_value</code> 要求在信号被调用时至少连接了 1 个槽 (<code class="computeroutput">last_value&lt;void&gt;</code> 特化除外). 在信号调用与槽的连接、断开可能并发发生的多线程环境中, 这一要求难以满足. 使用 <code class="computeroutput"><a class="link" href="../boost/signals2/optional_last_value.html" title="类模板 optional_last_value">optional_last_value</a></code> 时, 则不要求信号被调用时有槽连接, 因为在这种情况下合并器可以简单地返回一个空的 <code class="computeroutput">boost::optional</code>.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="id-1.3.34.9.5"></a>合并器接口</h3></div></div></div>
+<p>选择合并器接口是为了模仿对 C++ 标准库中算法的调用. 我们认为, 把槽调用结果看作仅是由输入迭代器访问的一个值序列, 合并器接口对熟练的 C++ 程序员而言将是最自然的. 相互竞争的接口设计通常要求把合并器构造为遵循一个专为 (且仅限于) Signals2 库定制的接口. 虽然这些接口通常能让信号槽库的实现更直接, 但遗憾的是合并器不可复用 (既不能在其他信号槽库中复用, 也不能在其他泛型算法中复用), 并且学习曲线也因需要学习特定的合并器接口而略微变陡.</p>
+<p>Signals2 对合并器的表述基于合并器使用 "拉取" (pull) 式通信, 而不是更复杂的 "推送" (push) 机制. 在 "拉取" 机制下, 合并器的状态可以保存在栈上和程序计数器中, 因为每当需要新数据时 (即调用下一个槽以获取其返回值), 都有一个简单的接口可以立即获取该数据, 而无须从合并器的代码中返回. 与之对比, 在 "推送" 机制下, 合并器必须把所有状态保存在类成员中, 因为每次信号被调用时都会调用合并器的例程. 例如, 比较一个返回调用各槽所得最大元素的合并器: 若最大元素超过 100, 则不再调用更多槽.</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th align="left"><p>拉取</p></th>
+<th align="left"><p>推送</p></th>
+</tr></thead>
+<tbody><tr>
+<td align="left">
+<pre class="table-programlisting">
+struct pull_max {
+  typedef int result_type;
+
+  template&lt;typename InputIterator&gt;
+  result_type operator()(InputIterator first,
+                         InputIterator last)
+  {
+    if (first == last)
+      throw std::runtime_error("Empty!");
+
+    int max_value = *first++;
+    while(first != last &amp;&amp; *first &lt;= 100) {
+      if (*first &gt; max_value)
+        max_value = *first;
+      ++first;
+    }
+
+    return max_value;
+  }
+};
+</pre>
+</td>
+<td align="left">
+<pre class="table-programlisting">
+struct push_max {
+  typedef int result_type;
+
+  push_max() : max_value(), got_first(false) {}
+
+  // returns false when we want to stop
+  bool operator()(int result) {
+    if (result &gt; 100)
+      return false;
+
+    if (!got_first) {
+      got_first = true;
+      max_value = result;
+      return true;
+    }
+
+    if (result &gt; max_value)
+      max_value = result;
+
+    return true;
+  }
+
+  int get_value() const
+  {
+    if (!got_first)
+      throw std::runtime_error("Empty!");
+    return max_value;
+  }
+
+private:
+  int  max_value;
+  bool got_first;
+};
+</pre>
+</td>
+</tr></tbody>
+</table></div>
+<p>这些例子中有几点值得注意. "拉取" 版本是一个可复用的函数对象, 基于带有整数 <code class="computeroutput">value_type</code> 的输入迭代器序列, 设计非常直接. 而 "推送" 模型依赖于一个特定于调用方的接口, 一般不可复用. 它还需要额外的状态值来判断, 例如, 是否已经收到任何元素. 虽然代码质量和易用性通常带有主观性, 但 "拉取" 模型显然更短且更可复用, 即使在信号槽库的语境之外, 通常也会被认为更容易编写和理解.</p>
+<p>"拉取" 式合并器接口的代价由 Signals2 库自身的实现来支付. 为了正确处理调用期间的槽断开 (例如, 当解引用运算符被调用时), 必须构造能够跳过已断开槽的迭代器. 此外, 迭代器必须随身携带传递给每个槽的实参集合 (尽管使用一个包含这些实参的结构的引用即可), 并且必须缓存调用槽的结果, 以免多次解引用导致多次调用. 这显然需要相当大的开销, 不过若考虑调用槽的整个过程, 就会看到这一开销与 "推送" 模型中的开销几乎等价, 只是我们把控制结构倒了过来, 让迭代和解引用变得复杂 (而不是让合并器状态的确定变得复杂).</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="id-1.3.34.9.6"></a>连接接口: += 运算符</h3></div></div></div>
+<p>Boost.Signals2 支持形如 <code class="computeroutput">sig.<a class="link" href="../boost/signals2/signal.html#id-1_3_34_6_9_3_1_2_24_1-bb">connect</a>(slot)</code> 的连接语法, 但也有人建议使用更简洁的语法 <code class="computeroutput">sig += slot</code> (并且已被其他信号槽实现采用). 之所以拒绝这种语法, 有以下几个原因:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p><span class="bold"><strong>没有必要</strong></span>: Boost.Signals2 提供的连接语法在能力上并不逊于 <code class="computeroutput">+=</code> 运算符所提供的. 少敲几个字 (<code class="computeroutput">connect()</code> 与 <code class="computeroutput">+=</code> 之别) 基本上可以忽略不计. 此外, 可以说调用 <code class="computeroutput">connect()</code> 比 <code class="computeroutput">+=</code> 的重载更具可读性.</p></li>
+<li class="listitem"><p><span class="bold"><strong>返回类型有歧义</strong></span>: <code class="computeroutput">+=</code> 运算的返回值存在歧义: 它应当是对信号本身的引用 (以便支持 <code class="computeroutput">sig += slot1 += slot2</code>), 还是应当为新建的信号/槽连接返回一个 <code class="computeroutput"><a class="link" href="../boost/signals2/connection.html" title="类 connection">signals2::connection</a></code>?</p></li>
+<li class="listitem">
+<p><span class="bold"><strong>通向 -= 和 + 运算符的大门</strong></span>: 一旦增加了连接运算符 <code class="computeroutput">+=</code>, 似乎顺理成章地应当有一个断开运算符 <code class="computeroutput">-=</code>. 然而, 当库允许任意函数对象隐式成为槽时, 这会带来问题, 因为槽不再可比较.</p>
+<p>有了 <code class="computeroutput">operator+=</code> 之后, 第二个显而易见的补充是增加一个支持把多个槽相加、随后赋值给信号的 <code class="computeroutput">+</code> 运算符. 然而, 这要求实现 <code class="computeroutput">+</code> 使之能接受任意两个函数对象, 这在技术上不可行.</p>
+</li>
+</ul></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="id-1.3.34.9.7"></a>Signals2 互斥量类</h3></div></div></div>
+<p>Boost.Signals2 库提供了两个互斥量类: <code class="computeroutput"><a class="link" href="../boost/signals2/mutex.html" title="类 mutex">boost::signals2::mutex</a></code> 和 <code class="computeroutput"><a class="link" href="../boost/signals2/dummy_mutex.html" title="类 dummy_mutex">boost::signals2::dummy_mutex</a></code>. 提供 <code class="computeroutput"><a class="link" href="../boost/signals2/mutex.html" title="类 mutex">boost::signals2::mutex</a></code> 的动机很简单: Boost.Thread 库目前提供的 <code class="computeroutput">boost::mutex</code> 类需要链接 libboost_thread. <code class="computeroutput"><a class="link" href="../boost/signals2/mutex.html" title="类 mutex">boost::signals2::mutex</a></code> 类使 Signals2 得以保持为仅头文件库. 如果你愿意, 仍然可以选择使用 <code class="computeroutput">boost::mutex</code>, 方法是把它指定为信号的 <code class="computeroutput">Mutex</code> 模板类型.</p>
+<p>提供 <code class="computeroutput"><a class="link" href="../boost/signals2/dummy_mutex.html" title="类 dummy_mutex">boost::signals2::dummy_mutex</a></code> 类是为了让对性能敏感的单线程应用能够通过避免不必要的互斥量加锁来把开销降到最低.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="id-1.3.34.9.8"></a>与其他信号/槽实现的比较</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="rationale.html#id-1.3.34.9.8.2">libsigc++</a></span></dt>
+<dt><span class="section"><a href="rationale.html#id-1.3.34.9.8.3">.NET delegates</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="id-1.3.34.9.8.2"></a>libsigc++</h4></div></div></div>
+<p> <a href="http://libsigc.sourceforge.net" target="_top">libsigc++</a> 是一个 C++ 信号槽库, 最初是一项用 C++ 封装 <a href="http://www.gtk.org" target="_top">GTK</a> 库 C 接口的行动的一部分, 后来发展为由 Karl Nelson 维护的独立库. libsigc++ 与 Boost.Signals2 有许多相似之处, 事实上原始的 Boost.Signals 曾深受 Karl Nelson 和 libsigc++ 的影响. 对两个库的粗略考察会发现, 在信号的构造和连接的使用方面有类似的语法. 但在设计上存在一些把这两个库区分开来的重大差异:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p><span class="bold"><strong>槽的定义</strong></span>: libsigc++ 中的槽使用库定义的一组原语来创建. 这些原语允许绑定对象 (作为库的一部分), 并把信号的实参和返回类型显式适配为槽的实参和返回类型 (libsigc++ 默认在类型方面比 Boost.Signals2 更严格).</p></li>
+<li class="listitem"><p><span class="bold"><strong>合并器/编排器接口</strong></span>: libsigc++ 中与 Boost.Signals2 合并器对应的是编排器 (marshaller). 编排器类似于合并器接口一节所述的 "推送" 接口, 对该主题的恰当讨论见该节.</p></li>
+</ul></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="id-1.3.34.9.8.3"></a>.NET 委托</h4></div></div></div>
+<p> <a href="http://www.microsoft.com" target="_top">Microsoft</a> 引入了 .NET Framework 以及一组相关联的语言和语言扩展, 其中之一就是委托 (delegate). 委托与信号槽相似, 但比大多数 C++ 信号槽实现更受限, 因为它们:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p>要求委托与其调用对象之间精确的类型匹配.</p></li>
+<li class="listitem"><p>只返回最后被调用的目标的结果, 没有定制选项.</p></li>
+<li class="listitem"><p>必须调用一个已绑定 <code class="computeroutput">this</code> 的方法.</p></li>
+</ul></div>
+</div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2001-2004 Douglas Gregor<br>版权所有 © 2007-2009 Frank Mori Hess<p>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <code class="filename">LICENSE_1_0.txt</code> 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="faq.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../signals2.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="api_changes.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

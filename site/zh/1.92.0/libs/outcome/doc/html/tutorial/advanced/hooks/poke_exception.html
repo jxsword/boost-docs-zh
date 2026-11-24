@@ -1,0 +1,77 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>自定义 exception ptr - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="../../../css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="../../../images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="../../../tutorial/advanced/hooks/hook_result.html"><img src="../../../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../../../tutorial/advanced/hooks.html"><img src="../../../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../../../index.html"><img src="../../../images/home.png" alt="首页"></a><a accesskey="n" href="../../../tutorial/advanced/hooks/hook_outcome.html"><img src="../../../images/next.png" alt="下一页"></a></div><div id="content">
+  <div class="titlepage"><div><div><h1 style="clear: both">自定义 exception ptr</h1></div></div></div>
+  <p>如果你只想让 <code>result</code> 在不调用内存分配器的情况下捕获栈回溯, 并保留对优化很重要的任何拷贝平凡性, 你已经拥有所需的一切.</p>
+
+<p>但让我们继续: 拦截本地化 <code>outcome</code> 从本地化 <code>result</code> 构造的任何情形, 取出任何已存储的回溯, 并用它合成一个带消息文本 (包含回溯) 的 exception ptr. 首先看看合成 exception ptr 的函数:</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="k">namespace</span> <span class="n">error_code_extended</span>
+<span class="p">{</span>
+  <span class="c1">// Synthesise a custom exception_ptr from the TLS slot and write it into the outcome
+</span><span class="c1"></span>  <span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">R</span><span class="o">&gt;</span> <span class="kr">inline</span> <span class="kt">void</span> <span class="n">poke_exception</span><span class="p">(</span><span class="n">outcome</span><span class="o">&lt;</span><span class="n">R</span><span class="o">&gt;</span> <span class="o">*</span><span class="n">o</span><span class="p">)</span>
+  <span class="p">{</span>
+    <span class="k">if</span><span class="p">(</span><span class="n">o</span><span class="o">-&gt;</span><span class="n">has_error</span><span class="p">())</span>
+    <span class="p">{</span>
+      <span class="n">extended_error_info</span> <span class="o">*</span><span class="n">eei</span> <span class="o">=</span> <span class="n">mythreadlocaldata</span><span class="p">().</span><span class="n">get</span><span class="p">(</span><span class="n">BOOST_OUTCOME_V2_NAMESPACE</span><span class="o">::</span><span class="n">hooks</span><span class="o">::</span><span class="n">spare_storage</span><span class="p">(</span><span class="n">o</span><span class="p">));</span>
+      <span class="k">if</span><span class="p">(</span><span class="n">eei</span> <span class="o">!=</span> <span class="k">nullptr</span><span class="p">)</span>
+      <span class="p">{</span>
+        <span class="c1">// Make a custom string for the exception
+</span><span class="c1"></span>        <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="n">str</span><span class="p">(</span><span class="n">o</span><span class="o">-&gt;</span><span class="n">error</span><span class="p">().</span><span class="n">message</span><span class="p">());</span>
+        <span class="n">str</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#34; [&#34;</span><span class="p">);</span>
+        <span class="k">struct</span> <span class="n">unsymbols</span>  <span class="c1">// RAII cleaner for symbols
+</span><span class="c1"></span>        <span class="p">{</span>
+          <span class="kt">char</span> <span class="o">**</span><span class="n">_</span><span class="p">{</span><span class="k">nullptr</span><span class="p">};</span>
+          <span class="o">~</span><span class="n">unsymbols</span><span class="p">()</span> <span class="p">{</span> <span class="o">::</span><span class="n">free</span><span class="p">(</span><span class="n">_</span><span class="p">);</span> <span class="p">}</span>
+        <span class="p">}</span> <span class="n">symbols</span><span class="p">{</span><span class="o">::</span><span class="n">backtrace_symbols</span><span class="p">(</span><span class="n">eei</span><span class="o">-&gt;</span><span class="n">backtrace</span><span class="p">.</span><span class="n">data</span><span class="p">(),</span> <span class="n">eei</span><span class="o">-&gt;</span><span class="n">items</span><span class="p">)};</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">symbols</span><span class="p">.</span><span class="n">_</span> <span class="o">!=</span> <span class="k">nullptr</span><span class="p">)</span>
+        <span class="p">{</span>
+          <span class="k">for</span><span class="p">(</span><span class="n">size_t</span> <span class="n">n</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">n</span> <span class="o">&lt;</span> <span class="n">eei</span><span class="o">-&gt;</span><span class="n">items</span><span class="p">;</span> <span class="n">n</span><span class="o">++</span><span class="p">)</span>
+          <span class="p">{</span>
+            <span class="k">if</span><span class="p">(</span><span class="n">n</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="p">{</span>
+              <span class="n">str</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#34;; &#34;</span><span class="p">);</span>
+            <span class="p">}</span>
+            <span class="n">str</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="n">symbols</span><span class="p">.</span><span class="n">_</span><span class="p">[</span><span class="n">n</span><span class="p">]);</span>
+          <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="n">str</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#34;]&#34;</span><span class="p">);</span>
+
+        <span class="c1">// Override the payload/exception member in the outcome with our synthesised exception ptr
+</span><span class="c1"></span>        <span class="n">BOOST_OUTCOME_V2_NAMESPACE</span><span class="o">::</span><span class="n">hooks</span><span class="o">::</span><span class="n">override_outcome_exception</span><span class="p">(</span><span class="n">o</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="n">make_exception_ptr</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="n">str</span><span class="p">)));</span>
+      <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/error_code_extended.cpp#L142" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<p>如果被构造的本地化 <code>outcome</code> 处于出错状态, 尝试按其备用存储中唯一的 16 位值获取 TLS 槽位. 如果有效, 把栈回溯符号化成字符串, 并用它构造一个带运行期错误的 exception ptr. 最后, 用新的 exception ptr 覆盖刚拷贝构造的本地化 <code>outcome</code> 中的负载/异常成员.</p>
+
+<hr>
+
+<p>正如 <a href="../../../reference/functions/hooks/override_outcome_exception.html" class="api-reference"><code>void override_outcome_exception(basic_outcome&lt;T, EC, EP, NoValuePolicy&gt; *, U &amp;&amp;) noexcept</code></a> 的参考文档指出的: 如果有任何其他替代方案, 你<em>几乎肯定</em>不想使用该函数. 值得解释一下这句话的含义.</p>
+
+<p>在本节中, 我们<em>总是</em>在从基于 <code>result</code> 的 API 过渡到基于 <code>outcome</code> 的 API 的确切转换点, 从已存储状态与错误码合成 exception ptr. 这之所以可以接受, 只是因为我们知道我们的代码强制执行这一纪律.</p>
+
+<p>如果是在设计一个库设施, 就不能假设库用户具备这种纪律. 更明智的做法可能是让 exception ptr 的合成<em>惰性</em>化——经由一个自定义无值策略, 只在需要时 (例如 <code>.exception()</code> 观察, 或无值可用的 <code>.value()</code> 观察) 才生成包含栈回溯的错误消息.</p>
+
+<p>不过, 这样的设计比本节呈现的设计更不确定, 因为其不确定性比本设计更难预测. 最终采用哪种策略, 取决于绝对确定性对你的 Outcome 应用有多重要.</p>
+
+
+        </div><p><small>最后修订: December 15, 2020 at 12:22:39 UTC</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../../../tutorial/advanced/hooks/hook_result.html"><img src="../../../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../../../tutorial/advanced/hooks.html"><img src="../../../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../../../index.html"><img src="../../../images/home.png" alt="首页"></a><a accesskey="n" href="../../../tutorial/advanced/hooks/hook_outcome.html"><img src="../../../images/next.png" alt="下一页"></a></div></body>
+</html>

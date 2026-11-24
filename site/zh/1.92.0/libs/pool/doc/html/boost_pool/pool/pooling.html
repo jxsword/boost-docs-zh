@@ -1,0 +1,898 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>更深入地了解 Pool</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="Boost.Pool">
+<link rel="up" href="../pool.html" title="引言与概述">
+<link rel="prev" href="interfaces.html" title="Boost Pool 接口 - 提供了哪些接口以及何时使用哪一个.">
+<link rel="next" href="../../boost_pool_c___reference.html" title="Boost.Pool C++ 参考">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="interfaces.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../pool.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="../../boost_pool_c___reference.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_pool.pool.pooling"></a><a class="link" href="pooling.html" title="更深入地了解 Pool">更深入地了解 Pool</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="pooling.html#boost_pool.pool.pooling.concepts">池化的基本思想</a></span></dt>
+<dt><span class="section"><a href="pooling.html#boost_pool.pool.pooling.simple">简单分隔存储</a></span></dt>
+<dt><span class="section"><a href="pooling.html#boost_pool.pool.pooling.alignment">保证对齐 - 我们如何以可移植的方式保证对齐.</a></span></dt>
+<dd><dl><dt><span class="section"><a href="pooling.html#boost_pool.pool.pooling.alignment.chunks">如何处理连续内存块</a></span></dt></dl></dd>
+<dt><span class="section"><a href="pooling.html#boost_pool.pool.pooling.simple_segregated">简单分隔存储 (不适合胆小者 - 仅限嵌入式程序员!)</a></span></dt>
+<dt><span class="section"><a href="pooling.html#boost_pool.pool.pooling.user_allocator">UserAllocator 概念</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_pool.pool.pooling.concepts"></a><a class="link" href="pooling.html#boost_pool.pool.pooling.concepts" title="池化的基本思想">池化的基本思想</a>
+</h4></div></div></div>
+<p>
+          <span class="emphasis"><em>自大约 1960 年以来, 动态内存分配一直是大多数计算机系统的基本组成部分...</em></span> <a class="link" href="../appendices/references.html#ref1">1</a>
+        </p>
+<p>每个人都使用动态内存分配. 如果你曾经调用过 malloc 或 new, 那么你就使用过动态内存分配. 大多数程序员倾向于把堆当作一个 <span class="quote">“<span class="quote">魔法袋"</span>”</span>: 我们向它要内存, 它就神奇地为我们创造一些. 有时我们会遇到问题, 因为堆并不神奇.</p>
+<p>堆是有限的. 即使在拥有大量虚拟内存的大型系统 (即非嵌入式系统) 上, 也存在限制. 人人都知道物理限制, 但还有一个更微妙的"虚拟"限制: 达到该限制时, 你的程序 (或整个系统) 会因使用虚拟内存而变慢. 这个虚拟限制比物理限制离你的程序更近, 尤其是在多任务系统上运行时. 因此, 在大型系统上运行时, 让程序尽可能少地使用资源并尽快释放它们被认为是 <span class="emphasis"><em>友好的</em></span> 做法. 在嵌入式系统上工作时, 程序员通常没有可以浪费的内存.</p>
+<p>堆是复杂的. 它必须满足任何类型、任何大小的内存请求, 并且要快速完成. 常见的内存管理方法是把内存分割成若干部分, 并按大小以某种树或列表结构保持其有序. 再加上其他因素, 如局部性和生存期估计, 堆很快变得非常复杂. 复杂到事实上, 对于如何进行动态内存分配这一问题, 并没有已知的 <span class="emphasis"><em>完美</em></span> 答案. 下图展示了大多数常见内存管理器的工作方式: 对于每块内存, 它使用其中一部分来维护其内部树或列表结构. 即使在一块内存被 malloc 出给程序之后, 内存管理器也必须在其中 <span class="emphasis"><em>保存</em></span> 一些信息 - 通常只是它的大小. 然后, 当该块被 free 时, 内存管理器就可以轻松知道它有多大.</p>
+<p>
+          <span class="inlinemediaobject"><img src="../images/../../../images/pc1.png" align="middle"></span>
+        </p>
+<p>
+          <span class="inlinemediaobject"><img src="../images/../../../images/pc2.png" align="middle"></span>
+        </p>
+<h6>
+<a name="boost_pool.pool.pooling.concepts.h0"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.concepts.dynamic_memory_allocation_is_often_inefficient"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.concepts.dynamic_memory_allocation_is_often_inefficient">动态内存分配往往效率低下</a>
+        </h6>
+<p>由于动态内存分配的复杂性, 它在时间和/或空间上往往效率低下. 大多数内存分配算法会随每个内存块存储某种形式的信息, 或者是块大小, 或者是某种关系信息, 例如其在内部树或列表结构中的位置. 这类 <span class="emphasis"><em>头字段</em></span> 通常会在程序正在使用的块中占用一个机器字. 明显的缺点是动态分配小对象时. 例如, 如果动态分配 int, 那么算法会自动为头字段保留空间, 我们最终会浪费 50% 的内存. 当然, 这是最坏的情形. 然而, 更现代的程序越来越多地使用堆上的小对象, 这使该问题越来越明显. Wilson 等人指出, 平均情况下内存开销约为百分之十到二十<a href="../../#ref2" target="_top">2</a>. 随着更多程序使用更多更小的对象, 这一内存开销还会增长. 正是这一内存开销使程序更接近虚拟限制.</p>
+<p>在较大的系统中, 内存开销不是那么大的问题 (相比于绕过它所需的时间), 因此常常被忽略. 但是, 存在这样的情形: 作为时间关键算法的一部分, 对较小对象的大量分配和/或释放不断发生; 在这些情形下, 系统提供的内存分配器往往太慢.</p>
+<p>简单分隔存储同时解决了这两个问题. 几乎所有的内存开销都被消除, 且所有分配都可以在少量 (摊还) 常数时间内完成. 但是, 这是以牺牲通用性为代价的; 简单分隔存储只能分配单一大小的内存块.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_pool.pool.pooling.simple"></a><a class="link" href="pooling.html#boost_pool.pool.pooling.simple" title="简单分隔存储">简单分隔存储</a>
+</h4></div></div></div>
+<p>简单分隔存储是 Boost Pool 库背后的基本思想. 简单分隔存储是最简单、也可能是最快的内存分配/释放算法. 它首先把一个内存区块划分为固定大小的内存块. 在实现之前, 区块来自哪里并不重要. 池就是以这种方式使用简单分隔存储的某个对象. 举例说明:</p>
+<p>
+          <span class="inlinemediaobject"><img src="../images/../../../images/pc3.png" align="middle"></span>
+        </p>
+<p>任何给定区块中的所有内存块的大小总是相同的. 这是简单分隔存储的基本限制: 你不能请求不同大小的内存块. 例如, 你不能向整数池请求一个字符, 也不能向字符池请求一个整数 (假定字符和整数的大小不同).</p>
+<p>简单分隔存储的工作方式是把空闲列表交错地放入未使用的内存块中. 例如:</p>
+<p>
+          <span class="inlinemediaobject"><img src="../images/../../../images/pc4.png" align="middle"></span>
+        </p>
+<p>通过把空闲列表交错放入内存块内部, 每个简单分隔存储只有一个指针的开销 (指向列表第一个元素的指针). 对于进程正在使用的内存块, 它没有内存开销.</p>
+<p>简单分隔存储也非常快. 在最简单的情形下, 内存分配仅仅是从空闲列表中移除第一个内存块, 这是一个 O(1) 操作. 在空闲列表为空的情形下, 可能需要获取并划分另一个区块, 这将产生摊还 O(1) 的时间. 内存释放可以简单到把该内存块加到空闲列表的前端, 这是一个 O(1) 操作. 但是, 简单分隔存储的更复杂用法可能要求有序空闲列表, 这会使释放变为 O(N).</p>
+<p>
+          <span class="inlinemediaobject"><img src="../images/../../../images/pc5.png" align="middle"></span>
+        </p>
+<p>与系统提供的分配器相比, 简单分隔存储执行更快、内存开销更小, 但以牺牲通用性为代价. 使用池的一个好场合是: 可能要在堆上分配许多 (非连续的) 小对象, 或者对相同大小对象的分配与释放反复发生.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_pool.pool.pooling.alignment"></a><a class="link" href="pooling.html#boost_pool.pool.pooling.alignment" title="保证对齐 - 我们如何以可移植的方式保证对齐.">保证对齐 - 我们如何以可移植的方式保证对齐.</a>
+</h4></div></div></div>
+<div class="toc"><dl class="toc"><dt><span class="section"><a href="pooling.html#boost_pool.pool.pooling.alignment.chunks">如何处理连续内存块</a></span></dt></dl></div>
+<h5>
+<a name="boost_pool.pool.pooling.alignment.h0"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.alignment.terminology"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.alignment.terminology">Terminology</a>
+        </h5>
+<p>如果你还不熟悉 <a class="link" href="pooling.html#boost_pool.pool.pooling.concepts" title="池化的基本思想">concepts</a> 一节, 请先阅读它. 记住, 区块是内存的一段连续区域, 被划分或分隔为固定大小的内存块. 这些内存块就是用户分配和释放的对象.</p>
+<h5>
+<a name="boost_pool.pool.pooling.alignment.h1"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.alignment.overview"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.alignment.overview"> 概述 </a>
+        </h5>
+<p>每个池都有一个可以跨越多个内存区块的空闲列表. 因此, 池也有一个已分配内存区块的链表. 默认情况下, 每个内存区块都是使用 <code class="computeroutput"><span class="keyword">new</span><span class="special">[]</span></code> 分配的, 且所有内存区块都在销毁时释放. 正是 <code class="computeroutput"><span class="keyword">new</span><span class="special">[]</span></code> 的使用使我们能够保证对齐.</p>
+<h5>
+<a name="boost_pool.pool.pooling.alignment.h2"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.alignment.proof_of_concept__guaranteeing_alignment"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.alignment.proof_of_concept__guaranteeing_alignment">概念证明: 保证对齐</a>
+        </h5>
+<p>每块内存都是通过 <code class="computeroutput"><span class="keyword">operator</span>
+          <span class="keyword">new</span><span class="special">[]</span></code> 作为一个 POD 类型 (具体地说, 是一个字符数组) 分配的. 设 <code class="computeroutput"><span class="identifier">POD_size</span></code> 为所分配的字符数.</p>
+<h6>
+<a name="boost_pool.pool.pooling.alignment.h3"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.alignment.predicate_1__arrays_may_not_have_padding"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.alignment.predicate_1__arrays_may_not_have_padding">谓词 1: 数组不得含有填充</a>
+        </h6>
+<p>这来自以下引文:</p>
+<p>[5.3.3/2] (Expressions::Unary expressions::Sizeof) <span class="emphasis"><em>... 当应用于数组时, 结果是数组中的总字节数. 这意味着 n 个元素的数组的大小是元素大小的 n 倍.</em></span>
+        </p>
+<p>因此, 数组不能包含填充, 尽管数组内的元素可以包含填充.</p>
+<h6>
+<a name="boost_pool.pool.pooling.alignment.h4"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.alignment.predicate_2__any_block_of_memory_allocated_as_an_array_of_characters_through__code__phrase_role__keyword__operator__phrase___phrase_role__keyword__new__phrase__phrase_role__special______phrase___code___hereafter_referred_to_as_the_block__is_properly_aligned_for_any_object_of_that_size_or_smaller"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.alignment.predicate_2__any_block_of_memory_allocated_as_an_array_of_characters_through__code__phrase_role__keyword__operator__phrase___phrase_role__keyword__new__phrase__phrase_role__special______phrase___code___hereafter_referred_to_as_the_block__is_properly_aligned_for_any_object_of_that_size_or_smaller">谓词 2: 通过 <code class="computeroutput"><span class="keyword">operator</span> <span class="keyword">new</span><span class="special">[]</span></code> 作为字符数组分配的任何内存区块 (以下简称区块) 对该大小或更小大小的任何对象都是正确对齐的</a>
+        </h6>
+<p>这来自:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">[3.7.3.1/2] (Basic concepts::Storage duration::Dynamic storage duration::Allocation functions) <span class="emphasis"><em>"... 返回的指针应适当对齐, 以便它可以转换为指向任何完整对象类型的指针, 并随后用于访问所分配存储中的对象或数组 ..."</em></span>
+            </li>
+<li class="listitem">[5.3.4/10] (Expressions::Unary expressions::New) <span class="emphasis"><em>"... 对于 char 和 unsigned char 数组, new 表达式的结果与分配函数返回的地址之间的差应为大小不超过所创建数组大小的任何对象类型的最严格对齐要求 (3.9) 的整数倍. [注: 由于假定分配函数返回的指针所指向的存储对任何类型的对象都是适当对齐的, 这一数组分配开销约束允许把字符数组分配出来、以后再在其中放置其他类型对象的常见惯用法."</em></span>
+            </li>
+</ul></div>
+<h6>
+<a name="boost_pool.pool.pooling.alignment.h5"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.alignment.consider__imaginary_object_type_element_of_a_size_which_is_a_multiple_of_some_actual_object_size__assume__code__phrase_role__keyword__sizeof__phrase__phrase_role__special_____phrase__phrase_role__identifier__element__phrase__phrase_role__special_____phrase___phrase_role__special___gt___phrase___phrase_role__identifier__pod_size__phrase___code_"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.alignment.consider__imaginary_object_type_element_of_a_size_which_is_a_multiple_of_some_actual_object_size__assume__code__phrase_role__keyword__sizeof__phrase__phrase_role__special_____phrase__phrase_role__identifier__element__phrase__phrase_role__special_____phrase___phrase_role__special___gt___phrase___phrase_role__identifier__pod_size__phrase___code_">考虑: 大小为某个实际对象大小倍数的假想对象类型 Element; 假定 <code class="computeroutput"><span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">Element</span><span class="special">)</span> <span class="special">&gt;</span> <span class="identifier">POD_size</span></code></a>
+        </h6>
+<p>注意, 该大小的对象可以存在. 这种大小的一个对象就是一个由"实际"对象组成的数组.</p>
+<p>注意, 该区块对 Element 是正确对齐的. 这直接来自谓词 2.</p>
+<h6>
+<a name="boost_pool.pool.pooling.alignment.h6"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.alignment.corollary_1__the_block_is_properly_aligned_for_an_array_of_elements"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.alignment.corollary_1__the_block_is_properly_aligned_for_an_array_of_elements">推论 1: 该区块对 Element 数组是正确对齐的</a>
+        </h6>
+<p>这来自谓词 1 与谓词 2, 以及以下引文:</p>
+<p>[3.9/9] (Basic concepts::Types) <span class="emphasis"><em>"对象类型是 (可能带 cv 限定的) 不是函数类型、不是引用类型且不是 void 类型的类型."</em></span>
+        </p>
+<p>(具体而言, 数组类型是对象类型.)</p>
+<h6>
+<a name="boost_pool.pool.pooling.alignment.h7"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.alignment.corollary_2__for_any_pointer__code__phrase_role__identifier__p__phrase___code__and_integer__code__phrase_role__identifier__i__phrase___code___if__code__phrase_role__identifier__p__phrase___code__is_properly_aligned_for_the_type_it_points_to__then__code__phrase_role__identifier__p__phrase___phrase_role__special_____phrase___phrase_role__identifier__i__phrase___code___when_well_defined__is_properly_aligned_for_that_type__in_other_words__if_an_array_is_properly_aligned__then_each_element_in_that_array_is_properly_aligned"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.alignment.corollary_2__for_any_pointer__code__phrase_role__identifier__p__phrase___code__and_integer__code__phrase_role__identifier__i__phrase___code___if__code__phrase_role__identifier__p__phrase___code__is_properly_aligned_for_the_type_it_points_to__then__code__phrase_role__identifier__p__phrase___phrase_role__special_____phrase___phrase_role__identifier__i__phrase___code___when_well_defined__is_properly_aligned_for_that_type__in_other_words__if_an_array_is_properly_aligned__then_each_element_in_that_array_is_properly_aligned">推论 2: 对任何指针 <code class="computeroutput"><span class="identifier">p</span></code> 与整数 <code class="computeroutput"><span class="identifier">i</span></code>, 如果 <code class="computeroutput"><span class="identifier">p</span></code> 对其指向的类型是正确对齐的, 则 <code class="computeroutput"><span class="identifier">p</span> <span class="special">+</span>
+          <span class="identifier">i</span></code> (在良定义时) 对该类型也是正确对齐的; 换言之, 如果一个数组是正确对齐的, 那么该数组中的每个元素都是正确对齐的</a>
+        </h6>
+<p>标准中没有任何引文直接支持这一论证, 但它符合关于"对齐"含义的通常理解.</p>
+<p>注意, <code class="computeroutput"><span class="identifier">p</span>
+          <span class="special">+</span> <span class="identifier">i</span></code> 良定义的条件在 [5.7/5] 中有概述. 我们不在此引用它, 只注明当 <code class="computeroutput"><span class="identifier">p</span></code> 与 <code class="computeroutput"><span class="identifier">p</span> <span class="special">+</span>
+          <span class="identifier">i</span></code> 都指向同一数组的内部或其后一位置时, 它是良定义的.</p>
+<h6>
+<a name="boost_pool.pool.pooling.alignment.h8"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.alignment.let___code__phrase_role__keyword__sizeof__phrase__phrase_role__special_____phrase__phrase_role__identifier__element__phrase__phrase_role__special_____phrase___code__be_the_least_common_multiple_of_sizes_of_several_actual_objects__t1__t2__t3______"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.alignment.let___code__phrase_role__keyword__sizeof__phrase__phrase_role__special_____phrase__phrase_role__identifier__element__phrase__phrase_role__special_____phrase___code__be_the_least_common_multiple_of_sizes_of_several_actual_objects__t1__t2__t3______">设: <code class="computeroutput"><span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">Element</span><span class="special">)</span></code> 为若干实际对象 (T1, T2, T3, ...) 大小的最小公倍数</a>
+        </h6>
+<h6>
+<a name="boost_pool.pool.pooling.alignment.h9"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.alignment.let__block_be_a_pointer_to_the_memory_block__pe_be__element____block__and_pn_be__tn____block"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.alignment.let__block_be_a_pointer_to_the_memory_block__pe_be__element____block__and_pn_be__tn____block">设: block 为指向该内存区块的指针, pe 为 (Element *) block, pn 为 (Tn *) block</a>
+        </h6>
+<h6>
+<a name="boost_pool.pool.pooling.alignment.h10"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.alignment.corollary_3__for_each_integer__code__phrase_role__identifier__i__phrase___code___such_that__code__phrase_role__identifier__pe__phrase___phrase_role__special_____phrase___phrase_role__identifier__i__phrase___code__is_well_defined__then_for_each_n__there_exists_some_integer__code__phrase_role__identifier__jn__phrase___code__such_that__code__phrase_role__identifier__pn__phrase___phrase_role__special_____phrase___phrase_role__identifier__jn__phrase___code__is_well_defined_and_refers_to_the_same_memory_address_as__code__phrase_role__identifier__pe__phrase___phrase_role__special_____phrase___phrase_role__identifier__i__phrase___code_"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.alignment.corollary_3__for_each_integer__code__phrase_role__identifier__i__phrase___code___such_that__code__phrase_role__identifier__pe__phrase___phrase_role__special_____phrase___phrase_role__identifier__i__phrase___code__is_well_defined__then_for_each_n__there_exists_some_integer__code__phrase_role__identifier__jn__phrase___code__such_that__code__phrase_role__identifier__pn__phrase___phrase_role__special_____phrase___phrase_role__identifier__jn__phrase___code__is_well_defined_and_refers_to_the_same_memory_address_as__code__phrase_role__identifier__pe__phrase___phrase_role__special_____phrase___phrase_role__identifier__i__phrase___code_">推论 3: 对每个整数 <code class="computeroutput"><span class="identifier">i</span></code>, 只要 <code class="computeroutput"><span class="identifier">pe</span> <span class="special">+</span>
+          <span class="identifier">i</span></code> 良定义, 则对每个 n, 都存在某个整数 <code class="computeroutput"><span class="identifier">jn</span></code> 使得 <code class="computeroutput"><span class="identifier">pn</span> <span class="special">+</span>
+          <span class="identifier">jn</span></code> 良定义且所引用的内存地址即 <code class="computeroutput"><span class="identifier">pe</span>
+          <span class="special">+</span> <span class="identifier">i</span></code></a>
+        </h6>
+<p>这自然成立, 因为该内存区块是一个 Element 数组, 且对每个 n, <code class="computeroutput"><span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">Element</span><span class="special">)</span> <span class="special">%</span> <span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">Tn</span><span class="special">)</span>
+          <span class="special">==</span> <span class="number">0</span><span class="special">;</span></code> 因此, Element 数组中每个元素的边界也是每个 Tn 数组中每个元素的边界.</p>
+<h6>
+<a name="boost_pool.pool.pooling.alignment.h11"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.alignment.theorem__for_each_integer__code__phrase_role__identifier__i__phrase___code___such_that__code__phrase_role__identifier__pe__phrase___phrase_role__special_____phrase___phrase_role__identifier__i__phrase___code__is_well_defined__that_address__pe___i__is_properly_aligned_for_each_type_tn"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.alignment.theorem__for_each_integer__code__phrase_role__identifier__i__phrase___code___such_that__code__phrase_role__identifier__pe__phrase___phrase_role__special_____phrase___phrase_role__identifier__i__phrase___code__is_well_defined__that_address__pe___i__is_properly_aligned_for_each_type_tn">定理: 对每个整数 <code class="computeroutput"><span class="identifier">i</span></code>, 只要 <code class="computeroutput"><span class="identifier">pe</span> <span class="special">+</span>
+          <span class="identifier">i</span></code> 良定义, 该地址 (pe + i) 对每个类型 Tn 都是正确对齐的</a>
+        </h6>
+<p>由于 <code class="computeroutput"><span class="identifier">pe</span> <span class="special">+</span>
+          <span class="identifier">i</span></code> 是良定义的, 根据推论 3, <code class="computeroutput"><span class="identifier">pn</span> <span class="special">+</span>
+          <span class="identifier">jn</span></code> 是良定义的. 由谓词 2 以及推论 1 和推论 2, 它是正确对齐的.</p>
+<h5>
+<a name="boost_pool.pool.pooling.alignment.h12"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.alignment.use_of_the_theorem"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.alignment.use_of_the_theorem">定理的使用</a>
+        </h5>
+<p>上述证明涵盖了从区块中切分内存块的对齐要求. 实现使用以下实际对象大小:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">所请求的对象大小 (<code class="computeroutput"><span class="identifier">requested_size</span></code>); 这是用户请求的内存块大小</li>
+<li class="listitem">
+              <code class="computeroutput"><span class="keyword">void</span><span class="special">*</span></code> (指向 void 的指针); 这是因为我们让空闲列表穿过内存块交错存放</li>
+<li class="listitem">
+              <code class="computeroutput"><span class="identifier">size_type</span></code>; 这是因为我们在每个内存区块中保存下一个区块的大小</li>
+</ul></div>
+<p>每个区块还包含一个指向下一个区块的指针; 但它以指向 void 的指针形式存储并在需要时转换, 从而把对齐要求简化为上述三种类型.</p>
+<p>因此, <code class="computeroutput"><span class="identifier">alloc_size</span></code> 被定义为上述大小中的最大者, 并向上取整为所有三个大小的公倍数. 只要所有对齐都是 2 的幂, 这就保证了对齐: 在所有已知平台上这似乎都成立.</p>
+<h5>
+<a name="boost_pool.pool.pooling.alignment.h13"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.alignment.a_look_at_the_memory_block"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.alignment.a_look_at_the_memory_block">内存区块一览</a>
+        </h5>
+<p>每个内存区块由三个主要部分组成. 第一部分是切分内存块的部分, 包含交错的空闲列表. 第二部分是指向下一个区块的指针, 第三部分是下一个区块的大小.</p>
+<p>这些部分中的每一部分都可能包含填充, 以保证对后续每一部分的对齐. 第一部分的大小是 <code class="computeroutput"><span class="identifier">number_of_chunks</span> <span class="special">*</span>
+          <span class="identifier">lcm</span><span class="special">(</span><span class="identifier">requested_size</span><span class="special">,</span>
+          <span class="keyword">sizeof</span><span class="special">(</span><span class="keyword">void</span> <span class="special">*),</span> <span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">size_type</span><span class="special">));</span></code>, 第二部分的大小是 <code class="computeroutput"><span class="identifier">lcm</span><span class="special">(</span><span class="keyword">sizeof</span><span class="special">(</span><span class="keyword">void</span> <span class="special">*),</span>
+          <span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">size_type</span><span class="special">);</span></code>, 第三部分的大小是 <code class="computeroutput"><span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">size_type</span><span class="special">)</span></code>.</p>
+<p>下面是一个示例内存区块, 其中 <code class="computeroutput"><span class="identifier">requested_size</span>
+          <span class="special">==</span> <span class="keyword">sizeof</span><span class="special">(</span><span class="keyword">void</span> <span class="special">*)</span>
+          <span class="special">==</span> <span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">size_type</span><span class="special">)</span> <span class="special">==</span> <span class="number">4</span></code>:</p>
+<p>
+          <span class="inlinemediaobject"><img src="../images/../../../images/mb1.png" align="middle"></span>
+        </p>
+<p>为给出可能填充的直观示例, 下面是一个示例内存区块, 其中 <code class="computeroutput"><span class="identifier">requested_size</span> <span class="special">==</span> <span class="number">8</span> <span class="keyword">and</span>
+          <span class="keyword">sizeof</span><span class="special">(</span><span class="keyword">void</span> <span class="special">*)</span> <span class="special">==</span> <span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">size_type</span><span class="special">)</span> <span class="special">==</span> <span class="number">4</span></code>
+        </p>
+<p>
+          <span class="inlinemediaobject"><img src="../images/../../../images/mb2.png" align="middle"></span>
+        </p>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="boost_pool.pool.pooling.alignment.chunks"></a><a class="link" href="pooling.html#boost_pool.pool.pooling.alignment.chunks" title="如何处理连续内存块">如何处理连续内存块</a>
+</h5></div></div></div>
+<p>上述定理保证了分配内存块的所有对齐要求, 也保证了诸如交错空闲列表之类的实现细节. 但是, 它通过在必要时添加填充来做到这一点; 因此, 我们必须以不同的方式处理连续内存块的分配.</p>
+<p>使用与上面类似的数组论证, 我们可以把对 <code class="computeroutput"><span class="identifier">n</span></code> 个大小为 <code class="computeroutput"><span class="identifier">requested_size</span></code> 的对象的连续内存请求转换为对 m 个连续内存块的请求. <code class="computeroutput"><span class="identifier">m</span></code> 就是 <code class="computeroutput"><span class="identifier">ceil</span><span class="special">(</span><span class="identifier">n</span> <span class="special">*</span> <span class="identifier">requested_size</span> <span class="special">/</span>
+            <span class="identifier">alloc_size</span><span class="special">)</span></code>, 其中 <code class="computeroutput"><span class="identifier">alloc_size</span></code> 是内存块的实际大小.</p>
+<p>举例说明:</p>
+<p>下面是一个示例内存区块, 其中 <code class="computeroutput"><span class="identifier">requested_size</span>
+            <span class="special">==</span> <span class="number">1</span></code> 且 <code class="computeroutput"><span class="keyword">sizeof</span><span class="special">(</span><span class="keyword">void</span> <span class="special">*)</span> <span class="special">==</span> <span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">size_type</span><span class="special">)</span> <span class="special">==</span> <span class="number">4</span></code>:</p>
+<p>
+            <span class="inlinemediaobject"><img src="../images/../../../images/mb4.png" align="middle"></span>
+          </p>
+<p>然后, 当用户释放该连续内存时, 我们可以再次把它拆分为内存块.</p>
+<p>注意, 所提供的分配连续内存块的实现使用线性而非平方算法. 这意味着如果空闲列表不是有序的, 它可能找不到连续的空闲内存块. 因此, 建议在处理内存块的连续分配时始终使用有序空闲列表. (在上面的示例中, 如果内存块 1 指向内存块 3、内存块 3 指向内存块 2、内存块 2 指向内存块 4, 而不是按顺序排列, 那么连续分配算法将无法找到任何连续内存块).</p>
+</div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_pool.pool.pooling.simple_segregated"></a><a class="link" href="pooling.html#boost_pool.pool.pooling.simple_segregated" title="简单分隔存储 (不适合胆小者 - 仅限嵌入式程序员!)">简单分隔存储 (不适合胆小者 - 仅限嵌入式程序员!)</a>
+</h4></div></div></div>
+<h5>
+<a name="boost_pool.pool.pooling.simple_segregated.h0"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.simple_segregated.introduction"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.simple_segregated.introduction">引言</a>
+        </h5>
+<p>
+          <code class="computeroutput"><a class="link" href="../../doxygen/boost_pool_c___reference/simple__segregated__storage_8hpp.html" title="头文件 &lt;boost/pool/simple_segregated_storage.hpp&gt;">simple_segregated_storage.hpp</a></code> 提供了一个模板类 simple_segregated_storage, 用于控制对内存块空闲列表的访问.</p>
+<p>注意, 这是一个非常简单的类, 其几乎所有函数都带有未检查的前置条件. 它旨在成为最快且最小的快速内存分配器, 例如可用于嵌入式系统. 该类把许多困难的前置条件交由用户处理 (尤其是对齐问题). 有关更一般的用法, 请参见其他 <a class="link" href="interfaces.html" title="Boost Pool 接口 - 提供了哪些接口以及何时使用哪一个.">Pool 接口</a>.</p>
+<h5>
+<a name="boost_pool.pool.pooling.simple_segregated.h1"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.simple_segregated.synopsis"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.simple_segregated.synopsis">概要</a>
+        </h5>
+<pre class="programlisting">template &lt;typename SizeType = std::size_t&gt;
+class simple_segregated_storage
+{
+  private:
+    simple_segregated_storage(const simple_segregated_storage &amp;);
+    void operator=(const simple_segregated_storage &amp;);
+
+  public:
+    typedef SizeType size_type;
+
+    simple_segregated_storage();
+    ~simple_segregated_storage();
+
+    static void * segregate(void * block,
+        size_type nsz, size_type npartition_sz,
+        void * end = 0);
+    void add_block(void * block,
+        size_type nsz, size_type npartition_sz);
+    void add_ordered_block(void * block,
+        size_type nsz, size_type npartition_sz);
+
+    bool empty() const;
+
+    void * malloc();
+    void free(void * chunk);
+    void ordered_free(void * chunk);
+    void * malloc_n(size_type n, size_type partition_sz);
+    void free_n(void * chunks, size_type n,
+        size_type partition_sz);
+    void ordered_free_n(void * chunks, size_type n,
+        size_type partition_sz);
+};
+</pre>
+<h5>
+<a name="boost_pool.pool.pooling.simple_segregated.h2"></a>
+          <span class="phrase"><a name="boost_pool.pool.pooling.simple_segregated.semantics"></a></span><a class="link" href="pooling.html#boost_pool.pool.pooling.simple_segregated.semantics">语义</a>
+        </h5>
+<p>类型为 <code class="computeroutput"><span class="identifier">simple_segregated_storage</span><span class="special">&lt;</span><span class="identifier">SizeType</span><span class="special">&gt;</span></code> 的对象在其空闲列表为空时是空的. 若它不为空, 则当其空闲列表有序时它是有序的. 如果对 <code class="computeroutput"> <span class="identifier">malloc</span><span class="special">()</span></code> 的重复调用会产生按 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">less</span><span class="special">&lt;</span><span class="keyword">void</span> <span class="special">*&gt;</span></code> 判定的不断递增的值序列, 则该空闲列表是有序的. 如果空闲列表保持其顺序方向 (即有序空闲列表在成员函数调用后仍然有序), 则该成员函数是保持顺序的.</p>
+<div class="table">
+<a name="boost_pool.pool.pooling.simple_segregated.ss_symbols"></a><p class="title"><b>表 1. 符号表</b></p>
+<div class="table-contents"><table class="table" summary="Symbol Table" cellspacing="3" cellpadding="5">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>符号</p>
+                </th>
+<th>
+                  <p>含义</p>
+                </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                  <p>
+                    Store
+                  </p>
+                </td>
+<td>
+                  <p>
+                    simple_segregated_storage&lt;SizeType&gt;
+                  </p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    t
+                  </p>
+                </td>
+<td>
+                  <p>类型为 Store 的值</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    u
+                  </p>
+                </td>
+<td>
+                  <p>类型为 const Store 的值</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    block, chunk, end
+                  </p>
+                </td>
+<td>
+                  <p>类型为 void * 的值</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    partition_sz, sz, n
+                  </p>
+                </td>
+<td>
+                  <p>类型为 Store::size_type 的值</p>
+                </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><div class="table">
+<a name="boost_pool.pool.pooling.simple_segregated.templates"></a><p class="title"><b>表 2. 模板参数</b></p>
+<div class="table-contents"><table class="table" summary="Template Parameters" cellspacing="3" cellpadding="5">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>参数</p>
+                </th>
+<th>
+                  <p>默认值</p>
+                </th>
+<th>
+                  <p>要求</p>
+                </th>
+</tr></thead>
+<tbody><tr>
+<td>
+                  <p>
+                    SizeType
+                  </p>
+                </td>
+<td>
+                  <p>
+                    std::size_t
+                  </p>
+                </td>
+<td>
+                  <p>无符号整数类型</p>
+                </td>
+</tr></tbody>
+</table></div>
+</div>
+<br class="table-break"><div class="table">
+<a name="boost_pool.pool.pooling.simple_segregated.Typedefs"></a><p class="title"><b>表 3. typedef</b></p>
+<div class="table-contents"><table class="table" summary="Typedefs" cellspacing="3" cellpadding="5">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>符号</p>
+                </th>
+<th>
+                  <p>类型</p>
+                </th>
+</tr></thead>
+<tbody><tr>
+<td>
+                  <p>
+                    size_type
+                  </p>
+                </td>
+<td>
+                  <p>
+                    SizeType
+                  </p>
+                </td>
+</tr></tbody>
+</table></div>
+</div>
+<br class="table-break"><div class="table">
+<a name="boost_pool.pool.pooling.simple_segregated.Constructors"></a><p class="title"><b>表 4. 构造函数、析构函数与状态</b></p>
+<div class="table-contents"><table class="table" summary="Constructors, Destructors, and State" cellspacing="3" cellpadding="5">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>表达式</p>
+                </th>
+<th>
+                  <p>返回类型</p>
+                </th>
+<th>
+                  <p>后置条件</p>
+                </th>
+<th>
+                  <p>注释</p>
+                </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                  <p>
+                    Store()
+                  </p>
+                </td>
+<td>
+                  <p>不使用</p>
+                </td>
+<td>
+                  <p>
+                    empty()
+                  </p>
+                </td>
+<td>
+                  <p>构造一个新的 Store</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    (&amp;t)-&gt;~Store()
+                  </p>
+                </td>
+<td>
+                  <p>不使用</p>
+                </td>
+<td>
+                </td>
+<td>
+                  <p>析构 Store</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    u.empty()
+                  </p>
+                </td>
+<td>
+                  <p>
+                    bool
+                  </p>
+                </td>
+<td>
+                </td>
+<td>
+                  <p>如果 u 为空则返回 true. 保持顺序.</p>
+                </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><div class="table">
+<a name="boost_pool.pool.pooling.simple_segregated.Segregation"></a><p class="title"><b>表 5. 分隔</b></p>
+<div class="table-contents"><table class="table" summary="Segregation" cellspacing="3" cellpadding="5">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>表达式</p>
+                </th>
+<th>
+                  <p>返回类型</p>
+                </th>
+<th>
+                  <p>前置条件</p>
+                </th>
+<th>
+                  <p>后置条件</p>
+                </th>
+<th>
+                  <p>语义等价</p>
+                </th>
+<th>
+                  <p>注释</p>
+                </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                  <p>
+                    Store::segregate(block, sz, partition_sz, end)
+                  </p>
+                </td>
+<td>
+                  <p>
+                    void *
+                  </p>
+                </td>
+<td>
+                  <p>partition_sz &gt;= sizeof(void *) partition_sz = sizeof(void *) * i, 其中 i 为某个整数 sz &gt;= partition_sz 区块对大小为 partition_sz 的对象数组是正确对齐的 区块对 void * 数组是正确对齐的</p>
+                </td>
+<td>
+                </td>
+<td>
+                </td>
+<td>
+                  <p>让空闲列表穿过 block 指定的、大小为 sz 字节的内存区块交错存放, 并将其划分为尽可能多的 partition_sz 大小的内存块. 最后一个内存块被设为指向 end, 并返回指向第一个内存块的指针 (这总是等于 block). 该交错空闲列表是有序的. O(sz).</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    Store::segregate(block, sz, partition_sz)
+                  </p>
+                </td>
+<td>
+                  <p>
+                    void *
+                  </p>
+                </td>
+<td>
+                  <p>与上面相同</p>
+                </td>
+<td>
+                </td>
+<td>
+                  <p>
+                    Store::segregate(block, sz, partition_sz, 0)
+                  </p>
+                </td>
+<td>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    t.add_block(block, sz, partition_sz)
+                  </p>
+                </td>
+<td>
+                  <p>
+                    void
+                  </p>
+                </td>
+<td>
+                  <p>与上面相同</p>
+                </td>
+<td>
+                  <p>
+                    !t.empty()
+                  </p>
+                </td>
+<td>
+                </td>
+<td>
+                  <p>把 block 指定的、大小为 sz 字节的内存区块分隔为 partition_sz 大小的内存块, 并把该空闲列表加入其自身的空闲列表. 如果 t 在此调用之前为空, 则此调用之后它是有序的. O(sz).</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    t.add_ordered_block(block, sz, partition_sz)
+                  </p>
+                </td>
+<td>
+                  <p>
+                    void
+                  </p>
+                </td>
+<td>
+                  <p>与上面相同</p>
+                </td>
+<td>
+                  <p>
+                    !t.empty()
+                  </p>
+                </td>
+<td>
+                </td>
+<td>
+                  <p>把 block 指定的、大小为 sz 字节的内存区块分隔为 partition_sz 大小的内存块, 并把该空闲列表合并进其自身的空闲列表. 保持顺序. O(sz).</p>
+                </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><div class="table">
+<a name="boost_pool.pool.pooling.simple_segregated.alloc"></a><p class="title"><b>表 6. 分配与释放</b></p>
+<div class="table-contents"><table class="table" summary="Allocation and Deallocation" cellspacing="3" cellpadding="5">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>表达式</p>
+                </th>
+<th>
+                  <p>返回类型</p>
+                </th>
+<th>
+                  <p>前置条件</p>
+                </th>
+<th>
+                  <p>后置条件</p>
+                </th>
+<th>
+                  <p>语义等价</p>
+                </th>
+<th>
+                  <p>注释</p>
+                </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                  <p>
+                    t.malloc()
+                  </p>
+                </td>
+<td>
+                  <p>
+                    void *
+                  </p>
+                </td>
+<td>
+                  <p>
+                    !t.empty()
+                  </p>
+                </td>
+<td>
+                </td>
+<td>
+                </td>
+<td>
+                  <p>从空闲列表中取出第一个可用内存块并返回它. 保持顺序. O(1).</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    t.free(chunk)
+                  </p>
+                </td>
+<td>
+                  <p>
+                    void
+                  </p>
+                </td>
+<td>
+                  <p>该内存块此前已由对 t.malloc() 的调用返回</p>
+                </td>
+<td>
+                  <p>
+                    !t.empty()
+                  </p>
+                </td>
+<td>
+                </td>
+<td>
+                  <p>把内存块放回空闲列表. 注意该内存块不得为 0. O(1).</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    t.ordered_free(chunk)
+                  </p>
+                </td>
+<td>
+                  <p>
+                    void
+                  </p>
+                </td>
+<td>
+                  <p>与上面相同</p>
+                </td>
+<td>
+                  <p>
+                    !t.empty()
+                  </p>
+                </td>
+<td>
+                </td>
+<td>
+                  <p>把内存块放回空闲列表. 注意该内存块不得为 0. 保持顺序. 相对于空闲列表大小为 O(N).</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    t.malloc_n(n, partition_sz)
+                  </p>
+                </td>
+<td>
+                  <p>
+                    void *
+                  </p>
+                </td>
+<td>
+                </td>
+<td>
+                </td>
+<td>
+                </td>
+<td>
+                  <p>尝试查找 n 个大小为 partition_sz 的连续内存块序列. 若找到, 则把它们全部从空闲列表移除, 并返回指向第一个的指针. 若未找到, 则返回 0. 强烈建议 (但不要求) 空闲列表是有序的, 因为除非该序列在空闲列表中也是连续的, 否则此算法将无法找到连续序列. 保持顺序. 相对于空闲列表大小为 O(N).</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    t.free_n(chunk, n, partition_sz)
+                  </p>
+                </td>
+<td>
+                  <p>
+                    void
+                  </p>
+                </td>
+<td>
+                  <p>该内存块此前已由对 t.malloc_n(n, partition_sz) 的调用返回</p>
+                </td>
+<td>
+                  <p>
+                    !t.empty()
+                  </p>
+                </td>
+<td>
+                  <p>
+                    t.add_block(chunk, n * partition_sz, partition_sz)
+                  </p>
+                </td>
+<td>
+                  <p>假定该内存块实际引用一个跨越 n * partition_sz 字节的内存块组; 分隔并加入该区块. 注意该内存块不得为 0. O(n).</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    t.ordered_free_n(chunk, n, partition_sz)
+                  </p>
+                </td>
+<td>
+                  <p>
+                    void
+                  </p>
+                </td>
+<td>
+                  <p>与上面相同</p>
+                </td>
+<td>
+                  <p>与上面相同</p>
+                </td>
+<td>
+                  <p>
+                    t.add_ordered_block(chunk, n * partition_sz, partition_sz)
+                  </p>
+                </td>
+<td>
+                  <p>与上面相同, 只是会合并进空闲列表. 保持顺序. O(N + n), 其中 N 为空闲列表的大小.</p>
+                </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break">
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_pool.pool.pooling.user_allocator"></a><a class="link" href="pooling.html#boost_pool.pool.pooling.user_allocator" title="UserAllocator 概念">UserAllocator 概念</a>
+</h4></div></div></div>
+<p>池对象需要向系统请求内存区块, 然后池把这些区块切分为内存块以分配给用户. 通过为各种池接口指定 UserAllocator 模板参数, 用户可以控制这些系统内存区块的分配方式.</p>
+<p>在下表中, <span class="emphasis"><em>UserAllocator</em></span> 是一个用户分配器类型, <span class="emphasis"><em>block</em></span> 是类型为 char * 的值, 而 <span class="emphasis"><em>n</em></span> 是类型为 UserAllocator::size_type 的值</p>
+<div class="table">
+<a name="boost_pool.pool.pooling.user_allocator.userallocator_requirements"></a><p class="title"><b>表 7. UserAllocator 要求</b></p>
+<div class="table-contents"><table class="table" summary="UserAllocator Requirements" cellspacing="3" cellpadding="5">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>表达式</p>
+                </th>
+<th>
+                  <p>结果</p>
+                </th>
+<th>
+                  <p>说明</p>
+                </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                  <p>
+                    UserAllocator::size_type
+                  </p>
+                </td>
+<td>
+                </td>
+<td>
+                  <p>一个无符号整数类型, 能够表示要分配的最大对象的大小.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    UserAllocator::difference_type
+                  </p>
+                </td>
+<td>
+                </td>
+<td>
+                  <p>一个有符号整数类型, 能够表示任意两个指针之差.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    UserAllocator::malloc(n)
+                  </p>
+                </td>
+<td>
+                  <p>
+                    char *
+                  </p>
+                </td>
+<td>
+                  <p>尝试从系统分配 n 字节内存. 若内存不足则返回 0.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    UserAllocator::free(block)
+                  </p>
+                </td>
+<td>
+                  <p>
+                    void
+                  </p>
+                </td>
+<td>
+                  <p>该内存块必须此前已由对 UserAllocator::malloc 的调用返回.</p>
+                </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><p>本库提供了两个 UserAllocator 类: <code class="computeroutput"><a class="link" href="../../doxygen/boost_pool_c___reference/structboost_1_1default__user__allocator__new__delete.html" title="结构体 default_user_allocator_new_delete">default_user_allocator_new_delete</a></code> 和 <code class="computeroutput"><a class="link" href="../../doxygen/boost_pool_c___reference/structboost_1_1default__user__allocator__malloc__free.html" title="结构体 default_user_allocator_malloc_free">default_user_allocator_malloc_free</a></code>, 都位于 pool.hpp 中. 模板参数 UserAllocator 的默认值始终是 <code class="computeroutput"><a class="link" href="../../doxygen/boost_pool_c___reference/structboost_1_1default__user__allocator__new__delete.html" title="结构体 default_user_allocator_new_delete">default_user_allocator_new_delete</a></code>.</p>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2000-2006 Stephen Cleary<br>版权所有 © 2011 Paul A. Bristow<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="interfaces.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../pool.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="../../boost_pool_c___reference.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

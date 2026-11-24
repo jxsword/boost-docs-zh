@@ -1,0 +1,618 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"><html><head><!-- saved from url=(0022)http://internet.e-mail --><title>改进的迭代器类别与要求</title>
+<meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+<meta content="Microsoft FrontPage 5.0" name="GENERATOR"></head>
+<body bgcolor="#ffffff">
+<p align="right">
+<table border="0">
+  <tbody>
+  <tr>
+    <td width="125">
+      <p align="right">文档编号:</p></td>
+    <td width="190">
+      <p>J16/01-0011 = WG21 N1297 </p></td></tr>
+  <tr>
+    <td width="125">
+      <p align="right">日期:</p></td>
+    <td width="190">
+      <p>2001 年 3 月 21 日</p></td></tr>
+  <tr>
+    <td width="125">
+      <p align="right">作者:</p></td>
+    <td width="190">
+      <p>Jeremy Siek, <br> </p></td></tr>
+  <tr>
+    <td width="125">
+      <p></p></td>
+    <td width="190">
+      <p><a href="mailto:jsiek@lsc.nd.edu">jsiek@lsc.nd.edu</a> 
+  </p></td></tr></tbody></table></p>
+<h1>
+<center>改进的迭代器类别与要求</center></h1>
+<h2>引言</h2>标准的迭代器类别与要求是有缺陷的, 因为它们用单一的需求层次来处理两个正交的问题: <b><i>迭代器遍历</i></b> 与 <b><i>解引用返回类型</i></b>. 现行的迭代器需求层次主要面向迭代器遍历 (类别名称即由此而来), 而涉及解引用返回类型的需求则散见于各处. 下表总结了现行迭代器类别中关于解引用返回类型的需求. <p>
+</p><center>
+<a name="table:1">
+  <b>表 1.</b> 现有解引用返回类型要求小结.</a><table border="1">
+  <tbody>
+  <tr>
+    <td>输出迭代器</td>
+    <td><tt>*i = a</tt> </td></tr>
+  <tr>
+    <td>输入迭代器</td>
+    <td><tt>*i</tt> 可转换为 <tt>T</tt></td></tr>
+  <tr>
+    <td>前向迭代器</td>
+    <td><tt>*i</tt> 为 <tt>T&amp;</tt> (或在 <tt>issue 200</tt> 解决后为 <a href="http://www.open-std.org/JTC1/SC22/WG21/docs/lwg-active.html#200">const T&amp;</a> )</td></tr>
+  <tr>
+    <td>随机访问迭代器</td>
+    <td><tt>i[n]</tt> 可转换为 <tt>T</tt> (这很奇怪, 因为运算语义说 <tt>i[n]</tt> 等价于 <tt>*(i + n)</tt> , 后者的返回类型应为 <tt>T&amp;</tt> )</td></tr></tbody></table></center>
+<h2>无法 "纳入" 的有用迭代器示例</h2>
+<p>由于迭代器遍历与解引用返回类型混在一起, 许多有用的迭代器无法被恰当归类. 例如, <tt>vector&lt;bool&gt;::iterator</tt> 几乎是一个随机访问迭代器, 但其返回类型不是 <tt>bool&amp;</tt> (见 <a href="http://www.open-std.org/JTC1/SC22/WG21/docs/lwg-active.html#96">issue 96</a> 与 Herb Sutter 的论文 J16/99-0008 = WG21 N1185). 因此, 这些迭代器只满足输入迭代器与输出迭代器的要求. 这非常违反直觉, 以致至少有一个实现错误地把 <tt>random_access_iterator_tag</tt> 赋为其 <tt>iterator_category</tt> . 此外, <tt>vector&lt;bool&gt;</tt> 并不是不返回真正引用的有用迭代器的唯一例子: 还有常被引用的基于磁盘的集合的例子.</p><p>另一个例子是计数迭代器, 即在递增和解引用时返回整数序列的迭代器 (参见 <a href="http://www.boost.org/libs/iterator/doc/counting_iterator.html"><tt>boost::counting_iterator</tt></a> ). 实现这种迭代器有两种方式: 1) 使 <tt>reference</tt> 类型成为真正的引用 (对计数迭代器的整数数据成员的引用), 或 2) 使 <tt>reference</tt> 类型与 <tt>value_type</tt> 相同. 选项 1) 会遇到 <a href="http://www.open-std.org/JTC1/SC22/WG21/docs/lwg-active.html#198">Issue 198</a> 中讨论的问题: 迭代器销毁后引用将失效. 因此选项 2) 是更好的选择, 但这样一来我们就得到一个不能成为随机访问迭代器的计数迭代器.</p><p>再一个例子是变换迭代器, 即对被包装迭代器的解引用值应用一元函数对象的迭代器适配器 (参见 <a href="http://www.boost.org/libs/iterator/doc/transform_iterator.html"><tt>boost::transform_iterator</tt></a> ). 对于 <tt>std::times</tt> 这样的一元函数, <tt>operator*</tt> 的返回类型显然需要是函数对象的 <tt>result_type</tt> , 这通常不是引用. 然而, 按照现有迭代器要求, 若用变换迭代器包装 <tt>int*</tt> , 你得到的不是预期的随机访问迭代器, 而是输入迭代器.</p><p>第四个例子见 <a href="http://www.boost.org/libs/graph/doc/table_of_contents.html">Boost Graph Library</a> 的顶点与边迭代器. 这些迭代器返回顶点与边描述符, 它们是即时创建的轻量句柄, 必须按值返回. 结果, 它们当前的标准迭代器类别是 <tt>std::input_iterator_tag</tt> , 这意味着严格来说你不能把这些迭代器用于 <tt>std::min_element()</tt> 之类的算法. 作为临时解决方案, 我们引入了 <a href="http://www.boost.org/libs/utility/MultiPassInputIterator.html">Multi-Pass Input Iterator</a> 概念来描述顶点与边描述符, 但正如该概念的设计说明所指出的, 需要更好的解决方案.</p><p>简而言之, 有许多有用的迭代器不适合当前的标准迭代器类别. 结果, 会发生以下坏事:</p><ul>
+  <li>迭代器经常被错误归类.</li><li>算法要求比必要的更严格, 因为它们无法把对随机访问的需求与对真引用返回类型的需求分开.</li></ul>
+<h2>新迭代器类别与要求提案</h2>迭代器要求应拆分为两个层次. 一组概念负责处理返回类型语义: <ul>
+  <li><a href="#concept_ReadableIterator">Readable 
+  Iterator</a>  
+  </li><li><a href="#concept_WritableIterator">Writable 
+  Iterator</a>  
+  </li><li><a href="#concept_SwappableIterator">Swappable 
+  Iterator</a>  
+  </li><li><a href="#concept_ConstantLvalueIterator">Constant 
+  Lvalue Iterator</a>  
+  </li><li><a href="#concept_MutableLvalueIterator">Mutable 
+  Lvalue Iterator</a> </li></ul>另一组概念负责处理迭代器遍历: <ul>
+  <li><a href="#concept_ForwardTraversalIterator">Forward 
+  Traversal Iterator</a>  
+  </li><li><a href="#concept_BidirectionalTraversalIterator">Bidirectional 
+  Traversal Iterator</a>  
+  </li><li><a href="#concept_RandomAccessTraversalIterator">Random 
+  Access Traversal Iterator</a> </li></ul>现行的 Input Iterator 与 Output Iterator 要求将继续按原样使用. 注意, Input Iterator 蕴含 Readable Iterator, 而 Output Iterator 蕴含 Writable Iterator. <p>注释: 我们曾考虑定义一个单遍迭代器 (Single-Pass Iterator), 它可以与 Readable Iterator 或 Writable Iterator 组合以取代 Input Iterator 与 Output Iterator 要求. 我们否决了这个想法, 因为 Input Iterator 与 Output Iterator 之间存在若干差异, 使它们难以合并: Input Iterator 要求 Equality Comparable 而 Output Iterator 不要求; Input Iterator 要求可赋值而 Output Iterator 不要求.</p><h3>新的类别与 traits 类</h3>每个新的迭代器要求都需要一个类别标签. <pre>namespace std {
+
+  // Return Type Categories
+  struct readable_iterator_tag { };
+  struct writable_iterator_tag { };
+  struct swappable_iterator_tag { };
+  struct mutable_lvalue_iterator_tag : virtual public writable_iterator_tag,
+    virtual public readable_iterator_tag { };
+  struct constant_lvalue_iterator_tag : public readable_iterator_tag { };
+
+  // Traversal Categories
+  struct forward_traversal_tag { };
+  struct bidirectional_traversal_tag : public forward_traversal_tag { };
+  struct random_access_traversal_tag : public bidirectional_traversal_tag { };
+
+}
+</pre>此外, 还需要有一种借助 traits 机制访问这些类别标签的方法. 向 <tt>std::iterator_traits</tt> 添加新的 typedef 不是可接受的解决方案, 因为那会破坏所有现存迭代器. 作为替代, 我们提议两个新的 traits 类. 至关重要的是, 这些 traits 类要 <b>向后兼容</b>, 也就是说, 对于任何存在有效的 <tt>std::iterator_traits</tt> 定义的迭代器, 它们都应当能够工作. 这可以通过让 traits 类的默认行为把迭代器的 <tt>iterator_category</tt> 映射到适当的返回或遍历类别来实现. 对于新迭代器, 既可以为这些 traits 类定义特化, 也可以让迭代器提供嵌套 typedef 并继承 <tt>new_iterator_base</tt> (这只是向 traits 类表明它是新迭代器的信号). 与 <tt>std::iterator_traits</tt> 一样, 针对 <tt>T*</tt> 的特化也已提供. <pre>namespace std {
+
+  struct new_iterator_base { };
+
+  template &lt;typename Iterator&gt;
+  struct return_category
+  {
+    <b><i>// Pseudo-code</i></b>
+    if (Iterator inherits from new_iterator_base) {
+      typedef typename Iterator::return_category type;
+    } else {
+      typedef std::iterator_traits&lt;Iterator&gt; OldTraits;
+      typedef typename OldTraits::iterator_category Cat;
+      if (Cat inherits from std::forward_iterator_tag)
+	if (is-const(T))
+	  typedef boost::constant_lvalue_iterator_tag type;
+	else
+	  typedef boost::mutable_lvalue_iterator_tag type;
+      else if (Cat inherits from std::input_iterator_tag)
+	typedef boost::readable_iterator_tag type;
+      else if (Cat inherits from std::output_iterator_tag)
+	typedef boost::writable_iterator_tag type;
+    }
+  };
+
+  template &lt;typename T&gt;
+  struct return_category&lt;T*&gt;
+  {
+    <b><i>// Pseudo-code</i></b>
+    if (is-const(T))
+      typedef boost::constant_lvalue_iterator_tag type;
+    else
+      typedef boost::mutable_lvalue_iterator_tag type;
+  };
+
+  template &lt;typename Iterator&gt;
+  struct traversal_category
+  {
+    <b><i>// Pseudo-code</i></b>
+    if (Iterator inherits from new_iterator_base) {
+      typedef typename Iterator::traversal_category type;
+    } else {
+      typedef std::iterator_traits&lt;Iterator&gt; OldTraits;
+      typedef typename OldTraits::iterator_category Cat;
+
+      if (Cat inherits from std::random_access_iterator_tag)
+	typedef boost::random_access_traversal_tag type;
+      else if (Cat inherits from std::bidirectional_iterator_tag)
+	typedef boost::bidirectional_traversal_tag type;
+      else if (Cat inherits from std::forward_iterator_tag)
+	typedef boost::forward_traversal_tag type;
+    }
+  };
+
+  template &lt;typename T&gt;
+  struct traversal_category&lt;T*&gt;
+  {
+    typedef boost::random_access_traversal_tag type;
+  };
+
+}
+</pre>
+<h2>对标准算法的影响</h2>由于现行迭代器类别过于粗糙, 许多标准算法对其迭代器参数施加了超出必要的需求. 采用新的迭代器类别可以获得更好的匹配, 从而提高算法的可复用性. 这些变化不会影响用户代码, 但需要标准库实现者作出改动: 分派应基于新的类别, 而且在某些地方可能需要更小心地处理返回值. 特别是, <tt>std::swap()</tt> 的使用将需要替换为 <tt>std::iter_swap()</tt>, 而 <tt>std::iter_swap()</tt> 将需要调用 <tt>std::swap()</tt>. <p>
+</p><center>
+<a name="table:2">表 2.<b> </b> 标准算法的要求变更.</a><table border="1">
+  <tbody>
+  <tr>
+    <th>算法</th>
+    <th>要求变更</th></tr>
+  <tr>
+    <td>find_end</td>
+    <td rowspan="12">Forward Iterator<br> -&gt; Forward Traversal Iterator 与 Readable Iterator</td></tr>
+  <tr>
+    <td>find_first_of</td></tr>
+  <tr>
+    <td>adjacent_find</td></tr>
+  <tr>
+    <td>search</td></tr>
+  <tr>
+    <td>search_n</td></tr>
+  <tr>
+    <td>rotate_copy</td></tr>
+  <tr>
+    <td>lower_bound</td></tr>
+  <tr>
+    <td>upper_bound</td></tr>
+  <tr>
+    <td>equal_range</td></tr>
+  <tr>
+    <td>binary_search</td></tr>
+  <tr>
+    <td>min_element</td></tr>
+  <tr>
+    <td>max_element</td></tr>
+  <tr>
+    <td>iter_swap</td>
+    <td>Forward Iterator<br> -&gt; Swappable Iterator</td></tr>
+  <tr>
+    <td>fill</td>
+    <td rowspan="2">Forward Iterator<br> -&gt; Forward Traversal Iterator 与 Writable Iterator</td></tr>
+  <tr>
+    <td>generate</td></tr>
+  <tr>
+    <td>swap_ranges</td>
+    <td rowspan="2">Forward Iterator<br> -&gt; Forward Traversal Iterator 与 Swappable Iterator</td></tr>
+  <tr>
+    <td>rotate</td></tr>
+  <tr>
+    <td>replace</td>
+    <td rowspan="5">Forward Iterator<br> -&gt; Forward Traversal Iterator 与<br>Readable Iterator 与 Writable Iterator</td>
+  </tr><tr>
+    <td>replace_if</td></tr>
+  <tr>
+    <td>remove</td></tr>
+  <tr>
+    <td>remove_if</td></tr>
+  <tr>
+    <td>unique</td></tr>
+  <tr>
+    <td>reverse</td>
+    <td rowspan="2">Bidirectional Iterator<br> -&gt; Bidirectional Traversal Iterator 与 Swappable Iterator</td></tr>
+  <tr>
+    <td>partition</td></tr>
+  <tr>
+    <td>copy_backwards</td>
+    <td>Bidirectional Iterator<br> -&gt; Bidirectional Traversal Iterator 与 Readable Iterator<br>Bidirectional Iterator<br> -&gt; Bidirectional Traversal Iterator 与 Writable Iterator</td></tr>
+  <tr>
+    <td>next_permutation</td>
+    <td rowspan="2">Bidirectional Iterator<br> -&gt; Bidirectional Traversal Iterator 与 <br>Swappable Iterator 与 Readable Iterator</td>
+  </tr><tr>
+    <td>prev_permutation</td></tr>
+  <tr>
+    <td>stable_partition</td>
+    <td rowspan="2">Bidirectional Iterator<br> -&gt; Bidirectional Traversal Iterator 与 <br>Readable Iterator 与 Writable Iterator</td>
+  </tr><tr>
+    <td>inplace_merge</td></tr>
+  <tr>
+    <td>reverse_copy</td>
+    <td>Bidirectional Iterator<br> -&gt; Bidirectional Traversal Iterator 与 Readable Iterator</td></tr>
+  <tr>
+    <td>random_shuffle</td>
+    <td rowspan="9">Random Access Iterator<br> -&gt; Random Access Traversal Iterator 与 Swappable Iterator</td></tr>
+  <tr>
+    <td>sort</td></tr>
+  <tr>
+    <td>stable_sort</td></tr>
+  <tr>
+    <td>partial_sort</td></tr>
+  <tr>
+    <td>nth_element</td></tr>
+  <tr>
+    <td>push_heap</td></tr>
+  <tr>
+    <td>pop_heap</td></tr>
+  <tr>
+    <td>make_heap</td></tr>
+  <tr>
+    <td>sort_heap</td></tr></tbody></table></center>
+<h2>新的迭代器要求</h2>
+<h3>记法</h3>
+<table>
+  <tbody>
+  <tr>
+    <td><tt>X</tt></td>
+    <td>迭代器类型.</td></tr>
+  <tr>
+    <td><tt>T</tt></td>
+    <td> <tt>X</tt> 的值类型, 即 <tt>std::iterator_traits&lt;X&gt;::value_type</tt>.</td></tr>
+  <tr>
+    <td><tt>x</tt>、<tt>y</tt></td>
+    <td>一个 <tt> 类型的对象.</tt> </td></tr>
+  <tr>
+    <td><tt>t</tt></td>
+    <td>一个 <tt> 类型的对象.</tt> </td></tr></tbody></table>
+<p>
+</p><hr>
+<!--------------------------------------------------------------------------->
+<h3><a name="concept_ReadableIterator"></a>Readable Iterator </h3>Readable Iterator 是一种解引用后产生一个右值的迭代器, 该右值可转换为迭代器的 <tt>value_type</tt>. <h3>关联类型</h3>
+<table border="1">
+  <tbody>
+  <tr>
+    <td>值类型</td>
+    <td><tt>std::iterator_traits&lt;X&gt;::value_type</tt></td>
+    <td>迭代器所指向对象的类型.</td></tr>
+  <tr>
+    <td>引用类型</td>
+    <td><tt>std::iterator_traits&lt;X&gt;::reference</tt></td>
+    <td>解引用迭代器的返回类型. 该类型必须可转换为 <tt> .</tt> </td></tr>
+  <tr>
+    <td>返回类别</td>
+    <td><tt>std::return_category&lt;X&gt;::type</tt></td>
+    <td>可转换为 <tt>std::readable_iterator_tag</tt> 的类型</td></tr></tbody></table>
+<h3>细化自</h3><a href="http://www.boost.org/libs/utility/CopyConstructible.html">Copy Constructible</a> 
+<h3>有效表达式</h3>
+<table border="1">
+  <tbody>
+  <tr>
+    <th>名称</th>
+    <th>表达式</th>
+    <th>类型要求</th>
+    <th>返回类型</th></tr>
+  <tr>
+    <td>Dereference</td>
+    <td><tt>*x</tt></td>
+    <td> </td>
+    <td><tt>std::iterator_traits&lt;X&gt;::reference</tt></td></tr>
+  <tr>
+    <td>Member access</td>
+    <td><tt>x-&gt;m</tt></td>
+    <td><tt>T</tt> 是一个具有名为 <tt>m</tt> 的成员的类型</td>
+    <td>若 <tt>m</tt> 是数据成员, 则为 <tt>m</tt> 的类型. 若 <tt>m</tt> 是成员函数, 则为 <tt>m</tt> 的返回类型.</td></tr></tbody></table>
+<p>
+</p><hr>
+<!--------------------------------------------------------------------------->
+<h3><a name="concept_WritableIterator"></a>Writable Iterator </h3>Writable Iterator 是一种可用于通过解引用赋值表达式来存储值的迭代器. <h3>定义</h3>若 <tt>x</tt> 是类型为 <tt>X</tt> 的 Writable Iterator, 则表达式 <tt>*x = a;</tt> 将值 <tt>a</tt> 存入 <tt>x</tt>. 注意, <tt>operator=</tt> 与其他 C++ 函数一样可能被重载; 事实上它甚至可以是模板函数. 因此一般而言, <tt>a</tt> 可以是几种不同类型中的任意一种. 类型 <tt>A</tt> 属于 <i>值类型集合</i> (相对于 <tt>X</tt> 而言) , 如果对于 <tt>a</tt> (其类型为 <tt>A</tt>) , <tt>*x = a;</tt> 是良定义的, 且不需要对 <tt>a</tt> 执行任何非平凡转换. <h3>关联类型</h3>
+<table border="1">
+  <tbody>
+  <tr>
+    <td>返回类别</td>
+    <td><tt>std::return_category&lt;X&gt;::type</tt></td>
+    <td>可转换为 <tt>std::writable_iterator_tag</tt> 的类型</td></tr></tbody></table>
+<h3>细化自</h3><a href="http://www.boost.org/libs/utility/CopyConstructible.html">Copy Constructible</a> 
+<h3>有效表达式</h3>
+<table border="1">
+  <tbody>
+  <tr>
+    <th>名称</th>
+    <th>表达式</th>
+    <th>返回类型</th></tr>
+  <tr>
+    <td>解引用赋值</td>
+    <td><tt>*x = a</tt></td>
+    <td>unspecified</td></tr></tbody></table>
+<p>
+</p><hr>
+<!--------------------------------------------------------------------------->
+<h3><a name="concept_SwappableIterator"></a>Swappable Iterator </h3>Swappable Iterator 是一种其解引用到的值可以被交换的迭代器. <p>注释: Swappable Iterator 的要求依赖于 <tt>std::swap()</tt> 相关问题的解决. 这里我们假定该问题将通过允许为用户自定义类型重载 <tt>std::swap()</tt> 来解决.</p><p>注释: Readable Iterator 与 Writable Iterator 的组合蕴含 Swappable Iterator, 因为 <tt>std::swap()</tt> 是完全模板化的. 但 Swappable Iterator 并不蕴含 Readable Iterator 或 Writable Iterator.</p><h3>关联类型</h3>
+<table border="1">
+  <tbody>
+  <tr>
+    <td>返回类别</td>
+    <td><tt>std::return_category&lt;X&gt;::type</tt></td>
+    <td>可转换为 <tt>std::swappable_iterator_tag</tt> 的类型</td></tr></tbody></table>
+<h3>有效表达式</h3>在下面列出的两个有效表达式中, 只要求满足其中 <b>一个</b> (或另一个) 即可. 若 <tt>std::iter_swap()</tt> 已针对 <tt>X</tt> 重载, 则 <tt>std::swap()</tt> 不是必需的. 若 <tt>std::iter_swap()</tt> 未针对 <tt>X</tt> 重载, 则将使用默认的 (全模板化的) 版本, 该版本会调用 <tt>std::swap()</tt> (这意味着要修改 <tt>std::iter_swap()</tt> 的现行要求). <p>
+<table border="1">
+  <tbody>
+  <tr>
+    <th>名称</th>
+    <th>表达式</th>
+    <th>返回类型</th></tr>
+  <tr>
+    <td>迭代器交换</td>
+    <td><tt>std::iter_swap(x, y)</tt></td>
+    <td>void</td></tr>
+  <tr>
+    <td>解引用并交换</td>
+    <td><tt>std::swap(*x, *y)</tt></td>
+    <td>void</td></tr></tbody></table>
+</p><p>
+</p><hr>
+<!--------------------------------------------------------------------------->
+<h3><a name="concept_ConstantLvalueIterator"></a>Constant Lvalue Iterator </h3>Constant Lvalue Iterator 是一种解引用后产生指向所指对象的 const 引用的迭代器, 即其关联的 <tt>reference</tt> 类型为 <tt>const T&amp;</tt>. 更改一个模型化 Constant Lvalue Iterator 的迭代器的值或将其销毁, 都不会使先前从该迭代器获得的指针与引用失效. <h3>细化自</h3><a href="#concept_ReadableIterator">Readable Iterator</a> 
+<h3>关联类型</h3>
+<table border="1">
+  <tbody>
+  <tr>
+    <td>引用类型</td>
+    <td><tt>std::iterator_traits&lt;X&gt;::reference</tt></td>
+    <td>解引用迭代器的返回类型, 必须为 <tt>const T&amp;</tt> .</td></tr><!--  I don't think this is needed
+
+  <tr>
+
+    <td>Pointer type</td>
+
+    <td><tt>std::iterator_traits&lt;X&gt;::pointer</tt></td>
+
+    <td>
+
+     The pointer to the value type, which must be <tt>const T*</tt>.
+
+    </td>
+
+  </tr>
+
+-->
+  <tr>
+    <td>返回类别</td>
+    <td><tt>std::return_category&lt;X&gt;::type</tt></td>
+    <td>可转换为 <tt>std::constant_lvalue_iterator_tag</tt> 的类型</td></tr></tbody></table><!-- these are not necessary now that we use reference as operator* return type
+
+<h3>Valid expressions</h3>
+
+
+
+<Table border>
+
+<tr><TH>Name</TH><TH>Expression</TH><TH>Type requirements</TH><TH>Return type</TH></tr>
+
+<tr>
+
+ <td>Dereference</td>
+
+ <td><tt>*x</tt></td>
+
+ <td>&nbsp;</td>
+
+ <td><tt>std::iterator_traits&lt;X&gt;::reference</tt></td>
+
+</tr>
+
+<tr>
+
+ <td>Member access</td>
+
+ <td><tt>x-&gt;m</tt></td>
+
+ <td><tt>T</tt> is a type with a member named <tt>m</tt>.</td>
+
+ <td>
+
+ &nbsp;
+
+ </td>
+
+</tr>
+
+</table>
+
+
+
+-->
+<p>
+</p><hr>
+<!--------------------------------------------------------------------------->
+<h3><a name="concept_MutableLvalueIterator"></a>Mutable Lvalue Iterator </h3>Mutable Lvalue Iterator 是一种解引用后产生指向所指对象的引用的迭代器. 其关联的 <tt>reference</tt> 类型为 <tt>T&amp;</tt>. 更改一个模型化 Mutable Lvalue Iterator 的迭代器的值或将其销毁, 都不会使先前从该迭代器获得的指针与引用失效. <h3>细化自</h3><a href="#concept_ReadableIterator">Readable Iterator</a>, <a href="#concept_WritableIterator">Writable Iterator</a> 与 <a href="#concept_SwappableIterator">Swappable Iterator</a>. <h3>关联类型</h3>
+<table border="1">
+  <tbody>
+  <tr>
+    <td>引用类型</td>
+    <td><tt>std::iterator_traits&lt;X&gt;::reference</tt></td>
+    <td>解引用迭代器的返回类型, 必须为 <tt>T&amp;</tt> .</td></tr><!-- I don't think this is necessary
+
+  <tr>
+
+    <td>Pointer type</td>
+
+    <td><tt>std::iterator_traits&lt;X&gt;::pointer</tt></td>
+
+    <td>
+
+     The pointer to the value type, which is <tt>T*</tt>.
+
+    </td>
+
+  </tr>
+
+-->
+  <tr>
+    <td>返回类别</td>
+    <td><tt>std::return_category&lt;X&gt;::type</tt></td>
+    <td>可转换为 <tt>std::mutable_lvalue_iterator_tag</tt> 的类型</td></tr></tbody></table><!-- no longer needed since the return type is specified as reference in the readable iterator
+
+<h3>Valid expressions</h3>
+
+
+
+<Table border>
+
+<tr><TH>Name</TH><TH>Expression</TH><TH>Type requirements</TH><TH>Return type</TH></tr>
+
+<tr>
+
+ <td>Dereference</td>
+
+ <td><tt>*x</tt></td>
+
+ <td>&nbsp;</td>
+
+ <td><tt>std::iterator_traits&lt;X&gt;::reference</tt></td>
+
+</tr>
+
+<tr>
+
+ <td>Member access</td>
+
+ <td><tt>x-&gt;m</tt></td>
+
+ <td><tt>T</tt> is a type with a member named <tt>m</tt>.</td>
+
+ <td>
+
+ &nbsp;
+
+ </td>
+
+</tr>
+
+</table>
+
+
+
+-->
+<p>
+</p><hr>
+<!--------------------------------------------------------------------------->
+<h3><a name="concept_ForwardTraversalIterator"></a>Forward Traversal Iterator 
+</h3>Forward Iterator 是一种可以递增的迭代器. 此外, 也允许对迭代器的范围进行多趟遍历. <h3>细化自</h3><a href="http://www.boost.org/libs/utility/CopyConstructible.html">Copy Constructible</a>, <a href="http://www.boost.org/libs/utility/Assignable.html">Assignable</a>, <a href="https://www.boost.org/sgi/stl/DefaultConstructible.html">Default Constructible</a> 与 <a href="https://www.boost.org/sgi/stl/EqualityComparable.html">Equality Comparable</a> 
+<h3>Associated types</h3>
+<table border="1">
+  <tbody>
+  <tr>
+    <td>差值类型</td>
+    <td><tt>std::iterator_traits&lt;X&gt;::difference_type</tt></td>
+    <td>用于表示指向同一范围的迭代器之间距离的有符号整数类型.</td></tr>
+  <tr>
+    <td>遍历类别</td>
+    <td><tt>std::traversal_category&lt;X&gt;::type</tt></td>
+    <td>可转换为 <tt>std::forward_traversal_tag</tt> 的类型</td></tr></tbody></table>
+<h3>有效表达式</h3>
+<table border="1">
+  <tbody>
+  <tr>
+    <th>名称</th>
+    <th>表达式</th>
+    <th>类型要求</th>
+    <th>返回类型</th></tr>
+  <tr>
+    <td>Preincrement</td>
+    <td><tt>++i</tt></td>
+    <td> </td>
+    <td><tt>X&amp;</tt></td></tr>
+  <tr>
+    <td>Postincrement</td>
+    <td><tt>i++</tt></td>
+    <td> </td>
+    <td>可转换为 <tt>const X&amp;</tt></td></tr></tbody></table>
+<p>
+</p><hr>
+<!--------------------------------------------------------------------------->
+<h3><a name="concept_BidirectionalTraversalIterator"></a>Bidirectional Traversal 
+Iterator </h3>一种可以递增和递减的迭代器. <h3>细化自</h3><a href="#concept_ForwardTraversalIterator">Forward Traversal Iterator</a> 
+<h3>Associated types</h3>
+<table border="1">
+  <tbody>
+  <tr>
+    <td>遍历类别</td>
+    <td><tt>std::traversal_category&lt;X&gt;::type</tt></td>
+    <td>可转换为 <tt>std::bidirectional_traversal_tag</tt> 的类型</td></tr></tbody></table>
+<h3>有效表达式</h3>
+<table border="1">
+  <tbody>
+  <tr>
+    <th>名称</th>
+    <th>表达式</th>
+    <th>类型要求</th>
+    <th>返回类型</th></tr>
+  <tr>
+    <td>Predecrement</td>
+    <td><tt>--i</tt></td>
+    <td> </td>
+    <td><tt>X&amp;</tt></td></tr>
+  <tr>
+    <td>Postdecrement</td>
+    <td><tt>i--</tt></td>
+    <td> </td>
+    <td>可转换为 <tt>const X&amp;</tt></td></tr></tbody></table>
+<p>
+</p><hr>
+<!--------------------------------------------------------------------------->
+<h3><a name="concept_RandomAccessTraversalIterator"></a>Random Access Traversal 
+Iterator </h3>一种提供以任意大小的步长前进和后退的常数时间方法的迭代器. <h3>细化自</h3><a href="#concept_BidirectionalTraversalIterator">Bidirectional Traversal Iterator</a> 与 <a href="https://www.boost.org/sgi/stl/LessThanComparable.html">Less Than Comparable</a> (其中 <tt>&lt;</tt> 为全序) <h3>Associated types</h3>
+<table border="1">
+  <tbody>
+  <tr>
+    <td>遍历类别</td>
+    <td><tt>std::traversal_category&lt;X&gt;::type</tt></td>
+    <td>可转换为 <tt>std::random_access_traversal_tag</tt> 的类型</td></tr></tbody></table>
+<h3>有效表达式</h3>
+<table border="1">
+  <tbody>
+  <tr>
+    <th>名称</th>
+    <th>表达式</th>
+    <th>类型要求</th>
+    <th>返回类型</th></tr>
+  <tr>
+    <td>迭代器加法</td>
+    <td><tt>i += n</tt></td>
+    <td> </td>
+    <td><tt>X&amp;</tt></td></tr>
+  <tr>
+    <td>迭代器加法</td>
+    <td><tt>i + n</tt> 或 <tt>n + i</tt></td>
+    <td> </td>
+    <td><tt>X</tt></td></tr>
+  <tr>
+    <td>迭代器减法</td>
+    <td><tt>i -= n</tt></td>
+    <td> </td>
+    <td><tt>X&amp;</tt></td></tr>
+  <tr>
+    <td>迭代器减法</td>
+    <td><tt>i - n</tt></td>
+    <td> </td>
+    <td><tt>X</tt></td></tr>
+  <tr>
+    <td>差</td>
+    <td><tt>i - j</tt></td>
+    <td> </td>
+    <td><tt>std::iterator_traits&lt;X&gt;::difference_type</tt></td></tr>
+  <tr>
+    <td>元素运算符</td>
+    <td><tt>i[n]</tt></td>
+    <td><tt> </tt> 还必须是 <a href="#concept_ReadableIterator">Readable Iterator</a> 的模型.</td>
+    <td><tt>std::iterator_traits&lt;X&gt;::reference</tt></td></tr>
+  <tr>
+    <td>元素赋值</td>
+    <td><tt>i[n] = t</tt></td>
+    <td><tt>X</tt> 还必须是 <a href="#concept_WritableIterator">Writable Iterator</a>.</td>
+    <td>unspecified</td></tr></tbody></table>
+<p>
+</p><hr>
+<!--  LocalWords:  HTML BGCOLOR FFFFFF TR TD Siek HREF mailto jsiek
+
+ --><!--  LocalWords:  lsc edu tt const href http anubis dkuug dk JTC SC WG docs lt
+
+ --><!--  LocalWords:  lwg html bool gt Sutter's htm Lvalue namespace std struct
+
+ --><!--  LocalWords:  lvalue typename OldTraits reusability min iter prev inplace
+
+ --><!--  LocalWords:  rvalue templated Preincrement Postincrement Predecrement
+
+ --><!--  LocalWords:  Postdecrement
+
+ --></body></html>

@@ -1,0 +1,91 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>设计讨论</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../program_options.html" title="第 28 章 Boost.Program_options">
+<link rel="prev" href="howto.html" title="如何使用">
+<link rel="next" href="s06.html" title="致谢">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="howto.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../program_options.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="s06.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="program_options.design"></a>设计讨论</h2></div></div></div>
+<div class="toc"><dl class="toc"><dt><span class="section"><a href="design.html#program_options.design.unicode">Unicode 支持</a></span></dt></dl></div>
+<p>本节着重讨论若干设计问题.</p>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="program_options.design.unicode"></a>Unicode 支持</h3></div></div></div>
+<p>Unicode 支持是正式评审期间被特别要求的功能之一. 在本文档中, "Unicode support" 一词是 "wchar_t" 支持的同义词, 并假定 "wchar_t" 始终使用 Unicode 编码. 此外, 谈到 "ascii" (小写) 时, 我们指的并非严格的 7 位 ASCII 编码, 而是采用本地 8 位编码的 "char" 字符串.</p>
+<p>一般而言, "Unicode support" 可以有很多含义, 但对 program_options 库而言, 它意味着:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p>每个解析器都应接受 <code class="computeroutput">char*</code> 或 <code class="computeroutput">wchar_t*</code> 之一, 正确地把输入切分为选项名与选项值, 并返回数据.</p></li>
+<li class="listitem"><p>对每个选项, 都应能够指定其从字符串到值的转换使用 ascii 还是 Unicode.</p></li>
+<li class="listitem">
+<p>本库保证:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; ">
+<li class="listitem"><p>ascii 输入会不加改变地传给 ascii 值</p></li>
+<li class="listitem"><p>Unicode 输入会不加改变地传给 Unicode 值</p></li>
+<li class="listitem"><p>传给 Unicode 值的 ascii 输入, 以及传给 ascii 值的 Unicode 输入, 将使用 codecvt facet 进行转换 (该 facet 可由用户指定).</p></li>
+</ul></div>
+<p>
+          </p>
+</li>
+</ul></div>
+<p>
+    </p>
+<p>关键在于, "ascii 选项" 可以与 "Unicode 选项" 并存. 这有两个原因. 第一, 对某个给定类型, 你可能没有从 Unicode 字符串提取值的代码, 而要求必须编写这样的代码并不好. 第二, 设想一个可复用库, 它拥有一些选项, 并在其接口中暴露选项描述. 如果 <span class="emphasis"><em>所有</em></span> 选项都非 ascii 即 Unicode, 而该库又不使用任何 Unicode 字符串, 那么其作者很可能采用 ascii 选项, 从而使该库无法在 Unicode 应用中使用. 从根本上说, 这将不得不提供库的两个版本 -- ascii 版和 Unicode 版.</p>
+<p>另一个要点是, ascii 字符串会原样通过而不被修改. 换句话说, 不能简单地把 ascii 转换成 Unicode 然后继续处理 Unicode. 问题在于, 默认的转换机制 -- 即 <code class="computeroutput">codecvt</code> facet -- 若无额外设置, 可能无法处理 8 位输入.</p>
+<p>上述 Unicode 支持并不完整. 例如, 我们不支持 Unicode 选项名. Unicode 支持难度很大, 需要整个 Boost 范围的解决方案. 即便只是比较两个任意的 Unicode 字符串也并非易事. 最后, 在选项名中使用 Unicode 还牵涉国际化, 而国际化自有其复杂性. 例如, 若选项名取决于当前 locale, 那么所有用到该名称的程序部件及其他部分也都必须国际化.</p>
+<p>实现 Unicode 支持的首要问题是: 是使用模板和 <code class="computeroutput">std::basic_string</code>, 还是采用某种内部编码, 并在接口边界上进行内部编码与外部编码之间的转换.</p>
+<p>这一抉择主要是代码体积与执行速度之间的权衡. 模板化方案要么把库代码链接进每个使用该库的应用程序 (从而使共享库不可行), 要么在共享库中提供显式实例化 (从而增大其体积). 基于内部编码的方案必然要在多处进行转换, 速度也会稍慢一些. 由于对本库而言速度通常不成问题, 第二种方案看起来更有吸引力, 但我们还需对各个组件逐一细看.</p>
+<p>对解析器组件, 我们有三种选择:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p>采用完全模板化的实现: 给定某一类型的字符串, 解析器将返回一个 <code class="computeroutput"><a class="link" href="reference.html#doxygen.namespaceboost_1_1program__options_1a2e7af46378fd3d9652706ff728ea68cd">parsed_options</a></code> 实例, 其中的字符串具有相同类型 (即 <code class="computeroutput"><a class="link" href="reference.html#doxygen.namespaceboost_1_1program__options_1a2e7af46378fd3d9652706ff728ea68cd">parsed_options</a></code> 类将是模板).</p></li>
+<li class="listitem"><p>采用内部编码: 与上面相同, 但字符串要转换为内部编码, 或从内部编码转换出来.</p></li>
+<li class="listitem"><p>采用并部分暴露内部编码: 与上面相同, 但 <code class="computeroutput"><a class="link" href="reference.html#doxygen.namespaceboost_1_1program__options_1a2e7af46378fd3d9652706ff728ea68cd">parsed_options</a></code> 实例中的字符串将采用内部编码. 如果 <code class="computeroutput"><a class="link" href="reference.html#doxygen.namespaceboost_1_1program__options_1a2e7af46378fd3d9652706ff728ea68cd">parsed_options</a></code> 实例被直接传给其他组件, 这或许能省去一次转换, 但对用户而言也可能造成危险或困惑.</p></li>
+</ul></div>
+<p>
+    </p>
+<p>第二种方案似乎最佳 -- 它不会明显增大代码体积, 也比第三种方案更清晰. 为避免额外的转换, <code class="computeroutput"><a class="link" href="reference.html#doxygen.namespaceboost_1_1program__options_1a2e7af46378fd3d9652706ff728ea68cd">parsed_options</a></code> 的 Unicode 版本也可以用内部编码存储字符串.</p>
+<p>对选项描述组件, 我们没有多少选择余地. 既然所有选项都用 ascii 或都用 Unicode 都不合意, 而应当是一部分选项用 ascii、一部分选项用 Unicode, 那么 <code class="computeroutput"><a class="link" href="../doxygen/classboost_1_1program__options_1_1value__semantic.html" title="value_semantic 类">value_semantic</a></code> 的接口就必须同时支持两者. 唯一的办法是传入一个额外的标志, 以说明字符串使用的是 ascii 还是内部编码. <code class="computeroutput"><a class="link" href="../doxygen/classboost_1_1program__options_1_1value__semantic.html" title="value_semantic 类">value_semantic</a></code> 实例随后可在需要时转换成其他某种编码.</p>
+<p>对存储组件, 唯一受影响的函数是 <code class="computeroutput"><a class="link" href="../doxygen/namespaceboost_1_1program__options_1a6a5230fb4900bc878875a28d97df0cbf.html" title="store 函数">store</a></code>. 对 Unicode 输入, <code class="computeroutput"><a class="link" href="../doxygen/namespaceboost_1_1program__options_1a6a5230fb4900bc878875a28d97df0cbf.html" title="store 函数">store</a></code> 函数应把值转换到内部编码. 它还应把所用的编码告知 <code class="computeroutput"><a class="link" href="../doxygen/classboost_1_1program__options_1_1value__semantic.html" title="value_semantic 类">value_semantic</a></code> 类.</p>
+<p>最后, 我们该采用哪种内部编码? 候选是 <code class="computeroutput">std::wstring</code> (使用 UCS-4 编码) 和 <code class="computeroutput">std::string</code> (使用 UTF-8 编码). 两种候选的差异在于:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p>速度: UTF-8 稍慢</p></li>
+<li class="listitem"><p>空间: 当输入为 ascii 时, UTF-8 占用空间更少</p></li>
+<li class="listitem"><p>代码体积: UTF-8 需要额外的转换代码. 不过, 它允许直接使用现有解析器而无需将其转换为 <code class="computeroutput">std::wstring</code>, 而这种转换很可能会产生大量新的实例化.</p></li>
+</ul></div>
+<p>两者难分胜负, 但最后一点似乎更为重要, 因此将采用 UTF-8.</p>
+<p>选择 UTF-8 编码可以沿用现有的解析器, 因为 7 位 ascii 字符在 UTF-8 中保持其值不变, 所以搜索 7 位字符串很简单. 但这里有两个细微的问题:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p>我们需要假定字符字面量使用 ascii 编码, 而输入使用 Unicode 编码.</p></li>
+<li class="listitem"><p>一个 Unicode 字符 (例如 '=') 后面可以跟一个 '组合字符', 两者的组合并不等同于单独的 '=', 因此对 '=' 的简单搜索可能找错字符.</p></li>
+</ul></div>
+<p>在实践中这两个问题似乎都不算严重, 因为 ascii 几乎是通用的编码, 而且出现在 '=' (以及其他对本库具有特殊含义的字符) 之后的组合字符也不太可能出现.</p>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2002-2004 Vladimir Prus<p>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <code class="filename">LICENSE_1_0.txt</code> 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="howto.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../program_options.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="s06.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

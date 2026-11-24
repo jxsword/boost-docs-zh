@@ -1,0 +1,124 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>混合方法</title>
+<link rel="stylesheet" href="../boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Safe Numerics">
+<link rel="up" href="../eliminate_runtime_penalty.html" title="消除运行期开销">
+<link rel="prev" href="1.html" title="使用自动类型提升">
+<link rel="next" href="../case_studies.html" title="案例研究">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img href="index.html" height="164px" src="pre-boost.jpg" alt="库文档索引"></td>
+<td><h2>Safe Numerics</h2></td>
+</tr></table>
+<div class="spirit-nav">
+<a accesskey="p" href="1.html"><img src="../images/prev.png" alt="上一页"></a><a accesskey="u" href="../eliminate_runtime_penalty.html"><img src="../images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../case_studies.html"><img src="../images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="safe_numerics.eliminate_runtime_penalty.3"></a>混合方法</h3></div></div></div>
+<p>为了便于说明, 我们按可用的不同方法划分了对如何消除运行期开销的讨论. 现实的程序很可能包含上述所有技术. 考虑以下内容:</p>
+<pre class="programlisting"><span class="comment">//  Copyright (c) 2018 Robert Ramey</span>
+<span class="comment">//</span>
+<span class="comment">// Distributed under the Boost Software License, Version 1.0. (See</span>
+<span class="comment">// accompanying file LICENSE_1_0.txt or copy at</span>
+<span class="comment">// http://www.boost.org/LICENSE_1_0.txt)</span>
+
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">stdexcept</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">sstream</span><span class="special">&gt;</span>
+
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">safe_numerics</span><span class="special">/</span><span class="identifier">safe_integer</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">safe_numerics</span><span class="special">/</span><span class="identifier">safe_integer_range</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">safe_numerics</span><span class="special">/</span><span class="identifier">native</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">safe_numerics</span><span class="special">/</span><span class="identifier">exception</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="preprocessor">#include</span> <span class="string">"safe_format.hpp"</span> <span class="comment">// prints out range and value of any type</span>
+
+<span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">safe_numerics</span><span class="special">;</span>
+
+<span class="keyword">using</span> <span class="identifier">safe_t</span> <span class="special">=</span> <span class="identifier">safe_signed_range</span><span class="special">&lt;</span>
+    <span class="special">-</span><span class="number">24</span><span class="special">,</span>
+    <span class="number">82</span><span class="special">,</span>
+    <span class="identifier">native</span><span class="special">,</span>
+    <span class="identifier">loose_exception_policy</span>
+<span class="special">&gt;</span><span class="special">;</span>
+
+<span class="comment">// define variables used for input</span>
+<span class="keyword">using</span> <span class="identifier">input_safe_t</span> <span class="special">=</span> <span class="identifier">safe_signed_range</span><span class="special">&lt;</span>
+    <span class="special">-</span><span class="number">24</span><span class="special">,</span>
+    <span class="number">82</span><span class="special">,</span>
+    <span class="identifier">native</span><span class="special">,</span> <span class="comment">// we don't need automatic in this case</span>
+    <span class="identifier">loose_exception_policy</span> <span class="comment">// assignment of out of range value should throw</span>
+<span class="special">&gt;</span><span class="special">;</span>
+
+<span class="comment">// function arguments can never be outside of limits</span>
+<span class="keyword">auto</span> <span class="identifier">f</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">safe_t</span> <span class="special">&amp;</span> <span class="identifier">x</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">safe_t</span> <span class="special">&amp;</span> <span class="identifier">y</span><span class="special">)</span><span class="special">{</span>
+    <span class="keyword">auto</span> <span class="identifier">z</span> <span class="special">=</span> <span class="identifier">x</span> <span class="special">+</span> <span class="identifier">y</span><span class="special">;</span>  <span class="comment">// we know that this cannot fail</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"z = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">safe_format</span><span class="special">(</span><span class="identifier">z</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"(x + y) = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">safe_format</span><span class="special">(</span><span class="identifier">x</span> <span class="special">+</span> <span class="identifier">y</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"(x - y) = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">safe_format</span><span class="special">(</span><span class="identifier">x</span> <span class="special">-</span> <span class="identifier">y</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="keyword">return</span> <span class="identifier">z</span><span class="special">;</span>
+<span class="special">}</span>
+
+<span class="keyword">bool</span> <span class="identifier">test</span><span class="special">(</span><span class="keyword">const</span> <span class="keyword">char</span> <span class="special">*</span> <span class="identifier">test_string</span><span class="special">)</span><span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">istringstream</span> <span class="identifier">sin</span><span class="special">(</span><span class="identifier">test_string</span><span class="special">)</span><span class="special">;</span>
+    <span class="identifier">input_safe_t</span> <span class="identifier">x</span><span class="special">,</span> <span class="identifier">y</span><span class="special">;</span>
+    <span class="keyword">try</span><span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"type in values in format x y:"</span> <span class="special">&lt;&lt;</span> <span class="identifier">test_string</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+        <span class="identifier">sin</span> <span class="special">&gt;&gt;</span> <span class="identifier">x</span> <span class="special">&gt;&gt;</span> <span class="identifier">y</span><span class="special">;</span> <span class="comment">// read varibles, maybe throw exception</span>
+    <span class="special">}</span>
+    <span class="keyword">catch</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">exception</span> <span class="special">&amp;</span> <span class="identifier">e</span><span class="special">)</span><span class="special">{</span>
+        <span class="comment">// none of the above should trap. Mark failure if they do</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">e</span><span class="special">.</span><span class="identifier">what</span><span class="special">(</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="char">'\n'</span> <span class="special">&lt;&lt;</span> <span class="string">"input failure"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+        <span class="keyword">return</span> <span class="keyword">false</span><span class="special">;</span>
+    <span class="special">}</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"x"</span> <span class="special">&lt;&lt;</span> <span class="identifier">safe_format</span><span class="special">(</span><span class="identifier">x</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"y"</span> <span class="special">&lt;&lt;</span> <span class="identifier">safe_format</span><span class="special">(</span><span class="identifier">y</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">safe_format</span><span class="special">(</span><span class="identifier">f</span><span class="special">(</span><span class="identifier">x</span><span class="special">,</span> <span class="identifier">y</span><span class="special">)</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"input success"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="keyword">return</span> <span class="keyword">true</span><span class="special">;</span>
+<span class="special">}</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="special">)</span><span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"example 84:\n"</span><span class="special">;</span>
+    <span class="keyword">bool</span> <span class="identifier">result</span> <span class="special">=</span>
+        <span class="special">!</span>  <span class="identifier">test</span><span class="special">(</span><span class="string">"123 125"</span><span class="special">)</span>
+        <span class="special">&amp;&amp;</span> <span class="identifier">test</span><span class="special">(</span><span class="string">"0 0"</span><span class="special">)</span>
+        <span class="special">&amp;&amp;</span> <span class="identifier">test</span><span class="special">(</span><span class="string">"-24 82"</span><span class="special">)</span>
+    <span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="special">(</span><span class="identifier">result</span> <span class="special">?</span> <span class="string">"Success!"</span> <span class="special">:</span> <span class="string">"Failure"</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="keyword">return</span> <span class="identifier">result</span> <span class="special">?</span> <span class="identifier">EXIT_SUCCESS</span> <span class="special">:</span> <span class="identifier">EXIT_FAILURE</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p>和之前一样, 我们定义一个类型 <code class="computeroutput">safe_t</code> 来体现我们对本程序合法值的看法. 它使用 <a class="link" href="promotion_policies/automatic.html" title="automatic"><code class="computeroutput">automatic</code></a> 类型提升策略以及 <a class="link" href="exception_policies.html#safe_numerics.exception_policies.loose_trap_policy"><code class="computeroutput">loose_trap_policy</code></a> 异常策略来强制消除运行期开销.</p></li>
+<li class="listitem"><p>函数 <code class="computeroutput">f</code> 只接受类型为 <code class="computeroutput">safe_t</code> 的实参, 因此无需检查输入值. 它以零运行期开销实现了 <span class="emphasis"><em><span class="bold"><strong>按契约编程</strong></span></em></span> 的功能.</p></li>
+<li class="listitem"><p>此外, 我们定义 <code class="computeroutput">input_safe_t</code> 用于从程序控制台读取变量. 显然, 这些只能在运行期检查, 因此它们使用 throw_exception 策略. 从控制台读取变量时会检查其合法值. 我们无需任何临时代码来做这件事, 因为这些类型保证包含合法值, 并在违反该保证时抛出异常. 换言之, 我们自动获得了对输入变量的检查, 无需额外编程.</p></li>
+<li class="listitem"><p>调用函数 <code class="computeroutput">f</code> 时, 类型为 <code class="computeroutput">input_safe_t</code> 的实参被转换为类型 <code class="computeroutput">safe_t</code> 的值. 在这个特定示例中, 可以在编译期确定从 <code class="computeroutput">safe_t</code> 构造 <code class="computeroutput">input_safe_t</code> 的实例绝不会失败. 因此不需要 <code class="computeroutput">try/catch</code> 块. 对 <a class="link" href="exception_policies.html#safe_numerics.exception_policies.loose_trap_policy"><code class="computeroutput">loose_trap_policy</code></a> 类型使用 <code class="computeroutput">safe_t</code> 策略保证这在编译期为真.</p></li>
+</ul></div>
+<p>以下是从控制台输入值 12 和 32 时程序的输出:</p>
+<pre class="screen">example 84:
+type in values in format x y:33 45
+x&lt;signed char&gt;[-24,82] = 33
+y&lt;signed char&gt;[-24,82] = 45
+z = &lt;short&gt;[-48,164] = 78
+(x + y) = &lt;short&gt;[-48,164] = 78
+(x - y) = &lt;signed char&gt;[-106,106] = -12
+&lt;short&gt;[-48,164] = 78
+</pre>
+</div>
+<table xmlns:rev="http://www.cs.rpi.edu/~gregod/boost/tools/doc/revision" width="100%"><tr>
+<td align="left"></td>
+<td align="right"><div class="copyright-footer">版权所有 © 2012-2018 Robert Ramey<p><a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">遵循 Boost 软件许可</a></p>
+</div></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="1.html"><img src="../images/prev.png" alt="上一页"></a><a accesskey="u" href="../eliminate_runtime_penalty.html"><img src="../images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../case_studies.html"><img src="../images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

@@ -1,0 +1,263 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+<HEAD>
+    <TITLE>函数模板 close</TITLE>
+    <LINK REL="stylesheet" HREF="../../../../boost.css">
+    <LINK REL="stylesheet" HREF="../theme/iostreams.css">
+    <STYLE> H3 CODE { font-size: 120% } </STYLE>
+</HEAD>
+<BODY>
+
+<!-- Begin Banner -->
+
+    <H1 CLASS="title">函数模板 <CODE>close</CODE></H1>
+    <HR CLASS="banner">
+
+<!-- End Banner -->
+
+<DL class="page-index">
+  <DT><A href="#description">说明</A></DT>
+  <DT><A href="#when"> <CODE>close</CODE> 何时被调用?</DT>
+  <DT><A href="#headers">头文件</A></DT>
+  <DT><A href="#reference">参考</A></DT>
+</DL>
+
+<A NAME="description"></A>
+<H2>说明</H2>
+
+<P>Iostreams 库为函数模板 <CODE>close</CODE> 提供了三个重载.</P>
+
+<P> <CODE>close</CODE> 的第一个重载接受单个设备参数. 它允许用户关闭设备而无需关心该设备控制单个序列还是两个序列:</P>
+
+<PRE CLASS="broken_ie"><SPAN CLASS="keyword">namespace</SPAN> boost { <SPAN CLASS="keyword">namespace</SPAN> iostreams {
+              
+<SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> <A CLASS="documented" HREF="#template_params">T</A>&gt;     
+<SPAN CLASS="keyword">void</SPAN> <A CLASS="documented" HREF="#close_device">close</A>(T&amp; t);
+
+} } <SPAN CLASS="comment">// End namespace boost::io</SPAN></PRE>
+
+
+<P> <CODE>close</CODE> 的另外两个重载很少应由库用户调用; 它们由库自动调用, 用于向 <A HREF="../guide/concepts.html#filter_concepts">过滤器</A> 和 <A HREF="../guide/concepts.html#device_concepts">设备</A> 表明一个数据序列即将结束. 这为过滤器和设备提供了释放资源或重置状态以准备新字符序列的机会. 执行输出的过滤器和设备可以利用这一机会向流末尾写入额外数据.</P>
+
+<P>关于 <CODE>close</CODE> 何时以及如何被调用的细节有些杂乱:</P>
+
+<A NAME="when"></A>
+<H2> <CODE>close</CODE> 何时被调用?</H2>
+
+<H4><CODE>stream_buffer</CODE> and <CODE>stream</CODE></H4>
+
+<P>当 <CODE>stream_buffer</CODE> 或 <CODE>stream</CODE> 的某个基于设备 <CODE>d</CODE> 的实例被使用成员函数 <CODE>close</CODE> 关闭时, 会进行如下函数调用序列:<P>
+<PRE CLASS="broken_ie">    boost::iostreams::close(d, std::ios_base::in);
+    boost::iostreams::close(d, std::ios_base::out);</PRE>
+<P>若 <CODE>D</CODE> 满足 <A HREF="../concepts/closable.html">Closable</A> 且控制单个序列, 其效果如下:</P>
+<PRE CLASS="broken_ie">    d.close();</PRE>
+<P>若 <CODE>D</CODE> 满足 <A HREF="../concepts/closable.html">Closable</A> 且控制相互独立的输入和输出序列, 其效果如下:</P>
+<PRE CLASS="broken_ie">    d.close(std::ios_base::in);
+    d.close(std::ios_base::out);</PRE>
+
+<P>(<I>参见</I>下文 <CODE>close</CODE> 针对 <A HREF="#close_device">设备类型</A> 的语义.)<H4><CODE>filtering_streambuf</CODE> and <CODE>filtering_stream</CODE></H4>
+
+<P>若 <A HREF="../classes/filtering_streambuf.html"><CODE>filtering_streambuf</CODE></A> 或 <A HREF="../classes/filtering_stream.html"><CODE>filtering_stream</CODE></A> 在其链完整时生命期结束, 则视为<I>已关闭</I>; 若其末端设备被使用 <CODE>pop</CODE> 或 <CODE>reset</CODE> 移除亦然. 此时, 假设过滤器和设备的底层序列为 <CODE>f<SUB>1</SUB></CODE>、<CODE>f<SUB>1</SUB></CODE>、...、<CODE>f<SUB>n-1</SUB></CODE>、<CODE>d</CODE>, 而对应的流缓冲序列为 <CODE>buf<SUB>1</SUB></CODE>、<CODE>buf<SUB>2</SUB></CODE>、...、<CODE>buf<SUB>n-1</SUB></CODE>、<CODE>buf<SUB>n</SUB></CODE>, 则会进行如下调用序列:<A CLASS='footnote_ref' NAME='note_1_ref' HREF="#note_1"><SUP>[1]</SUP></A>
+
+    <PRE CLASS="broken_ie">    <SPAN CLASS="keyword">using</SPAN> <SPAN CLASS="keyword">namespace</SPAN> std;
+    
+    <SPAN CLASS="comment">// Close each input sequence, in reverse order:</SPAN>
+    boost::iostreams::close(d,<SPAN STYLE="visibility:hidden"><SUB>n-1</SUB>, buf<SUB>n-1</SUB></SPAN> ios_base::in);
+    boost::iostreams::close(f<SUB>n-1</SUB>, buf<SUB>n</SUB>,<SPAN STYLE="visibility:hidden"><SUB>-1</SUB></SPAN> ios_base::in);
+    boost::iostreams::close(f<SUB>n-2</SUB>, buf<SUB>n-1</SUB>, ios_base::in);
+    <SPAN CLASS="omitted">...</SPAN>
+    boost::iostreams::close(f<SUB>1</SUB>,<SPAN STYLE="visibility:hidden"><SUB>n-</SUB></SPAN> buf<SUB>2</SUB>,<SPAN STYLE="visibility:hidden"><SUB>n-</SUB></SPAN> ios_base::in);
+
+    <SPAN CLASS="comment">// Close each output sequence, in order:</SPAN>
+    boost::iostreams::close(f<SUB>1</SUB>,<SPAN STYLE="visibility:hidden"><SUB>n-</SUB></SPAN> buf<SUB>2</SUB>,<SPAN STYLE="visibility:hidden"><SUB>n-</SUB></SPAN> ios_base::out);
+    boost::iostreams::close(f<SUB>2</SUB>,<SPAN STYLE="visibility:hidden"><SUB>n-</SUB></SPAN> buf<SUB>3</SUB>,<SPAN STYLE="visibility:hidden"><SUB>n-</SUB></SPAN> ios_base::out);
+    <SPAN CLASS="omitted">...</SPAN>
+    boost::iostreams::close(f<SUB>n-1</SUB>, buf<SUB>n</SUB>,<SPAN STYLE="visibility:hidden"><SUB>n-</SUB></SPAN> ios_base::out);
+    boost::iostreams::close(d,<SPAN STYLE="visibility:hidden"><SUB>n-1</SUB>, buf<SUB>n-1</SUB></SPAN> ios_base::out);</PRE>
+</P>
+<P>这意味着</P>
+<UL>
+<LI>对于由只读组件组成的过滤链, 链的元素按逆序关闭</LI>
+<LI>对于由只写组件组成的过滤链, 链的元素按正序关闭</LI>
+<LI>控制相互独立的输入和输出序列的过滤器和设备会收到两次关闭通知: 第一次以 <CODE>ios_base::in</CODE> 为参数, 第二次以 <CODE>ios_base::out</CODE> 为参数.</UL>
+
+<P>(<I>参见</I>下文 <CODE>close</CODE> 针对 <A HREF="#close_filter">Filter</A> 与 <A HREF="#close_device">Device</A> 类型的语义.)</P>
+
+<A NAME="headers"></A>
+<H2>头文件</H2>
+
+<DL>
+  <DT><A CLASS="header" HREF="../../../../boost/iostreams/close.hpp"><CODE>&lt;boost/iostreams/close.hpp&gt;</CODE></A></DT>
+  <DT><A CLASS="header" HREF="../../../../boost/iostreams/operations.hpp"><CODE>&lt;boost/iostreams/operations.hpp&gt;</CODE></A></DT>
+</DL>
+
+<A NAME="reference"></A>
+<H2>参考</H2>
+
+<A NAME="synopsis"></A>
+<H3>概要</H3>
+
+<PRE CLASS="broken_ie"><SPAN CLASS="keyword">namespace</SPAN> boost { <SPAN CLASS="keyword">namespace</SPAN> iostreams {
+              
+<SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> <A CLASS="documented" HREF="#template_params">T</A>&gt;     
+<SPAN CLASS="keyword">void</SPAN> <A CLASS="documented" HREF="#close_convenience">close</A>(T&amp; t);
+              
+<SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> <A CLASS="documented" HREF="#template_params_devices">T</A>&gt;     
+<SPAN CLASS="keyword">void</SPAN> <A CLASS="documented" HREF="#close_device">close</A>(T&amp; t, std::ios_base::openmode which);
+
+<SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> <A CLASS="documented" HREF="#template_params_filters">T</A>, <SPAN CLASS="keyword">typename</SPAN> <A CLASS="documented" HREF="#template_params_filters">Device</A>&gt;
+<SPAN CLASS="keyword">void</SPAN> <A CLASS="documented" HREF="#close_filter">close</A>(T&amp; t, Device&amp; next, std::ios_base::openmode which);
+
+} } <SPAN CLASS="comment">// End namespace boost::io</SPAN></PRE>
+
+
+<A NAME="close_convenience"></A>
+<H3>函数模板 <CODE>close</CODE> — 便利函数</H3>
+
+<A NAME="template_params"></A>
+<H4>模板参数</H4>
+
+<TABLE STYLE="margin-left:2em" BORDER=0 CELLPADDING=2>
+<TR>
+    <TR>
+        <TD VALIGN="top"><I>T</I></TD><TD WIDTH="2em" VALIGN="top">-</TD>
+        <TD>某种 <A HREF="../guide/concepts.html#device_concepts">设备</A> 概念的模型.</TR>
+</TABLE>
+
+<H4>语义</H4>
+
+<PRE CLASS="broken_ie"><SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> T&gt;     
+<SPAN CLASS="keyword">void</SPAN> <A CLASS="documented" HREF="#close_device">close</A>(T&amp; t);</PRE>
+
+<P> <CODE>close</CODE> 的这个重载先调用 <CODE>close(t, std::ios_base::in)</CODE> 再调用 <CODE>close(t, std::ios_base::out)</CODE>. 它确保 <CODE>t</CODE> 被正确关闭, 无论 <A HREF="../guide/modes.html">模式</A> 或 <CODE>t</CODE> 如何. <A NAME="close_device"></A>
+<H3>函数模板 <CODE>close</CODE> — 设备的关闭通知</H3>
+
+<A NAME="template_params_devices"></A>
+<H4>模板参数</H4>
+
+<TABLE STYLE="margin-left:2em" BORDER=0 CELLPADDING=2>
+<TR>
+    <TR>
+        <TD VALIGN="top"><I>T</I></TD><TD WIDTH="2em" VALIGN="top">-</TD>
+        <TD>某种 <A HREF="../guide/concepts.html#device_concepts">设备</A> 概念的模型.</TR>
+</TABLE>
+
+<H4>语义</H4>
+
+<PRE CLASS="broken_ie"><SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> T&gt;     
+<SPAN CLASS="keyword">void</SPAN> <A CLASS="documented" HREF="#close_device">close</A>(T&amp; t, std::ios_base::openmode which);</PRE>
+
+<P>若 <CODE>t</CODE> 是 <A HREF="../guide/filtering_streams.html">过滤流或流缓冲</A>, 则 <CODE>close</CODE> 会调用 <A HREF="../classes/filtering_stream.html#pop"><CODE>pop</CODE></A> — 条件是 <CODE>t</CODE> 为 <A HREF="../classes/filtering_streambuf.html#is_complete">完整</A>. 其语义取决于其 <A HREF="../guide/traits.html#category">类别</A>, 如下:</P>
+
+<TABLE STYLE="margin-left:2em" BORDER=1 CELLPADDING=4>
+    <TR><TH><CODE>category&lt;T&gt;::type</CODE></TH><TH>语义</TH></TR>
+    <TR>
+        <TD VALIGN="top">可转换为 <A HREF="../guide/modes.html#input"><CODE>input</CODE></A> 但不可转换为 <A HREF="../guide/modes.html#output"><CODE>output</CODE></A></TD>
+        <TD>调用 <CODE>t.pop()</CODE> — 若 <code>t</CODE> 完整且 which == ios_base::in</CODE></TD>
+    </TR>
+    <TR>
+        <TD VALIGN="top">otherwise</TD>
+        <TD>调用 <CODE>t.pop()</CODE> — 若 <code>t</CODE> 完整且 <CODE>which == ios_base::out</CODE></TD>
+    </TR>
+</TABLE>
+
+<P>对于非过滤流或流缓冲的设备, <CODE>close</CODE> 的语义取决于设备 <CODE>T</CODE> 的 <A HREF="../guide/traits.html#category">类别</A>, 如下:</P>
+
+<TABLE STYLE="margin-left:2em" BORDER=1 CELLPADDING=4>
+    <TR><TH><CODE>category&lt;T&gt;::type</CODE></TH><TH>语义</TH></TR>
+    <TR>
+        <TD VALIGN="top">不可转换为 <A HREF="../guide/traits.html#category_tags"><CODE>closable_tag</CODE></A></TD>
+        <TD>调用 <A HREF="flush.html"><CODE>flush</CODE></A></TD>
+    </TR>
+    <TR>
+        <TD VALIGN="top">可转换为 <A HREF="../guide/traits.html#category_tags"><CODE>closable_tag</CODE></A> 与 <A HREF="../guide/modes.html#bidirectional"><CODE>bidirectional</CODE></A></A></TD>
+        <TD>调用 <CODE>t.close(which)</CODE></TD>
+    </TR>
+    <TR>
+        <TD VALIGN="top">可转换为 <A HREF="../guide/traits.html#category_tags"><CODE>closable_tag</CODE></A> 与 <A HREF="../guide/modes.html#input"><CODE>input</CODE></A>, 但不可转换为 <A HREF="../guide/modes.html#output"><CODE>output</CODE></A></TD>
+        <TD>调用 <CODE>t.close()</CODE> — 若 <CODE>which == ios_base::in</CODE></TD>
+    </TR>
+    <TR>
+        <TD VALIGN="top">可转换为 <A HREF="../guide/traits.html#category_tags"><CODE>closable_tag</CODE></A> 与 <A HREF="../guide/modes.html#input"><CODE>output</CODE></A>, 但不可转换为 <A HREF="../guide/modes.html#bidirectional"><CODE>bidirectional</CODE></A></TD>
+        <TD>调用 <CODE>t.close()</CODE> — 若 <CODE>which == ios_base::out</CODE></TD>
+    </TR>
+</TABLE>
+
+<P>简而言之:<UL>
+    <LI CLASS="square">若 <CODE>T</CODE> 不满足 <A HREF="../concepts/closable.html">Closable</A>, 则 <CODE>close</CODE> 调用 <A HREF="flush.html"><CODE>flush</CODE></A>.<LI CLASS="square">若 <CODE>T</CODE> 满足 <A HREF="../concepts/closable.html">Closable</A> 且控制两个相互独立的序列, 则 <CODE>close</CODE> 委托给成员函数 <CODE>close</CODE>, 该函数接受单个 <CODE>openmode</CODE> 参数.<LI CLASS="square">否则, <CODE>close</CODE> 委托给不接受参数的成员函数 <CODE>close</CODE>, 但仅当其 <CODE>openmode</CODE> 参数与 <CODE>T</CODE> 的模式一致时.</UL>
+
+<P>最后一个条件防止控制单个序列的设备被连续关闭两次.</P>
+
+<P><B>注意:</B> 从 Boost 1.35 开始, 以 <CODE>openmode</CODE> (<CODE>std::ios_base::in</CODE> 或 <CODE>std::ios_base::out</CODE> 以外) 调用此函数已被<B>弃用</B>. 要一次关闭两个序列, 请使用 <PRE>close(t)</PRE> 而非 <PRE>close(t, std::ios_base::in | std::ios_base::out)</PRE></P>
+
+<A NAME="close_filter"></A>
+<H3>函数模板 <CODE>close</CODE> — 过滤器的关闭通知</H3>
+
+<A NAME="template_params_filters"></A>
+<H4>模板参数</H4>
+
+<TABLE STYLE="margin-left:2em" BORDER=0 CELLPADDING=2>
+<TR>
+    <TR>
+        <TD VALIGN="top"><I>T</I></TD><TD WIDTH="2em" VALIGN="top">-</TD>
+        <TD>某种 <A HREF="../guide/concepts.html#filter_concepts">Filter</A> 概念的模型</TD>
+    </TR>
+    <TR>
+        <TD VALIGN="top"><I>Device</I></TD><TD WIDTH="2em" VALIGN="top">-</TD>
+        <TD>一种 <A HREF="../concepts/blocking.html">Blocking</A> 的 <A HREF="../concepts/device.html">设备</A>, 其 <A HREF="../guide/modes.html">模式</A> 细化 <CODE>T</CODE> 的模式.</TD>
+    </TR>
+</TABLE>
+
+<H4>语义</H4>
+
+<PRE CLASS="broken_ie"><SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> T, <SPAN CLASS="keyword">typename</SPAN> Device&gt;
+<SPAN CLASS="keyword">void</SPAN> close(T&amp; t, Device&amp; next, std::ios_base::openmode which);</PRE>
+
+<P>对于过滤器类型, <CODE>close</CODE> 的语义取决于类型 <CODE>T</CODE> 的 <A HREF="../guide/traits.html#category">类别</A>, 如下:</P>
+
+<TABLE STYLE="margin-left:2em" BORDER=1 CELLPADDING=4>
+    <TR><TH><CODE>category&lt;T&gt;::type</CODE></TH><TH>语义</TH></TR>
+    <TR>
+        <TD VALIGN="top">不可转换为 <A HREF="../guide/traits.html#category_tags"><CODE>closable_tag</CODE></A></TD>
+        <TD>调用 <A HREF="flush.html"><CODE>flush</CODE></A></TD>
+    </TR>
+    <TR>
+        <TD VALIGN="top">可转换为 <A HREF="../guide/traits.html#category_tags"><CODE>closable_tag</CODE></A> 与 <A HREF="../guide/modes.html#bidirectional"><CODE>bidirectional</CODE></A></A></TD>
+        <TD>调用 <CODE>t.close(next, which)</CODE></TD>
+    </TR>
+    <TR>
+        <TD VALIGN="top">可转换为 <A HREF="../guide/traits.html#category_tags"><CODE>closable_tag</CODE></A> 与 <A HREF="../guide/modes.html#input"><CODE>input</CODE></A>, 但不可转换为 <A HREF="../guide/modes.html#output"><CODE>output</CODE></A></TD>
+        <TD>调用 <CODE>t.close(next)</CODE> — 若 <CODE>which == ios_base::in</CODE></TD>
+    </TR>
+    <TR>
+        <TD VALIGN="top">可转换为 <A HREF="../guide/traits.html#category_tags"><CODE>closable_tag</CODE></A> 与 <A HREF="../guide/modes.html#input"><CODE>output</CODE></A>, 但不可转换为 <A HREF="../guide/modes.html#bidirectional"><CODE>bidirectional</CODE></A></TD>
+        <TD>调用 <CODE>t.close(next)</CODE> — 若 <CODE>which == ios_base::out</CODE></TD>
+    </TR>
+</TABLE>
+
+<P>简而言之:<UL>
+    <LI CLASS="square">若 <CODE>T</CODE> 不满足 <A HREF="../concepts/closable.html">Closable</A>, 则 <CODE>close</CODE> 调用 <A HREF="flush.html"><CODE>flush</CODE></A>.<LI CLASS="square">若 <CODE>T</CODE> 满足 <A HREF="../concepts/closable.html">Closable</A> 且控制两个相互独立的序列, 则 <CODE>close</CODE> 委托给成员函数 <CODE>close</CODE>, 该函数接受 <CODE>openmode</CODE> 与流缓冲参数.<LI CLASS="square">否则, <CODE>close</CODE> 委托给接受单个流缓冲参数的成员函数 <CODE>close</CODE>, 但仅当其 <CODE>openmode</CODE> 参数与 <CODE>T</CODE> 的模式一致时.</UL>
+
+<P>最后一个条件防止控制单个序列的过滤器被连续关闭两次.</P>
+
+<P><B>注意:</B> 从 Boost 1.35 开始, 以 <CODE>openmode</CODE> (<CODE>std::ios_base::in</CODE> 或 <CODE>std::ios_base::out</CODE> 以外) 调用此函数已被<B>弃用</B>.</P>
+
+<!-- End Footnotes -->
+
+<HR>
+
+<P>
+<A CLASS='footnote_ref' NAME='note_1' HREF="#note_1_ref"><SUP>[1]</SUP></A>对于 <CODE>pop</CODE>, 可以通过调用成员函数 <CODE>set_auto_close</CODE> 并传入参数 <CODE>false</CODE> 来禁用此行为. 例如参见 <A HREF="../classes/filtering_stream.html#set_auto_close"><CODE>filtering_stream::set_auto_close</CODE></A>.</P>
+
+<!-- Begin Footnotes -->
+
+<!-- Begin Footer -->
+
+<HR>
+
+<P CLASS="copyright">© 版权所有 2008 <a href="http://www.coderage.com/" target="_top">CodeRage, LLC</a><br/>© 版权所有 2004-2007 <a href="https://www.boost.org/users/people/jonathan_turkanis.html" target="_top">Jonathan Turkanis</a></P>
+<P CLASS="copyright">按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <A HREF="http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</A>)</P>
+
+<!-- End Footer -->
+
+</BODY>

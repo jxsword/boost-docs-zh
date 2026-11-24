@@ -1,0 +1,826 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0.1 Transitional//EN">
+
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+<title>Boost.MultiIndex 文档 - 教程 - 基础</title>
+<link rel="stylesheet" href="../style.css" type="text/css">
+<link rel="start" href="../index.html">
+<link rel="prev" href="index.html">
+<link rel="up" href="index.html">
+<link rel="next" href="indices.html">
+</head>
+
+<body>
+<h1><img src="../../../../boost.png" alt="boost.png (6897 字节)" align=
+"middle" width="277" height="86">Boost.MultiIndex 教程: 基础</h1>
+
+<div class="prev_link"><a href="index.html"><img src="../prev.gif" alt="Boost.MultiIndex 教程" border="0"><br>Boost.MultiIndex 教程</a></div>
+<div class="up_link"><a href="index.html"><img src="../up.gif" alt="Boost.MultiIndex 教程" border="0"><br>Boost.MultiIndex 教程</a></div>
+<div class="next_link"><a href="indices.html"><img src="../next.gif" alt="索引类型" border="0"><br>索引类型</a></div><br clear="all" style="clear: all;">
+
+<hr>
+
+<h2>目录</h2>
+
+<ul>
+  <li><a href="#intro">引言</a>
+    <ul>
+      <li><a href="#multiple_sort">单个集合上的多重排序</a></li>
+      <li><a href="#list_fast_lookup">支持快速查找的双向列表</a></li>
+    </ul>
+  </li>
+  <li><a href="#index_spec">索引指定</a></li>
+  <li><a href="#tagging">打标签</a></li>
+  <li><a href="#iterator_access">迭代器访问</a></li>
+  <li><a href="#index_types">索引类型</a>
+    <ul>
+      <li><a href="#ord_indices">有序索引</a>
+        <ul>
+          <li><a href="#unique_non_unique">唯一与非唯一变体</a></li>
+          <li><a href="#ord_spec">规定</a></li>
+          <li><a href="#key_extraction">键提取</a></li>
+          <li><a href="#comparison_predicates">比较谓词</a></li>
+          <li><a href="#special_lookup">特殊查找操作</a></li>
+          <li><a href="#range">区间的获取</a></li>
+          <li><a href="#ord_updating">更新</a></li>
+        </ul>
+      </li>
+      <li><a href="#seq_indices">序列索引</a>
+        <ul>
+          <li><a href="#seq_spec">规定</a></li>
+          <li><a href="#list_ops">列表操作</a></li>
+          <li><a href="#seq_updating">更新</a></li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li><a href="#projection">迭代器的投影</a></li>
+  <li><a href="#complexity">复杂度与异常安全性</a></li>
+</ul>
+
+<h2><a name="intro">引言</a></h2>
+
+<p>我们通过研究两个典型用例来介绍 Boost.MultiIndex 的主要概念.</p>
+
+<h3><a name="multiple_sort">单个集合上的多重排序</a></h3>
+
+<p>STL set 与 multiset 是长度可变的容器, 其中元素按给定的比较谓词高效排序. 当程序员希望按照另一种排序准则高效地排序与查找元素时, 这些容器类在功能上有所不足. 例如考虑:</p>
+
+<blockquote><pre>
+<span class=keyword>struct</span> <span class=identifier>employee</span>
+<span class=special>{</span>
+  <span class=keyword>int</span>         <span class=identifier>id</span><span class=special>;</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span> <span class=identifier>name</span><span class=special>;</span>
+
+  <span class=identifier>employee</span><span class=special>(</span><span class=keyword>int</span> <span class=identifier>id</span><span class=special>,</span><span class=keyword>const</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&amp;</span> <span class=identifier>name</span><span class=special>):</span><span class=identifier>id</span><span class=special>(</span><span class=identifier>id</span><span class=special>),</span><span class=identifier>name</span><span class=special>(</span><span class=identifier>name</span><span class=special>){}</span>
+
+  <span class=keyword>bool</span> <span class=keyword>operator</span><span class=special>&lt;(</span><span class=keyword>const</span> <span class=identifier>employee</span><span class=special>&amp;</span> <span class=identifier>e</span><span class=special>)</span><span class=keyword>const</span><span class=special>{</span><span class=keyword>return</span> <span class=identifier>id</span><span class=special>&lt;</span><span class=identifier>e</span><span class=special>.</span><span class=identifier>id</span><span class=special>;}</span>
+<span class=special>};</span>
+</pre></blockquote>
+
+<p>每个员工的 ID 唯一这一事实反映在 <code>operator&lt;</code> 的定义方式上, 因此存储 <code>employee</code> 的自然数据结构就是一个 <code>std::set&lt;employee></code>. 然而, 若想按字母顺序打印所有员工的列表, 可行的方案在存储空间、复杂度或维护便利性方面可能有缺点:<ul>
+<li>把员工集合复制到 vector 或类似容器中, 并用依赖于 <code>employee::name</code> 的比较仿函数对其排序.<li>维护一个指向集合元素的次级数据结构, 按名称适当地排序.</ul> 其中, 大概第二种方案会被多数关心效率的程序员采纳, 但它带来了令人头疼的负担: 保持两个结构同步. 若还要求代码具备异常安全性, 这种构造很容易变得无法维护. </p>
+
+<p>Boost.MultiIndex 提供了 <a href="#ord_indices"><i>有序索引</i></a>, 它按特定的键对元素排序, 旨在帮助需要元素序列且其中 <i>不止一个</i> 排序准则相关的程序员. 我们通过定义一个由多个有序索引构成的 <code>multi_index_container</code> 实例化来做到这一点: 每个索引单独来看, 其行为很像一个有序的 <code>std::set</code> (或 <code>std::multiset</code>), 同时整个数据结构的总体完整性得以保持. 我们的示例问题因此可以用 Boost.MultiIndex 如下解决:</p>
+
+<blockquote><pre>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index_container</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index</span><span class=special>/</span><span class=identifier>ordered_index</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index</span><span class=special>/</span><span class=identifier>identity</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index</span><span class=special>/</span><span class=identifier>member</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+
+<span class=comment>// define a multiply indexed set with indices by id and name</span>
+<span class=keyword>typedef</span> <span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=identifier>employee</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=comment>// sort by employee::operator&lt;</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>&gt;</span> <span class=special>&gt;,</span>
+    
+    <span class=comment>// sort by less&lt;string&gt; on name</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span><span class=identifier>member</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>,</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>,&amp;</span><span class=identifier>employee</span><span class=special>::</span><span class=identifier>name</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+  <span class=special>&gt;</span> 
+<span class=special>&gt;</span> <span class=identifier>employee_set</span><span class=special>;</span>
+
+<span class=keyword>void</span> <span class=identifier>print_out_by_name</span><span class=special>(</span><span class=keyword>const</span> <span class=identifier>employee_set</span><span class=special>&amp;</span> <span class=identifier>es</span><span class=special>)</span>
+<span class=special>{</span>
+  <span class=comment>// get a view to index #1 (name)</span>
+  <span class=keyword>const</span> <span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>nth_index</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;::</span><span class=identifier>type</span><span class=special>&amp;</span> <span class=identifier>name_index</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;();</span>
+  <span class=comment>// use name_index as a regular std::set</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>copy</span><span class=special>(</span>
+    <span class=identifier>name_index</span><span class=special>.</span><span class=identifier>begin</span><span class=special>(),</span><span class=identifier>name_index</span><span class=special>.</span><span class=identifier>end</span><span class=special>(),</span>
+    <span class=identifier>std</span><span class=special>::</span><span class=identifier>ostream_iterator</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>&gt;(</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>cout</span><span class=special>));</span>
+<span class=special>}</span>
+</pre></blockquote>
+
+<p>不像 STL 关联容器那样只接受单个比较谓词类型, <code>multi_index_container</code> 被传入一个索引规格的 <a href="../reference/multi_index_container.html#multi_index_container">列表</a> (<code>indexed_by</code>), 其中每个规格诱导相应的索引. 索引通过 <a href="../reference/multi_index_container.html#index_retrieval"><code>get</code></a><code>&lt;N>()</code> 访问, 其中 <i>N</i> 的取值范围是从 0 到比较谓词数目减一. 索引 #0 的功能可以直接从 <code>multi_index_container</code> 对象访问, 无需使用 <code>get&lt;0>()</code>: 例如, <code>es.begin()</code> 等价于 <code>es.get&lt;0>().begin()</code>.</p>
+
+<p>注意 <code>get</code> 返回的是指向该索引的 <i>引用</i>, 而不是索引对象. 索引不能作为独立于其所属容器的对象来构造, 因此以下</p>
+
+<blockquote><pre>
+<span class=comment>// Wrong: we forgot the &amp; after employee_set::nth_index&lt;1&gt;::type</span>
+<span class=keyword>const</span> <span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>nth_index</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;::</span><span class=identifier>type</span> <span class=identifier>name_index</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;();</span>
+</pre></blockquote>
+
+<p>无法编译, 因为它试图构造索引对象 <code>name_index</code>. 这是用户代码中常见的错误来源.</p>
+
+<h3><a name="list_fast_lookup">支持快速查找的双向列表</a></h3>
+
+<p>这个研究用例让我们得以引入所谓的 <a href="#seq_indices"><i>序列索引</i></a>, 以及它们如何与有序索引交互以构造强大的容器. 假设我们把一段文本解析成单词并存储在一个列表中:</p>
+
+<blockquote><pre>
+<span class=keyword>typedef</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>list</span><span class=special>&lt;</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&gt;</span> <span class=identifier>text_container</span><span class=special>;</span>
+
+<span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span> <span class=identifier>text</span><span class=special>=</span>
+  <span class=string>&quot;Alice was beginning to get very tired of sitting by her sister on the &quot;</span>
+  <span class=string>&quot;bank, and of having nothing to do: once or twice she had peeped into the &quot;</span>
+  <span class=string>&quot;book her sister was reading, but it had no pictures or conversations in &quot;</span>
+  <span class=string>&quot;it, 'and what is the use of a book,' thought Alice 'without pictures or &quot;</span>
+  <span class=string>&quot;conversation?'&quot;</span><span class=special>;</span>
+
+<span class=comment>// feed the text into the list</span>
+<span class=identifier>text_container</span> <span class=identifier>tc</span><span class=special>;</span>
+<span class=identifier>boost</span><span class=special>::</span><span class=identifier>tokenizer</span><span class=special>&lt;</span><span class=identifier>boost</span><span class=special>::</span><span class=identifier>char_separator</span><span class=special>&lt;</span><span class=keyword>char</span><span class=special>&gt;</span> <span class=special>&gt;</span> <span class=identifier>tok</span>
+  <span class=special>(</span><span class=identifier>text</span><span class=special>,</span><span class=identifier>boost</span><span class=special>::</span><span class=identifier>char_separator</span><span class=special>&lt;</span><span class=keyword>char</span><span class=special>&gt;(</span><span class=string>&quot; \t\n.,;:!?'\&quot;-&quot;</span><span class=special>));</span>
+<span class=identifier>std</span><span class=special>::</span><span class=identifier>copy</span><span class=special>(</span><span class=identifier>tok</span><span class=special>.</span><span class=identifier>begin</span><span class=special>(),</span><span class=identifier>tok</span><span class=special>.</span><span class=identifier>end</span><span class=special>(),</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>back_inserter</span><span class=special>(</span><span class=identifier>tc</span><span class=special>));</span>
+</pre></blockquote>
+
+<p>如果想统计某个单词在文本中的出现次数, 我们会求助于 <code>std::count</code>:</p>
+
+<blockquote><pre>
+<span class=identifier>std</span><span class=special>::</span><span class=identifier>size_t</span> <span class=identifier>occurrences</span><span class=special>(</span><span class=keyword>const</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&amp;</span> <span class=identifier>word</span><span class=special>)</span>
+<span class=special>{</span>
+  <span class=keyword>return</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>count</span><span class=special>(</span><span class=identifier>tc</span><span class=special>.</span><span class=identifier>begin</span><span class=special>(),</span><span class=identifier>tc</span><span class=special>.</span><span class=identifier>end</span><span class=special>(),</span><span class=identifier>word</span><span class=special>);</span>
+<span class=special>}</span>
+</pre></blockquote>
+
+<p>但 <code>occurrences</code> 的这一实现以线性时间运行, 对大量文本而言可能无法接受. 类似地, 其他操作 (如删除选定的单词) 在 <code>std::list</code> 上执行起来代价过高:</p>
+
+<blockquote><pre>
+<span class=keyword>void</span> <span class=identifier>delete_word</span><span class=special>(</span><span class=keyword>const</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&amp;</span> <span class=identifier>word</span><span class=special>)</span>
+<span class=special>{</span>
+  <span class=identifier>tc</span><span class=special>.</span><span class=identifier>remove</span><span class=special>(</span><span class=identifier>word</span><span class=special>);</span> <span class=comment>// scans the entire list looking for word</span>
+<span class=special>}</span>
+</pre></blockquote>
+
+<p>当性能成为考虑因素时, 我们需要一个额外的数据结构来对 <code>tc</code> 中的元素建立索引, 大概按字母顺序. Boost.MultiIndex 正是通过序列索引与有序索引的结合来做到这一点:</p>
+
+<blockquote><pre>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index_container</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index</span><span class=special>/</span><span class=identifier>sequenced_index</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index</span><span class=special>/</span><span class=identifier>ordered_index</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index</span><span class=special>/</span><span class=identifier>identity</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+
+<span class=comment>// define a multi_index_container with a list-like index and an ordered index</span>
+<span class=keyword>typedef</span> <span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>sequenced</span><span class=special>&lt;&gt;,</span> <span class=comment>// list-like index</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&gt;</span> <span class=special>&gt;</span> <span class=comment>// words by alphabetical order</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>text_container</span><span class=special>;</span>
+
+<span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span> <span class=identifier>text</span><span class=special>=...</span>
+
+<span class=comment>// feed the text into the list</span>
+<span class=identifier>text_container</span> <span class=identifier>tc</span><span class=special>;</span>
+<span class=identifier>boost</span><span class=special>::</span><span class=identifier>tokenizer</span><span class=special>&lt;</span><span class=identifier>boost</span><span class=special>::</span><span class=identifier>char_separator</span><span class=special>&lt;</span><span class=keyword>char</span><span class=special>&gt;</span> <span class=special>&gt;</span> <span class=identifier>tok</span>
+  <span class=special>(</span><span class=identifier>text</span><span class=special>,</span><span class=identifier>boost</span><span class=special>::</span><span class=identifier>char_separator</span><span class=special>&lt;</span><span class=keyword>char</span><span class=special>&gt;(</span><span class=string>&quot; \t\n.,;:!?'\&quot;-&quot;</span><span class=special>));</span>
+<span class=identifier>std</span><span class=special>::</span><span class=identifier>copy</span><span class=special>(</span><span class=identifier>tok</span><span class=special>.</span><span class=identifier>begin</span><span class=special>(),</span><span class=identifier>tok</span><span class=special>.</span><span class=identifier>end</span><span class=special>(),</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>back_inserter</span><span class=special>(</span><span class=identifier>tc</span><span class=special>));</span>
+</pre></blockquote>
+
+<p>到目前为止, 用 <code>multi_index_container</code> 替代 <code>std::list</code> 还看不出任何优势. 把文本插入容器的代码没有改变, 因为序列索引提供了与 <code>std::list</code> 类似的接口 (无需通过 <code>get&lt;0>()</code> 显式访问该索引, 因为 <code>multi_index_container</code> 继承了索引 #0 的功能). 但额外规定一个有序索引使我们能以高效得多的方式实现 <code>occurrences</code> 与 <code>delete_word</code>:</p>
+
+<blockquote><pre>
+<span class=identifier>std</span><span class=special>::</span><span class=identifier>size_t</span> <span class=identifier>occurrences</span><span class=special>(</span><span class=keyword>const</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&amp;</span> <span class=identifier>word</span><span class=special>)</span>
+<span class=special>{</span>
+  <span class=comment>// get a view to index #1</span>
+  <span class=identifier>text_container</span><span class=special>::</span><span class=identifier>nth_index</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;::</span><span class=identifier>type</span><span class=special>&amp;</span> <span class=identifier>sorted_index</span><span class=special>=</span><span class=identifier>tc</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;();</span>
+
+  <span class=comment>// use sorted_index as a regular std::set</span>
+  <span class=keyword>return</span> <span class=identifier>sorted_index</span><span class=special>.</span><span class=identifier>count</span><span class=special>(</span><span class=identifier>word</span><span class=special>);</span>
+<span class=special>}</span>
+
+<span class=keyword>void</span> <span class=identifier>delete_word</span><span class=special>(</span><span class=keyword>const</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&amp;</span> <span class=identifier>word</span><span class=special>)</span>
+<span class=special>{</span>
+  <span class=comment>// get a view to index #1</span>
+  <span class=identifier>text_container</span><span class=special>::</span><span class=identifier>nth_index</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;::</span><span class=identifier>type</span><span class=special>&amp;</span> <span class=identifier>sorted_index</span><span class=special>=</span><span class=identifier>tc</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;();</span>
+
+  <span class=comment>// use sorted_index as a regular std::set</span>
+  <span class=identifier>sorted_index</span><span class=special>.</span><span class=identifier>erase</span><span class=special>(</span><span class=identifier>word</span><span class=special>);</span>
+<span class=special>}</span>
+</pre></blockquote>
+
+<p>现在, <code>occurrences</code> 与 <code>delete_word</code> 具有对数复杂度. 程序员可以像使用 <code>std::list</code> 那样使用索引 #0 访问文本, 而在需要对数查找时使用索引 #1.</p>
+
+<h2>
+<a name="index_spec">索引指定</a>
+</h2>
+
+<p> <code>multi_index_container</code> 实例化的索引通过 <a href="../reference/indices.html#indexed_by">
+<code>indexed_by</code></a> 构造来规定. 例如, 实例化</p>
+
+<blockquote><pre>
+<span class=keyword>typedef</span> <span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=identifier>employee</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>&gt;</span> <span class=special>&gt;,</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span><span class=identifier>member</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>,</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>,&amp;</span><span class=identifier>employee</span><span class=special>::</span><span class=identifier>name</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+  <span class=special>&gt;</span> 
+<span class=special>&gt;</span> <span class=identifier>employee_set</span><span class=special>;</span>
+</pre></blockquote>
+
+<p>由一个 <a href="#unique_non_unique">唯一有序索引</a> 与一个 <a href="#unique_non_unique">非唯一有序索引</a> 组成, 而</p>
+
+<blockquote><pre>
+<span class=keyword>typedef</span> <span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>sequenced</span><span class=special>&lt;&gt;,</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>text_container</span><span class=special>;</span>
+</pre></blockquote>
+
+<p>中我们规定了两个索引, 第一个为 <a href="#seq_indices">序列类型</a>, 第二个为非唯一的 <a href="#ord_indices">有序索引</a>. 一般地, 我们可以规定任意数目的索引: <code>indexed_by</code> 的每个实参称为一个 <a href="../reference/indices.html#index_specification"><i>索引说明符</i></a>. 依据所规定索引的类型, 相应的说明符需要额外的信息: 例如, 说明符 <code>ordered_unique</code> 与 <code>ordered_non_unique</code> 需要提供一个 <a href="#key_extraction">键提取器</a> 与一个可选的 <a href="#comparison_predicates">比较谓词</a>, 二者共同指示元素排序将如何进行.</p>
+
+<p> <code>multi_index_container</code> 实例化可以在不提供 <code>indexed_by</code> 部分的情况下声明: 此时采用默认的索引值, 使结果类型等价于一个普通的 <code>std::set</code>. 具体而言, 实例化</p>
+
+<blockquote><pre>
+<span class=identifier>multi_index_container</span><span class=special>&lt;</span><i>(element)</i><span class=special>&gt;</span>
+</pre></blockquote>
+
+<p>等价于</p>
+
+<blockquote><pre>
+<span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <i>(element)</i><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;(</span><span class=identifier>element</span><span class=special>)&gt;</span> <span class=special>&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span>
+</pre></blockquote>
+
+<h2><a name="tagging">打标签</a></h2>
+
+<p>为了取回给定 <code>multi_index_container</code> 的某个索引的 (引用), 程序员必须提供其序号, 这既麻烦又缺乏自描述性. 或者, 可以为索引指定 <i>标签</i> (C++ 类型) 作为更方便的助记符. 若提供, 标签必须作为相应索引说明符的第一个参数传递. 以下是 <code>employee_set</code> 的修订版本, 其中加入了标签:</p>
+
+<blockquote><pre>
+<span class=comment>// tags</span> 
+<span class=keyword>struct</span> <span class=identifier>name</span><span class=special>{};</span>
+
+<span class=keyword>typedef</span> <span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=identifier>employee</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>&gt;</span> <span class=special>&gt;,</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span><span class=identifier>tag</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;,</span><span class=identifier>member</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>,</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>,&amp;</span><span class=identifier>employee</span><span class=special>::</span><span class=identifier>name</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>employee_set</span><span class=special>;</span>
+</pre></blockquote>
+
+<p>标签必须通过 <a href="../reference/indices.html#tag"><code>tag</code></a> 构造传入. 任何类型都可以用作索引的标签, 尽管通常人们会选择能描述其关联索引的名称. 打标签机制使我们能写出如下表达式:</p>
+
+<blockquote><pre>
+<span class=keyword>typedef</span> <span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>index</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;::</span><span class=identifier>type</span> <span class=identifier>employee_set_by_name</span><span class=special>;</span>
+<span class=identifier>employee_set_by_name</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;().</span><span class=identifier>begin</span><span class=special>();</span>
+</pre></blockquote>
+
+<p>若未为某个索引提供标签 (如前一示例的索引 #0), 则只能按编号访问该索引. 注意存在两种不同的 <code>typedef</code>——<code>nth_index</code> 与 <code>index</code>——分别用于按编号与按标签引用索引; 例如,<ul>
+  <li><code>employee_set::nth_index&lt;1>::type</code> 是索引 #1 的类型,</li>
+  <li><code>employee_set::index&lt;name>::type</code> 是以 <code>name</code> 为标签的索引的类型 (本例中同样是索引 #1).</li>
+</ul>
+<code>get()</code> 则被重载以同时服务两种访问风格: </p>
+
+<blockquote><pre>
+<span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>index</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;::</span><span class=identifier>type</span><span class=special>&amp;</span> <span class=identifier>name_index</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;();</span>
+<span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>nth_index</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;::</span><span class=identifier>type</span><span class=special>&amp;</span> <span class=identifier>name_index2</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;();</span> <span class=comment>// same index</span>
+</pre></blockquote>
+
+<p>此外, <code>tag</code> 类模板可以为一个索引接受多个标签, 我们可以互换使用它们: 例如, 前一示例中索引 #1 的规格可以改写为持有两个不同的标签 <code>name</code> 与 <code>by_name</code>:</p>
+
+<blockquote><pre>
+<span class=comment>// tags</span>
+<span class=keyword>struct</span> <span class=identifier>name</span><span class=special>{};</span>
+<span class=keyword>struct</span> <span class=identifier>by_name</span><span class=special>{};</span>
+
+<span class=keyword>typedef</span> <span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=special>...</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span>
+      <span class=identifier>tag</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>,</span><span class=identifier>by_name</span><span class=special>&gt;,</span>
+      <span class=identifier>member</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>,</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>,&amp;</span><span class=identifier>employee</span><span class=special>::</span><span class=identifier>name</span><span class=special>&gt;</span>
+    <span class=special>&gt;</span>
+  <span class=special>...</span>
+<span class=special>&gt;</span> <span class=identifier>employee_set</span><span class=special>;</span>
+</pre></blockquote>
+
+<h2><a name="iterator_access">迭代器访问</a></h2>
+
+<p> <code>multi_index_container</code> 的每个索引使用自己的迭代器类型, 与其他索引的迭代器不同. 按照 STL 容器的规则, 这些迭代器被定义为索引的嵌套类型:</p>
+
+<blockquote><pre>
+<span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>nth_index</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;::</span><span class=identifier>type</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it</span><span class=special>=</span>
+  <span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;().</span><span class=identifier>find</span><span class=special>(</span><span class=string>&quot;Judy Smith&quot;</span><span class=special>);</span>
+</pre></blockquote>
+
+<p>通过用户自定义的 <code>typedef</code> 可以使这类表达式更具可读性:</p>
+
+<blockquote><pre>
+<span class=keyword>typedef</span> <span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>nth_index</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;::</span><span class=identifier>type</span> <span class=identifier>employee_set_by_name</span><span class=special>;</span>
+<span class=identifier>employee_set_by_name</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it</span><span class=special>=</span>
+  <span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;().</span><span class=identifier>find</span><span class=special>(</span><span class=string>&quot;Judy Smith&quot;</span><span class=special>);</span>
+</pre></blockquote>
+
+<p>每个索引提供的迭代器都是 <i>常量</i> 的, 即它们所指向的元素不能被直接修改. 这遵循有序索引的 <code>std::set</code> 接口, 但对其他类型 (如以 <code>std::list</code> 为模型的序列索引, 在那里没有这一限制) 可能令人意外. 这种看似奇怪的行为是由 <code>multi_index_container</code> 的工作方式所要求的; 若允许随意修改元素, 我们可能会在 <code>multi_index_container</code> 的有序索引中引入不一致, 而容器对此毫无察觉. 元素的修改应通过任一索引上的 <a href="#ord_updating">更新操作</a> 妥善进行.</p>
+
+<h2>
+<a name="index_types">索引类型</a>
+</h2>
+
+<p>目前, Boost.MultiIndex 提供以下索引类型:<ul>
+  <li>有序索引像 <code>std::set</code> 那样对元素排序并提供类似的接口. 有 <i>唯一</i> 与 <i>非唯一</i> 变体: 前者不允许重复, 后者允许 (如 <code>std::multiset</code>).</li>
+  <li>排名索引是有序索引的一个变种, 额外提供基于元素 <i>排名</i> (它们在索引中所占的数值位置) 的查询与访问能力.</li>
+  <li>序列索引以 <code>std::list</code> 的语义与接口为模型: 它们像双向列表那样排列元素.</li>
+  <li>哈希索引通过散列技术提供对元素的快速访问, 方式类似于无序关联容器 <code>std::unordered_set</code> (不允许重复时) 与 <code>std::unordered_multiset</code> (允许重复时).</li>
+  <li>随机访问索引提供与序列索引类似的接口, 另外还具备随机访问迭代器和按位置访问元素的能力.</li>
+</ul> <a href="#intro">引言</a> 一节中的示例演练了有序索引与序列索引——它们最为常用; 其他类型的索引在教程的 <a href="indices.html">索引类型</a> 一节中介绍. </p>
+
+<h3>
+<a name="ord_indices">有序索引</a>
+</h3>
+
+<p>有序索引按指定的键与关联的比较谓词对 <code>multi_index_container</code> 中的元素排序. 这些索引可视为标准容器 <code>std::set</code> 的对应物, 实际上它们的确复刻了其接口, 只是因 Boost.MultiIndex 的一般约束而有若干细微差别.</p>
+
+<h4>
+<a name="unique_non_unique">唯一与非唯一变体</a>
+</h4>
+
+<p>有序索引分为 <i>唯一</i> (禁止两个元素具有相同的键值) 与 <i>非唯一</i> (允许重复) 两类. 再看一次定义</p>
+
+<blockquote><pre>
+<span class=keyword>typedef</span> <span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=identifier>employee</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>&gt;</span> <span class=special>&gt;,</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span><span class=identifier>member</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>,</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>,&amp;</span><span class=identifier>employee</span><span class=special>::</span><span class=identifier>name</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+  <span class=special>&gt;</span> 
+<span class=special>&gt;</span> <span class=identifier>employee_set</span><span class=special>;</span>
+</pre></blockquote>
+
+<p>在这个 <code>multi_index_container</code> 实例化中, 第一个索引应视为唯一的 (因为 ID 对每个员工是独占的), 因此用 <code>ordered_unique</code> 声明; 而第二个索引是非唯一的 (比如同一家公司可能雇用两个 John Smith), 通过使用 <code>ordered_non_unique</code> 来规定.</p>
+
+<p>有序索引的唯一/非唯一分类影响着哪些元素允许插入给定的 <code>multi_index_container</code>; 简言之, 唯一有序索引模仿 <code>std::set</code> 的行为, 而非唯一有序索引类似于 <code>std::multiset</code>. 例如, 一个 <code>employee_set</code> 可以容纳对象 <code>employee(0,"George Brown")</code> 与 <code>employee(1,"George Brown")</code>, 但不会接受插入一个 ID 与先前插入的某个员工相同的 <code>employee</code> 对象.</p>
+
+<p>可以规定多于一个唯一索引. 例如, 若我们扩充 <code>employee</code> 使其包含社会保险号的额外成员——它被合理地视为唯一——以下定义体现了这一设计:</p>
+
+<blockquote><pre>
+<span class=keyword>struct</span> <span class=identifier>employee</span>
+<span class=special>{</span>
+  <span class=keyword>int</span>         <span class=identifier>id</span><span class=special>;</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span> <span class=identifier>name</span><span class=special>;</span>
+  <span class=keyword>int</span>         <span class=identifier>ssnumber</span><span class=special>;</span>
+
+  <span class=identifier>employee</span><span class=special>(</span><span class=keyword>int</span> <span class=identifier>id</span><span class=special>,</span><span class=keyword>const</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&amp;</span> <span class=identifier>name</span><span class=special>,</span><span class=keyword>int</span> <span class=identifier>ssnumber</span><span class=special>):</span>
+    <span class=identifier>id</span><span class=special>(</span><span class=identifier>id</span><span class=special>),</span><span class=identifier>name</span><span class=special>(</span><span class=identifier>name</span><span class=special>),</span><span class=identifier>ssnumber</span><span class=special>(</span><span class=identifier>ssnumber</span><span class=special>){}</span>
+
+  <span class=keyword>bool</span> <span class=keyword>operator</span><span class=special>&lt;(</span><span class=keyword>const</span> <span class=identifier>employee</span><span class=special>&amp;</span> <span class=identifier>e</span><span class=special>)</span><span class=keyword>const</span><span class=special>{</span><span class=keyword>return</span> <span class=identifier>id</span><span class=special>&lt;</span><span class=identifier>e</span><span class=special>.</span><span class=identifier>id</span><span class=special>;}</span>
+<span class=special>};</span>
+
+<span class=keyword>typedef</span> <span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=identifier>employee</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=comment>// sort by employee::operator&lt;</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>&gt;</span> <span class=special>&gt;,</span>
+    
+    <span class=comment>// sort by less&lt;string&gt; on name</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span><span class=identifier>member</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>,</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>,&amp;</span><span class=identifier>employee</span><span class=special>::</span><span class=identifier>name</span><span class=special>&gt;</span> <span class=special>&gt;,</span>
+    
+    <span class=comment>// sort by less&lt;int&gt; on ssnumber</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>member</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>,</span><span class=keyword>int</span><span class=special>,&amp;</span><span class=identifier>employee</span><span class=special>::</span><span class=identifier>ssnumber</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>employee_set</span><span class=special>;</span>
+</pre></blockquote>
+
+<h4>
+<a name="ord_spec">规定</a>
+</h4>
+
+<p> <code>indexed_by</code> 中的有序索引说明符必须符合以下语法之一:</p>
+
+<blockquote><pre>
+<span class=special>(</span><span class=identifier>ordered_unique</span> <span class=special>|</span> <span class=identifier>ordered_non_unique</span><span class=special>)
+  </span><span class=special>&lt;[</span><i>(tag)</i><span class=special>[,</span><i>(key extractor)</i><span class=special>[,</span><i>(comparison predicate)</i><span class=special>]]]&gt;</span>
+
+<span class=special>(</span><span class=identifier>ordered_unique</span> <span class=special>|</span> <span class=identifier>ordered_non_unique</span><span class=special>)</span>
+  <span class=special>&lt;[</span><i>(key extractor)</i><span class=special>[,</span><i>(comparison predicate)</i><span class=special>]]&gt;</span>
+</pre></blockquote>
+
+<p>第一个可选参数在 <a href="#tagging">标签</a> 与索引关联时使用. 下面我们简要讨论有序索引说明符的其余参数.</p>
+
+<h4>
+<a name="key_extraction">键提取</a>
+</h4>
+
+<p>有序索引规格中的第一个模板参数 (若提供标签则为第二个) 提供一个 <i>键提取</i> 谓词. 该谓词接收整个元素 (在我们的示例中, 是对 <code>employee</code> 对象的引用) 并返回执行排序所依据的那部分信息. 在多数情况下, 会出现以下两种情形之一:<ul>
+<li>整个元素充当键, 如 <code>employee_set</code> 中第一个索引的情形. 预定义的 <a href="key_extraction.html#identity"><code>identity</code></a> 谓词在此可作键提取器使用; <code>identity</code> 把作为实参传入的同一对象作为键返回.</li>
+<li>比较在元素的特定数据成员上进行; 这十分贴近关系数据库中在表的一列上建立索引的做法. Boost.MultiIndex 提供 <a href="key_extraction.html#member"><code>member</code></a>, 它把由给定指针所指定的元素成员作为键返回.</li>
+</ul> 作为示例, 再次考虑 <code>employee_set</code> 的定义. 第一个索引的规定: </p>
+
+<blockquote><pre>
+<span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+</pre></blockquote>
+
+<p>通过 <code>identity</code> 规定 <code>element</code> 对象本身充当该索引的键. 另一方面, 第二个索引中:</p>
+
+<blockquote><pre>
+<span class=identifier>ordered_non_unique</span><span class=special>&lt;</span><span class=identifier>member</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>,</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>,&amp;</span><span class=identifier>employee</span><span class=special>::</span><span class=identifier>name</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+</pre></blockquote>
+
+<p>我们用 <code>member</code> 提取 <code>name</code>——它对应 <code>employee</code> 对象的一部分. 该索引的键类型于是为 <code>std::string</code>.</p>
+
+<p>除 <code>identity</code> 与 <code>member</code> 外, Boost.MultiIndex 还提供若干其他预定义键提取器, 以及组合它们的强大方式. 键提取器也可以由用户定义. 关于本主题更详细的阐述, 请查阅教程的 <a href="key_extraction.html">键提取一节</a>.</p>
+
+<h4><a name="comparison_predicates">比较谓词</a></h4>
+
+<p>有序索引规格的最后一部分是关联的 <i>比较谓词</i>, 它必须以小于的方式排列键. 这些比较谓词与 <code>std::set</code> 等 STL 容器所用的没有区别. 默认情况下 (即未提供比较谓词时), 键类型为 <code>key_type</code> 的索引按 <code>std::less&lt;key_type></code> 对元素排序. 若需要其他比较准则, 可以在索引声明中作为附加参数指定:</p>
+
+<blockquote><pre>
+<span class=comment>// define a multiply indexed set with indices by id and by name
+// in reverse alphabetical order</span>
+<span class=keyword>typedef</span> <span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=identifier>employee</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>&gt;</span> <span class=special>&gt;,</span> <span class=comment>// as usual</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span>
+      <span class=identifier>member</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>,</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>,&amp;</span><span class=identifier>employee</span><span class=special>::</span><span class=identifier>name</span><span class=special>&gt;,</span>
+      <span class=identifier>std</span><span class=special>::</span><span class=identifier>greater</span><span class=special>&lt;</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&gt;</span>  <span class=comment>// default would be std::less&lt;std::string&gt;</span>
+    <span class=special>&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>employee_set</span><span class=special>;</span>
+</pre></blockquote>
+
+<h4><a name="special_lookup">特殊查找操作</a></h4>
+
+<p>给定的有序索引允许基于其键类型 (而非整个元素) 进行查找. 例如, 要在 <code>employee_set</code> 中查找 Veronica Cruz, 可以这样写:</p>
+
+<blockquote><pre>
+<span class=identifier>employee_set</span> <span class=identifier>es</span><span class=special>;</span>
+<span class=special>...</span>
+<span class=keyword>typedef</span> <span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>index</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;::</span><span class=identifier>type</span> <span class=identifier>employee_set_by_name</span><span class=special>;</span>
+<span class=identifier>employee_set_by_name</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;().</span><span class=identifier>find</span><span class=special>(</span><span class=string>&quot;Veronica Cruz&quot;</span><span class=special>);</span>
+</pre></blockquote>
+
+<p>另外, Boost.MultiIndex 提供接受与索引 <code>key_type</code> 不同的搜索键的查找操作——当 <code>key_type</code> 对象的创建代价高昂时, 这是一项特别有用的设施. 有序 STL 容器无法提供此功能, 这常导致不雅的变通办法: 例如考虑确定 ID 落在区间 [0,100] 内的员工这一问题. 鉴于 <code>employee_set</code> 索引 #0 的键就是 <code>employee</code> 本身, 直观的第一种写法如下:</p>
+
+<blockquote><pre>
+<span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>p0</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>lower_bound</span><span class=special>(</span><span class=identifier>employee</span><span class=special>(</span><span class=number>0</span><span class=special>,</span><span class=string>&quot;&quot;</span><span class=special>));</span>
+<span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>p1</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>upper_bound</span><span class=special>(</span><span class=identifier>employee</span><span class=special>(</span><span class=number>100</span><span class=special>,</span><span class=string>&quot;&quot;</span><span class=special>));</span>
+</pre></blockquote>
+
+<p>然而注意, <code>std::less&lt;employee></code> 实际上只取决于员工的 ID, 因此仅仅为了 ID 而创建完整的 <code>employee</code> 对象并不划算. Boost.MultiIndex 允许避免这一点: 定义一个合适的比较谓词</p>
+
+<blockquote><pre>
+<span class=keyword>struct</span> <span class=identifier>comp_id</span>
+<span class=special>{</span>
+  <span class=comment>// compare an ID and an employee</span>
+  <span class=keyword>bool</span> <span class=keyword>operator</span><span class=special>()(</span><span class=keyword>int</span> <span class=identifier>x</span><span class=special>,</span><span class=keyword>const</span> <span class=identifier>employee</span><span class=special>&amp;</span> <span class=identifier>e2</span><span class=special>)</span><span class=keyword>const</span><span class=special>{</span><span class=keyword>return</span> <span class=identifier>x</span><span class=special>&lt;</span><span class=identifier>e2</span><span class=special>.</span><span class=identifier>id</span><span class=special>;}</span>
+
+  <span class=comment>// compare an employee and an ID</span>
+  <span class=keyword>bool</span> <span class=keyword>operator</span><span class=special>()(</span><span class=keyword>const</span> <span class=identifier>employee</span><span class=special>&amp;</span> <span class=identifier>e1</span><span class=special>,</span><span class=keyword>int</span> <span class=identifier>x</span><span class=special>)</span><span class=keyword>const</span><span class=special>{</span><span class=keyword>return</span> <span class=identifier>e1</span><span class=special>.</span><span class=identifier>id</span><span class=special>&lt;</span><span class=identifier>x</span><span class=special>;}</span>
+<span class=special>};</span>
+</pre></blockquote>
+
+<p>然后这样写查找:</p>
+
+<blockquote><pre>
+<span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>p0</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>lower_bound</span><span class=special>(</span><span class=number>0</span><span class=special>,</span><span class=identifier>comp_id</span><span class=special>());</span>
+<span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>p1</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>upper_bound</span><span class=special>(</span><span class=number>100</span><span class=special>,</span><span class=identifier>comp_id</span><span class=special>());</span>
+</pre></blockquote>
+
+<p>这里我们不仅传入 ID 而不是 <code>employee</code> 对象, 还传入了一个替代的比较谓词. 一般地, 有序索引的查找操作被重载为接受 <a href="../reference/ord_indices.html#set_operations"><i>兼容排序准则</i></a>. 此语境下兼容性的准确定义见参考文档, 但粗略地说, 我们称比较谓词 <code>C1</code> 与 <code>C2</code> 兼容, 如果任何按 <code>C2</code> 排序的序列相对于 <code>C1</code> 也是有序的. 以下展示兼容谓词的一个更有趣的用法:</p>
+
+<blockquote><pre>
+<span class=comment>// sorting by name's initial</span>
+<span class=keyword>struct</span> <span class=identifier>comp_initial</span>
+<span class=special>{</span>
+  <span class=keyword>bool</span> <span class=keyword>operator</span><span class=special>()(</span><span class=keyword>char</span> <span class=identifier>ch</span><span class=special>,</span><span class=keyword>const</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&amp;</span> <span class=identifier>s</span><span class=special>)</span><span class=keyword>const</span><span class=special>{</span>
+    <span class=keyword>if</span><span class=special>(</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>empty</span><span class=special>())</span><span class=keyword>return</span> <span class=keyword>false</span><span class=special>;</span>
+    <span class=keyword>return</span> <span class=identifier>ch</span><span class=special>&lt;</span><span class=identifier>s</span><span class=special>[</span><span class=number>0</span><span class=special>];</span>
+  <span class=special>}</span>
+
+  <span class=keyword>bool</span> <span class=keyword>operator</span><span class=special>()(</span><span class=keyword>const</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&amp;</span> <span class=identifier>s</span><span class=special>,</span><span class=keyword>char</span> <span class=identifier>ch</span><span class=special>)</span><span class=keyword>const</span><span class=special>{</span>
+    <span class=keyword>if</span><span class=special>(</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>empty</span><span class=special>())</span><span class=keyword>return</span> <span class=keyword>true</span><span class=special>;</span>
+    <span class=keyword>return</span> <span class=identifier>s</span><span class=special>[</span><span class=number>0</span><span class=special>]&lt;</span><span class=identifier>ch</span><span class=special>;</span>
+  <span class=special>}</span>
+<span class=special>};</span>
+
+<span class=comment>// obtain first employee whose name begins with 'J' (ordered by name)</span>
+<span class=keyword>typedef</span> <span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>index</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;::</span><span class=identifier>type</span> <span class=identifier>employee_set_by_name</span><span class=special>;</span>
+<span class=identifier>employee_set_by_name</span><span class=special>&amp;</span> <span class=identifier>name_index</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;();</span> 
+<span class=identifier>employee_set_by_name</span><span class=special>::</span><span class=identifier>const_iterator</span> <span class=identifier>it</span><span class=special>=</span>
+  <span class=identifier>name_index</span><span class=special>.</span><span class=identifier>lower_bound</span><span class=special>(</span><span class=literal>'J'</span><span class=special>,</span><span class=identifier>comp_initial</span><span class=special>());</span>
+</pre></blockquote>
+
+<h4><a name="range">区间的获取</a></h4>
+
+<p>区间搜索 (即查找给定区间内的所有元素) 是非常频繁的操作, 可以求助于标准的 <code>lower_bound</code> 与 <code>upper_bound</code>, 不过方式笨拙. 例如, 以下代码取回 <code>multi_index_container&lt;double></code> 中位于区间 [100,200] 内的元素:</p>
+
+<blockquote><pre>
+<span class=keyword>typedef</span> <span class=identifier>multi_index_container</span><span class=special>&lt;</span><span class=keyword>double</span><span class=special>&gt;</span> <span class=identifier>double_set</span><span class=special>;</span>
+<span class=comment>// note: default template parameters resolve to
+// multi_index_container&lt;double,indexed_by&lt;unique&lt;identity&lt;double&gt; &gt; &gt; &gt;.</span>
+
+<span class=identifier>double_set</span> <span class=identifier>s</span><span class=special>;</span>
+<span class=special>...</span>
+<span class=identifier>double_set</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it0</span><span class=special>=</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>lower_bound</span><span class=special>(</span><span class=number>100.0</span><span class=special>);</span>
+<span class=identifier>double_set</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it1</span><span class=special>=</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>upper_bound</span><span class=special>(</span><span class=number>200.0</span><span class=special>);</span>
+<span class=comment>// range [it0,it1) contains the elements in [100,200]</span>
+</pre></blockquote>
+
+<p>考虑严格不等式时需要对代码作细微改动. 要取回 <i>大于</i> 100 且 <i>小于</i> 200 的元素, 代码必须改写为</p>
+
+<blockquote><pre>
+<span class=identifier>double_set</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it0</span><span class=special>=</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>upper_bound</span><span class=special>(</span><span class=number>100.0</span><span class=special>);</span>
+<span class=identifier>double_set</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it1</span><span class=special>=</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>lower_bound</span><span class=special>(</span><span class=number>200.0</span><span class=special>);</span>
+<span class=comment>// range [it0,it1) contains the elements in (100,200)</span>
+</pre></blockquote>
+
+<p>更为复杂的是, 细心的程序员还必须考虑到所查区间的下界与上界要相互兼容: 例如, 若下界为 200 而上界为 100, 上述代码产生的迭代器 <code>it0</code> 与 <code>it1</code> 将呈相反顺序, 若尝试从 <code>it0</code> 遍历到 <code>it1</code>, 可能造成灾难性后果. 所有这些细节使区间搜索成为一项乏味且易错的任务.</p>
+
+<p> <a href="../reference/ord_indices.html#range_operations"><code>range</code></a> 成员函数——常与 <a href="../../../../libs/lambda/index.html">Boost.Lambda</a> 表达式结合使用——能大大缓解这一情况:</p>
+
+<blockquote><pre>
+<span class=keyword>using</span> <span class=keyword>namespace</span> <span class=identifier>boost</span><span class=special>::</span><span class=identifier>lambda</span><span class=special>;</span>
+
+<span class=keyword>typedef</span> <span class=identifier>multi_index_container</span><span class=special>&lt;</span><span class=keyword>double</span><span class=special>&gt;</span> <span class=identifier>double_set</span><span class=special>;</span>
+<span class=identifier>double_set</span> <span class=identifier>s</span><span class=special>;</span>
+<span class=special>...</span>
+<span class=identifier>std</span><span class=special>::</span><span class=identifier>pair</span><span class=special>&lt;</span><span class=identifier>double_set</span><span class=special>::</span><span class=identifier>iterator</span><span class=special>,</span><span class=identifier>double_set</span><span class=special>::</span><span class=identifier>iterator</span><span class=special>&gt;</span> <span class=identifier>p</span><span class=special>=</span>
+  <span class=identifier>s</span><span class=special>.</span><span class=identifier>range</span><span class=special>(</span><span class=number>100.0</span><span class=special>&lt;=</span><span class=identifier>_1</span><span class=special>,</span><span class=identifier>_1</span><span class=special>&lt;=</span><span class=number>200</span><span class=special>);</span> <span class=comment>// 100&lt;= x &lt;=200</span>
+<span class=special>...</span>
+<span class=identifier>p</span><span class=special>=</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>range</span><span class=special>(</span><span class=number>100.0</span><span class=special>&lt;</span><span class=identifier>_1</span><span class=special>,</span><span class=identifier>_1</span><span class=special>&lt;</span><span class=number>200</span><span class=special>);</span>   <span class=comment>// 100&lt;  x &lt; 200</span>
+<span class=special>...</span>
+<span class=identifier>p</span><span class=special>=</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>range</span><span class=special>(</span><span class=number>100.0</span><span class=special>&lt;=</span><span class=identifier>_1</span><span class=special>,</span><span class=identifier>_1</span><span class=special>&lt;</span><span class=number>200</span><span class=special>);</span>  <span class=comment>// 100&lt;= x &lt; 200</span>
+</pre></blockquote>
+
+<p>
+<code>range</code> 只是接受指定所查区间下界与上界的谓词. 有关传给 <code>range</code> 的许可谓词的详细解释, 请查阅参考文档.</p>
+
+<p>可以用特殊的 <code>unbounded</code> 标记省略一个或两个边界:</p>
+
+<blockquote><pre>
+<span class=identifier>p</span><span class=special>=</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>range</span><span class=special>(</span><span class=number>100.0</span><span class=special>&lt;=</span><span class=identifier>_1</span><span class=special>,</span><span class=identifier>unbounded</span><span class=special>);</span> <span class=comment>// 100 &lt;= x</span>
+<span class=identifier>p</span><span class=special>=</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>range</span><span class=special>(</span><span class=identifier>unbounded</span><span class=special>,</span><span class=identifier>_1</span><span class=special>&lt;</span><span class=number>200.0</span><span class=special>);</span>  <span class=comment>//   x &lt;  200</span>
+<span class=identifier>p</span><span class=special>=</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>range</span><span class=special>(</span><span class=identifier>unbounded</span><span class=special>,</span><span class=identifier>unbounded</span><span class=special>);</span> <span class=comment>// equiv. to std::make_pair(s.begin(),s.end())</span>
+</pre></blockquote>
+
+<h4><a name="ord_updating">更新</a></h4>
+
+<p> <a href="../reference/ord_indices.html#replace"><code>replace</code></a> 成员函数对给定元素执行就地替换, 如下例所示:</p>
+
+<blockquote><pre>
+<span class=keyword>typedef</span> <span class=identifier>index</span><span class=special>&lt;</span><span class=identifier>employee_set</span><span class=special>,</span><span class=identifier>name</span><span class=special>&gt;::</span><span class=identifier>type</span> <span class=identifier>employee_set_by_name</span><span class=special>;</span>
+<span class=identifier>employee_set_by_name</span><span class=special>&amp;</span> <span class=identifier>name_index</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;();</span>
+
+<span class=identifier>employee_set_by_name</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it</span><span class=special>=</span><span class=identifier>name_index</span><span class=special>.</span><span class=identifier>find</span><span class=special>(</span><span class=string>&quot;Anna Jones&quot;</span><span class=special>);</span>
+<span class=identifier>employee</span> <span class=identifier>anna</span><span class=special>=*</span><span class=identifier>it</span><span class=special>;</span>
+<span class=identifier>anna</span><span class=special>.</span><span class=identifier>name</span><span class=special>=</span><span class=string>&quot;Anna Smith&quot;</span><span class=special>;</span>      <span class=comment>// she just got married to Calvin Smith</span>
+<span class=identifier>name_index</span><span class=special>.</span><span class=identifier>replace</span><span class=special>(</span><span class=identifier>it</span><span class=special>,</span><span class=identifier>anna</span><span class=special>);</span> <span class=comment>// update her record</span>
+</pre></blockquote>
+
+<p>
+<code>replace</code> 执行这一替换的方式使得:<ul>
+<li>若被修改的元素相对于所有索引都保持其原有顺序, 复杂度为常量时间; 否则为对数时间.<li>迭代器与引用的有效性得到保持.<li>该操作是强异常安全的, 即若抛出某个异常 (由系统或用户的数据类型引发), <code>multi_index_container</code> 保持不变.</ul>
+<code>replace</code> 是一个标准 STL 容器未提供的强大操作, 在要求强异常安全性时尤为顺手. </p>
+
+<p>细心的读者可能已注意到, <code>replace</code> 的便利伴随着代价: 即为了执行更新, 整个元素必须被复制 <i>两次</i> (取回它时以及在 <code>replace</code> 内部). 若元素的复制代价高昂, 仅为修改对象的一小部分而付出这样的计算代价可能相当可观. 为应对这种情况, Boost.MultiIndex 提供了另一种更新机制, 称为 <a href="../reference/ord_indices.html#modify"><code>modify</code></a>:</p>
+
+<blockquote><pre>
+<span class=keyword>struct</span> <span class=identifier>change_name</span>
+<span class=special>{</span>
+  <span class=identifier>change_name</span><span class=special>(</span><span class=keyword>const</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&amp;</span> <span class=identifier>new_name</span><span class=special>):</span><span class=identifier>new_name</span><span class=special>(</span><span class=identifier>new_name</span><span class=special>){}</span>
+
+  <span class=keyword>void</span> <span class=keyword>operator</span><span class=special>()(</span><span class=identifier>employee</span><span class=special>&amp;</span> <span class=identifier>e</span><span class=special>)</span>
+  <span class=special>{</span>
+    <span class=identifier>e</span><span class=special>.</span><span class=identifier>name</span><span class=special>=</span><span class=identifier>new_name</span><span class=special>;</span>
+  <span class=special>}</span>
+
+<span class=keyword>private</span><span class=special>:</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span> <span class=identifier>new_name</span><span class=special>;</span>
+<span class=special>};</span>
+<span class=special>...</span>
+<span class=keyword>typedef</span> <span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>index</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;::</span><span class=identifier>type</span> <span class=identifier>employee_set_by_name</span><span class=special>;</span>
+<span class=identifier>employee_set_by_name</span><span class=special>&amp;</span> <span class=identifier>name_index</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;();</span>
+
+<span class=identifier>employee_set_by_name</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it</span><span class=special>=</span><span class=identifier>name_index</span><span class=special>.</span><span class=identifier>find</span><span class=special>(</span><span class=string>&quot;Anna Jones&quot;</span><span class=special>);</span>
+<span class=identifier>name_index</span><span class=special>.</span><span class=identifier>modify</span><span class=special>(</span><span class=identifier>it</span><span class=special>,</span><span class=identifier>change_name</span><span class=special>(</span><span class=string>&quot;Anna Smith&quot;</span><span class=special>));</span>
+</pre></blockquote>
+
+<p><code>modify</code> 接受一个仿函数 (或函数指针), 它被传入指向待修改元素的引用, 从而免去多余的复制. 与 <code>replace</code> 一样, <code>modify</code> 确实保持 <code>multi_index_container</code> 所有索引的内部排序. 然而, <code>modify</code> 的语义与 <code>replace</code> 并不完全等价. 考虑若修改元素时发生碰撞会发生什么, 即被修改的元素相对于某个唯一有序索引与另一元素冲突. 对 <code>replace</code> 而言, 原值被保留, 方法在不改动容器的情况下返回; 但 <code>modify</code> 无法采用这样的办法, 因为修改仿函数不会留下元素先前值的任何痕迹. 完整性约束于是导致如下策略: 当调用 <code>modify</code> 的过程中发生碰撞时, 元素被擦除, 方法返回 <code>false</code>. <code>modify</code> 还有一个接受 <i>回滚</i> 仿函数的版本, 用于在碰撞时撤销修改:</p>
+
+<blockquote><pre>
+<span class=keyword>struct</span> <span class=identifier>change_id</span>
+<span class=special>{</span>
+  <span class=identifier>change_id</span><span class=special>(</span><span class=keyword>int</span> <span class=identifier>new_id</span><span class=special>):</span><span class=identifier>new_id</span><span class=special>(</span><span class=identifier>new_id</span><span class=special>){}</span>
+
+  <span class=keyword>void</span> <span class=keyword>operator</span><span class=special>()(</span><span class=identifier>employee</span><span class=special>&amp;</span> <span class=identifier>e</span><span class=special>)</span>
+  <span class=special>{</span>
+    <span class=identifier>e</span><span class=special>.</span><span class=identifier>id</span><span class=special>=</span><span class=identifier>new_id</span><span class=special>;</span>
+  <span class=special>}</span>
+
+<span class=keyword>private</span><span class=special>:</span>
+  <span class=keyword>int</span> <span class=identifier>new_id</span><span class=special>;</span>
+<span class=special>};</span>
+<span class=special>...</span>
+<span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it</span><span class=special>=...</span>
+
+<span class=keyword>int</span> <span class=identifier>old_id</span><span class=special>=</span><span class=identifier>it</span><span class=special>-&gt;</span><span class=identifier>id</span><span class=special>;</span> <span class=comment>// keep the original id
+
+// try to modify the id, restore it in case of collisions</span>
+<span class=identifier>es</span><span class=special>.</span><span class=identifier>modify</span><span class=special>(</span><span class=identifier>it</span><span class=special>,</span><span class=identifier>change_id</span><span class=special>(</span><span class=number>321</span><span class=special>),</span><span class=identifier>change_id</span><span class=special>(</span><span class=identifier>old_id</span><span class=special>));</span>
+</pre></blockquote>
+
+<p>示例中, 当修改导致与另一元素碰撞时, 会调用 <code>change_id(old_id)</code> 来恢复原状. <code>replace</code>、<code>modify</code> 与带回滚的 <code>modify</code> 之间的行为差异, 需要程序员逐例考虑以确定最佳的更新机制.</p>
+
+<p align="center">
+<table cellspacing="0">
+  <caption><b>各更新机制的行为.</b></caption>
+<tr>
+  <th align="center">更新函数</th>
+  <th>若发生碰撞...</th>
+</tr>
+<tr>
+  <td align="center"><code>replace(it,x)</code></td>
+  <td>替换不发生.</td>
+</tr>
+<tr class="odd_tr">
+  <td align="center"><code>modify(it,mod)</code></td>
+  <td>元素被擦除.</td>
+</tr>
+<tr>
+  <td align="center"><code>modify(it,mod,back)</code></td>
+  <td><code>back</code> 用于恢复原状. (若 <code>back</code> 抛出异常, 元素被擦除.)</td>
+</tr>
+</table>
+</p>
+
+
+<p>也提供基于键的 <code>modify</code> 版本, 名为 <a href="../reference/ord_indices.html#modify_key"><code>modify_key</code></a>. 此时, 修改仿函数被传入元素中 <code>key_type</code> 部分的引用, 而不是整个对象.</p>
+
+<blockquote><pre>
+<span class=keyword>struct</span> <span class=identifier>change_str</span>
+<span class=special>{</span>
+  <span class=identifier>change_str</span><span class=special>(</span><span class=keyword>const</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&amp;</span> <span class=identifier>new_str</span><span class=special>):</span><span class=identifier>new_str</span><span class=special>(</span><span class=identifier>new_str</span><span class=special>){}</span>
+
+  <span class=comment>// note this is passed a string, not an employee</span>
+  <span class=keyword>void</span> <span class=keyword>operator</span><span class=special>()(</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&amp;</span> <span class=identifier>str</span><span class=special>)</span>
+  <span class=special>{</span>
+    <span class=identifier>str</span><span class=special>=</span><span class=identifier>new_str</span><span class=special>;</span>
+  <span class=special>}</span>
+
+<span class=keyword>private</span><span class=special>:</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span> <span class=identifier>new_str</span><span class=special>;</span>
+<span class=special>};</span>
+<span class=special>...</span>
+<span class=keyword>typedef</span> <span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>index</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;::</span><span class=identifier>type</span> <span class=identifier>employee_set_by_name</span><span class=special>;</span>
+<span class=identifier>employee_set_by_name</span><span class=special>&amp;</span> <span class=identifier>name_index</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;();</span>
+
+<span class=identifier>employee_set_by_name</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it</span><span class=special>=</span><span class=identifier>name_index</span><span class=special>.</span><span class=identifier>find</span><span class=special>(</span><span class=string>&quot;Anna Jones&quot;</span><span class=special>);</span>
+<span class=identifier>name_index</span><span class=special>.</span><span class=identifier>modify_key</span><span class=special>(</span><span class=identifier>it</span><span class=special>,</span><span class=identifier>change_str</span><span class=special>(</span><span class=string>&quot;Anna Smith&quot;</span><span class=special>));</span>
+</pre></blockquote>
+
+<p>与 <code>modify</code> 一样, <code>modify_key</code> 也有带回滚与不带回滚的版本. <code>modify</code> 与 <code>modify_key</code> 特别适合与 <a href="../../../../libs/lambda/index.html">Boost.Lambda</a> 结合使用来定义修改仿函数:</p>
+
+<blockquote><pre>
+<span class=keyword>using</span> <span class=keyword>namespace</span> <span class=identifier>boost</span><span class=special>::</span><span class=identifier>lambda</span><span class=special>;</span>
+
+<span class=keyword>typedef</span> <span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>index</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;::</span><span class=identifier>type</span> <span class=identifier>employee_set_by_name</span><span class=special>;</span>
+<span class=identifier>employee_set_by_name</span><span class=special>&amp;</span> <span class=identifier>name_index</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;();</span>
+
+<span class=identifier>employee_set_by_name</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it</span><span class=special>=</span><span class=identifier>name_index</span><span class=special>.</span><span class=identifier>find</span><span class=special>(</span><span class=string>&quot;Anna Jones&quot;</span><span class=special>);</span>
+<span class=identifier>name_index</span><span class=special>.</span><span class=identifier>modify_key</span><span class=special>(</span><span class=identifier>it</span><span class=special>,</span><span class=identifier>_1</span><span class=special>=</span><span class=string>&quot;Anna Smith&quot;</span><span class=special>);</span>
+</pre></blockquote>
+
+<p>
+<code>modify_key</code> 要求键提取器属于一种称为 <a href="key_extraction.html#read_write_key_extractors">读/写</a> 的特殊类型: 情形通常如此, 但并非总是如此.</p>
+
+<h3>
+<a name="seq_indices">序列索引</a>
+</h3>
+
+<p>与有序索引不同, 序列索引不对元素强加固定顺序: 相反, 元素可以排列在序列的任意位置, 正如 <code>std::list</code> 所允许的那样. 序列索引的接口因此设计在 <code>std::list</code> 的接口之上; 标准容器提供的几乎所有操作都在此得到复刻, 偶尔在语法和/或语义上有变化, 以应对 Boost.MultiIndex 施加的约束. 一个重要差异——<a href="#iterator_access">前文</a> 已提及——是序列索引迭代器所指向的值被视为 <i>常量</i>:</p>
+
+<blockquote><pre>
+<span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=keyword>int</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span><span class=identifier>sequenced</span><span class=special>&lt;&gt;</span> <span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>s</span><span class=special>;</span>            <span class=comment>// list-like container</span>
+
+<span class=identifier>s</span><span class=special>.</span><span class=identifier>push_front</span><span class=special>(</span><span class=number>0</span><span class=special>);</span>
+<span class=special>*(</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>begin</span><span class=special>())=</span><span class=number>1</span><span class=special>;</span> <span class=comment>// ERROR: the element cannot be changed</span>
+</pre></blockquote>
+
+<p>与其他类型的索引一样, 元素修改仍然可以通过 <a href="#seq_updating">更新操作</a> 完成.</p>
+
+<p>考虑一个拥有两个或更多索引的 <code>multi_index_container</code>, 其中一个是序列类型. 若元素通过另一个索引插入, 它将被自动追加到序列索引的末尾. 一个例子有助于澄清这一点:</p>
+
+<blockquote><pre>
+<span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=keyword>int</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>sequenced</span><span class=special>&lt;&gt;,</span>           <span class=comment>// sequenced type</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;</span> <span class=comment>// another index</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>s</span><span class=special>;</span>
+
+<span class=identifier>s</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;().</span><span class=identifier>insert</span><span class=special>(</span><span class=number>1</span><span class=special>);</span> <span class=comment>// insert 1 through index #1</span>
+<span class=identifier>s</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;().</span><span class=identifier>insert</span><span class=special>(</span><span class=number>0</span><span class=special>);</span> <span class=comment>// insert 0 through index #1
+
+// list elements through sequenced index #0</span>
+<span class=identifier>std</span><span class=special>::</span><span class=identifier>copy</span><span class=special>(</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>begin</span><span class=special>(),</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>end</span><span class=special>(),</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>ostream_iterator</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;(</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>cout</span><span class=special>));</span>
+
+<span class=comment>// result: 1 0</span>
+</pre></blockquote>
+
+<p>因此, 当插入不是通过序列索引进行时, 序列索引的行为是保持插入顺序.</p>
+
+<h4><a name="seq_spec">规定</a></h4>
+
+<p>序列索引用 <code>sequenced</code> 构造来规定:</p>
+
+<blockquote><pre>
+<span class=identifier>sequenced</span><span class=special>&lt;[</span><i>(tag)</i><span class=special>]&gt;</span>
+</pre></blockquote>
+
+<p> <a href="#tagging">标签</a> 参数是可选的.</p>
+
+<h4><a name="list_ops">列表操作</a></h4>
+
+<p>如前所述, 序列索引模仿 <code>std::list</code> 的接口, 其中的大多数原有操作也都提供. 然而, 这些操作的语义与复杂度并不总是与标准容器一致. 差异主要源于这样一个事实: 向序列索引的插入不保证成功, 因为可能被 <code>multi_index_container</code> 的其他索引禁止. 更多细节请查阅 <a href="../reference/seq_indices.html">参考文档</a>.</p>
+
+<h4><a name="seq_updating">更新</a></h4>
+
+<p>与有序索引一样, 序列索引提供 <a href="../reference/seq_indices.html#replace"><code>replace</code></a> 与 <a href="../reference/seq_indices.html#modify"><code>modify</code></a> 操作, 功能相同. 但没有类似的 <code>modify_key</code>, 因为序列索引不是基于键的.</p>
+
+<h2><a name="projection">迭代器的投影</a></h2>
+
+<p>给定索引 <code>i1</code> 与 <code>i2</code>——二者位于同一 <code>multi_index_container</code> 上——<a href="../reference/multi_index_container.html#projection"><code>project</code></a> 可用于取得 <code>i2</code> 迭代器, 对应于给定的 <code>i1</code> 迭代器, 二者指向容器中的同一元素. 这一功能使程序员在执行复杂操作时可以在同一 <code>multi_index_container</code> 的不同索引之间移动:</p>
+
+<blockquote><pre>
+<span class=keyword>typedef</span> <span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>index</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;::</span><span class=identifier>type</span> <span class=identifier>employee_set_by_name</span><span class=special>;</span>
+<span class=identifier>employee_set_by_name</span><span class=special>&amp;</span> <span class=identifier>name_index</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=identifier>name</span><span class=special>&gt;();</span>
+
+<span class=comment>// list employees by ID starting from Robert Brown's ID</span>
+
+<span class=identifier>employee_set_by_name</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it1</span><span class=special>=</span><span class=identifier>name_index</span><span class=special>.</span><span class=identifier>find</span><span class=special>(</span><span class=string>&quot;Robert Brown&quot;</span><span class=special>);</span>
+
+<span class=comment>// obtain an iterator of index #0 from it1</span>
+<span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it2</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>project</span><span class=special>&lt;</span><span class=number>0</span><span class=special>&gt;(</span><span class=identifier>it1</span><span class=special>);</span> 
+
+<span class=identifier>std</span><span class=special>::</span><span class=identifier>copy</span><span class=special>(</span><span class=identifier>it2</span><span class=special>,</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>end</span><span class=special>(),</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>ostream_iterator</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>&gt;(</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>cout</span><span class=special>));</span>
+</pre></blockquote>
+
+<p>一个稍更有趣的例子:</p>
+
+<blockquote><pre>
+<span class=identifier>text_container</span> <span class=identifier>tc</span><span class=special>;</span>
+
+<span class=comment>// get a view to index #1 (ordered index on the words)</span>
+<span class=identifier>text_container</span><span class=special>::</span><span class=identifier>nth_index</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;::</span><span class=identifier>type</span><span class=special>&amp;</span> <span class=identifier>sorted_index</span><span class=special>=</span><span class=identifier>tc</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;();</span>
+
+<span class=comment>// prepend &quot;older&quot; to all occurrences of &quot;sister&quot;</span>
+
+<span class=identifier>text_container</span><span class=special>::</span><span class=identifier>nth_index</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;::</span><span class=identifier>type</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it1</span><span class=special>=</span>
+  <span class=identifier>sorted_index</span><span class=special>.</span><span class=identifier>lower_bound</span><span class=special>(</span><span class=string>&quot;sister&quot;</span><span class=special>);</span>
+  
+<span class=keyword>while</span><span class=special>(</span><span class=identifier>it1</span><span class=special>!=</span><span class=identifier>sorted_index</span><span class=special>.</span><span class=identifier>end</span><span class=special>()&amp;&amp;*</span><span class=identifier>it1</span><span class=special>==</span><span class=string>&quot;sister&quot;</span><span class=special>){</span>
+  <span class=comment>// convert to an iterator to the sequenced index</span>
+  <span class=identifier>text_container</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it2</span><span class=special>=</span><span class=identifier>tc</span><span class=special>.</span><span class=identifier>project</span><span class=special>&lt;</span><span class=number>0</span><span class=special>&gt;(</span><span class=identifier>it1</span><span class=special>);</span>
+
+  <span class=identifier>tc</span><span class=special>.</span><span class=identifier>insert</span><span class=special>(</span><span class=identifier>it2</span><span class=special>,</span><span class=string>&quot;older&quot;</span><span class=special>);</span>
+  <span class=special>++</span><span class=identifier>it1</span><span class=special>;</span>
+<span class=special>}</span>
+</pre></blockquote>
+
+<p>若可用, <code>project</code> 也可以配合 <a href="#tagging">标签</a> 使用.</p>
+
+<h2><a name="complexity">复杂度与异常安全性</a></h2>
+
+<p>
+<code>multi_index_container</code> 提供与等价 STL 容器相同的复杂度与异常安全性保证. 面对插入时, 迭代器与引用的有效性得到保持, 即使对于 replace 与 modify 操作亦然.</p>
+
+<p> <code>multi_index_container</code> 的适当实例化实际上可以模拟 <code>std::set</code>、<code>std::multiset</code> 与 (限制更多的) <code>std::list</code>, 如 <a href="techniques.html#emulate_std_containers">技术</a> 一节所示. 这些模拟几乎与原 STL 容器一样高效; 关于复杂度保证的更多信息请查阅 <a href="../reference/index.html">参考文档</a>, 效率的实际测量见 <a href="../performance.html">性能一节</a>.</p>
+
+<hr>
+
+<div class="prev_link"><a href="index.html"><img src="../prev.gif" alt="教程" border="0"><br>Boost.MultiIndex 教程</a></div>
+<div class="up_link"><a href="index.html"><img src="../up.gif" alt="Boost.MultiIndex 教程" border="0"><br>Boost.MultiIndex 教程</a></div>
+<div class="next_link"><a href="indices.html"><img src="../next.gif" alt="索引类型" border="0"><br>索引类型</a></div><br clear="all" style="clear: all;">
+
+<br>
+
+<p>修订于 August 16th 2021</p>
+
+<p>版权所有 © 2003-2021 Joaquín M López Muñoz. 按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <a href="../../../../LICENSE_1_0.txt">LICENSE_1_0.txt</a> 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+
+</body>
+</html>

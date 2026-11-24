@@ -1,0 +1,343 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html>
+<head>
+  <meta http-equiv="Content-Language" content="en-us">
+  <meta http-equiv="Content-Type" content="text/html; charset=us-ascii">
+  <meta name="GENERATOR" content="Microsoft FrontPage 6.0">
+  <meta name="ProgId" content="FrontPage.Editor.Document">
+  <link rel="stylesheet" type="text/css" href="../../../boost.css">
+
+  <title>Boost Statechart 库 - 设计理由</title>
+</head>
+
+<body link="#0000FF" vlink="#800080">
+  <table border="0" cellpadding="7" cellspacing="0" width="100%" summary=
+  "header">
+    <tr>
+      <td valign="top" width="300">
+        <h3><a href="../../../index.htm"><img alt="C++ Boost" src=
+        "../../../boost.png" border="0" width="277" height="86"></a></h3>
+      </td>
+
+      <td valign="top">
+        <h1 align="center">Boost Statechart 库</h1>
+
+        <h2 align="center">设计理由</h2>
+      </td>
+    </tr>
+  </table>
+  <hr>
+
+  <dl class="index">
+    <dt><a href="#Introduction">引言</a></dt>
+
+    <dt><a href="#WhyYetAnotherStateMachineFramework">为什么还要又一个状态机框架</a></dt>
+
+    <dt><a href="#StateLocalStorage">状态局部存储</a></dt>
+
+    <dt><a href="#DynamicConfigurability">动态可配置性</a></dt>
+
+    <dt><a href="#ErrorHandling">错误处理</a></dt>
+
+    <dt><a href="#AsynchronousStateMachines">异步状态机</a></dt>
+
+    <dt><a href="#MemberFunctionsVsFunctionObjects">用户动作: 成员函数与函数对象之比较</a></dt>
+
+    <dt><a href="#Limitations">限制</a></dt>
+  </dl>
+
+  <h2><a name="Introduction" id="Introduction">引言</a></h2>
+
+  <p>本库开发过程中做出的大多数设计决策, 都源自以下要求.</p>
+
+  <p>Boost.Statechart 应当...</p>
+
+  <ol>
+    <li>完全类型安全. 只要可能, 类型不匹配都应在编译期报错指出</li>
+
+    <li>不要求使用代码生成器. 现有许多 FSM 方案强迫开发者以图形方式或专用语言设计状态机, 然后生成全部或部分代码</li>
+
+    <li>允许把 UML 状态图 (定义于 <a href="http://www.omg.org/cgi-bin/doc?formal/03-03-01">http://www.omg.org/cgi-bin/doc?formal/03-03-01</a>) 轻松转换为可工作的状态机. 反过来, 把既有的状态机 C++ 实现转换为 UML 状态图也应相当容易. 具体而言, 应支持以下状态机特性: <ul>
+        <li>层次化 (复合、嵌套) 状态</li>
+
+        <li>正交 (并发) 状态</li>
+
+        <li>进入、退出与转换动作</li>
+
+        <li>守卫 (guard)</li>
+
+        <li>浅历史/深历史</li>
+      </ul>
+    </li>
+
+    <li>当 C++ 异常从用户代码传播出来时, 产生可定制的反应</li>
+
+    <li>支持同步与异步状态机, 并把异步状态机运行在哪个线程交给用户决定. 用户还应能自行选择线程库</li>
+
+    <li>支持开发任意大型和复杂的状态机. 多个开发者应能同时在同一个状态机上工作</li>
+
+    <li>允许用户定制所有资源管理, 使本库能用于有硬实时要求的应用</li>
+
+    <li>尽可能多地在编译期强制检查. 具体而言, 无效的状态机不应通过编译</li>
+
+    <li>为广泛的应用提供合理的性能</li>
+  </ol>
+
+  <h2><a name="WhyYetAnotherStateMachineFramework" id=
+  "WhyYetAnotherStateMachineFramework">为什么还要又一个状态机框架?</a></h2>
+
+  <p>在开始开发本库之前, 我考察了以下框架:</p>
+
+  <ul>
+    <li>Miro Samek 所著 Practical Statecharts in C/C++ (CMP Books, ISBN: 1-57820-110-1) 一书配套的框架<br>
+    <a href=
+    "http://www.quantum-leaps.com">http://www.quantum-leaps.com<br></a> 至少不满足要求 1、3、4、6、8.</li>
+
+    <li>ILogix 的 Rhapsody in C++ 配套框架 (一种代码生成器方案)<br>
+    <a href=
+    "http://www.ilogix.com/sublevel.aspx?id=53">http://www.ilogix.com/sublevel.aspx?id=53<br>
+    </a> 这看似拿苹果和橘子作比较, 但并没有内在理由说明代码生成器不能生成人类易于理解和修改的代码. 至少不满足要求 2、4、5、6、8 (不过代码生成前有相当多的错误检查).</li>
+
+    <li>State Machine Design in C++ 一文配套的框架<br>
+    <a href=
+    "http://www.ddj.com/184401236?pgno=1">http://www.ddj.com/184401236?pgno=1<br>
+    </a> 至少不满足要求 1、3、4、5 (没有直接的线程支持)、6、8.</li>
+  </ul>
+
+  <p>我相信 Boost.Statechart 满足所有要求.</p>
+
+  <h2><a name="StateLocalStorage" id="StateLocalStorage">状态局部存储</a></h2>
+
+  <p>这一尚不广为人知的状态机特性之所以可行, 是因为每个状态都由一个类表示. 进入状态时会构造该类的一个对象, 状态机退出该状态时再析构该对象. 因此, 任何只在机器处于该状态期间才有用的数据都可以 (而且应该) 作为该状态的成员. 这一特性与把状态机分散到多个翻译单元的能力相结合, 使近乎无限的可扩展性成为可能.</p>
+
+  <p>在大多数现有 FSM 框架中, 整个状态机运行在一个环境 (上下文) 中. 也就是说, 状态机局部的所有资源句柄和变量都存储在一处 (通常是某个派生自状态机基类的类的成员). 对大型状态机而言, 这常常导致该类拥有大量数据成员, 而其中大多数只在机器的一小部分中短暂使用. 于是状态机类往往成为改动热点, 导致整个状态机频繁重新编译.</p>
+
+  <p>常见问题条目 <a href="faq.html#StateLocalStorage">状态局部存储 (state-local storage) 到底好在哪里?</a> 通过比较教程中的 StopWatch 与一个行为等价但不使用状态局部存储的版本, 进一步说明了这一点.</p>
+
+  <h2><a name="DynamicConfigurability" id="DynamicConfigurability">动态可配置性</a></h2>
+
+  <h3>两类状态机框架</h3>
+
+  <ul>
+    <li>如果状态机的整体布局可以在运行期定义, 那么这个状态机框架就支持动态可配置性 (布局指状态与转换, 动作仍用普通 C++ 代码指定). 也就是说, 可以用仅在运行期可用的数据构建任意大的机器. 好的示例见 Moishe Halibard 和 Moshe Rubin 在 2002 年 6 月 CUJ 上的 <a href=
+    "https://www.researchgate.net/publication/293741100_A_multiple_substring_search_algorithm">A Multiple Substring Search Algorithm</a> 一文.<li>另一类状态机框架则要求在编译期指定布局</li>
+  </ul>
+
+  <p>在运行期构建的状态机几乎总能用简单的状态模型应付 (没有层次状态、没有正交状态、没有进入与退出动作、没有历史), 因为布局常常 <b>由算法计算得出</b>. 另一方面, 在编译期固定的机器布局几乎总是由人设计, 人为了把复杂度保持在可接受的水平, 常常需要/想要一个精细的状态模型. 因此, 动态可配置的 FSM 框架常常为简单的扁平机器而优化, 而静态变体的实现则往往提供更多用于抽象的特性.</p>
+
+  <p>然而, 功能完备的动态 FSM 库确实存在. 那么, 问题就来了:</p>
+
+  <h3>为什么不对所有状态机都使用动态可配置的 FSM 库?</h3>
+
+  <p>有人可能会说, 动态可配置的 FSM 框架就足够了, 因为 <b>任何</b>状态机都可以用它实现. 然而, 这类框架由于自身性质, 在用于实现静态机器时有诸多缺点:</p>
+
+  <ul>
+    <li>无法进行编译期优化和校验. 例如, Boost.Statechart 在编译期确定转换源状态与目标状态的 <a href=
+    "definitions.html#InnermostCommonContext">最内层公共上下文</a>. 此外, 编译期检查还保证状态机有效 (例如, 正交状态之间没有转换).</li>
+
+    <li>双分派不可避免地必须用某种表来实现. 如 <a href="performance.html#DoubleDispatch">双分派</a>一节所述, 这种做法扩展性很差.</li>
+
+    <li>为了保证表的快速查找, 状态和事件必须用整数表示. 为了使表尽可能小, 编号应当连续, 例如若有十个状态, 最好使用 0-9 的 id. 为保证 id 连续, 最好把所有状态定义在同一个头文件中. 事件亦然. 同样, 这也无法扩展.</li>
+
+    <li>由于携带参数的事件不由类型表示, 必须使用某种带属性映射的泛型事件, 类型安全只能在运行期而非编译期保证.</li>
+  </ul>
+
+  <p>正是出于这些原因, Boost.Statechart 从一开始就被构建为 <b>不</b>支持动态可配置性. 但这并不意味着用本库实现的机器无法动态塑形. 例如, 可以使用守卫 (guard), 依据仅在运行期可用的输入执行不同转换. 不过, 此类布局变更永远只能限于编译前可预见的范围. 一个多少相关的库, boost::spirit 解析器框架, 允许大致相同的运行期可配置性.</p>
+
+  <h2><a name="ErrorHandling" id="ErrorHandling">错误处理</a></h2>
+
+  <p>UML 状态机语义规范对错误处理只字未提. 此外, 大多数现有 FSM 方案似乎也忽略了这个问题.</p>
+
+  <h3>FSM 库为何应支持错误处理</h3>
+
+  <p>请看以下状态配置:</p>
+
+  <p><img alt="A" src="A.gif" border="0" width="230" height="170"></p>
+
+  <p>两个状态都定义了进入动作 (x() 和 y()). 每当状态 A 变为活动状态时, 对 x() 的调用会立即跟一次对 y() 的调用. y() 可能依赖 x() 的副作用. 因此, 如果 x() 失败, 再执行 y() 就没有意义. 这并非什么冷僻的边角案例, 而是在日常状态机中随时发生的事情. 例如, x() 可能分配内存, 其内容随后由 y() 修改. 教程 <a href=
+  "tutorial.html#GettingStateInformationOutOfTheMachine">Getting state information out of the machine</a> 一节中有一个不同但在错误处理方面同样关键的情形: <code>Running::~Running()</code> 访问其外层状态 <code>Active</code>. 如果 <code>Active</code> 的进入动作失败而 <code>Running</code> 仍然被进入, 那么 <code>Running</code> 的退出动作就会引发未定义行为. 外层状态与内层状态之间的错误处理情形类似于基类与派生类: 如果基类构造函数失败 (通过抛出异常), 构造中止, 派生类构造函数不会被调用, 对象也就永远不会诞生. <br> 在大多数传统 FSM 框架中, <b>只要错误能传播给状态机客户端</b>, 这类错误情形相对容易处理. 此时, 失败的动作只需把 C++ 异常传播进框架, 框架通常不捕获该异常, 从而让状态机客户端得以处理. 注意, 这样处理之后, 客户端就不能再使用状态机对象了, 因为它要么处于未知状态, 要么框架已因异常而将其重置 (例如通过 scope guard). 也就是说, 状态机通常只能提供基本异常安全, 这是其本性使然. <br> 然而, 一旦许多动作可能失败、且状态机 <b>自身</b>需要妥善处理这些错误, 传统 FSM 框架的错误处理就会变得异常繁琐. 通常, 失败的动作 (例如 x()) 随后投递一个恰当的错误事件, 并把全局错误变量置为 true. 之后的每个动作 (例如 y()) 在做任何事之前都得先检查错误变量. 所有动作完成后 (它们什么都没做!), 还得处理先前投递的错误事件, 进而执行补救动作. 请注意, 仅仅把错误事件排入队列是不够的, 因为可能还有其他事件在等待. 相反, 错误事件必须拥有绝对优先级并立即处理. 有一些稍微不那么繁琐的 FSM 错误处理方法, 但它们通常需要改变状态图布局, 从而掩盖正常行为. 无论采用哪种方法, 程序员通常都被迫编写大量处理错误的代码, 而其中大部分 <b>并非</b>用于错误处理, 而是用于错误传播.</p>
+
+  <h3>Boost.Statechart 中的错误处理支持</h3>
+
+  <p>C++ 异常可以从任何动作传播出来以指示失败. 根据状态机的配置, 这类异常要么立即传播给状态机客户端, 要么被捕获并转换为立即分派的一个特殊事件. 更多信息见教程的 <a href="tutorial.html#ExceptionHandling">异常处理</a>一章.</p>
+
+  <h3>两阶段退出</h3>
+
+  <p>退出动作可以通过给状态添加析构函数来实现. 由于析构函数的性质, 这种做法有两个缺点:</p>
+
+  <ul>
+    <li>由于 C++ 析构函数几乎绝不应抛出异常, 无法像其他动作失败时那样, 简单地从退出动作传播异常</li>
+
+    <li>当 <code>state_machine&lt;&gt;</code> 对象被析构时, 所有当前活动状态也不可避免地随之析构. 也就是说, 状态机终止与状态机对象的析构绑定在一起</li>
+  </ul>
+
+  <p>以我的经验, 上述两点在实践中通常都不成问题, 因为...</p>
+
+  <ul>
+    <li>退出动作不太可能失败. 即便可能, 这类失败通常要么 <ul>
+        <li>对外部世界无关紧要, 即失败可以直接忽略</li>
+
+        <li>严重到无论如何都得终止应用程序. 在这种情况下, 栈回退几乎从来不是想要的, 失败更适合通过其他机制报告 (例如 abort())</li>
+      </ul>
+    </li>
+
+    <li>为了正确清理, 状态机对象被析构时, 退出动作 <b>必须</b>执行, 即使析构是栈回退的结果</li>
+  </ul>
+
+  <p>然而, 一些人提出的理论论证和真实场景表明, 退出动作到析构函数的映射 <b>可能</b>成为问题, 而变通方法又过于繁琐. 这就是现在支持 <a href="tutorial.html#TwoStageExit">两阶段退出</a>的原因.</p>
+
+  <h2><a name="AsynchronousStateMachines" id=
+  "AsynchronousStateMachines">异步状态机</a></h2>
+
+  <h3>要求</h3>
+
+  <p>对于异步状态机, 不同应用的需求差别很大:</p>
+
+  <ol>
+    <li>有些应用要求每个状态机在自己的线程中运行, 另一些应用是单线程的, 在同一线程中运行所有机器</li>
+
+    <li>对有些应用, FIFO 调度器已臻完美; 另一些则需要优先级或 EDF 调度器</li>
+
+    <li>对有些应用, boost::thread 库就足够了; 另一些可能想用别的线程库; 还有一些应用运行在无操作系统平台上, ISR 是唯一 (表面上的) 并发执行方式</li>
+  </ol>
+
+  <h3>开箱即用的行为</h3>
+
+  <p>默认情况下, <code>asynchronous_state_machine&lt;&gt;</code> 子类型对象由一个 <code>fifo_scheduler&lt;&gt;</code> 对象提供服务. <code>fifo_scheduler&lt;&gt;</code> 在单线程应用中不加锁也不等待, 在多线程程序中则使用 boost::thread 原语来加锁和等待. 此外, 一个 <code>fifo_scheduler&lt;&gt;</code> 对象可以为任意多个 <code>asynchronous_state_machine&lt;&gt;</code> 子类型对象提供服务. 在底层, <code>fifo_scheduler&lt;&gt;</code> 只是其 <code>FifoWorker</code> 模板参数对象 (负责管理队列并确保线程安全) 和一个 <code>processor_container&lt;&gt;</code> (负责管理状态机的生存期) 的薄封装.</p>
+
+  <p>UML 标准规定, 在状态机中未触发反应的事件应被静默丢弃. 由于 <code>fifo_scheduler&lt;&gt;</code> 对象本身也是一个状态机, 发往已不存在的 <code>asynchronous_state_machine&lt;&gt;</code> 子类型对象的事件也会被静默丢弃. 这之所以可行, 是因为 <code>asynchronous_state_machine&lt;&gt;</code> 子类型对象不能直接构造或析构, 而必须通过 <code>fifo_scheduler&lt;&gt;::create_processor&lt;&gt;()</code> 和 <code>fifo_scheduler&lt;&gt;::destroy_processor()</code> 来完成 (<code>processor</code> 这个名字表明 <code>fifo_scheduler&lt;&gt;</code> 只能容纳 <code>event_processor&lt;&gt;</code> 子类型对象; <code>asynchronous_state_machine&lt;&gt;</code> 只是实现这类处理器的一种方式). 此外, <code>create_processor&lt;&gt;()</code> 只返回一个 <code>processor_handle</code> 对象. 此后必须通过该对象, 经由调度器来启动状态机、为其排队事件、终止并销毁状态机.</p>
+
+  <h3>定制</h3>
+
+  <p>如果用户需要定制调度器行为, 可以在实例化 <code>fifo_scheduler&lt;&gt;</code> 时使用自己建模 <code>FifoWorker</code> 概念的类. 我考虑过一个泛化得多的设计, 把加锁与等待实现在策略中, 但至今没能为它设计出干净简洁的接口. 尤其是等待, 有点难以建模, 因为有些平台有条件变量, 有些有事件, 还有些根本没有等待的概念 (它们改为循环, 直到新事件到达, 推测是经由 ISR). 鉴于实现自定义 <code>FifoWorker</code> 类型只需相对很少的代码, 且几乎所有应用最多只会实现一个这样的类, 这么做本来就不太值得. 需要更简或更复杂的事件处理器生存期管理的应用, 可以在更粗的层面上定制行为, 即使用自定义的 <code>Scheduler</code> 类型. 对需要非 FIFO 排队方案的应用, 目前也是如此. 不过, Boost.Statechart 将来可能会提供 <code>priority_scheduler</code>, 这样只有在极少数情况下才需要实现自定义调度器.</p>
+
+  <h2><a name="MemberFunctionsVsFunctionObjects" id=
+  "MemberFunctionsVsFunctionObjects">用户动作: 成员函数与函数对象之比较</a></h2>
+
+  <p>所有用户提供的函数 (<code>react</code> 成员函数、进入、退出与转换动作) 都必须是类成员. 原因如下:</p>
+
+  <ul>
+    <li>状态局部存储的概念要求状态进入与状态退出动作实现为成员</li>
+
+    <li><code>react</code> 成员函数与转换动作常常访问状态局部数据. 因此, 把这些函数实现为其所操作数据所在类的成员, 是最自然的做法</li>
+  </ul>
+
+  <h2><a name="Limitations" id="Limitations">限制</a></h2>
+
+  <h4>联结点 (junction point)</h4>
+
+  <p>不支持 UML 联结点, 因为任意复杂的守卫表达式都能用 <code>custom_reaction&lt;&gt;</code> 轻松实现.</p>
+
+  <h4>动态选择点</h4>
+
+  <p>目前对这个 UML 元素没有直接支持, 因为其行为通常可以用 <code>custom_reaction&lt;&gt;</code> 实现. 少数情况下不可行, 即选择点恰好是初始状态时. 这时, 该行为可以按如下方式轻松实现:</p>
+  <pre>
+struct make_choice : sc::event&lt; make_choice &gt; {};
+
+// universal choice point base class template
+template&lt; class MostDerived, class Context &gt;
+struct choice_point : sc::state&lt; MostDerived, Context &gt;
+{
+  typedef sc::state&lt; MostDerived, Context &gt; base_type;
+  typedef typename base_type::my_context my_context;
+  typedef choice_point my_base;
+
+  choice_point( my_context ctx ) : base_type( ctx )
+  {
+    this-&gt;post_event( boost::intrusive_ptr&lt; make_choice &gt;(
+      new make_choice() ) );
+  }
+};
+
+// ...
+
+struct MyChoicePoint;
+struct Machine : sc::state_machine&lt; Machine, MyChoicePoint &gt; {};
+
+struct Dest1 : sc::simple_state&lt; Dest1, Machine &gt; {};
+struct Dest2 : sc::simple_state&lt; Dest2, Machine &gt; {};
+struct Dest3 : sc::simple_state&lt; Dest3, Machine &gt; {};
+
+struct MyChoicePoint : choice_point&lt; MyChoicePoint, Machine &gt;
+{
+  MyChoicePoint( my_context ctx ) : my_base( ctx ) {}
+
+  sc::result react( const make_choice &amp; )
+  {
+    if ( /* ... */ )
+    {
+      return transit&lt; Dest1 &gt;();
+    }
+    else if ( /* ... */ )
+    {
+      return transit&lt; Dest2 &gt;();
+    }
+    else
+    {
+      return transit&lt; Dest3 &gt;();
+    }
+  }
+};
+</pre>
+
+  <p><code>choice_point&lt;&gt;</code> 目前还不是 Boost.Statechart 的一部分, 主要是因为我担心初学者会在本应使用 <code>custom_reaction&lt;&gt;</code> 的地方误用它. 如果需求足够高, 我会把它加入库中.</p>
+
+  <h4>正交区域的深历史</h4>
+
+  <p>目前不支持带正交区域状态的深历史:</p>
+
+  <p><img alt="DeepHistoryLimitation1" src="DeepHistoryLimitation1.gif"
+  border="0" width="331" height="346"></p>
+
+  <p>尝试实现这一状态图会导致编译期错误, 因为 B 有正交区域, 而其直接或间接外层状态包含深历史伪状态. 换言之, 包含深历史伪状态的状态不得有任何自身带正交区域的直接或间接内层状态. 这一限制源于: 完整的深历史支持实现起来更复杂, 且比目前实现的受限深历史支持消耗更多资源. 此外, 完整的深历史行为可以用浅历史轻松实现:</p>
+
+  <p><img alt="DeepHistoryLimitation2" src="DeepHistoryLimitation2.gif"
+  border="0" width="332" height="347"></p>
+
+  <p>当然, 这只有在 C、D、E 及其任何直接或间接内层状态都没有正交区域时才行得通. 否则, 就得递归地应用这一模式.</p>
+
+  <h4>同步 (汇合与分叉) 条</h4>
+
+  <p><img alt="JoinAndFork" src="JoinAndFork.gif" border="0" width="541"
+  height="301"></p>
+
+  <p>不支持同步条, 也就是说, 一个转换总是恰好从一个状态出发, 并恰好终止于一个状态. 汇合条有时有用, 但其行为可以用守卫轻松模拟. 支持分叉条会使实现 <b>复杂得多</b>, 而且很少需要.</p>
+
+  <h4>到正交区域的事件分派</h4>
+
+  <p>Boost.Statechart 的事件分派算法不同于 <a href=
+  "http://www.wisdom.weizmann.ac.il/~dharel/SCANNED.PAPERS/Statecharts.pdf">David Harel 的原始论文</a>和 <a href=
+  "http://www.omg.org/cgi-bin/doc?formal/03-03-01">UML 标准</a>所规定的算法. 两者都要求每个事件分派给状态机的所有正交区域. 示例:</p>
+
+  <p><img alt="EventDispatch" src="EventDispatch.gif" border="0" width="436"
+  height="211"></p>
+
+  <p>这里, Harel/UML 分派算法规定, 当处理 EvX 事件时, 机器必须从 (B,D) 转换到 (C,E). 由于 Harel 在 <a href=
+  "http://www.wisdom.weizmann.ac.il/~dharel/SCANNED.PAPERS/Statecharts.pdf">其论文</a>第 7 章中描述的种种微妙之处, 该算法的实现不仅相当复杂, 而且远慢于 Boost.Statechart 采用的简化版本, 后者一旦找到适合当前事件的 <a href=
+  "definitions.html#Reaction">反应</a>就停止搜索. 也就是说, 如果这个例子用本库实现, 机器将不确定地从 (B,D) 转换到 (C,D) 或 (B,E). 之所以选择这个版本, 是因为以我的经验, 真实机器中不同的正交区域往往不会为相同的事件指定转换. 对于少数会这样做的情形, UML 行为可以按如下方式轻松模拟:</p>
+
+  <p><img alt="SimpleEventDispatch" src="SimpleEventDispatch.gif" border="0"
+  width="466" height="226"></p>
+
+  <h4>跨越正交区域的转换</h4>
+
+  <p><img alt="TransAcrossOrthRegions" src="TransAcrossOrthRegions.gif"
+  border="0" width="226" height="271"></p>
+
+  <p>跨越正交区域的转换目前在编译期报错 (UML 规范明确允许这种转换, 而 Harel 则完全没有提及). 我决定不支持它们, 因为我曾误图实现这种转换多次, 但从未遇到过任何有意义的场景. 如果您需要做这种转换, 请务必告诉我!</p>
+  <hr>
+
+  <p><a href="http://validator.w3.org/check?uri=referer"><img border="0" src=
+  "../../../doc/images/valid-html401.png" alt="Valid HTML 4.01 Transitional"
+  height="31" width="88"></a></p>
+
+  <p>修订于 <!--webbot bot="Timestamp" s-type="EDITED" s-format="%d %B, %Y" startspan -->03 December, 2006<!--webbot bot="Timestamp" endspan i-checksum="38512" --></p>
+
+  <p><i>版权所有 © 2003-<!--webbot bot="Timestamp" s-type="EDITED" s-format="%Y" startspan -->2006<!--webbot bot="Timestamp" endspan i-checksum="770" -->
+  <a href="contact.html">Andreas Huber Dönni</a></i></p>
+
+  <p><i>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <a href="../../../LICENSE_1_0.txt">LICENSE_1_0.txt</a> 或复制于 <a href=
+  "http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</a>)</i></p>
+</body>
+</html>

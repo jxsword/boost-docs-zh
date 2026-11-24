@@ -1,0 +1,429 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>预处理语句</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="up" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="prev" href="text_queries.html" title="文本查询与客户端 SQL 格式化">
+<link rel="next" href="dynamic_interface.html" title="动态接口">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="text_queries.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="dynamic_interface.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="mysql.prepared_statements"></a><a class="link" href="prepared_statements.html" title="预处理语句">预处理语句</a>
+</h2></div></div></div>
+<p>本节介绍 <a href="https://dev.mysql.com/doc/refman/8.0/en/sql-prepared-statements.html" target="_top">服务器端预处理语句</a>的用法, 它是 <a class="link" href="ref/boost__mysql__with_params.html" title="with_params"><code class="literal">with_params</code></a> 的替代方案. 总体而言, 预处理语句比 <code class="computeroutput"><span class="identifier">with_params</span></code> 更复杂、更不灵活, 但在某些情况下可能提供更高的效率. 如果不确定, 请优先使用 <code class="computeroutput"><span class="identifier">with_params</span></code>. 关于 <a class="link" href="text_queries.html#mysql.text_queries.comparison" title="预处理语句与客户端 SQL 格式化的对比"> 与预处理语句的对比见 </a>本节<code class="computeroutput"><span class="identifier">with_params</span></code>.</p>
+<p>使用语句涉及三个网络操作:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">预处理语句: <a class="link" href="ref/boost__mysql__any_connection/async_prepare_statement.html" title="any_connection::async_prepare_statement"><code class="literal">any_connection::async_prepare_statement</code></a>.</li>
+<li class="listitem">执行语句: <a class="link" href="ref/boost__mysql__any_connection/async_execute.html" title="any_connection::async_execute"><code class="literal">any_connection::async_execute</code></a> 或 <a class="link" href="ref/boost__mysql__any_connection/async_start_execution.html" title="any_connection::async_start_execution"><code class="literal">any_connection::async_start_execution</code></a>.</li>
+<li class="listitem">关闭语句 (可选): <a class="link" href="ref/boost__mysql__any_connection/async_close_statement.html" title="any_connection::async_close_statement"><code class="literal">any_connection::async_close_statement</code></a>.</li>
+</ul></div>
+<p> <a class="link" href="ref/boost__mysql__statement.html" title="statement"><code class="literal">statement</code></a> 类持有服务器提供的、指向打开的预处理语句的句柄.</p>
+<h4>
+<a name="mysql.prepared_statements.h0"></a>
+      <span class="phrase"><a name="mysql.prepared_statements.preparing_a_statement"></a></span><a class="link" href="prepared_statements.html#mysql.prepared_statements.preparing_a_statement">预处理语句的准备</a>
+    </h4>
+<p>调用 <a class="link" href="ref/boost__mysql__any_connection/async_prepare_statement.html" title="any_connection::async_prepare_statement"><code class="literal">async_prepare_statement</code></a> 会得到一个 <a class="link" href="ref/boost__mysql__statement.html" title="statement"><code class="literal">statement</code></a> 对象:</p>
+<pre class="programlisting"><span class="comment">// Ask the server to prepare a statement to insert a new employee.</span>
+<span class="comment">// statement is a lightweight handle to the server-side statement.</span>
+<span class="comment">// Each ? is a parameter</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">statement</span> <span class="identifier">stmt</span> <span class="special">=</span> <span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_prepare_statement</span><span class="special">(</span>
+    <span class="string">"INSERT INTO employee (first_name, last_name, salary, company_id) VALUES (?, ?, ?, ?)"</span>
+<span class="special">);</span>
+</pre>
+<p>问号字符 (<code class="computeroutput"><span class="special">?</span></code>) 表示参数 (如 <a href="https://dev.mysql.com/doc/refman/8.0/en/prepare.html" target="_top">此处</a>所述). 执行语句时 (下一节), 你为声明的每个参数提供值, 服务器将使用这些值来运行语句.</p>
+<h4>
+<a name="mysql.prepared_statements.h1"></a>
+      <span class="phrase"><a name="mysql.prepared_statements.executing_a_statement"></a></span><a class="link" href="prepared_statements.html#mysql.prepared_statements.executing_a_statement">执行语句</a>
+    </h4>
+<p>执行语句之前, 必须通过调用 <a class="link" href="ref/boost__mysql__statement/bind.html" title="statement::bind"><code class="literal">statement::bind</code></a> 指定其实际参数. 绑定发生在客户端: 语句句柄和传入的参数被打包成一个对象, 该对象可以传递给 <a class="link" href="ref/boost__mysql__any_connection/async_execute.html" title="any_connection::async_execute"><code class="literal">async_execute</code></a>, 而无需与服务器通信. <code class="computeroutput"><span class="identifier">bind</span></code> 返回的对象可以传递给 <code class="computeroutput"><span class="identifier">async_execute</span></code>:</p>
+<pre class="programlisting"><span class="comment">// Bind and execute the statement. You must pass one parameter per '?' placeholder in the statement.</span>
+<span class="comment">// In the real world, parameters should be runtime values, rather than constants.</span>
+<span class="comment">// Note that bind() does not involve communication with the server</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="identifier">stmt</span><span class="special">.</span><span class="identifier">bind</span><span class="special">(</span><span class="string">"John"</span><span class="special">,</span> <span class="string">"Doe"</span><span class="special">,</span> <span class="number">40000</span><span class="special">,</span> <span class="string">"HGS"</span><span class="special">),</span> <span class="identifier">result</span><span class="special">);</span>
+</pre>
+<p>几点说明:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">必须传入 <span class="bold"><strong>与语句形参数量完全相同</strong></span>的参数. 否则将导致错误.</li>
+<li class="listitem">无需以任何方式清洗参数. 服务器会处理这件事.</li>
+<li class="listitem">实际参数按顺序与 <code class="computeroutput"><span class="special">?</span></code> 占位符匹配.</li>
+<li class="listitem">可以传递内置整数、<code class="computeroutput"><span class="keyword">float</span></code>、<a class="link" href="ref/boost__mysql__date.html" title="date"><code class="literal">date</code></a> 或 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span></code> 等类型, 并产生预期效果. <a class="link" href="prepared_statements.html#mysql.prepared_statements.writable_field_reference">此表</a>包含所有允许类型的参考.</li>
+<li class="listitem">也可以使用 <a class="link" href="static_interface.html" title="静态接口">静态接口</a>来执行语句, 方法是将 <a class="link" href="ref/boost__mysql__results.html" title="results"><code class="literal">results</code></a> 替换为 <a class="link" href="ref/boost__mysql__static_results.html" title="static_results"><code class="literal">static_results</code></a>.</li>
+</ul></div>
+<h4>
+<a name="mysql.prepared_statements.h2"></a>
+      <span class="phrase"><a name="mysql.prepared_statements.closing_a_statement"></a></span><a class="link" href="prepared_statements.html#mysql.prepared_statements.closing_a_statement">关闭语句</a>
+    </h4>
+<p>预处理语句在服务器端创建, 因而会占用服务器资源. 可以通过调用 <a class="link" href="ref/boost__mysql__any_connection/async_close_statement.html" title="any_connection::async_close_statement"><code class="literal">async_close_statement</code></a> 来释放不再需要的语句:</p>
+<pre class="programlisting"><span class="comment">// Deallocate the statement from the server.</span>
+<span class="comment">// Note that closing the connection will also deallocate the statement.</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_close_statement</span><span class="special">(</span><span class="identifier">stmt</span><span class="special">);</span>
+</pre>
+<p>预处理语句由服务器按会话管理. 也就是说, 一旦你关闭与服务器的连接, 所有已分配的预处理语句都会被自动关闭. 调用 <a class="link" href="ref/boost__mysql__any_connection/async_reset_connection.html" title="any_connection::async_reset_connection"><code class="literal">any_connection::async_reset_connection</code></a> 也会关闭当前会话准备的所有语句. <a class="link" href="ref/boost__mysql__connection_pool.html" title="connection_pool"><code class="literal">connection_pool</code></a> 利用这一点来清理会话.</p>
+<p>总体而言, 如果使用 <code class="computeroutput"><span class="identifier">async_reset_connection</span></code> 或 <code class="computeroutput"><span class="identifier">connection_pool</span></code>, 或者是在程序启动时准备固定数量的语句, 请避免显式关闭语句. 关闭语句涉及可以避免的网络流量. 另一方面, 如果你在不使用上述技术的情况下动态创建和销毁预处理语句, 请考虑显式关闭语句以限制服务器资源消耗.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>
+        <a class="link" href="ref/boost__mysql__statement.html" title="statement"><code class="literal">statement</code></a> 的析构函数 <span class="bold"><strong>不会在服务器端释放语句</strong></span>. 这是有意为之, 因为关闭语句涉及可能阻塞或失败的网络操作, 而且涉及 <code class="computeroutput"><span class="identifier">async_reset_connection</span></code> 的策略并不需要它.</p></td></tr>
+</table></div>
+<h4>
+<a name="mysql.prepared_statements.h3"></a>
+      <span class="phrase"><a name="mysql.prepared_statements.nulls_and_optionals"></a></span><a class="link" href="prepared_statements.html#mysql.prepared_statements.nulls_and_optionals">NULL 与 optional</a>
+    </h4>
+<p>可以为可能为 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span></code> 的参数传递 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">optional</span></code> 和 <code class="computeroutput"><span class="identifier">NULL</span></code>:</p>
+<pre class="programlisting"><span class="comment">// Inserts a new employee into the database.</span>
+<span class="comment">// We may not have the salary information for some people,</span>
+<span class="comment">// so we represent the value as an optional</span>
+<span class="identifier">asio</span><span class="special">::</span><span class="identifier">awaitable</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span> <span class="identifier">insert_employee</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">any_connection</span><span class="special">&amp;</span> <span class="identifier">conn</span><span class="special">,</span>
+    <span class="keyword">const</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">statement</span><span class="special">&amp;</span> <span class="identifier">stmt</span><span class="special">,</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span> <span class="identifier">first_name</span><span class="special">,</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span> <span class="identifier">last_name</span><span class="special">,</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">salary</span><span class="special">,</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span> <span class="identifier">company_id</span>
+<span class="special">)</span>
+<span class="special">{</span>
+    <span class="comment">// If salary has a value, an integer will be sent to the server.</span>
+    <span class="comment">// Otherwise, a NULL value will be sent</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+    <span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="identifier">stmt</span><span class="special">.</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">first_name</span><span class="special">,</span> <span class="identifier">last_name</span><span class="special">,</span> <span class="identifier">salary</span><span class="special">,</span> <span class="identifier">company_id</span><span class="special">),</span> <span class="identifier">result</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<h4>
+<a name="mysql.prepared_statements.h4"></a>
+      <span class="phrase"><a name="mysql.prepared_statements.parameter_server_side_type_casti"></a></span><a class="link" href="prepared_statements.html#mysql.prepared_statements.parameter_server_side_type_casti">参数的服务器端类型转换</a>
+    </h4>
+<p>MySQL 对语句参数的类型相当宽松. 在大多数情况下, 它会为你执行所需的转换. 例如, 以下代码可以工作:</p>
+<pre class="programlisting"><span class="comment">// Prepare the statement</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">statement</span> <span class="identifier">stmt</span> <span class="special">=</span> <span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_prepare_statement</span><span class="special">(</span>
+    <span class="string">"INSERT INTO employee (first_name, last_name, salary, company_id) VALUES (?, ?, ?, ?)"</span>
+<span class="special">);</span>
+
+<span class="comment">// Execute it, passing an 8 byte unsigned integer as the salary value.</span>
+<span class="comment">// The salary column was created as an INT (4 byte, signed integer).</span>
+<span class="comment">// MySQL will cast the value server-side, and emit an error only if the supplied</span>
+<span class="comment">// value is out of range of the target type</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">uint64_t</span> <span class="identifier">salary</span> <span class="special">=</span> <span class="number">45000</span><span class="special">;</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="identifier">stmt</span><span class="special">.</span><span class="identifier">bind</span><span class="special">(</span><span class="string">"John"</span><span class="special">,</span> <span class="string">"Doe"</span><span class="special">,</span> <span class="identifier">salary</span><span class="special">,</span> <span class="string">"HGS"</span><span class="special">),</span> <span class="identifier">result</span><span class="special">);</span>
+</pre>
+<h4>
+<a name="mysql.prepared_statements.h5"></a>
+      <span class="phrase"><a name="mysql.prepared_statements.executing_a_statement_with_a_var"></a></span><a class="link" href="prepared_statements.html#mysql.prepared_statements.executing_a_statement_with_a_var">以可变数量的参数执行语句</a>
+    </h4>
+<p>
+      <a class="link" href="ref/boost__mysql__statement/bind.html" title="statement::bind"><code class="literal">statement::bind</code></a> 有两种形式:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">变参形式: 语句的每个实参作为 C++ 参数传递. 这是我们一直在使用的形式. 仅当语句的实参数量在编译期已知时才能使用.</li>
+<li class="listitem">范围形式: 实参以 variant 范围的形式传递. 仅当实参数量在编译期未知时才应使用.</li>
+</ul></div>
+<p>范围应包含 <a class="link" href="ref/boost__mysql__field.html" title="field"><code class="literal">field</code></a> 或 <a class="link" href="ref/boost__mysql__field_view.html" title="field_view"><code class="literal">field_view</code></a> 元素, 它们可以表示任何 MySQL 类型. 例如:</p>
+<pre class="programlisting"><span class="comment">// Executes the passed statement with the given parameters.</span>
+<span class="identifier">asio</span><span class="special">::</span><span class="identifier">awaitable</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span> <span class="identifier">execute_statement</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">any_connection</span><span class="special">&amp;</span> <span class="identifier">conn</span><span class="special">,</span>
+    <span class="keyword">const</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">statement</span><span class="special">&amp;</span> <span class="identifier">stmt</span><span class="special">,</span>
+    <span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">field</span><span class="special">&gt;&amp;</span> <span class="identifier">params</span>
+<span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+    <span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="identifier">stmt</span><span class="special">.</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">params</span><span class="special">.</span><span class="identifier">begin</span><span class="special">(),</span> <span class="identifier">params</span><span class="special">.</span><span class="identifier">end</span><span class="special">()),</span> <span class="identifier">result</span><span class="special">);</span>
+
+    <span class="comment">// Do something useful with result</span>
+<span class="special">}</span>
+</pre>
+<h4>
+<a name="mysql.prepared_statements.h6"></a>
+      <span class="phrase"><a name="mysql.prepared_statements.type_mapping_reference_for_prepa"></a></span><a class="link" href="prepared_statements.html#mysql.prepared_statements.type_mapping_reference_for_prepa">预处理语句参数的类型映射参考</a>
+    </h4>
+<p>下表包含绑定语句时可使用类型的参考. 如果某个类型可以这样使用, 我们称其满足 <code class="computeroutput"><span class="identifier">WritableField</span></code> 概念. 该表展示了表达式 <code class="computeroutput"><span class="identifier">v</span></code> 中的参数 <code class="computeroutput"><span class="identifier">conn</span><span class="special">.</span><span class="identifier">execute</span><span class="special">(</span><span class="identifier">stmt</span><span class="special">.</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">v</span><span class="special">),</span>
+      <span class="identifier">result</span><span class="special">)</span></code> 如何被 MySQL 解释, 取决于 <code class="computeroutput"><span class="identifier">v</span></code> 的类型.</p>
+<div class="informaltable">
+<a name="mysql.prepared_statements.writable_field_reference"></a><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+              <p>C++ 类型</p>
+            </th>
+<th>
+              <p>MySQL 类型</p>
+            </th>
+<th>
+              <p>兼容于...</p>
+            </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="keyword">signed</span> <span class="keyword">char</span></code>,
+                <code class="computeroutput"><span class="keyword">short</span></code>, <code class="computeroutput"><span class="keyword">int</span></code>, <code class="computeroutput"><span class="keyword">long</span></code>,
+                <code class="computeroutput"><span class="keyword">long</span> <span class="keyword">long</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">BIGINT</span></code>
+              </p>
+            </td>
+<td>
+              <p>有符号 <code class="computeroutput"><span class="identifier">TINYINT</span></code>、<code class="computeroutput"><span class="identifier">SMALLINT</span></code>、<code class="computeroutput"><span class="identifier">MEDIUMINT</span></code>、<code class="computeroutput"><span class="identifier">INT</span></code>、<code class="computeroutput"><span class="identifier">BIGINT</span></code>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="keyword">unsigned</span> <span class="keyword">char</span></code>,
+                <code class="computeroutput"><span class="keyword">unsigned</span> <span class="keyword">short</span></code>,
+                <code class="computeroutput"><span class="keyword">unsigned</span> <span class="keyword">int</span></code>,
+                <code class="computeroutput"><span class="keyword">unsigned</span> <span class="keyword">long</span></code>,
+                <code class="computeroutput"><span class="keyword">unsigned</span> <span class="keyword">long</span>
+                <span class="keyword">long</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">UNSIGNED</span> <span class="identifier">BIGINT</span></code>
+              </p>
+            </td>
+<td>
+              <p>无符号 <code class="computeroutput"><span class="identifier">TINYINT</span></code>、<code class="computeroutput"><span class="identifier">SMALLINT</span></code>、<code class="computeroutput"><span class="identifier">MEDIUMINT</span></code>、<code class="computeroutput"><span class="identifier">INT</span></code>、<code class="computeroutput"><span class="identifier">BIGINT</span></code>、<code class="computeroutput"><span class="identifier">YEAR</span></code>、<code class="computeroutput"><span class="identifier">BIT</span></code>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="keyword">bool</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">BIGINT</span></code> (<code class="computeroutput"><span class="number">1</span></code> 若 <code class="computeroutput"><span class="keyword">true</span></code>, <code class="computeroutput"><span class="number">0</span></code> 若 <code class="computeroutput"><span class="keyword">false</span></code>)</p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">TINYINT</span></code>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">basic_string</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">char_traits</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">&gt;,</span>
+                <span class="identifier">Allocator</span><span class="special">&gt;</span></code> (包括 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span></code>)、<a class="link" href="ref/boost__mysql__string_view.html" title="string_view"><code class="literal">string_view</code></a>、<code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span></code>、<code class="computeroutput"><span class="keyword">const</span>
+                <span class="keyword">char</span><span class="special">*</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">VARCHAR</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">CHAR</span></code>、<code class="computeroutput"><span class="identifier">VARCHAR</span></code>、<code class="computeroutput"><span class="identifier">TEXT</span></code> (所有大小)、<code class="computeroutput"><span class="identifier">ENUM</span></code>、<code class="computeroutput"><span class="identifier">SET</span></code>、<code class="computeroutput"><span class="identifier">JSON</span></code>、<code class="computeroutput"><span class="identifier">DECIMAL</span></code>、<code class="computeroutput"><span class="identifier">NUMERIC</span></code>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">basic_vector</span><span class="special">&lt;</span><span class="keyword">unsigned</span> <span class="keyword">char</span><span class="special">,</span> <span class="identifier">Allocator</span><span class="special">&gt;</span></code> (包括 <a class="link" href="ref/boost__mysql__blob.html" title="blob"><code class="literal">blob</code></a>)、<a class="link" href="ref/boost__mysql__blob_view.html" title="blob_view"><code class="literal">blob_view</code></a>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">BLOB</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">BINARY</span></code>、<code class="computeroutput"><span class="identifier">VARBINARY</span></code>、<code class="computeroutput"><span class="identifier">BLOB</span></code> (所有大小)、<code class="computeroutput"><span class="identifier">GEOMETRY</span></code>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="keyword">float</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">FLOAT</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">FLOAT</span></code>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="keyword">double</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">DOUBLE</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">DOUBLE</span></code>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <a class="link" href="ref/boost__mysql__date.html" title="date"><code class="literal">date</code></a>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">DATE</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">DATE</span></code>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <a class="link" href="ref/boost__mysql__datetime.html" title="datetime"><code class="literal">datetime</code></a>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">DATETIME</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">DATETIME</span></code>, <code class="computeroutput"><span class="identifier">TIMESTAMP</span></code>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <a class="link" href="ref/boost__mysql__time.html" title="time"><code class="literal">time</code></a><br> 任何 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">duration</span></code> 可转换为 <code class="computeroutput"><span class="identifier">time</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">TIME</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">TIME</span></code>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">nullptr_t</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">NULL</span></code>
+              </p>
+            </td>
+<td>
+              <p>其他任意类型. 例如用于插入 <code class="computeroutput"><span class="identifier">NULL</span></code> 值.</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code>
+              </p>
+            </td>
+<td>
+              <p>应用 <code class="computeroutput"><span class="identifier">T</span></code> 的类型映射 (若 optional 有值)<br> <code class="computeroutput"><span class="identifier">NULL</span></code> 否则</p>
+            </td>
+<td>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code>
+              </p>
+            </td>
+<td>
+              <p>应用 <code class="computeroutput"><span class="identifier">T</span></code> 的类型映射 (若 optional 有值)<br> <code class="computeroutput"><span class="identifier">NULL</span></code> 否则</p>
+            </td>
+<td>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <a class="link" href="ref/boost__mysql__field_view.html" title="field_view"><code class="literal">field_view</code></a>
+              </p>
+            </td>
+<td>
+              <p>取决于 field 实际存储的类型</p>
+            </td>
+<td>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <a class="link" href="ref/boost__mysql__field.html" title="field"><code class="literal">field</code></a>
+              </p>
+            </td>
+<td>
+              <p>取决于 field 实际存储的类型</p>
+            </td>
+<td>
+            </td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2019-2024 Ruben Perez<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="text_queries.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="dynamic_interface.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

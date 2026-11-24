@@ -1,0 +1,220 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>静态词法分析器模型</title>
+<link rel="stylesheet" href="../../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../../index.html" title="Spirit 2.59">
+<link rel="up" href="../abstracts.html" title="概述">
+<link rel="prev" href="lexer_semantic_actions.html" title="词法分析器语义动作">
+<link rel="next" href="../quick_reference.html" title="快速参考">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="lexer_semantic_actions.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../abstracts.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="../quick_reference.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="spirit.lex.abstracts.lexer_static_model"></a><a class="link" href="lexer_static_model.html" title="静态词法分析器模型"> <span class="emphasis"><em>静态</em></span>词法分析器模型</a>
+</h4></div></div></div>
+<p>到目前为止, <span class="emphasis"><em>Spirit.Lex</em></span> 的文档主要描述的是 <span class="emphasis"><em>动态</em></span> 模型的特性, 其中词法分析所需的表是在运行期从正则表达式生成的. 动态模型的最大优点是其灵活性, 以及它与 <a href="http://boost-spirit.com" target="_top">Spirit</a> 库和 C++ 宿主语言的集成. 它的最大缺点是需要花费额外的运行期时间来生成这些表, 这对于较大的词法分析器来说尤其可能成为限制. <span class="emphasis"><em>静态</em></span> 模型力求在与 <a href="http://boost-spirit.com" target="_top">Spirit</a> 和 C++ 平滑集成的基础上, 复用 <span class="emphasis"><em>Spirit.Lex</em></span> 库迄今为止所描述的大部分内容, 同时通过使用预生成的表和分词例程来克服额外的运行期开销. 为了使代码生成尽可能简单, 静态模型不加任何改动地复用了为 <span class="emphasis"><em>动态</em></span> 模型开发的记号定义类型. 正如本节将要展示的, 基于现有的记号定义类型构建一个代码生成器只需编写 3 行代码.</p>
+<p>假设你已经为你的问题构建了一个动态词法分析器, 那么使用 <span class="emphasis"><em>Spirit.Lex</em></span> 创建静态词法分析器还需要两个步骤:</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">为静态分析器生成 C++ 代码 (包括分词函数和相应的表), 以及</li>
+<li class="listitem">修改动态词法分析器以使用生成的代码.</li>
+</ol></div>
+<p>这两个步骤将在下面两节中更详细地描述 (本示例中使用的完整源代码参见这里的代码: <a href="../../../../../example/lex/static_lexer/word_count_tokens.hpp" target="_top">公共记号定义</a>, <a href="../../../../../example/lex/static_lexer/word_count_generate.cpp" target="_top">代码生成器</a>, <a href="../../../../../example/lex/static_lexer/word_count_static.hpp" target="_top">生成的代码</a> 以及 <a href="../../../../../example/lex/static_lexer/word_count_static.cpp" target="_top">静态词法分析器</a>).</p>
+<p>但首先我们提供进一步理解这些描述所需的代码片段. 在本例中, 所用记号标识符的定义和记号定义类都被放入一个单独的头文件, 以便代码生成器和静态词法分析器都能使用它们.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">enum</span> <span class="identifier">tokenids</span>
+<span class="special">{</span>
+    <span class="identifier">IDANY</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">lex</span><span class="special">::</span><span class="identifier">min_token_id</span> <span class="special">+</span> <span class="number">1</span><span class="special">,</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>这里的要点是, 该记号定义类与用于动态词法分析器的类似类没有什么不同. 本库的设计方式使得所有组件 (动态词法分析器, 代码生成器和静态词法分析器) 都可以复用完全相同的记号定义语法.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// This token definition class can be used without any change for all three</span>
+<span class="comment">// possible use cases: a dynamic lexical analyzer, a code generator, and a</span>
+<span class="comment">// static lexical analyzer.</span>
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">BaseLexer</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">word_count_tokens</span> <span class="special">:</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">lex</span><span class="special">::</span><span class="identifier">lexer</span><span class="special">&lt;</span><span class="identifier">BaseLexer</span><span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="identifier">word_count_tokens</span><span class="special">()</span>
+      <span class="special">:</span> <span class="identifier">word_count_tokens</span><span class="special">::</span><span class="identifier">base_type</span><span class="special">(</span>
+          <span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">lex</span><span class="special">::</span><span class="identifier">match_flags</span><span class="special">::</span><span class="identifier">match_not_dot_newline</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="comment">// define tokens and associate them with the lexer</span>
+        <span class="identifier">word</span> <span class="special">=</span> <span class="string">"[^ \t\n]+"</span><span class="special">;</span>
+        <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">self</span> <span class="special">=</span> <span class="identifier">word</span> <span class="special">|</span> <span class="char">'\n'</span> <span class="special">|</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">lex</span><span class="special">::</span><span class="identifier">token_def</span><span class="special">&lt;&gt;(</span><span class="string">"."</span><span class="special">,</span> <span class="identifier">IDANY</span><span class="special">);</span>
+    <span class="special">}</span>
+
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">lex</span><span class="special">::</span><span class="identifier">token_def</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;</span> <span class="identifier">word</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>在这三种不同用例之间唯一变化的是用于实例化具体记号定义的模板参数. 对于动态模型和代码生成器, 你可能会使用 <code class="computeroutput"><span class="identifier">lex</span><span class="special">::</span><span class="identifier">lexertl</span><span class="special">::</span><span class="identifier">lexer</span><span class="special">&lt;&gt;</span></code> 模板, 而对于静态模型, 你将使用 <code class="computeroutput"><span class="identifier">lex</span><span class="special">::</span><span class="identifier">lexertl</span><span class="special">::</span><span class="identifier">static_lexer</span><span class="special">&lt;&gt;</span></code> 类型作为模板参数.</p>
+<p>这个例子不仅展示了如何构建静态词法分析器, 还演示了这样的词法分析器如何与 <span class="emphasis"><em>Spirit.Qi</em></span> 文法配合用于解析. 为完整起见, 我们给出本例中使用的简单文法. 如你所见, 该文法对静态词法分析器没有任何依赖, 因此它与之前描述的、不使用词法分析器或使用动态词法分析器的文法并无不同.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">//  This is an ordinary grammar definition following the rules defined by </span>
+<span class="comment">//  Spirit.Qi. There is nothing specific about it, except it gets the token</span>
+<span class="comment">//  definition class instance passed to the constructor to allow accessing the</span>
+<span class="comment">//  embedded token_def&lt;&gt; instances.</span>
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Iterator</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">word_count_grammar</span> <span class="special">:</span> <span class="identifier">qi</span><span class="special">::</span><span class="identifier">grammar</span><span class="special">&lt;</span><span class="identifier">Iterator</span><span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">TokenDef</span><span class="special">&gt;</span>
+    <span class="identifier">word_count_grammar</span><span class="special">(</span><span class="identifier">TokenDef</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">tok</span><span class="special">)</span>
+      <span class="special">:</span> <span class="identifier">word_count_grammar</span><span class="special">::</span><span class="identifier">base_type</span><span class="special">(</span><span class="identifier">start</span><span class="special">)</span>
+      <span class="special">,</span> <span class="identifier">c</span><span class="special">(</span><span class="number">0</span><span class="special">),</span> <span class="identifier">w</span><span class="special">(</span><span class="number">0</span><span class="special">),</span> <span class="identifier">l</span><span class="special">(</span><span class="number">0</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="keyword">using</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">phoenix</span><span class="special">::</span><span class="identifier">ref</span><span class="special">;</span>
+        <span class="keyword">using</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">phoenix</span><span class="special">::</span><span class="identifier">size</span><span class="special">;</span>
+
+        <span class="comment">//  associate the defined tokens with the lexer, at the same time </span>
+        <span class="comment">//  defining the actions to be executed </span>
+        <span class="identifier">start</span> <span class="special">=</span>  <span class="special">*(</span>   <span class="identifier">tok</span><span class="special">.</span><span class="identifier">word</span>          <span class="special">[</span> <span class="special">++</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">w</span><span class="special">),</span> <span class="identifier">ref</span><span class="special">(</span><span class="identifier">c</span><span class="special">)</span> <span class="special">+=</span> <span class="identifier">size</span><span class="special">(</span><span class="identifier">_1</span><span class="special">)</span> <span class="special">]</span>
+                  <span class="special">|</span>   <span class="identifier">lit</span><span class="special">(</span><span class="char">'\n'</span><span class="special">)</span>         <span class="special">[</span> <span class="special">++</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">l</span><span class="special">),</span> <span class="special">++</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">c</span><span class="special">)</span> <span class="special">]</span>
+                  <span class="special">|</span>   <span class="identifier">qi</span><span class="special">::</span><span class="identifier">token</span><span class="special">(</span><span class="identifier">IDANY</span><span class="special">)</span>  <span class="special">[</span> <span class="special">++</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">c</span><span class="special">)</span> <span class="special">]</span>
+                  <span class="special">)</span>
+              <span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">c</span><span class="special">,</span> <span class="identifier">w</span><span class="special">,</span> <span class="identifier">l</span><span class="special">;</span>      <span class="comment">// counter for characters, words, and lines</span>
+    <span class="identifier">qi</span><span class="special">::</span><span class="identifier">rule</span><span class="special">&lt;</span><span class="identifier">Iterator</span><span class="special">&gt;</span> <span class="identifier">start</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<h6>
+<a name="spirit.lex.abstracts.lexer_static_model.h0"></a>
+          <span class="phrase"><a name="spirit.lex.abstracts.lexer_static_model.generating_the_static_analyzer"></a></span><a class="link" href="lexer_static_model.html#spirit.lex.abstracts.lexer_static_model.generating_the_static_analyzer">生成静态分析器</a>
+        </h6>
+<p>为了创建静态词法分析器而要执行的第一个附加步骤, 是创建一个小型独立程序, 用于生成词法分析器表和相应的分词函数. 为此, <span class="emphasis"><em>Spirit.Lex</em></span> 库提供了一个特殊的 API - 函数 <code class="computeroutput"><span class="identifier">generate_static_dfa</span><span class="special">()</span></code>. 它实现了整个代码生成器, 无需编写其他代码. 调用这个函数只需要提供一个记号定义实例, 一个用于生成代码的输出流, 以及一个可选的字符串, 用作生成函数名称的后缀. 总共只需几行代码.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">argc</span><span class="special">,</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">argv</span><span class="special">[])</span>
+<span class="special">{</span>
+    <span class="comment">// create the lexer object instance needed to invoke the generator</span>
+    <span class="identifier">word_count_tokens</span><span class="special">&lt;</span><span class="identifier">lex</span><span class="special">::</span><span class="identifier">lexertl</span><span class="special">::</span><span class="identifier">lexer</span><span class="special">&lt;&gt;</span> <span class="special">&gt;</span> <span class="identifier">word_count</span><span class="special">;</span> <span class="comment">// the token definition</span>
+
+    <span class="comment">// open the output file, where the generated tokenizer function will be </span>
+    <span class="comment">// written to</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">ofstream</span> <span class="identifier">out</span><span class="special">(</span><span class="identifier">argc</span> <span class="special">&lt;</span> <span class="number">2</span> <span class="special">?</span> <span class="string">"word_count_static.hpp"</span> <span class="special">:</span> <span class="identifier">argv</span><span class="special">[</span><span class="number">1</span><span class="special">]);</span>
+
+    <span class="comment">// invoke the generator, passing the token definition, the output stream </span>
+    <span class="comment">// and the name suffix of the tables and functions to be generated</span>
+    <span class="comment">//</span>
+    <span class="comment">// The suffix "wc" used below results in a type lexertl::static_::lexer_wc</span>
+    <span class="comment">// to be generated, which needs to be passed as a template parameter to the </span>
+    <span class="comment">// lexertl::static_lexer template (see word_count_static.cpp).</span>
+    <span class="keyword">return</span> <span class="identifier">lex</span><span class="special">::</span><span class="identifier">lexertl</span><span class="special">::</span><span class="identifier">generate_static_dfa</span><span class="special">(</span><span class="identifier">word_count</span><span class="special">,</span> <span class="identifier">out</span><span class="special">,</span> <span class="string">"wc"</span><span class="special">)</span> <span class="special">?</span> <span class="number">0</span> <span class="special">:</span> <span class="special">-</span><span class="number">1</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+        </p>
+<p>所示代码生成器将生成输出, 这些输出应存储在一个文件中, 以便稍后按下一主题所示包含进静态词法分析器 (完整生成的代码可在<a href="../../../../../example/lex/static_lexer/word_count_static.hpp" target="_top">此处</a>查看).</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>生成的代码中会编译进去当前 <span class="emphasis"><em>Spirit.Lex</em></span> 库的版本号. 在编译你的静态词法分析器对象时会使用这个版本号, 以确保其编译所用的 <span class="emphasis"><em>Spirit.Lex</em></span> 库版本与生成词法分析器表时所用的版本完全相同. 如果版本不匹配, 你会看到一个提到 <code class="computeroutput"><span class="identifier">incompatible_static_lexer_version</span></code> 的编译错误.</p></td></tr>
+</table></div>
+<h6>
+<a name="spirit.lex.abstracts.lexer_static_model.h1"></a>
+          <span class="phrase"><a name="spirit.lex.abstracts.lexer_static_model.modifying_the_dynamic_analyzer"></a></span><a class="link" href="lexer_static_model.html#spirit.lex.abstracts.lexer_static_model.modifying_the_dynamic_analyzer">修改动态分析器</a>
+        </h6>
+<p>把现有动态词法分析器转换为静态词法分析器所需的第二步, 是在主程序的两处进行修改. 首先, 你需要更改所用词法分析器的类型 (即实例化记号定义类时使用的模板参数). 在动态模型中我们一直使用 <code class="computeroutput"><span class="identifier">lex</span><span class="special">::</span><span class="identifier">lexertl</span><span class="special">::</span><span class="identifier">lexer</span><span class="special">&lt;&gt;</span></code> 模板, 现在需要把它改为 <code class="computeroutput"><span class="identifier">lex</span><span class="special">::</span><span class="identifier">lexertl</span><span class="special">::</span><span class="identifier">static_lexer</span><span class="special">&lt;&gt;</span></code> 类型. 第二处修改与第一处紧密相关, 涉及把相应的 <code class="computeroutput"><span class="preprocessor">#include</span></code> 语句修正为:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">spirit</span><span class="special">/</span><span class="identifier">include</span><span class="special">/</span><span class="identifier">lex_static_lexertl</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<p>
+        </p>
+<p>除此之外, 主程序与使用动态模型的等价程序没有什么不同. 这一特性使得可以先在动态模式下开发词法分析器, 待代码稳定后再切换到静态模式. 上面展示的简单生成器应用使代码生成器能够集成到任何现有的构建过程中. 下面的代码片段给出了完整的 main 函数, 并突出显示了需要修改的代码.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">argc</span><span class="special">,</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">argv</span><span class="special">[])</span>
+<span class="special">{</span>
+    <span class="comment">// Define the token type to be used: 'std::string' is available as the type </span>
+    <span class="comment">// of the token value.</span>
+    <span class="keyword">typedef</span> <span class="identifier">lex</span><span class="special">::</span><span class="identifier">lexertl</span><span class="special">::</span><span class="identifier">token</span><span class="special">&lt;</span>
+        <span class="keyword">char</span> <span class="keyword">const</span><span class="special">*,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">mpl</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;</span>
+    <span class="special">&gt;</span> <span class="identifier">token_type</span><span class="special">;</span>
+
+    <span class="comment">// Define the lexer type to be used as the base class for our token </span>
+    <span class="comment">// definition.</span>
+    <span class="comment">//</span>
+    <span class="comment">// This is the only place where the code is different from an equivalent</span>
+    <span class="comment">// dynamic lexical analyzer. We use the `lexertl::static_lexer&lt;&gt;` instead of</span>
+    <span class="comment">// the `lexertl::lexer&lt;&gt;` as the base class for our token definition type.</span>
+    <span class="comment">//</span>
+    <span class="comment">// As we specified the suffix "wc" while generating the static tables we </span>
+    <span class="comment">// need to pass the type lexertl::static_::lexer_wc as the second template</span>
+    <span class="comment">// parameter below (see word_count_generate.cpp).</span>
+    <span class="keyword">typedef</span> <span class="identifier">lex</span><span class="special">::</span><span class="identifier">lexertl</span><span class="special">::</span><span class="identifier">static_lexer</span><span class="special">&lt;</span>
+        <span class="identifier">token_type</span><span class="special">,</span> <span class="identifier">lex</span><span class="special">::</span><span class="identifier">lexertl</span><span class="special">::</span><span class="identifier">static_</span><span class="special">::</span><span class="identifier">lexer_wc</span>
+    <span class="special">&gt;</span> <span class="identifier">lexer_type</span><span class="special">;</span>
+
+    <span class="comment">// Define the iterator type exposed by the lexer.</span>
+    <span class="keyword">typedef</span> <span class="identifier">word_count_tokens</span><span class="special">&lt;</span><span class="identifier">lexer_type</span><span class="special">&gt;::</span><span class="identifier">iterator_type</span> <span class="identifier">iterator_type</span><span class="special">;</span>
+
+    <span class="comment">// Now we use the types defined above to create the lexer and grammar</span>
+    <span class="comment">// object instances needed to invoke the parsing process.</span>
+    <span class="identifier">word_count_tokens</span><span class="special">&lt;</span><span class="identifier">lexer_type</span><span class="special">&gt;</span> <span class="identifier">word_count</span><span class="special">;</span>           <span class="comment">// Our lexer</span>
+    <span class="identifier">word_count_grammar</span><span class="special">&lt;</span><span class="identifier">iterator_type</span><span class="special">&gt;</span> <span class="identifier">g</span> <span class="special">(</span><span class="identifier">word_count</span><span class="special">);</span>   <span class="comment">// Our parser</span>
+
+    <span class="comment">// Read in the file into memory.</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">str</span> <span class="special">(</span><span class="identifier">read_from_file</span><span class="special">(</span><span class="number">1</span> <span class="special">==</span> <span class="identifier">argc</span> <span class="special">?</span> <span class="string">"word_count.input"</span> <span class="special">:</span> <span class="identifier">argv</span><span class="special">[</span><span class="number">1</span><span class="special">]));</span>
+    <span class="keyword">char</span> <span class="keyword">const</span><span class="special">*</span> <span class="identifier">first</span> <span class="special">=</span> <span class="identifier">str</span><span class="special">.</span><span class="identifier">c_str</span><span class="special">();</span>
+    <span class="keyword">char</span> <span class="keyword">const</span><span class="special">*</span> <span class="identifier">last</span> <span class="special">=</span> <span class="special">&amp;</span><span class="identifier">first</span><span class="special">[</span><span class="identifier">str</span><span class="special">.</span><span class="identifier">size</span><span class="special">()];</span>
+
+    <span class="comment">// Parsing is done based on the token stream, not the character stream.</span>
+    <span class="keyword">bool</span> <span class="identifier">r</span> <span class="special">=</span> <span class="identifier">lex</span><span class="special">::</span><span class="identifier">tokenize_and_parse</span><span class="special">(</span><span class="identifier">first</span><span class="special">,</span> <span class="identifier">last</span><span class="special">,</span> <span class="identifier">word_count</span><span class="special">,</span> <span class="identifier">g</span><span class="special">);</span>
+
+    <span class="keyword">if</span> <span class="special">(</span><span class="identifier">r</span><span class="special">)</span> <span class="special">{</span>    <span class="comment">// success</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"lines: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">g</span><span class="special">.</span><span class="identifier">l</span> <span class="special">&lt;&lt;</span> <span class="string">", words: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">g</span><span class="special">.</span><span class="identifier">w</span>
+                  <span class="special">&lt;&lt;</span> <span class="string">", characters: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">g</span><span class="special">.</span><span class="identifier">c</span> <span class="special">&lt;&lt;</span> <span class="string">"\n"</span><span class="special">;</span>
+    <span class="special">}</span>
+    <span class="keyword">else</span> <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">rest</span><span class="special">(</span><span class="identifier">first</span><span class="special">,</span> <span class="identifier">last</span><span class="special">);</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cerr</span> <span class="special">&lt;&lt;</span> <span class="string">"Parsing failed\n"</span> <span class="special">&lt;&lt;</span> <span class="string">"stopped at: \""</span>
+                  <span class="special">&lt;&lt;</span> <span class="identifier">rest</span> <span class="special">&lt;&lt;</span> <span class="string">"\"\n"</span><span class="special">;</span>
+    <span class="special">}</span>
+    <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+        </p>
+<div class="important"><table border="0" summary="Important">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[重要]" src="../../../images/important.png"></td>
+<th align="left">重要</th>
+</tr>
+<tr><td align="left" valign="top"><p>为静态词法分析器生成的代码包含已经指派的 token id, 这些 id 或是由程序员显式指派, 或是在词法分析器构造期间隐式指派的. 你有责任确保某个特定静态词法分析器类型的所有实例都使用完全相同的 token id. 词法分析器对象的构造函数有第二个 (默认) 参数, 允许指定一个起始 token id, 用于在为记号定义指派 id 时使用. 只要在构造静态词法分析器实例时不指定 <code class="computeroutput"><span class="identifier">first_id</span></code>, 上述要求默认即被满足.</p></td></tr>
+</table></div>
+</div>
+<div class="copyright-footer">版权所有 © 2001-2011 Joel de Guzman, Hartmut Kaiser<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="lexer_semantic_actions.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../abstracts.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="../quick_reference.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

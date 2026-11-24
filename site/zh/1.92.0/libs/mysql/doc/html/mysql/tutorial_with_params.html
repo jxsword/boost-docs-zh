@@ -1,0 +1,181 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>教程 3: 带参数的查询</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="up" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="prev" href="tutorial_async.html" title="教程 2: 使用 C++20 协程进行异步操作">
+<link rel="next" href="tutorial_static_interface.html" title="教程 4: 静态接口">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="tutorial_async.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="tutorial_static_interface.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="mysql.tutorial_with_params"></a><a class="link" href="tutorial_with_params.html" title="教程 3: 带参数的查询">教程 3: 带参数的查询</a>
+</h2></div></div></div>
+<p>到目前为止, 我们的 SQL 查询都是硬编码的字符串字面量. 然而, 大多数现实世界的用例都涉及运行包含用户提供参数的查询.</p>
+<p>在本教程中, 我们将使用一个员工数据库. 你可以通过在 Boost.MySQL 源代码仓库中执行 <code class="computeroutput"><span class="identifier">example</span><span class="special">/</span><span class="identifier">db_setup</span><span class="special">.</span><span class="identifier">sql</span></code> 文件来获得这个示例数据库.</p>
+<p>employee 表定义如下:</p>
+<pre class="programlisting">CREATE TABLE employee(
+    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    ... -- other fields not relevant for us
+);
+</pre>
+<p>我们将编写一个程序, 按 ID 检索一名员工并打印其全名. 员工 ID 将由用户作为命令行参数提供. 在更现实的示例中, 你可以从文件或 HTTP 请求中获取它.</p>
+<h4>
+<a name="mysql.tutorial_with_params.h0"></a>
+      <span class="phrase"><a name="mysql.tutorial_with_params.avoiding_sql_injection"></a></span><a class="link" href="tutorial_with_params.html#mysql.tutorial_with_params.avoiding_sql_injection">避免 SQL 注入</a>
+    </h4>
+<p>我们需要构建如下查询:</p>
+<pre class="programlisting">SELECT first_name, last_name FROM employee WHERE id = &lt;actual-id&gt;
+</pre>
+<p>把 <code class="computeroutput"><span class="special">&lt;</span><span class="identifier">actual</span><span class="special">-</span><span class="identifier">id</span><span class="special">&gt;</span></code> 替换为用户传入的值.</p>
+<p>由于员工 ID 不受我们控制, 必须将其视为<span class="bold"><strong>不可信的</strong></span>. 我们<span class="bold"><strong>绝不能使用原始字符串拼接</strong></span>来构建查询. 否则, 恶意值可能导致 SQL 注入漏洞, 这类漏洞极其严重.</p>
+<p>Boost.MySQL 提供了两种应对方案:</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">在客户端动态组合查询, 使用专门的工具来避免 SQL 注入. 这种方案通用、简单, 适合一般用途.</li>
+<li class="listitem">在服务器端使用 <a class="link" href="prepared_statements.html" title="预处理语句">预处理语句</a> 进行参数替换. 这种方式更复杂, 也更适合涉及大量数值数据或重复执行同一查询的情况.</li>
+</ol></div>
+<p>在本教程中, 我们将使用客户端生成 (在整个文档中称为 <a class="link" href="text_queries.html" title="文本查询与客户端 SQL 格式化">客户端 SQL 格式化</a> ).</p>
+<h4>
+<a name="mysql.tutorial_with_params.h1"></a>
+      <span class="phrase"><a name="mysql.tutorial_with_params.using_with_params"></a></span><a class="link" href="tutorial_with_params.html#mysql.tutorial_with_params.using_with_params">使用 with_params</a>
+    </h4>
+<p>
+      <a class="link" href="ref/boost__mysql__any_connection/async_execute.html" title="any_connection::async_execute"><code class="literal">any_connection::async_execute</code></a> 也可以处理带参数的查询. 我们需要把字符串字面量替换为对 <a class="link" href="ref/boost__mysql__with_params.html" title="with_params"><code class="literal">with_params</code></a> 的调用, 传入查询模板和参数的实际值:</p>
+<pre class="programlisting"><span class="comment">// Execute the query with the given parameters. When executed, with_params</span>
+<span class="comment">// expands the given query string template and sends it to the server for execution.</span>
+<span class="comment">// {} are placeholders, as in std::format. Values are escaped as required to prevent</span>
+<span class="comment">// SQL injection.</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"SELECT first_name, last_name FROM employee WHERE id = {}"</span><span class="special">,</span> <span class="identifier">employee_id</span><span class="special">),</span>
+    <span class="identifier">result</span>
+<span class="special">);</span>
+</pre>
+<p>查询模板使用的语法类似于 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">format</span></code>. 你可以使用数字、字符串、日期、时间以及许多其他类型作为参数. 关于客户端 SQL 格式化的更多信息, 参见<a class="link" href="text_queries.html" title="文本查询与客户端 SQL 格式化">本页</a>.</p>
+<h4>
+<a name="mysql.tutorial_with_params.h2"></a>
+      <span class="phrase"><a name="mysql.tutorial_with_params.using_the_retrieved_rows"></a></span><a class="link" href="tutorial_with_params.html#mysql.tutorial_with_params.using_the_retrieved_rows">使用检索到的行</a>
+    </h4>
+<p>我们的查询可能返回一行 (如果找到员工), 也可能一行都不返回 (如果不存在具有给定 ID 的员工). 为了应对这一点:</p>
+<pre class="programlisting"><span class="comment">// Did we find an employee with that ID?</span>
+<span class="keyword">if</span> <span class="special">(</span><span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">empty</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Employee not found"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+<span class="keyword">else</span>
+<span class="special">{</span>
+    <span class="comment">// Print the retrieved details. The first field is the first name,</span>
+    <span class="comment">// and the second, the last name.</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">row_view</span> <span class="identifier">employee</span> <span class="special">=</span> <span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">);</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Employee's name is: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">employee</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="char">' '</span> <span class="special">&lt;&lt;</span> <span class="identifier">employee</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">1</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<h4>
+<a name="mysql.tutorial_with_params.h3"></a>
+      <span class="phrase"><a name="mysql.tutorial_with_params.connecting_with_database"></a></span><a class="link" href="tutorial_with_params.html#mysql.tutorial_with_params.connecting_with_database">连接数据库</a>
+    </h4>
+<p>如果你已经运行了 <code class="computeroutput"><span class="identifier">example</span><span class="special">/</span><span class="identifier">db_setup</span><span class="special">.</span><span class="identifier">sql</span></code>, 那么 <code class="computeroutput"><span class="identifier">employee</span></code> 表就存在于 <code class="computeroutput"><span class="identifier">boost_mysql_examples</span></code> 数据库中. 要不加限定地使用该表, 我们需要在连接时指定一个数据库名. 实现方式是设置 <a class="link" href="ref/boost__mysql__connect_params/database.html" title="connect_params::database"><code class="literal">connect_params::database</code></a>:</p>
+<pre class="programlisting"><span class="comment">// The hostname, username, password and database to use.</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">connect_params</span> <span class="identifier">params</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">server_address</span><span class="special">.</span><span class="identifier">emplace_host_and_port</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">(</span><span class="identifier">server_hostname</span><span class="special">));</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">username</span> <span class="special">=</span> <span class="identifier">username</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">password</span> <span class="special">=</span> <span class="identifier">password</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">database</span> <span class="special">=</span> <span class="string">"boost_mysql_examples"</span><span class="special">;</span>
+</pre>
+<h4>
+<a name="mysql.tutorial_with_params.h4"></a>
+      <span class="phrase"><a name="mysql.tutorial_with_params.creating_the_connection_inside_t"></a></span><a class="link" href="tutorial_with_params.html#mysql.tutorial_with_params.creating_the_connection_inside_t">在协程内部创建连接</a>
+    </h4>
+<p>由于我们是在协程中进行连接和关闭连接, 因此把它做成局部变量更合理, 而不是作为参数传递. 回顾一下, 构建连接需要对执行上下文 (即 <code class="computeroutput"><span class="identifier">io_context</span></code>) 的引用. 我们可以把 <code class="computeroutput"><span class="identifier">io_context</span></code> 作为参数传给协程, 但有一种更简单的方式: 协程已经持有对它执行所在位置的引用:</p>
+<pre class="programlisting"><span class="comment">// The connection will use the same executor as the coroutine</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">any_connection</span> <span class="identifier">conn</span><span class="special">(</span><span class="identifier">co_await</span> <span class="identifier">asio</span><span class="special">::</span><span class="identifier">this_coro</span><span class="special">::</span><span class="identifier">executor</span><span class="special">);</span>
+</pre>
+<p>表达式 <code class="computeroutput"><span class="identifier">co_await</span> <span class="identifier">asio</span><span class="special">::</span><span class="identifier">this_coro</span><span class="special">::</span><span class="identifier">executor</span></code> 检索我们的协程正在使用的<span class="bold"><strong>执行器</strong></span>. 执行器是执行上下文的轻量级句柄, 可用于创建我们的连接.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>
+        <code class="computeroutput"><span class="identifier">co_await</span> <span class="identifier">asio</span><span class="special">::</span><span class="identifier">this_coro</span><span class="special">::</span><span class="identifier">executor</span></code> 不执行任何 I/O. 它只检索当前协程的执行器.</p></td></tr>
+</table></div>
+<h4>
+<a name="mysql.tutorial_with_params.h5"></a>
+      <span class="phrase"><a name="mysql.tutorial_with_params.wrapping_up"></a></span><a class="link" href="tutorial_with_params.html#mysql.tutorial_with_params.wrapping_up"> </a>收尾</h4>
+<p>完成上述全部修改后, 我们的协程如下所示:</p>
+<pre class="programlisting"><span class="identifier">asio</span><span class="special">::</span><span class="identifier">awaitable</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span> <span class="identifier">coro_main</span><span class="special">(</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span> <span class="identifier">server_hostname</span><span class="special">,</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span> <span class="identifier">username</span><span class="special">,</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span> <span class="identifier">password</span><span class="special">,</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">int64_t</span> <span class="identifier">employee_id</span>
+<span class="special">)</span>
+<span class="special">{</span>
+    <span class="comment">// The connection will use the same executor as the coroutine</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">any_connection</span> <span class="identifier">conn</span><span class="special">(</span><span class="identifier">co_await</span> <span class="identifier">asio</span><span class="special">::</span><span class="identifier">this_coro</span><span class="special">::</span><span class="identifier">executor</span><span class="special">);</span>
+
+    <span class="comment">// The hostname, username, password and database to use.</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">connect_params</span> <span class="identifier">params</span><span class="special">;</span>
+    <span class="identifier">params</span><span class="special">.</span><span class="identifier">server_address</span><span class="special">.</span><span class="identifier">emplace_host_and_port</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">(</span><span class="identifier">server_hostname</span><span class="special">));</span>
+    <span class="identifier">params</span><span class="special">.</span><span class="identifier">username</span> <span class="special">=</span> <span class="identifier">username</span><span class="special">;</span>
+    <span class="identifier">params</span><span class="special">.</span><span class="identifier">password</span> <span class="special">=</span> <span class="identifier">password</span><span class="special">;</span>
+    <span class="identifier">params</span><span class="special">.</span><span class="identifier">database</span> <span class="special">=</span> <span class="string">"boost_mysql_examples"</span><span class="special">;</span>
+
+    <span class="comment">// Connect to the server</span>
+    <span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_connect</span><span class="special">(</span><span class="identifier">params</span><span class="special">);</span>
+
+    <span class="comment">// Execute the query with the given parameters. When executed, with_params</span>
+    <span class="comment">// expands the given query string template and sends it to the server for execution.</span>
+    <span class="comment">// {} are placeholders, as in std::format. Values are escaped as required to prevent</span>
+    <span class="comment">// SQL injection.</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+    <span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+        <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"SELECT first_name, last_name FROM employee WHERE id = {}"</span><span class="special">,</span> <span class="identifier">employee_id</span><span class="special">),</span>
+        <span class="identifier">result</span>
+    <span class="special">);</span>
+
+    <span class="comment">// Did we find an employee with that ID?</span>
+    <span class="keyword">if</span> <span class="special">(</span><span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">empty</span><span class="special">())</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Employee not found"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">}</span>
+    <span class="keyword">else</span>
+    <span class="special">{</span>
+        <span class="comment">// Print the retrieved details. The first field is the first name,</span>
+        <span class="comment">// and the second, the last name.</span>
+        <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">row_view</span> <span class="identifier">employee</span> <span class="special">=</span> <span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">);</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Employee's name is: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">employee</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="char">' '</span> <span class="special">&lt;&lt;</span> <span class="identifier">employee</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">1</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="comment">// Close the connection</span>
+    <span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_close</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<p>本教程的完整程序清单见 <a class="link" href="examples/tutorial_with_params.html" title="教程 3 清单: 带参数的查询">此处</a>.</p>
+<p>现在可以继续阅读 <a class="link" href="tutorial_static_interface.html" title="教程 4: 静态接口">下一个教程</a>.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2019-2024 Ruben Perez<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="tutorial_async.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="tutorial_static_interface.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

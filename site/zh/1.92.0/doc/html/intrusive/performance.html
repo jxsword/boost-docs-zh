@@ -1,0 +1,1617 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>性能</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../intrusive.html" title="第 16 章. Boost.Intrusive">
+<link rel="prev" href="design_notes.html" title="设计说明">
+<link rel="next" href="index.html" title="索引">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="design_notes.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../intrusive.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="index.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="intrusive.performance"></a><a class="link" href="performance.html" title="性能">性能</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="performance.html#intrusive.performance.performance_results_push_back">尾部插入与销毁</a></span></dt>
+<dt><span class="section"><a href="performance.html#intrusive.performance.performance_results_reversing">反转</a></span></dt>
+<dt><span class="section"><a href="performance.html#intrusive.performance.performance_results_sorting">排序</a></span></dt>
+<dt><span class="section"><a href="performance.html#intrusive.performance.performance_results_write_access">写访问</a></span></dt>
+<dt><span class="section"><a href="performance.html#intrusive.performance.performance_results_conclusions">结论</a></span></dt>
+</dl></div>
+<p>与非侵入式容器相比, <span class="bold"><strong>Boost.Intrusive</strong></span> 容器提供速度改进的主要原因在于:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">它们将内存分配/释放调用降到最少.</li>
+<li class="listitem">它们获得更好的内存局部性.</li>
+</ul></div>
+<p>本节将展示对比 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">intrusive</span><span class="special">::</span><span class="identifier">list</span></code> 与 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">list</span></code> 上若干操作的性能测试:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">使用 <code class="computeroutput"><span class="identifier">push_back</span></code> 的插入和容器销毁将展示与内存分配/释放相关的开销.</li>
+<li class="listitem"> <code class="computeroutput"><span class="identifier">reverse</span></code> 成员函数将展示侵入式容器所能实现的紧凑内存表示的优势.</li>
+<li class="listitem"> <code class="computeroutput"><span class="identifier">sort</span></code> 和 <code class="computeroutput"><span class="identifier">write</span> <span class="identifier">access</span></code> 测试将展示侵入式容器相比指针容器减少内存访问的优势.</li>
+</ul></div>
+<p>给定一个 <code class="computeroutput"><span class="identifier">T</span></code> 类型的对象, <code class="computeroutput"><a class="link" href="../doxygen/classboost_1_1intrusive_1_1list.html" title="类模板 list">boost::intrusive::list&lt;T&gt;</a></code> 可以替代 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">list</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code> 以避免内存分配开销; 当用户想要多态值的容器或想在多个容器之间共享值时, 它也可以替代 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">list</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">*&gt;</span></code>. 由于这种多功能性, 性能测试将对 6 种不同的链表类型执行:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">3 个侵入式链表保存名为 <code class="computeroutput"><span class="identifier">itest_class</span></code> 的类, 每个链表使用不同的链接策略 (<code class="computeroutput"><span class="identifier">normal_link</span></code>, <code class="computeroutput"><span class="identifier">safe_link</span></code>, <code class="computeroutput"><span class="identifier">auto_unlink</span></code>). <code class="computeroutput"><span class="identifier">itest_class</span></code> 对象将紧密打包在一个 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">itest_class</span><span class="special">&gt;</span></code> 对象中.</li>
+<li class="listitem">
+          <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">list</span><span class="special">&lt;</span><span class="identifier">test_class</span><span class="special">&gt;</span></code>, 其中 <code class="computeroutput"><span class="identifier">test_class</span></code> 与 <code class="computeroutput"><span class="identifier">itest_class</span></code> 完全相同, 但没有侵入式钩子.</li>
+<li class="listitem">
+          <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">list</span><span class="special">&lt;</span><span class="identifier">test_class</span><span class="special">*&gt;</span></code>. 该链表将包含指向 <code class="computeroutput"><span class="identifier">test_class</span></code> 对象的指针, 这些对象紧密打包在一个 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">test_class</span><span class="special">&gt;</span></code> 对象中. 我们将这种配置称为 <span class="emphasis"><em>紧凑指针链表</em></span>
+        </li>
+<li class="listitem">
+          <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">list</span><span class="special">&lt;</span><span class="identifier">test_class</span><span class="special">*&gt;</span></code>. 该链表将包含指向 <code class="computeroutput"><span class="identifier">test_class</span></code> 对象的指针, 这些对象由一个 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">list</span><span class="special">&lt;</span><span class="identifier">test_class</span><span class="special">&gt;</span></code> 对象持有. 我们将这种配置称为 <span class="emphasis"><em>分散指针链表</em></span>.</li>
+</ul></div>
+<p> <code class="computeroutput"><span class="identifier">test_class</span></code> 和 <code class="computeroutput"><span class="identifier">itest_class</span></code> 都是模板类, 可以用一个布尔值进行配置以增大对象体积. 这样, 测试就可以用小对象和大对象来执行. 下面是测试代码的第一部分, 展示了 <code class="computeroutput"><span class="identifier">test_class</span></code> 和 <code class="computeroutput"><span class="identifier">itest_class</span></code> 类的定义以及一些其他实用工具:</p>
+<pre class="programlisting"><span class="comment">//Iteration and element count defines</span>
+<span class="keyword">const</span> <span class="keyword">int</span> <span class="identifier">NumIter</span> <span class="special">=</span> <span class="number">4</span><span class="special">;</span>
+<span class="keyword">const</span> <span class="keyword">int</span> <span class="identifier">NumElements</span>   <span class="special">=</span> <span class="number">50000</span><span class="special">;</span>
+
+<span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">intrusive</span><span class="special">;</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">bool</span> <span class="identifier">BigSize</span><span class="special">&gt;</span>  <span class="keyword">struct</span> <span class="identifier">filler</span>        <span class="special">{</span>  <span class="keyword">int</span> <span class="identifier">dummy</span><span class="special">[</span><span class="number">10</span><span class="special">];</span>   <span class="special">};</span>
+<span class="keyword">template</span> <span class="special">&lt;&gt;</span>             <span class="keyword">struct</span> <span class="identifier">filler</span><span class="special">&lt;</span><span class="keyword">false</span><span class="special">&gt;</span> <span class="special">{};</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">bool</span> <span class="identifier">BigSize</span><span class="special">&gt;</span> <span class="comment">//The object for non-intrusive containers</span>
+<span class="keyword">struct</span> <span class="identifier">test_class</span> <span class="special">:</span>  <span class="keyword">private</span> <span class="identifier">filler</span><span class="special">&lt;</span><span class="identifier">BigSize</span><span class="special">&gt;</span>
+<span class="special">{</span>
+   <span class="keyword">int</span> <span class="identifier">i_</span><span class="special">;</span>
+   <span class="identifier">test_class</span><span class="special">()</span>               <span class="special">{}</span>
+   <span class="identifier">test_class</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">i</span><span class="special">)</span> <span class="special">:</span>  <span class="identifier">i_</span><span class="special">(</span><span class="identifier">i</span><span class="special">)</span> <span class="special">{}</span>
+   <span class="keyword">friend</span> <span class="keyword">bool</span> <span class="keyword">operator</span> <span class="special">&lt;(</span><span class="keyword">const</span> <span class="identifier">test_class</span> <span class="special">&amp;</span><span class="identifier">l</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">test_class</span> <span class="special">&amp;</span><span class="identifier">r</span><span class="special">)</span>  <span class="special">{</span>  <span class="keyword">return</span> <span class="identifier">l</span><span class="special">.</span><span class="identifier">i_</span> <span class="special">&lt;</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">i_</span><span class="special">;</span>  <span class="special">}</span>
+   <span class="keyword">friend</span> <span class="keyword">bool</span> <span class="keyword">operator</span> <span class="special">&gt;(</span><span class="keyword">const</span> <span class="identifier">test_class</span> <span class="special">&amp;</span><span class="identifier">l</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">test_class</span> <span class="special">&amp;</span><span class="identifier">r</span><span class="special">)</span>  <span class="special">{</span>  <span class="keyword">return</span> <span class="identifier">l</span><span class="special">.</span><span class="identifier">i_</span> <span class="special">&gt;</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">i_</span><span class="special">;</span>  <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">bool</span> <span class="identifier">BigSize</span><span class="special">,</span> <span class="identifier">link_mode_type</span> <span class="identifier">LinkMode</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">itest_class</span>   <span class="comment">//The object for intrusive containers</span>
+   <span class="special">:</span>  <span class="keyword">public</span> <span class="identifier">list_base_hook</span><span class="special">&lt;</span><span class="identifier">link_mode</span><span class="special">&lt;</span><span class="identifier">LinkMode</span><span class="special">&gt;</span> <span class="special">&gt;,</span>  <span class="keyword">public</span> <span class="identifier">test_class</span><span class="special">&lt;</span><span class="identifier">BigSize</span><span class="special">&gt;</span>
+<span class="special">{</span>
+   <span class="identifier">itest_class</span><span class="special">()</span>                                <span class="special">{}</span>
+   <span class="identifier">itest_class</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">i</span><span class="special">)</span> <span class="special">:</span> <span class="identifier">test_class</span><span class="special">&lt;</span><span class="identifier">BigSize</span><span class="special">&gt;(</span><span class="identifier">i</span><span class="special">)</span>  <span class="special">{}</span>
+<span class="special">};</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">FuncObj</span><span class="special">&gt;</span> <span class="comment">//Adapts functors taking values to functors taking pointers</span>
+<span class="keyword">struct</span> <span class="identifier">func_ptr_adaptor</span>  <span class="special">:</span>  <span class="keyword">public</span> <span class="identifier">FuncObj</span>
+<span class="special">{</span>
+   <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">FuncObj</span><span class="special">::</span><span class="identifier">first_argument_type</span><span class="special">*</span>  <span class="identifier">first_argument_type</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">FuncObj</span><span class="special">::</span><span class="identifier">second_argument_type</span><span class="special">*</span> <span class="identifier">second_argument_type</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">FuncObj</span><span class="special">::</span><span class="identifier">result_type</span>           <span class="identifier">result_type</span><span class="special">;</span>
+   <span class="identifier">result_type</span> <span class="keyword">operator</span><span class="special">()(</span><span class="identifier">first_argument_type</span> <span class="identifier">a</span><span class="special">,</span>  <span class="identifier">second_argument_type</span> <span class="identifier">b</span><span class="special">)</span> <span class="keyword">const</span>
+      <span class="special">{</span>  <span class="keyword">return</span> <span class="identifier">FuncObj</span><span class="special">::</span><span class="keyword">operator</span><span class="special">()(*</span><span class="identifier">a</span><span class="special">,</span> <span class="special">*</span><span class="identifier">b</span><span class="special">);</span> <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>如我们所见, <code class="computeroutput"><span class="identifier">test_class</span></code> 是一个非常简单的类, 持有一个 <code class="computeroutput"><span class="keyword">int</span></code>. <code class="computeroutput"><span class="identifier">itest_class</span></code> 只是一个具有基类钩子 (<code class="computeroutput"><a class="link" href="../doxygen/classboost_1_1intrusive_1_1list__base__hook.html" title="类模板 list_base_hook">list_base_hook</a></code>) 并且还派生自 <code class="computeroutput"><span class="identifier">test_class</span></code> 的类.</p>
+<p>
+      <code class="computeroutput"><span class="identifier">func_ptr_adaptor</span></code> 只是一个仿函数适配器, 用于将接受 <code class="computeroutput"><span class="identifier">test_list</span></code> 对象的函数对象转换为接受指向这些对象的指针的函数对象.</p>
+<p>完整测试代码可在 <a href="../../../libs/intrusive/perf/perf_list.cpp" target="_top">perf_list.cpp</a> 源文件中找到.</p>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="intrusive.performance.performance_results_push_back"></a><a class="link" href="performance.html#intrusive.performance.performance_results_push_back" title="Back insertion and destruction">后插入与销毁</a>
+</h3></div></div></div>
+<p>第一个测试将衡量侵入式容器通过避免内存分配和释放所能带来的收益. 所有要插入侵入式容器的对象都在一次分配调用中分配, 而 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">list</span></code> 则需要为每个对象分配内存, 并在每次擦除 (或容器销毁) 时释放它.</p>
+<p>让我们比较不同插入测试中每种容器类型要执行的代码:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">ilist</span><span class="special">::</span><span class="identifier">value_type</span><span class="special">&gt;</span> <span class="identifier">objects</span><span class="special">(</span><span class="identifier">NumElements</span><span class="special">);</span>
+<span class="identifier">ilist</span> <span class="identifier">l</span><span class="special">;</span>
+<span class="keyword">for</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">NumElements</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span>
+   <span class="identifier">l</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">objects</span><span class="special">[</span><span class="identifier">i</span><span class="special">]);</span>
+<span class="comment">//Elements are unlinked in ilist's destructor</span>
+<span class="comment">//Elements are destroyed in vector's destructor</span>
+</pre>
+<p>对于侵入式容器, 所有值先在 vector 中创建, 然后插入侵入式链表.</p>
+<pre class="programlisting"><span class="identifier">stdlist</span> <span class="identifier">l</span><span class="special">;</span>
+<span class="keyword">for</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">NumElements</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span>
+   <span class="identifier">l</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="keyword">typename</span> <span class="identifier">stdlist</span><span class="special">::</span><span class="identifier">value_type</span><span class="special">(</span><span class="identifier">i</span><span class="special">));</span>
+<span class="comment">//Elements unlinked and destroyed in stdlist's destructor</span>
+</pre>
+<p>对于标准链表, 使用 push_back() 将元素压入末尾.</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">stdlist</span><span class="special">::</span><span class="identifier">value_type</span><span class="special">&gt;</span> <span class="identifier">objects</span><span class="special">(</span><span class="identifier">NumElements</span><span class="special">);</span>
+<span class="identifier">stdptrlist</span> <span class="identifier">l</span><span class="special">;</span>
+<span class="keyword">for</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">NumElements</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span>
+   <span class="identifier">l</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(&amp;</span><span class="identifier">objects</span><span class="special">[</span><span class="identifier">i</span><span class="special">]);</span>
+<span class="comment">//Pointers to elements unlinked and destroyed in stdptrlist's destructor</span>
+<span class="comment">//Elements destroyed in vector's destructor</span>
+</pre>
+<p>对于标准紧凑指针链表, 元素先在 vector 中创建, 然后使用 push_back() 压入指针链表的末尾.</p>
+<pre class="programlisting"><span class="identifier">stdlist</span> <span class="identifier">objects</span><span class="special">;</span>  <span class="identifier">stdptrlist</span> <span class="identifier">l</span><span class="special">;</span>
+<span class="keyword">for</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">NumElements</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">){</span>
+   <span class="identifier">objects</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="keyword">typename</span> <span class="identifier">stdlist</span><span class="special">::</span><span class="identifier">value_type</span><span class="special">(</span><span class="identifier">i</span><span class="special">));</span>
+   <span class="identifier">l</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(&amp;</span><span class="identifier">objects</span><span class="special">.</span><span class="identifier">back</span><span class="special">());</span>
+<span class="special">}</span>
+<span class="comment">//Pointers to elements unlinked and destroyed in stdptrlist's destructor</span>
+<span class="comment">//Elements unlinked and destroyed in stdlist's destructor</span>
+</pre>
+<p>对于 <span class="emphasis"><em>分散指针链表</em></span>, 元素先在一个链表中创建, 然后使用 push_back() 压入指针链表的末尾.</p>
+<p>以下是每种情况以微秒为单位的时间以及归一化时间:</p>
+<div class="table">
+<a name="intrusive.performance.performance_results_push_back.back_insertion_destruction_times"></a><p class="title"><b>表 16.2. Visual C++ 7.1 / Windows XP 的后插入 + 销毁时间</b></p>
+<div class="table-contents"><table class="table" summary="Back insertion + destruction times for Visual C++ 7.1 / Windows XP">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>容器</p>
+              </th>
+<th>
+                <p>每次迭代时间 (微秒) (小对象 / 大对象)</p>
+              </th>
+<th>
+                <p>归一化时间 (小对象 / 大对象)</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">normal_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  5000 / 22500
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">safe_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  7812 / 32187
+                </p>
+              </td>
+<td>
+                <p>
+                  1.56 / 1.43
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">auto_unlink</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  10156 / 41562
+                </p>
+              </td>
+<td>
+                <p>
+                  2.03 / 1.84
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准 list</p>
+              </td>
+<td>
+                <p>
+                  26875 / 97500
+                </p>
+              </td>
+<td>
+                <p>
+                  5.37 / 4.33
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准紧凑指针链表</p>
+              </td>
+<td>
+                <p>
+                  76406 / 86718
+                </p>
+              </td>
+<td>
+                <p>
+                  15.28 / 3.85
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准分散指针链表</p>
+              </td>
+<td>
+                <p>
+                  146562 / 175625
+                </p>
+              </td>
+<td>
+                <p>
+                  29.31 / 7.80
+                </p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><div class="table">
+<a name="intrusive.performance.performance_results_push_back.back_insertion_destruction_time0"></a><p class="title"><b>表 16.3. GCC 4.1.1 / MinGW (Windows XP) 的后插入 + 销毁时间</b></p>
+<div class="table-contents"><table class="table" summary="Back insertion + destruction times for GCC 4.1.1 / MinGW over Windows
+        XP">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>容器</p>
+              </th>
+<th>
+                <p>每次迭代时间 (微秒) (小对象 / 大对象)</p>
+              </th>
+<th>
+                <p>归一化时间 (小对象 / 大对象)</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">normal_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  4375 / 22187
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">safe_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  7812 / 32812
+                </p>
+              </td>
+<td>
+                <p>
+                  1.78 / 1.47
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">auto_unlink</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  10468 / 42031
+                </p>
+              </td>
+<td>
+                <p>
+                  2.39 / 1.89
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准 list</p>
+              </td>
+<td>
+                <p>
+                  81250 / 98125
+                </p>
+              </td>
+<td>
+                <p>
+                  18.57 / 4.42
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准紧凑指针链表</p>
+              </td>
+<td>
+                <p>
+                  83750 / 94218
+                </p>
+              </td>
+<td>
+                <p>
+                  19.14 / 4.24
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准分散指针链表</p>
+              </td>
+<td>
+                <p>
+                  155625 / 175625
+                </p>
+              </td>
+<td>
+                <p>
+                  35.57 / 7.91
+                </p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><div class="table">
+<a name="intrusive.performance.performance_results_push_back.back_insertion_destruction_time1"></a><p class="title"><b>表 16.4. GCC 4.1.2 / Linux 内核 2.6.18 (OpenSuse 10.2) 的后插入 + 销毁时间</b></p>
+<div class="table-contents"><table class="table" summary="Back insertion + destruction times for GCC 4.1.2 / Linux Kernel 2.6.18
+        (OpenSuse 10.2)">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>容器</p>
+              </th>
+<th>
+                <p>每次迭代时间 (微秒) (小对象 / 大对象)</p>
+              </th>
+<th>
+                <p>归一化时间 (小对象 / 大对象)</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">normal_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  4792 / 20495
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">safe_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  7709 / 30803
+                </p>
+              </td>
+<td>
+                <p>
+                  1.60 / 1.5
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">auto_unlink</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  10180 / 41183
+                </p>
+              </td>
+<td>
+                <p>
+                  2.12 / 2.0
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准 list</p>
+              </td>
+<td>
+                <p>
+                  17031 / 32586
+                </p>
+              </td>
+<td>
+                <p>
+                  3.55 / 1.58
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准紧凑指针链表</p>
+              </td>
+<td>
+                <p>
+                  27221 / 34823
+                </p>
+              </td>
+<td>
+                <p>
+                  5.68 / 1.69
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准分散指针链表</p>
+              </td>
+<td>
+                <p>
+                  102272 / 60056
+                </p>
+              </td>
+<td>
+                <p>
+                  21.34 / 2.93
+                </p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><p>结果合乎逻辑: 侵入式链表只需要一次分配. <code class="computeroutput"><span class="identifier">normal_link</span></code> 侵入式容器的销毁时间微不足道 (复杂度: <code class="computeroutput"><span class="identifier">O</span><span class="special">(</span><span class="number">1</span><span class="special">)</span></code>), 而 <code class="computeroutput"><span class="identifier">safe_link</span></code> 和 <code class="computeroutput"><span class="identifier">auto_unlink</span></code> 侵入式容器需要将被擦除值的钩子置于默认状态 (复杂度: <code class="computeroutput"><span class="identifier">O</span><span class="special">(</span><span class="identifier">NumElements</span><span class="special">)</span></code>). 这就是 <code class="computeroutput"><span class="identifier">normal_link</span></code> 侵入式链表在此测试中表现出色的原因.</p>
+<p>非侵入式容器需要进行多得多的分配, 这就是它们落后于人的原因. <code class="computeroutput"><span class="identifier">disperse</span> <span class="identifier">pointer</span> <span class="identifier">list</span></code> 需要进行 <code class="computeroutput"><span class="identifier">NumElements</span><span class="special">*</span><span class="number">2</span></code> 次分配, 所以这个结果并不令人意外.</p>
+<p>Linux 测试表明, 对于大对象, 标准容器面对侵入式容器表现非常好. 在 MinGW 上几乎相同的 GCC 版本表现较差, 因此优秀的内存分配器可能是这些出色结果的原因.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="intrusive.performance.performance_results_reversing"></a><a class="link" href="performance.html#intrusive.performance.performance_results_reversing" title="Reversing">反转</a>
+</h3></div></div></div>
+<p>下一个测试衡量完成对成员函数 <code class="computeroutput"><span class="identifier">reverse</span><span class="special">()</span></code> 的调用所需的时间. 值 (<code class="computeroutput"><span class="identifier">test_class</span></code> 和 <code class="computeroutput"><span class="identifier">itest_class</span></code>) 和链表的创建方式如前一节所述.</p>
+<p>请注意, 对于指针链表, <code class="computeroutput"><span class="identifier">reverse</span></code>
+        <span class="bold"><strong>不需要访问 <code class="computeroutput"><span class="identifier">test_class</span></code> 存储在另一个链表或 vector 中的值</strong></span>, 因为该函数只需调整内部指针, 所以理论上所有被测试的链表都需要执行相同的操作.</p>
+<p>以下是结果:</p>
+<div class="table">
+<a name="intrusive.performance.performance_results_reversing.reverse_times_for_visual_c_7_1_w"></a><p class="title"><b>表 16.5. Visual C++ 7.1 / Windows XP 的反转时间</b></p>
+<div class="table-contents"><table class="table" summary="Reverse times for Visual C++ 7.1 / Windows XP">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>容器</p>
+              </th>
+<th>
+                <p>每次迭代时间 (微秒) (小对象 / 大对象)</p>
+              </th>
+<th>
+                <p>归一化时间 (小对象 / 大对象)</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">normal_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2656 / 10625
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 1.83
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">safe_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2812 / 10937
+                </p>
+              </td>
+<td>
+                <p>
+                  1.05 / 1.89
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">auto_unlink</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2710 / 10781
+                </p>
+              </td>
+<td>
+                <p>
+                  1.02 / 1.86
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准 list</p>
+              </td>
+<td>
+                <p>
+                  5781 / 14531
+                </p>
+              </td>
+<td>
+                <p>
+                  2.17 / 2.51
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准紧凑指针链表</p>
+              </td>
+<td>
+                <p>
+                  5781 / 5781
+                </p>
+              </td>
+<td>
+                <p>
+                  2.17 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准分散指针链表</p>
+              </td>
+<td>
+                <p>
+                  10781 / 15781
+                </p>
+              </td>
+<td>
+                <p>
+                  4.05 / 2.72
+                </p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><div class="table">
+<a name="intrusive.performance.performance_results_reversing.reverse_times_for_gcc_4_1_1_ming"></a><p class="title"><b>表 16.6. GCC 4.1.1 / MinGW (Windows XP) 的反转时间</b></p>
+<div class="table-contents"><table class="table" summary="Reverse times for GCC 4.1.1 / MinGW over Windows XP">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>容器</p>
+              </th>
+<th>
+                <p>每次迭代时间 (微秒) (小对象 / 大对象)</p>
+              </th>
+<th>
+                <p>归一化时间 (小对象 / 大对象)</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">normal_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2656 / 10781
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 2.22
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">safe_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2656 / 10781
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 2.22
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">auto_unlink</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2812 / 10781
+                </p>
+              </td>
+<td>
+                <p>
+                  1.02 / 2.22
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准 list</p>
+              </td>
+<td>
+                <p>
+                  4843 / 12500
+                </p>
+              </td>
+<td>
+                <p>
+                  1.82 / 2.58
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准紧凑指针链表</p>
+              </td>
+<td>
+                <p>
+                  4843 / 4843
+                </p>
+              </td>
+<td>
+                <p>
+                  1.82 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准分散指针链表</p>
+              </td>
+<td>
+                <p>
+                  9218 / 12968
+                </p>
+              </td>
+<td>
+                <p>
+                  3.47 / 2.67
+                </p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><div class="table">
+<a name="intrusive.performance.performance_results_reversing.reverse_times_for_gcc_4_1_2_linu"></a><p class="title"><b>表 16.7. GCC 4.1.2 / Linux 内核 2.6.18 (OpenSuse 10.2) 的反转时间</b></p>
+<div class="table-contents"><table class="table" summary="Reverse times for GCC 4.1.2 / Linux Kernel 2.6.18 (OpenSuse 10.2)">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>容器</p>
+              </th>
+<th>
+                <p>每次迭代时间 (微秒) (小对象 / 大对象)</p>
+              </th>
+<th>
+                <p>归一化时间 (小对象 / 大对象)</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">normal_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2742 / 10847
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 3.41
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">safe_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2742 / 10847
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 3.41
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">auto_unlink</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2742 / 11027
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 3.47
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准 list</p>
+              </td>
+<td>
+                <p>
+                  3184 / 10942
+                </p>
+              </td>
+<td>
+                <p>
+                  1.16 / 3.44
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准紧凑指针链表</p>
+              </td>
+<td>
+                <p>
+                  3207 / 3176
+                </p>
+              </td>
+<td>
+                <p>
+                  1.16 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准分散指针链表</p>
+              </td>
+<td>
+                <p>
+                  5814 / 13381
+                </p>
+              </td>
+<td>
+                <p>
+                  2.12 / 4.21
+                </p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><p>对于小对象, 结果表明侵入式容器中值的紧凑存储改善了局部性, 反转比标准容器更快, 而标准容器的值可能分散在内存中, 因为每个值都是独立分配的. 注意, 分散指针链表 (指向另一个链表中分配的值的指针链表) 受到的影响更大, 因为指针链表的节点可能更加分散, 因为代码中来自两个链表的分配是交错进行的:</p>
+<pre class="programlisting"><span class="comment">//Object list (holding `test_class`)</span>
+<span class="identifier">stdlist</span> <span class="identifier">objects</span><span class="special">;</span>
+
+<span class="comment">//Pointer list (holding `test_class` pointers)</span>
+<span class="identifier">stdptrlist</span> <span class="identifier">l</span><span class="special">;</span>
+
+<span class="keyword">for</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">NumElements</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">){</span>
+   <span class="comment">//Allocation from the object list</span>
+   <span class="identifier">objects</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">stdlist</span><span class="special">::</span><span class="identifier">value_type</span><span class="special">(</span><span class="identifier">i</span><span class="special">));</span>
+   <span class="comment">//Allocation from the pointer list</span>
+   <span class="identifier">l</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(&amp;</span><span class="identifier">objects</span><span class="special">.</span><span class="identifier">back</span><span class="special">());</span>
+<span class="special">}</span>
+</pre>
+<p>对于大对象, 紧凑指针链表获胜, 因为反转测试不需要访问存储在另一个容器中的值. 由于这个指针链表节点的所有分配可能彼此靠近 (因为在创建指针链表之前进程中没有其他分配), 其局部性优于侵入式容器. 与小值时一样, 分散指针链表的局部性较差.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="intrusive.performance.performance_results_sorting"></a><a class="link" href="performance.html#intrusive.performance.performance_results_sorting" title="排序">排序</a>
+</h3></div></div></div>
+<p>下一个测试衡量完成对成员函数 <code class="computeroutput"><span class="identifier">sort</span><span class="special">(</span><span class="identifier">Pred</span> <span class="identifier">pred</span><span class="special">)</span></code> 的调用所需的时间. 值 (<code class="computeroutput"><span class="identifier">test_class</span></code> 和 <code class="computeroutput"><span class="identifier">itest_class</span></code>) 和链表的创建方式如第一节所述. 每次迭代中将对值进行升序和降序排序. 例如, 如果 <span class="emphasis"><em>l</em></span> 是一个链表:</p>
+<pre class="programlisting"><span class="keyword">for</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">NumIter</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">){</span>
+   <span class="keyword">if</span><span class="special">(!(</span><span class="identifier">i</span> <span class="special">%</span> <span class="number">2</span><span class="special">))</span>
+      <span class="identifier">l</span><span class="special">.</span><span class="identifier">sort</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">greater</span><span class="special">&lt;</span><span class="identifier">stdlist</span><span class="special">::</span><span class="identifier">value_type</span><span class="special">&gt;());</span>
+   <span class="keyword">else</span>
+      <span class="identifier">l</span><span class="special">.</span><span class="identifier">sort</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">less</span><span class="special">&lt;</span><span class="identifier">stdlist</span><span class="special">::</span><span class="identifier">value_type</span><span class="special">&gt;());</span>
+<span class="special">}</span>
+</pre>
+<p>对于指针链表, 将使用 <code class="computeroutput"><span class="identifier">func_ptr_adaptor</span></code> 对函数对象进行适配:</p>
+<pre class="programlisting"><span class="keyword">for</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">NumIter</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">){</span>
+   <span class="keyword">if</span><span class="special">(!(</span><span class="identifier">i</span> <span class="special">%</span> <span class="number">2</span><span class="special">))</span>
+      <span class="identifier">l</span><span class="special">.</span><span class="identifier">sort</span><span class="special">(</span><span class="identifier">func_ptr_adaptor</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">greater</span><span class="special">&lt;</span><span class="identifier">stdlist</span><span class="special">::</span><span class="identifier">value_type</span><span class="special">&gt;</span> <span class="special">&gt;());</span>
+   <span class="keyword">else</span>
+      <span class="identifier">l</span><span class="special">.</span><span class="identifier">sort</span><span class="special">(</span><span class="identifier">func_ptr_adaptor</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">less</span><span class="special">&lt;</span><span class="identifier">stdlist</span><span class="special">::</span><span class="identifier">value_type</span><span class="special">&gt;</span> <span class="special">&gt;());</span>
+<span class="special">}</span>
+</pre>
+<p>请注意, 对于指针链表, <code class="computeroutput"><span class="identifier">sort</span></code> 将接受一个 <span class="bold"><strong>会访问 <code class="computeroutput"><span class="identifier">test_class</span></code> 存储在另一个链表或 vector 中的值</strong></span> 的函数对象, 因此指针链表将承受一次额外的间接访问: 为了比较两个元素, 它们需要访问存储在另一个容器中的 <code class="computeroutput"><span class="identifier">test_class</span></code> 值.</p>
+<p>以下是结果:</p>
+<div class="table">
+<a name="intrusive.performance.performance_results_sorting.sort_times_for_visual_c_7_1_wind"></a><p class="title"><b>表 16.8. Visual C++ 7.1 / Windows XP 的排序时间</b></p>
+<div class="table-contents"><table class="table" summary="Sort times for Visual C++ 7.1 / Windows XP">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>容器</p>
+              </th>
+<th>
+                <p>每次迭代时间 (微秒) (小对象 / 大对象)</p>
+              </th>
+<th>
+                <p>归一化时间 (小对象 / 大对象)</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">normal_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  16093 / 38906
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">safe_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  16093 / 39062
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">auto_unlink</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  16093 / 38906
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准 list</p>
+              </td>
+<td>
+                <p>
+                  32343 / 56406
+                </p>
+              </td>
+<td>
+                <p>
+                  2.0 / 1.44
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准紧凑指针链表</p>
+              </td>
+<td>
+                <p>
+                  33593 / 46093
+                </p>
+              </td>
+<td>
+                <p>
+                  2.08 / 1.18
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准分散指针链表</p>
+              </td>
+<td>
+                <p>
+                  46875 / 68593
+                </p>
+              </td>
+<td>
+                <p>
+                  2.91 / 1.76
+                </p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><div class="table">
+<a name="intrusive.performance.performance_results_sorting.sort_times_for_gcc_4_1_1_mingw_o"></a><p class="title"><b>表 16.9. GCC 4.1.1 / MinGW (Windows XP) 的排序时间</b></p>
+<div class="table-contents"><table class="table" summary="Sort times for GCC 4.1.1 / MinGW over Windows XP">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>容器</p>
+              </th>
+<th>
+                <p>每次迭代时间 (微秒) (小对象 / 大对象)</p>
+              </th>
+<th>
+                <p>归一化时间 (小对象 / 大对象)</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">normal_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  15000 / 39218
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">safe_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  15156 / 39531
+                </p>
+              </td>
+<td>
+                <p>
+                  1.01 / 1.01
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">auto_unlink</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  15156 / 39531
+                </p>
+              </td>
+<td>
+                <p>
+                  1.01 / 1.01
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准 list</p>
+              </td>
+<td>
+                <p>
+                  34218 / 56875
+                </p>
+              </td>
+<td>
+                <p>
+                  2.28 / 1.45
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准紧凑指针链表</p>
+              </td>
+<td>
+                <p>
+                  35468 / 49218
+                </p>
+              </td>
+<td>
+                <p>
+                  2.36 / 1.25
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准分散指针链表</p>
+              </td>
+<td>
+                <p>
+                  47656 / 70156
+                </p>
+              </td>
+<td>
+                <p>
+                  3.17 / 1.78
+                </p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><div class="table">
+<a name="intrusive.performance.performance_results_sorting.sort_times_for_gcc_4_1_2_linux_k"></a><p class="title"><b>表 16.10. GCC 4.1.2 / Linux 内核 2.6.18 (OpenSuse 10.2) 的排序时间</b></p>
+<div class="table-contents"><table class="table" summary="Sort times for GCC 4.1.2 / Linux Kernel 2.6.18 (OpenSuse 10.2)">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>容器</p>
+              </th>
+<th>
+                <p>每次迭代时间 (微秒) (小对象 / 大对象)</p>
+              </th>
+<th>
+                <p>归一化时间 (小对象 / 大对象)</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">normal_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  18003 / 40795
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">safe_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  18003 / 41017
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">auto_unlink</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  18230 / 40941
+                </p>
+              </td>
+<td>
+                <p>
+                  1.01 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准 list</p>
+              </td>
+<td>
+                <p>
+                  26273 / 49643
+                </p>
+              </td>
+<td>
+                <p>
+                  1.45 / 1.21
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准紧凑指针链表</p>
+              </td>
+<td>
+                <p>
+                  28540 / 43172
+                </p>
+              </td>
+<td>
+                <p>
+                  1.58 / 1.05
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准分散指针链表</p>
+              </td>
+<td>
+                <p>
+                  35077 / 57638
+                </p>
+              </td>
+<td>
+                <p>
+                  1.94 / 1.41
+                </p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><p>结果表明侵入式容器比标准容器更快. 我们可以看到, 保存指向存储在 vector 中的值的指针的指针链表相当快, 因此访问值所需的额外间接访问被降到最低, 因为所有值都紧密存储, 改善了缓存. 另一方面, 分散链表较慢, 因为访问存储在对象链表中的值的间接访问比访问存储在 vector 中的值开销更大.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="intrusive.performance.performance_results_write_access"></a><a class="link" href="performance.html#intrusive.performance.performance_results_write_access" title="Write access">写访问</a>
+</h3></div></div></div>
+<p>下一个测试衡量遍历链表所有元素并递增内部 <code class="computeroutput"><span class="identifier">i_</span></code> 成员的值所需的时间:</p>
+<pre class="programlisting"><span class="identifier">stdlist</span><span class="special">::</span><span class="identifier">iterator</span> <span class="identifier">it</span><span class="special">(</span><span class="identifier">l</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()),</span> <span class="identifier">end</span><span class="special">(</span><span class="identifier">l</span><span class="special">.</span><span class="identifier">end</span><span class="special">());</span>
+<span class="keyword">for</span><span class="special">(;</span> <span class="identifier">it</span> <span class="special">!=</span> <span class="identifier">end</span><span class="special">;</span> <span class="special">++</span><span class="identifier">it</span><span class="special">)</span>
+   <span class="special">++(</span><span class="identifier">it</span><span class="special">-&gt;</span><span class="identifier">i_</span><span class="special">);</span>
+</pre>
+<p>值 (<code class="computeroutput"><span class="identifier">test_class</span></code> 和 <code class="computeroutput"><span class="identifier">itest_class</span></code>) 和链表的创建方式如第一节所述. 注意, 对于指针链表, 迭代将承受一次额外的间接访问: 它们需要访问存储在另一个容器中的 <code class="computeroutput"><span class="identifier">test_class</span></code> 值:</p>
+<pre class="programlisting"><span class="identifier">stdptrlist</span><span class="special">::</span><span class="identifier">iterator</span> <span class="identifier">it</span><span class="special">(</span><span class="identifier">l</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()),</span> <span class="identifier">end</span><span class="special">(</span><span class="identifier">l</span><span class="special">.</span><span class="identifier">end</span><span class="special">());</span>
+<span class="keyword">for</span><span class="special">(;</span> <span class="identifier">it</span> <span class="special">!=</span> <span class="identifier">end</span><span class="special">;</span> <span class="special">++</span><span class="identifier">it</span><span class="special">)</span>
+   <span class="special">++((*</span><span class="identifier">it</span><span class="special">)-&gt;</span><span class="identifier">i_</span><span class="special">);</span>
+</pre>
+<p>以下是结果:</p>
+<div class="table">
+<a name="intrusive.performance.performance_results_write_access.write_access_times_for_visual_c_"></a><p class="title"><b>表 16.11. Visual C++ 7.1 / Windows XP 的写访问时间</b></p>
+<div class="table-contents"><table class="table" summary="Write access times for Visual C++ 7.1 / Windows XP">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>容器</p>
+              </th>
+<th>
+                <p>每次迭代时间 (微秒) (小对象 / 大对象)</p>
+              </th>
+<th>
+                <p>归一化时间 (小对象 / 大对象)</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">normal_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2031 / 8125
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">safe_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2031 / 8281
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 1.01
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">auto_unlink</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2031 / 8281
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 1.01
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准 list</p>
+              </td>
+<td>
+                <p>
+                  4218 / 10000
+                </p>
+              </td>
+<td>
+                <p>
+                  2.07 / 1.23
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准紧凑指针链表</p>
+              </td>
+<td>
+                <p>
+                  4062 / 8437
+                </p>
+              </td>
+<td>
+                <p>
+                  2.0 / 1.03
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准分散指针链表</p>
+              </td>
+<td>
+                <p>
+                  8593 / 13125
+                </p>
+              </td>
+<td>
+                <p>
+                  4.23 / 1.61
+                </p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><div class="table">
+<a name="intrusive.performance.performance_results_write_access.write_access_times_for_gcc_4_1_1"></a><p class="title"><b>表 16.12. GCC 4.1.1 / MinGW (Windows XP) 的写访问时间</b></p>
+<div class="table-contents"><table class="table" summary="Write access times for GCC 4.1.1 / MinGW over Windows XP">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>容器</p>
+              </th>
+<th>
+                <p>每次迭代时间 (微秒) (小对象 / 大对象)</p>
+              </th>
+<th>
+                <p>归一化时间 (小对象 / 大对象)</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">normal_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2343 / 8281
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">safe_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2500 / 8281
+                </p>
+              </td>
+<td>
+                <p>
+                  1.06 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">auto_unlink</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2500 / 8281
+                </p>
+              </td>
+<td>
+                <p>
+                  1.06 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准 list</p>
+              </td>
+<td>
+                <p>
+                  4218 / 10781
+                </p>
+              </td>
+<td>
+                <p>
+                  1.8 / 1.3
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准紧凑指针链表</p>
+              </td>
+<td>
+                <p>
+                  3906 / 8281
+                </p>
+              </td>
+<td>
+                <p>
+                  1.66 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准分散指针链表</p>
+              </td>
+<td>
+                <p>
+                  8281 / 13750
+                </p>
+              </td>
+<td>
+                <p>
+                  3.53 / 1.66
+                </p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><div class="table">
+<a name="intrusive.performance.performance_results_write_access.write_access_times_for_gcc_4_1_2"></a><p class="title"><b>表 16.13. GCC 4.1.2 / Linux 内核 2.6.18 (OpenSuse 10.2) 的写访问时间</b></p>
+<div class="table-contents"><table class="table" summary="Write access times for GCC 4.1.2 / Linux Kernel 2.6.18 (OpenSuse 10.2)">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>容器</p>
+              </th>
+<th>
+                <p>每次迭代时间 (微秒) (小对象 / 大对象)</p>
+              </th>
+<th>
+                <p>归一化时间 (小对象 / 大对象)</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">normal_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2286 / 8468
+                </p>
+              </td>
+<td>
+                <p>
+                  1 / 1.1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">safe_link</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2381 / 8412
+                </p>
+              </td>
+<td>
+                <p>
+                  1.04 / 1.09
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">auto_unlink</span></code> 侵入式链表</p>
+              </td>
+<td>
+                <p>
+                  2301 / 8437
+                </p>
+              </td>
+<td>
+                <p>
+                  1.01 / 1.1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准 list</p>
+              </td>
+<td>
+                <p>
+                  3044 / 9061
+                </p>
+              </td>
+<td>
+                <p>
+                  1.33 / 1.18
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准紧凑指针链表</p>
+              </td>
+<td>
+                <p>
+                  2755 / 7660
+                </p>
+              </td>
+<td>
+                <p>
+                  1.20 / 1
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>标准分散指针链表</p>
+              </td>
+<td>
+                <p>
+                  6118 / 12453
+                </p>
+              </td>
+<td>
+                <p>
+                  2.67 / 1.62
+                </p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><p>与读访问测试一样, 结果表明如果值紧密打包在 vector 中, 侵入式容器优于所有其他容器. 分散链表再次是最慢的.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="intrusive.performance.performance_results_conclusions"></a><a class="link" href="performance.html#intrusive.performance.performance_results_conclusions" title="结论">结论</a>
+</h3></div></div></div>
+<p>侵入式容器可以提供等价非侵入式容器无法实现的性能优势. 当要插入的对象较小时, 内存局部性的改善很明显. 最小化内存分配/释放调用也是一个重要因素, 如果所有要插入侵入式容器的对象都使用 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span></code> 或 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">deque</span></code> 分配, 侵入式容器会让这一点变得简单.</p>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2005 Olaf Krzikalla<br>版权所有 © 2006-2015 Ion Gaztanaga<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="design_notes.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../intrusive.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="index.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

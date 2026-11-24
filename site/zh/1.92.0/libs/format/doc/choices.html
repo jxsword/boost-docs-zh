@@ -1,0 +1,150 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html>
+<head>
+  <meta http-equiv="Content-Language" content="en-us">
+  <meta http-equiv="Content-Type" content="text/html; charset=us-ascii">
+
+  <title>类型安全的"类 printf"格式化类</title>
+</head>
+
+<body bgcolor="#FFFFFF" text="#000000">
+  <h1><img align="middle" alt="boost.png (6897 字节)" height="86" src=
+  "../../../boost.png" width="277">类型安全的"类 printf"<b>format 类</b></h1>
+
+  <h2>所做取舍</h2>
+
+  <p>"Le pourquoi du comment"(即 "the why of the how", "缘何如此")</p>
+  <hr>
+
+  <h3>格式化串的语法</h3>
+
+  <p>Format 是一个新库. 它的目标之一是提供 printf 的替代品, 也就是说, format 能够解析为 printf 设计的格式化串, 把它应用到给定参数上, 并产生与 printf 相同的结果.<br> 在这一约束下, 格式化串的语法大致有 3 种可能的选择:</p>
+
+  <ol>
+    <li>使用与 printf 完全相同的语法. 它被许多有经验的用户所熟知, 几乎能满足所有需求. 但对于 C++ 流而言, 用于确定指令结束位置的关键字符——类型转换字符——在 C++ 流语境中只用于设置某些相关的格式化选项(%x 设置十六进制等). 最好是把这个带修改后含义的强制性类型转换字符变为可选.</li>
+
+    <li>在保持兼容的同时扩展 printf 语法, 方法是使用尚不属于 printf 语法有效部分的字符和构造. 例如: "%1%"、"%[1]"、"%|1$d|" 等. 借助起止标记, 可以考虑各种各样的扩展.</li>
+
+    <li>在 printf 兼容模式之外提供一个非传统模式, 该模式可以按其他目标设计, 不受与现有 printf 语法兼容的约束.<br> 但要设计一个明显更好、同样强大的 printf 语法替代品, 是与构建格式化类不同的另一项任务. 当这样的语法被设计出来时, 我们应当考虑把 Boost.format 拆分为两个独立的库: 一个与这种新语法紧密配合, 另一个支持传统语法(可能是一个快速版本, 在 snprintf 等基础上加入安全改进而构建).</li>
+  </ol>由于没有一种完整、巧妙且明显比 printf 更适合 C++ 流的全新语法, 我们选择了第二种方案. Boost.format 使用 printf 的语法, 并带有可以用该语法扩展来表达的扩展功能(制表符、居中对齐).<br> 还提供了一些兼容的替代记法, 以弥补 printf 的不足: <ul>
+    <li><i>"%<b>N</b>%"</i> 作为更简单的位置式、无类型且无选项的记法.</li>
+
+    <li><i>%|spec|</i> 作为把 printf 指令封装在视觉上更醒目的结构中的方式, 同时使 printf 的"类型转换字符"成为可选.</li>
+  </ul>
+  <hr>
+
+  <h3>为什么参数要通过运算符传递而不是通过函数调用?</h3><br> 运算符方案的不便之处(对某些人而言)是它可能令人困惑. 常见的警告是, 过度重载运算符会让人非常困惑.<br> 由于 format 对象的使用处在特定语境中(最常见的是紧跟在 "cout &lt;&lt; " 之后), 看起来确实像是一个格式化串后跟参数: <blockquote>
+    <pre>
+format(" %s at %s  with %s\n") % x % y % z;
+</pre>
+  </blockquote>我们可以希望它不会那么让人困惑. <p>对运算符的另一种担忧是优先级问题. 如果某天我写了 <b>format("%s") % x+y</b><br> 而不是 <i>format("%s") % (x+y)</i> 怎么办??<br> 这会在编译期产生错误, 因此错误会被立即检测到.<br> 实际上, 这一行会调用 <i>tmp = operator%( format("%s"), x)</i><br>, 然后调用 <i>operator+(tmp, y)</i><br>. tmp 将是一个 format 对象, 没有为它定义隐式转换, 因此对 operator+ 的调用会失败.(当然, 除非你自己定义了这样的运算符.) 所以你可以放心地认为优先级错误会在编译时被发现.</p>
+
+  <p><br>另一方面, 函数方案确实有一个不便之处: 需要定义大量模板函数, 如:</p>
+
+  <blockquote>
+    <pre>
+template &lt;class T1, class T2,  .., class TN&gt; 
+string format(string s,  const T1&amp; x1, .... , const T1&amp; xN);
+
+</pre>
+  </blockquote>即使为最多 500 的 N 定义这些函数, 仍然是一个限制, 而 C 的 printf 没有这种限制.<br> 另外, 由于 format 在某些情况下以某种方式模仿 printf, 但远不完全等价于 printf, 最好采用截然不同的外观, 而使用运算符调用在这方面效果很好! <p><br>无论如何, 如果我们真的选择正式的函数调用模板体系, 它将只能打印那些存在以下内容的类 T:</p>
+
+  <blockquote>
+    <pre>
+operator&lt;&lt; ( stream,   const T&amp;)
+</pre>
+  </blockquote>因为同时允许 const 和非 const 会产生组合爆炸——如果支持 10 个参数, 就需要 2^10 个函数.<br> (在 T&amp; / const T&amp; 上提供重载处于 C++ 标准缺陷的边界, 因此远不能保证受支持. 不过目前有几个编译器支持这些重载)<br> 一个只提供非 const 等价物的类很可能设计不良, 但这对用户来说仍是另一个无正当理由的限制.<br> 此外, 有些操纵器是函数, 不能以 const 引用传递. 因此函数调用方案不能很好地支持操纵器. <p>总而言之, 在编译期无法知道参数个数的情况下, 使用专用的二元运算符是传递参数最简单、最健壮且限制最少的机制.</p>
+  <hr>
+
+  <h3>为什么用 operator% 而不是成员函数 'with(..)'??</h3>从技术上讲, <blockquote>
+    <pre>
+format(fstr) % x1 % x2 % x3;
+</pre>
+  </blockquote>与 <blockquote>
+    <pre>
+format(fstr).with( x1 ).with( x2 ).with( x3 );
+</pre>
+  </blockquote>具有相同的结构, 后者没有任何优先级问题. 唯一的缺点是, 与使用运算符时相比, 肉眼更难看出这一行做了什么. 调用 .with(..) 看起来就像其他任何代码行一样. 所以视个人口味而定, 它可能是更好的方案. 使用 'with(..)' 的代码行多出的字符和整体杂乱的外观, 足以让我选择一个真正的运算符. <hr>
+
+  <h3>为什么用 operator% 而不是常用的格式化运算符 operator&lt;&lt;??</h3>
+
+  <ul>
+    <li>因为向 format 对象传递参数与把变量按顺序发送到流并 *不是* 一回事, 而且 format 对象既不是流也不是操纵器.<br> 我们用运算符来传递参数. format 会像函数那样使用它们, 只是逐个接收参数.<br> format 对象无法提供类似流的行为. 当你试图实现一个表现得像操纵器、返回一个流的 format 对象时, 你会让用户以为它完全像一个流操纵器. 而用户迟早会被这种观点误导.<br> 这种行为差异最明显的例子是 <blockquote>
+        <pre>
+cout &lt;&lt; format("%s %s ") &lt;&lt; x;
+cout &lt;&lt; y ;  // uh-oh, format is not really a stream manipulator
+</pre>
+      </blockquote>
+    </li>
+
+    <li>% 的优先级高于 &lt;&lt;. 这可以被视为一个问题, 因为 + 和 - 因此需要放在圆括号内, 而使用 '&lt;&lt;' 时则没有必要. 但如果用户忘记了, 该错误会在编译时被捕获, 希望他不会再犯.<br> 另一方面, 更高的优先级使 format 的行为非常直观. <blockquote>
+        <pre>
+cout &lt;&lt; format("%s %s ") % x % y &lt;&lt; endl;
+</pre>
+      </blockquote>被处理得完全就像: <blockquote>
+        <pre>
+cout &lt;&lt; ( format("%s %s ") % x % y ) &lt;&lt; endl;
+</pre>
+      </blockquote>因此使用 % 时, format 对象的生命周期不会干扰周围的流上下文. 这是最简单的可能行为, 因此用户可以在 format 对象之后继续使用流.<br>
+      <br> 对于 operator&lt;&lt;, 这种情况下问题就多得多了. 这一行: <blockquote>
+        <pre>
+cout &lt;&lt; format("%s %s ") &lt;&lt;  x  &lt;&lt;  y &lt;&lt; endl;
+</pre>
+      </blockquote>被理解为: <blockquote>
+        <pre>
+( ( ( cout &lt;&lt; format("%s %s ") ) &lt;&lt; x ) &lt;&lt;  y ) &lt;&lt; endl;
+</pre>
+      </blockquote>有几种替代实现选择了 operator&lt;&lt;, 而要使其可行只有一种办法:<br> 第一次调用 <blockquote>
+        <pre>
+operator&lt;&lt;( ostream&amp;, format const&amp;)
+</pre>
+      </blockquote>返回一个代理, 它同时封装了最终目的地(cout)和格式化串信息<br> 向 format 传递参数与在 format 完成后向最终目的地传递参数无法区分. 这是个问题. <p>我考察了几种可能的实现, 没有一种是完全令人满意的.<br> 例如: 为了捕获用户的错误, 当用户传入过多参数时抛出异常是合理的. 但在这种语境下, 多余的参数十有八九是发往最终目的地的. 这里有若干选择:</p>
+
+      <ul>
+        <li>你可以放弃对参数个数超限的检测, 让代理的模板成员 operator&lt;&lt;( const T&amp;) 简单地把所有多余的参数转发给 cout.</li>
+
+        <li>要求用户用一个特殊的操纵器 'endf' 来结束 format 参数, 像这样: <blockquote>
+            <pre>
+cout &lt;&lt; format("%s %s ") &lt;&lt;  x  &lt;&lt;  y &lt;&lt; endf &lt;&lt; endl;
+</pre>
+          </blockquote>你可以把 endf 定义为一个返回代理内部所存最终目的地的函数. 这样就可以了, 在 endf 之后用户再次对 cout 调用 &lt;&lt;.</li>
+
+        <li>一种折中方案是针对最常见的情况: 用户只是想向 cout 输出又一个操纵器项(如 std::flush 或 endl 等).<blockquote>
+            <pre>
+cout &lt;&lt; format("%s %s \n") &lt;&lt;  x  &lt;&lt;  y &lt;&lt; flush ;
+</pre>
+          </blockquote> 这样, 解决办法就是为操纵器重载 operator&lt;&lt;. 这样一来就不需要 endf, 但在 format 参数之后直接输出一个非操纵器项就是错误.</li>
+      </ul><br> 最完整的方案是使用 endf 操纵器的那个方案. 而使用 operator%, 则不需要这种结束格式化的函数, 而且你能立刻看出哪些参数进入 format 对象, 哪些参数进入流.</li>
+
+    <li>美观方面: '%' 与格式化串内部使用的字母相同. 用同一个字母来传递每个参数相当好看. '&lt;&lt;' 是 2 个字母, '%' 是 1 个, 而且 '%' 尺寸更小. 它总体上改善了可视性(我们能看出谁与谁配对): <blockquote>
+        <pre>
+cout &lt;&lt; format("%s %s %s") %x %y %z &lt;&lt; "And  avg is" &lt;&lt; format("%s\n") %avg;
+</pre>
+      </blockquote>与之相比: <blockquote>
+        <pre>
+cout &lt;&lt; format("%s %s %s") &lt;&lt; x &lt;&lt; y &lt;&lt; z &lt;&lt; endf &lt;&lt;"And avg is" &lt;&lt; format("%s\n") &lt;&lt; avg;
+</pre>
+      </blockquote>"&lt;&lt;" 会误导人们把参数与传给流的任何对象置于同一层面.</li>
+
+    <li>python 也用 % 进行格式化, 所以可见它并非那么"前所未闻" ;-)</li>
+  </ul>
+  <hr>
+
+  <h3>为什么用 operator% 而不是 operator() 或 operator[] ??</h3>
+
+  <p>operator() 的优点是它是向函数传入参数的自然方式. 也有人认为 operator[] 的含义很适用于 format 中的用法.<br> 它们在技术上不比 operator% 差, 但相当难看.(这是品味问题)<br> 而说到底, 在格式化串中用 "%" 指代参数、却用 operator% 来传递这些参数, 在我看来比使用那些运算符自然得多.</p>
+  <hr>
+
+  <p><a href="http://validator.w3.org/check?uri=referer"><img border="0" src=
+  "../../../doc/images/valid-html401.png" alt="Valid HTML 4.01 Transitional"
+  height="31" width="88"></a></p>
+
+  <p>修订 <!--webbot bot="Timestamp" s-type="EDITED" s-format="%d %B, %Y" startspan -->02 December, 2006<!--webbot bot="Timestamp" endspan i-checksum="38510" --></p>
+
+  <p><i>版权所有 © 2001 Samuel Krempp</i></p>
+
+  <p><i>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <a href="../../../LICENSE_1_0.txt">LICENSE_1_0.txt</a> 或复制于 <a href=
+  "http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</a>)</i></p>
+</body>
+</html>

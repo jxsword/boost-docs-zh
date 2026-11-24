@@ -1,0 +1,73 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>线程安全</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../signals2.html" title="第 33 章 Boost.Signals2">
+<link rel="prev" href="../boost/signals2/trackable.html" title="类 trackable">
+<link rel="next" href="faq.html" title="常见问题 (FAQ)">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../boost/signals2/trackable.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../signals2.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="faq.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="signals2.thread-safety"></a>线程安全</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="thread-safety.html#id-1.3.34.7.2">引言</a></span></dt>
+<dt><span class="section"><a href="thread-safety.html#id-1.3.34.7.3">信号与组合器</a></span></dt>
+<dt><span class="section"><a href="thread-safety.html#id-1.3.34.7.4">连接与其他类</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="id-1.3.34.7.2"></a>引言</h3></div></div></div>
+<p>Boost.Signals2 的主要动机是提供一个可以在多线程环境中安全使用的原始 Boost.Signals 库版本. 这主要通过对原始 Boost.Signals API 的两项更改来实现. 一是引入了新的自动连接管理方案, 它依赖 <code class="computeroutput">shared_ptr</code> 和 <code class="computeroutput">weak_ptr</code>, 如<a class="link" href="tutorial.html#signals2.tutorial.connection-management" title="自动连接管理 (中级)">教程</a>中所述. 第二项更改是引入 <code class="computeroutput">Mutex</code> 模板类型参数到 <code class="computeroutput"><a class="link" href="../boost/signals2/signal.html" title="类模板 signal">signal</a></code> 类中. 本节详述库如何运用这些更改来提供线程安全性, 以及所提供的线程安全性的限度.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="id-1.3.34.7.3"></a>信号与合并器</h3></div></div></div>
+<p>每个信号对象都会默认构造一个 <code class="computeroutput">Mutex</code> 对象来保护其内部状态. 此外, 每当一个新槽连接到信号时, 都会创建一个 <code class="computeroutput">Mutex</code> 来保护相应的信号-槽连接.</p>
+<p>只要调用信号的任何方法, 信号的互斥量就会被自动锁定. 互斥量通常保持到方法完成为止, 但这一规则有一个重要的例外. 当通过调用 <code class="computeroutput"><a class="link" href="../boost/signals2/signal.html#id-1_3_34_6_9_3_1_2_25_1-bb">signal::operator()</a></code> 来调用信号时, 该调用首先获取信号互斥量上的锁, 然后取得信号槽列表和合并器的句柄, 接着释放信号互斥量, 再调用合并器遍历槽列表. 因此在槽执行期间信号不持有任何互斥量. 这一设计选择使在槽中运行的用户代码不可能与 Boost.Signals2 库内部使用的任何互斥量发生死锁, 也防止槽意外地对库的任何内部互斥量造成递归加锁. 因此, 如果你从多个线程并发调用一个信号, 信号的合并器有可能被并发调用, 从而各槽并发执行.</p>
+<p>在合并器调用期间, 为了在遍历信号槽列表时找到下一个可调用的槽, 会按顺序执行以下步骤.</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p>与到该槽的连接关联的 <code class="computeroutput">Mutex</code> 被锁定.</p></li>
+<li class="listitem"><p>与该槽关联的所有被跟踪 <code class="computeroutput">weak_ptr</code> 都被复制到临时 <code class="computeroutput">shared_ptr</code> 中, 它们将保持存活直到对该槽的调用结束. 若由于某些 <code class="computeroutput">weak_ptr</code> 已过期而失败, 该连接会被自动断开. 因此, 若槽跟踪的任何 <code class="computeroutput">weak_ptr</code> 已过期, 该槽绝不会运行; 且在该槽运行期间, 其跟踪的任何 <code class="computeroutput">weak_ptr</code> 都不会过期.</p></li>
+<li class="listitem"><p>检查槽的连接是否被阻塞或已断开, 然后解锁该连接的互斥量. 若连接已被阻塞或断开, 则从槽列表中的下一个槽重新开始. 否则, 当合并器下一次解引用槽调用迭代器时就会执行该槽 (除非合并器只递增迭代器而从不解引用它).</p></li>
+</ul></div>
+<p>注意, 由于我们在执行连接对应的槽之前就解锁了该连接的互斥量, 如果断开操作是与信号调用并发调用的, 那么在一个槽已被 <code class="computeroutput"><a class="link" href="../boost/signals2/connection.html#id-1_3_34_6_2_1_1_1_8_1-bb">connection::disconnect</a>()</code> 断开之后, 该槽仍可能正在执行.</p>
+<p>你可能已经注意到, 在信号调用期间, 调用过程仅在持有信号的互斥量时才获取信号槽列表与组合器的句柄. 因此, 并发的信号调用仍可能同时访问同一个槽列表与组合器. 那么, 如果在信号调用并发进行期间槽列表被修改——例如连接了一个新槽——会发生什么? 如果槽列表已在使用中, 信号会在修改之前对槽列表执行一次深拷贝. 因此, 并发的信号调用将继续使用旧的、未被修改的槽列表, 不受对新建槽列表深拷贝所做的修改的影响. 之后的信号调用将获得指向新建槽列表深拷贝的句柄, 而旧的槽列表一旦不再使用即被销毁. 类似地, 如果在信号调用并发运行期间通过 <code class="computeroutput"><a class="link" href="../boost/signals2/signal.html#id-1_3_34_6_9_3_1_2_26_2-bb">signal::set_combiner</a></code> 更改信号的组合器, 并发的信号调用将继续不受干扰地使用旧的组合器, 而之后的信号调用将获得指向新组合器的句柄.</p>
+<p>并发信号调用使用同一个组合器对象这一事实意味着, 你必须保证所编写的任何自定义组合器都是线程安全的. 因此, 如果你的组合器维护着在组合器被调用时会被修改的状态, 你可能需要用互斥量保护该状态. 注意, 如果你在解引用槽调用迭代器时在组合器中持有互斥量, 而其中任何槽又引发了额外的互斥量加锁, 就会有死锁和递归加锁的风险. 避免这些危险的一种方法是, 让组合器在解引用槽调用迭代器之前释放所有锁. Boost.Signals2 库提供的组合器类都是线程安全的, 因为它们不会跨调用维护任何状态.</p>
+<p>假设用户编写了一个槽, 该槽把另一个槽连接到发起调用的信号. 新连接的槽会在建立新连接的那次信号调用中运行吗? 答案是不会. 连接新槽会修改信号的槽列表, 如上所述, 已经进行中的信号调用不会看到对槽列表所做的任何修改.</p>
+<p>假设用户编写了一个槽, 该槽把另一个槽从发起调用的信号上断开连接. 如果被断开连接的槽在槽列表中的位置位于将其断开连接的槽之后, 那么它会被阻止在同一次信号调用中运行吗? 这次答案是会的. 即使被断开连接的槽仍然存在于信号的槽列表中, 每个槽在即将执行(或视情况不执行)之前都会立即被检查是否已断开连接或被阻塞, 如上文更详细的说明所述.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="id-1.3.34.7.4"></a>连接与其他类</h3></div></div></div>
+<p> <code class="computeroutput"><a class="link" href="../boost/signals2/connection.html" title="类 connection">signals2::connection</a></code> 类的方法是线程安全的, 赋值与 swap 除外. 这是通过锁定与对象底层信号槽连接相关联的互斥量实现的. 赋值与 swap 不是线程安全的, 因为互斥量保护的是 <code class="computeroutput"><a class="link" href="../boost/signals2/connection.html" title="类 connection">signals2::connection</a></code> 对象所引用的底层连接, 而不是 <code class="computeroutput"><a class="link" href="../boost/signals2/connection.html" title="类 connection">signals2::connection</a></code> 对象本身. 也就是说, 一个 <code class="computeroutput"><a class="link" href="../boost/signals2/connection.html" title="类 connection">signals2::connection</a></code> 对象可能存在多份副本, 它们都引用同一个底层连接. 每个 <code class="computeroutput"><a class="link" href="../boost/signals2/connection.html" title="类 connection">signals2::connection</a></code> 对象并没有各自的互斥量, 只有一个互斥量保护它们所引用的底层连接.</p>
+<p> <code class="computeroutput"><a class="link" href="../boost/signals2/shared_connection_block.html" title="类 shared_connection_block">shared_connection_block</a></code> 类从 <code class="computeroutput">Mutex</code> 处获得了一定的线程安全性, 后者保护着被阻塞与解除阻塞的底层连接. 用于跟踪有多少个 <code class="computeroutput"><a class="link" href="../boost/signals2/shared_connection_block.html" title="类 shared_connection_block">shared_connection_block</a></code> 对象对其底层连接施加阻塞的内部引用计数也是线程安全的 (实现依靠 <code class="computeroutput">shared_ptr</code> 来完成引用计数). 但是, 不应让多个线程并发访问单个 <code class="computeroutput"><a class="link" href="../boost/signals2/shared_connection_block.html" title="类 shared_connection_block">shared_connection_block</a></code> 对象. 只要两个线程各自拥有自己的 <code class="computeroutput"><a class="link" href="../boost/signals2/shared_connection_block.html" title="类 shared_connection_block">shared_connection_block</a></code> 对象, 它们就可以安全地使用, 即使这两个 <code class="computeroutput"><a class="link" href="../boost/signals2/shared_connection_block.html" title="类 shared_connection_block">shared_connection_block</a></code> 对象互为副本并引用同一个底层连接.</p>
+<p> <code class="computeroutput"><a class="link" href="../boost/signals2/slot.html" title="类模板 slot">signals2::slot</a></code> 类没有内置任何内部互斥量加锁. 预期的用法是: 槽对象在单一线程中创建, 然后连接到信号. 一旦它们被复制进信号的槽列表, 就由与每个信号槽连接相关联的互斥量加以保护.</p>
+<p> <code class="computeroutput"><a class="link" href="../boost/signals2/trackable.html" title="类 trackable">signals2::trackable</a></code> 类并不提供线程安全的自动连接管理. 特别是, 如果派生自 trackable 的对象在与调用信号不同的线程中被销毁, 它会留下信号调用进入部分已析构对象的可能性. <code class="computeroutput"><a class="link" href="../boost/signals2/trackable.html" title="类 trackable">signals2::trackable</a></code> 仅作为将单线程代码从 Boost.Signals 移植到 Boost.Signals2 时的便利设施而提供.</p>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2001-2004 Douglas Gregor<br>版权所有 © 2007-2009 Frank Mori Hess<p>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <code class="filename">LICENSE_1_0.txt</code> 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../boost/signals2/trackable.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../signals2.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="faq.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

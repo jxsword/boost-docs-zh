@@ -1,0 +1,642 @@
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><title>Boost.MultiArray 参考手册</title><meta name="generator" content="DocBook XSL Stylesheets V1.76.1"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="article" title="Boost.MultiArray 参考手册"><div class="titlepage"><div><div><h2 class="title"><a name="idp2304"></a>Boost.MultiArray 参考手册</h2></div><div><div class="author"><h3 class="author"><span class="firstname">Ronald</span> <span class="surname">Garcia</span></h3><div class="affiliation"><span class="orgname">Indiana University<br></span> <span class="orgdiv">Open Systems Lab<br></span></div></div></div><div><p class="copyright">版权所有 © 2002 The Trustees of Indiana University</p></div></div><hr></div><div class="toc"><p><b> 目录 </b></p><dl><dt><span class="sect1"><a href="#synopsis">库概要</a></span></dt><dt><span class="sect1"><a href="#MultiArray">MultiArray 概念</a></span></dt><dd><dl><dt><span class="sect2"><a href="#idp18427760">记号</a></span></dt><dt><span class="sect2"><a href="#idp18446208">关联类型</a></span></dt><dt><span class="sect2"><a href="#idp18501744">有效表达式</a></span></dt><dt><span class="sect2"><a href="#idp18588736">复杂度保证</a></span></dt><dt><span class="sect2"><a href="#idp18591264">不变式</a></span></dt><dt><span class="sect2"><a href="#view_types">视图的关联类型</a></span></dt><dt><span class="sect2"><a href="#idp18737792">模型</a></span></dt></dl></dd><dt><span class="sect1"><a href="#array_types">数组组件</a></span></dt><dd><dl><dt><span class="sect2"><a href="#multi_array_class"><code class="literal">multi_array</code></a></span></dt><dt><span class="sect2"><a href="#multi_array_ref"><code class="literal">multi_array_ref</code></a></span></dt><dt><span class="sect2"><a href="#const_multi_array_ref"><code class="literal">const_multi_array_ref</code></a></span></dt></dl></dd><dt><span class="sect1"><a href="#auxiliary">辅助组件</a></span></dt><dd><dl><dt><span class="sect2"><a href="#multi_array_types"><code class="literal">multi_array_types</code></a></span></dt><dt><span class="sect2"><a href="#extent_range"><code class="classname">extent_range</code></a></span></dt><dt><span class="sect2"><a href="#extent_gen"><code class="classname">extent_gen</code></a></span></dt><dt><span class="sect2"><a href="#idp19487120">全局对象</a></span></dt><dt><span class="sect2"><a href="#generators">视图与子数组生成器</a></span></dt><dt><span class="sect2"><a href="#memory_layout">内存布局指定器</a></span></dt><dt><span class="sect2"><a href="#range_checking">范围检查</a></span></dt></dl></dd></dl></div><p>Boost.MultiArray 由多个组件构成. MultiArray 概念定义了多维容器的通用接口. <code class="literal">multi_array</code> 是一个模型化 MultiArray 的通用容器类. <code class="literal">multi_array_ref</code> 和 <code class="literal">const_multi_array_ref</code> 是适配器类. 使用它们, 你可以把任意连续数据块当作 <code class="literal">multi_array</code> 来操作. <code class="literal">const_multi_array_ref</code> 与 <code class="literal">multi_array_ref</code> 的区别在于其元素不能通过其接口修改. 最后, 还有若干辅助类用于创建和特化数组, 并且作为库接口的一部分定义了一些全局对象.</p><div class="sect1" title="库概要"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="synopsis"></a>库概要</h2></div></div></div><p>要使用 Boost.MultiArray, 必须在源码中包含头文件 <code class="filename">boost/multi_array.hpp</code>. 该文件把以下声明引入作用域:</p><pre class="programlisting">
+namespace boost {
+  
+  namespace multi_array_types {
+    typedef *unspecified* index;
+    typedef *unspecified* size_type;
+    typedef *unspecified* difference_type;
+    typedef *unspecified* index_range;
+    typedef *unspecified* extent_range;
+    typedef *unspecified* index_gen;
+    typedef *unspecified* extent_gen;
+  }
+
+  template &lt;typename ValueType, 
+            std::size_t NumDims, 
+            typename Allocator = std::allocator&lt;ValueType&gt; &gt;
+  class multi_array;
+
+  template &lt;typename ValueType, 
+            std::size_t NumDims&gt;
+  class multi_array_ref;
+
+  template &lt;typename ValueType, 
+            std::size_t NumDims&gt; 
+  class const_multi_array_ref;
+
+  multi_array_types::extent_gen extents;
+  multi_array_types::index_gen  indices;
+
+  template &lt;typename Array, int N&gt; class subarray_gen;
+  template &lt;typename Array, int N&gt; class const_subarray_gen;
+  template &lt;typename Array, int N&gt; class array_view_gen;
+  template &lt;typename Array, int N&gt; class const_array_view_gen;
+
+  class c_storage_order; 
+  class fortran_storage_order;
+  template &lt;std::size_t NumDims&gt; class general_storage_order;
+
+}
+</pre></div><div class="sect1" title="MultiArray 概念"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="MultiArray"></a>MultiArray 概念</h2></div></div></div><p>MultiArray 概念定义了层次化嵌套容器的接口. 它规定了访问元素、遍历容器以及创建数组数据视图的操作. MultiArray 定义了一个灵活的内存模型, 可适应多种数据布局.</p><p>在 MultiArray 容器层次结构的每一层 (或每个维度) 上, 都有一组有序容器, 其中每个容器包含数量与类型相同的值. 该容器层次结构的深度即为 MultiArray 的 <span class="emphasis"><em>维数</em></span>. MultiArray 采用递归定义; 容器层次结构中每一层的容器本身也是 MultiArray 的模型. MultiArray 的每个维度都有自己的大小, 所有维度的大小列表则定义了整个 MultiArray 的 <span class="emphasis"><em>形状</em></span>. 该层次结构的最底层是一维 MultiArray. 它们的值是所关注的被包含对象, 不属于容器层次结构; 这些就是 MultiArray 的元素.</p><p>与其他容器概念一样, MultiArray 导出迭代器用于遍历其值. 此外, 还可以用常见的方括号记法直接寻址各个值.</p><p>MultiArray 还规定了创建专用视图的例程. <span class="emphasis"><em>视图</em></span> 让你可以把 MultiArray 中底层元素的一个子集当作独立的 MultiArray 来处理. 由于视图引用的是相同的底层元素, 对视图元素所做的修改会反映到原 MultiArray 中. 例如, 给定一个由元素构成的 3 维 "cube", 可以把其中 2 维的切片当作独立的 MultiArray 来看待. 视图使用 <code class="literal">index_gen</code> 和 <code class="literal">index_range</code> 对象创建. <code class="literal">index_range</code> 表示某个维度中将包含进视图的元素. <code class="literal">index_gen</code> 聚合范围数据并进行簿记, 以确定要返回的视图类型. MultiArray 的 <code class="literal">operator[]</code> 必须以 <code class="literal">N</code> 次链式调用 <code class="literal">index_gen::operator[]</code> 所得的结果作为实参, 即:</p><pre class="programlisting">indices[a0][a1]...[aN];
+</pre><p>其中 <code class="literal">N</code> 是 MultiArray 的维数, <code class="literal">indices</code> 是类型为 <code class="literal">index_gen</code> 的对象. 视图类型取决于传给 <code class="literal">index_gen</code> 的退化维度数量. 当对某个维度传给 <code class="literal">index_gen</code> 单个索引时, 就会出现退化维度. 例如, 若 <code class="literal">indices</code> 是类型为 <code class="literal">index_gen</code> 的对象, 则下面的例子:</p><pre class="programlisting">indices[index_range(0,5)][2][index_range(0,4)];
+</pre><p>具有一个退化的第二维度. 由上述规格生成的视图将有 2 个维度, 其形状为 <code class="literal">5 x 4</code>. 如果把上面的 "<code class="literal">2</code>" 替换为另一个 <code class="literal">index_range</code> 对象, 例如:</p><pre class="programlisting">indices[index_range(0,5)][index_range(0,2)][index_range(0,4)];
+</pre><p>那么视图将有 3 个维度.</p><p>MultiArray 导出有关其被包含元素内存布局的信息. 其元素的内存模型完全由 4 个属性定义: 原点、形状、索引基和步长. 原点是以 <code class="literal">a[0][0]...[0]</code> 方式访问的元素在内存中的地址, 其中 <code class="literal">a</code> 是一个 MultiArray. 形状是一个数字列表, 指定各维度上容器的大小. 例如, 第一个维度大小是最外层容器的大小, 第二个维度大小是其子容器的大小, 以此类推. 索引基是一个带符号值列表, 指定容器中第一个值的索引. 同一维度上的所有容器共享相同的索引基. 注意, 由于索引基可以是正值, 因此即使原点不存在, 也能确定 MultiArray 元素在内存中的位置. 步长决定索引值如何映射到内存偏移量. 它们可适应多种可能的元素布局. 例如, 一个二维数组的元素可以按行存储 (即每行的元素连续存放), 也可以按列存储 (即每列的元素连续存放).</p><p>MultiArray 概念的两个概念检查类 (<code class="literal">ConstMultiArrayConcept</code> 和 <code class="literal">MutableMultiArrayConcept</code>) 位于命名空间 <code class="literal">boost::multi_array_concepts</code> 中 (在 <code class="literal">&lt;boost/multi_array/concept_checks.hpp&gt;</code> 内).</p><div class="sect2" title="记法"><div class="titlepage"><div><div><h3 class="title"><a name="idp18427760"></a>记法</h3></div></div></div><p>下面是用于描述 MultiArray 接口的符号说明.</p><div class="table"><a name="idp18428768"></a><p class="title"><b>表 1. 记法</b></p><div class="table-contents"><table summary="Notation" border="1"><colgroup><col><col></colgroup><tbody><tr><td><code class="literal">A</code></td><td>作为 MultiArray 模型的类型</td></tr><tr><td><code class="literal">a,b</code></td><td>Objects of type <code class="literal">A</code></td></tr><tr><td><code class="literal">NumDims</code></td><td>与 <code class="literal">A</code> 关联的数值维度参数.</td></tr><tr><td><code class="literal">Dims</code></td><td>满足 <code class="literal">0&lt;Dims&lt;NumDims</code> 的某个数值维度参数.</td></tr><tr><td><code class="literal">indices</code></td><td>通过若干次对 <code class="literal">index_gen::operator[](index_range)</code> 的链式调用所创建的对象.</td></tr><tr><td><code class="literal">index_list</code></td><td>类型是 <a class="ulink" href="../../utility/Collection.html" target="_top">集合</a> 之模型的对象</td></tr><tr><td><code class="literal">idx</code></td><td>一个带符号整数值.</td></tr><tr><td><code class="literal">tmp</code></td><td>An object of type
+	      <code class="literal">boost::array&lt;index,NumDims&gt;</code></td></tr></tbody></table></div></div><br class="table-break"></div><div class="sect2" title="关联类型"><div class="titlepage"><div><div><h3 class="title"><a name="idp18446208"></a>关联类型</h3></div></div></div><p>
+</p><div class="table"><a name="idp18447104"></a><p class="title"><b>表 2. 关联类型</b></p><div class="table-contents"><table summary="Associated Types" border="1"><colgroup><col><col></colgroup><thead><tr><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code class="literal">value_type</code></td><td>这是容器的值类型. 若 <code class="literal">NumDims == 1</code>, 则为 <code class="literal">element</code>; 否则为直接嵌套容器的值类型.</td></tr><tr><td>
+<code class="literal">reference</code>
+</td><td>这是被包含值的引用类型. 若 <code class="literal">NumDims == 1</code>, 则为 <code class="literal">element&amp;</code>; 否则与 <code class="literal">template subarray&lt;NumDims-1&gt;::type</code> 为同一类型.</td></tr><tr><td>
+<code class="literal">const_reference</code>
+</td><td>这是被包含值的 const 引用类型. 若 <code class="literal">NumDims == 1</code>, 则为 <code class="literal">const element&amp;</code>; 否则与 <code class="literal">template const_subarray&lt;NumDims-1&gt;::type</code> 为同一类型.</td></tr><tr><td>
+<code class="literal">size_type</code>
+</td><td>这是一个无符号整数类型. 它主要用于指定数组形状.</td></tr><tr><td>
+<code class="literal">difference_type</code>
+</td><td>这是一个带符号整数类型, 用于表示两个迭代器之间的距离. 它与 <code class="literal">std::iterator_traits&lt;iterator&gt;::difference_type</code> 为同一类型.</td></tr><tr><td><code class="literal">iterator</code></td><td>这是遍历 <code class="literal">A</code> 之值的迭代器. 若 <code class="literal">NumDims == 1</code>, 则它是 <a class="ulink" href="http://www.boost.org/doc/html/RandomAccessIterator.html" target="_top">
+<code class="literal">Random Access Iterator</code></a> 的模型; 否则它是 <a class="ulink" href="./iterator_categories.html#concept_RandomAccessTraversalIterator" target="_top">随机访问遍历迭代器</a>、<a class="ulink" href="./iterator_categories.html#concept_ReadableIterator" target="_top">可读迭代器</a>、<a class="ulink" href="./iterator_categories.html#concept_WritableIterator" target="_top">可写迭代器</a> 和 <a class="ulink" href="http://www.boost.org/doc/html/OutputIterator.html" target="_top">
+<code class="literal">Output Iterator</code></a> 的模型.</td></tr><tr><td>
+<code class="literal">const_iterator</code>
+</td><td>这是遍历 <code class="literal">A</code> 之值的 const 迭代器.</td></tr><tr><td>
+<code class="literal">reverse_iterator</code>
+</td><td>这是反向迭代器, 用于从后向前遍历 <code class="literal">A</code> 的值.</td></tr><tr><td>
+<code class="literal">const_reverse_iterator</code>
+</td><td>这是 const 反向迭代器. <code class="literal">A</code>.</td></tr><tr><td>
+<code class="literal">element</code>
+</td><td>这是存储在 MultiArray 层次结构底部的对象类型. 它与 <code class="literal">template subarray&lt;1&gt;::value_type</code> 相同</td></tr><tr><td>
+<code class="literal">index</code>
+</td><td>这是一个带符号整数类型, 用于对 <code class="literal">A</code> 进行索引. 它还用于表示步长和索引基.</td></tr><tr><td>
+<code class="literal">index_gen</code>
+</td><td>此类型用于创建一个由 <code class="literal">index_range</code> 构成的元组, 传给 <code class="literal">operator[]</code> 以创建 <code class="literal">array_view&lt;Dims&gt;::type</code> 对象.</td></tr><tr><td>
+<code class="literal">index_range</code>
+</td><td>此类型指定 MultiArray 某个维度上的索引范围. 该范围将通过 <code class="literal">array_view&lt;Dims&gt;::type</code> 对象可见.</td></tr><tr><td>
+<code class="literal">template subarray&lt;Dims&gt;::type</code>
+</td><td>这是具有 <code class="literal">Dims</code> 个维度的子数组类型. 它是第 <code class="literal">(NumDims - Dims)</code> 维的引用类型, 该维属于 <code class="literal">A</code>; 它本身也是 MultiArray 的模型.</td></tr><tr><td>
+<code class="literal">template const_subarray&lt;Dims&gt;::type</code>
+</td><td>这是 const 子数组类型.</td></tr><tr><td>
+<code class="literal">template array_view&lt;Dims&gt;::type</code>
+</td><td>这是具有 <code class="literal">Dims</code> 个维度的视图类型. 它通过调用 <code class="literal">operator[](<code class="literal">indices</code>)</code> 返回. 它是 MultiArray 的模型.</td></tr><tr><td>
+<code class="literal">template
+const_array_view&lt;Dims&gt;::type</code>
+</td><td>这是具有 <code class="literal">Dims</code> 个维度的 const 视图类型.</td></tr></tbody></table></div></div><br class="table-break"></div><div class="sect2" title="有效表达式"><div class="titlepage"><div><div><h3 class="title"><a name="idp18501744"></a>有效表达式</h3></div></div></div><div class="table"><a name="idp18502256"></a><p class="title"><b>表 3. 有效表达式</b></p><div class="table-contents"><table summary="Valid Expressions" border="1"><colgroup><col><col><col></colgroup><thead><tr><th>表达式</th><th>返回类型</th><th>语义</th></tr></thead><tbody><tr><td><code class="literal">A::dimensionality</code></td><td><code class="literal">size_type</code></td><td>此编译期常量表示数组的维数 (注意 <code class="literal">A::dimensionality == NumDims</code>).</td></tr><tr><td><code class="literal">a.shape()</code></td><td><code class="literal">const size_type*</code></td><td>它返回一个含有 <code class="literal">NumDims</code> 个元素的列表, 指定数组各维度的大小.</td></tr><tr><td><code class="literal">a.strides()</code></td><td><code class="literal">const index*</code></td><td>它返回一个含有 <code class="literal">NumDims</code> 个元素的列表, 指定与数组各维度关联的步长. 访问值时, strides 用于计算元素在内存中的位置.</td></tr><tr><td><code class="literal">a.index_bases()</code></td><td><code class="literal">const index*</code></td><td>它返回一个含有 <code class="literal">NumDims</code> 个元素的列表, 指定数组各维度第一个元素的数值索引.</td></tr><tr><td><code class="literal">a.origin()</code></td><td>
+<code class="literal">element*</code>, 若 <code class="literal">a</code> 可变; 否则为 <code class="literal">const element*</code>.</td><td>它返回表达式 <code class="literal">a[0][0]...[0].</code> 所访问元素的地址. 若索引基为正, 该元素并不存在, 但该地址仍可用于在给定索引的情况下定位一个有效元素.</td></tr><tr><td><code class="literal">a.num_dimensions()</code></td><td><code class="literal">size_type</code></td><td>它返回数组的维数 (注意 <code class="literal">a.num_dimensions() == NumDims</code>).</td></tr><tr><td><code class="literal">a.num_elements()</code></td><td><code class="literal">size_type</code></td><td>它返回数组所含元素的数量. 它等价于以下代码: <pre class="programlisting">
+std::accumulate(a.shape(),a.shape+a.num_dimensions(),
+    size_type(1),std::multiplies&lt;size_type&gt;());
+</pre>
+</td></tr><tr><td><code class="literal">a.size()</code></td><td><code class="literal">size_type</code></td><td>它返回 <code class="literal">a</code> 所含值的数量. 它等价于 <code class="literal">a.shape()[0];</code>
+</td></tr><tr><td><code class="literal">a(index_list)</code></td><td>
+<code class="literal">element&amp;</code>; 若 <code class="literal">a</code> 可变, 则为 <code class="literal">const element&amp;</code>.</td><td>此表达式访问 <code class="literal">a</code> 的特定元素. <code class="literal">index_list</code> 是用于寻址所返回元素的唯一索引集合. 它等价于以下代码 (不考虑中间临时对象): <pre class="programlisting">
+    // multiply indices by strides
+    std::transform(index_list.begin(), index_list.end(),
+      a.strides(), tmp.begin(), std::multiplies&lt;index&gt;()),
+
+    // add the sum of the products to the origin
+    *std::accumulate(tmp.begin(), tmp.end(), a.origin());
+</pre>
+</td></tr><tr><td><code class="literal">a.begin()</code></td><td>
+<code class="literal">iterator</code>, 若 <code class="literal">a</code> 可变; 否则为 <code class="literal">const_iterator</code>.</td><td>它返回指向 <code class="literal">a</code> 开头的迭代器.</td></tr><tr><td><code class="literal">a.end()</code></td><td>
+<code class="literal">iterator</code>, 若 <code class="literal">a</code> 可变; 否则为 <code class="literal">const_iterator</code>.</td><td>它返回指向 <code class="literal">a</code> 末尾的迭代器.</td></tr><tr><td><code class="literal">a.rbegin()</code></td><td>
+<code class="literal">reverse_iterator</code>, 若 <code class="literal">a</code> 可变; 否则为 <code class="literal">const_reverse_iterator</code>.</td><td>它返回一个反向迭代器, 指向反转后的 <code class="literal">a</code> 的开头.</td></tr><tr><td><code class="literal">a.rend()</code></td><td>
+<code class="literal">reverse_iterator</code>, 若 <code class="literal">a</code> 可变; 否则为 <code class="literal">const_reverse_iterator</code>.</td><td>它返回一个反向迭代器, 指向反转后的 <code class="literal">a</code> 的末尾.</td></tr><tr><td><code class="literal">a[idx]</code></td><td>
+<code class="literal">reference</code>, 若 <code class="literal">a</code> 可变; 否则为 <code class="literal">const_reference</code>.</td><td>它返回一个引用类型, 绑定到索引 <code class="literal">idx</code> 处 <code class="literal">a</code> 的值. 注意, 若 <code class="literal">i</code> 是该维度的索引基, 则上述表达式返回第 <code class="literal">(idx-i)</code> 个元素 (从零开始计数). 该表达式等价于 <code class="literal">*(a.begin()+idx-a.index_bases()[0]);</code>.</td></tr><tr><td><code class="literal">a[indices]</code></td><td>
+<code class="literal">array_view&lt;Dims&gt;::type</code>, 若 <code class="literal">a</code> 可变; 否则为 <code class="literal">const_array_view&lt;Dims&gt;::type</code>.</td><td>此表达式生成数组的一个视图, 视图由 <code class="literal">index_range</code> 与 <code class="literal">index</code> 值决定, 这些值用于构造 <code class="literal">indices</code>.</td></tr><tr><td><code class="literal">a == b</code></td><td>bool</td><td>它对 <code class="literal">a</code> 与 <code class="literal">b</code> 的值进行字典序比较. 元素类型必须是 <a class="ulink" href="https://www.boost.org/sgi/stl/EqualityComparable.html" target="_top">EqualityComparable</a> 的模型, 此表达式才有效.</td></tr><tr><td><code class="literal">a &lt; b</code></td><td>bool</td><td>它对 <code class="literal">a</code> 与 <code class="literal">b</code> 的值进行字典序比较. 元素类型必须是 <a class="ulink" href="https://www.boost.org/sgi/stl/LessThanComparable.html" target="_top">LessThanComparable</a> 的模型, 此表达式才有效.</td></tr><tr><td><code class="literal">a &lt;= b</code></td><td>bool</td><td>它对 <code class="literal">a</code> 与 <code class="literal">b</code> 的值进行字典序比较. 元素类型必须同时是 <a class="ulink" href="https://www.boost.org/sgi/stl/EqualityComparable.html" target="_top">EqualityComparable</a> 和 <a class="ulink" href="https://www.boost.org/sgi/stl/LessThanComparable.html" target="_top">LessThanComparable</a> 的模型, 此表达式才有效.</td></tr><tr><td><code class="literal">a &gt; b</code></td><td>bool</td><td>它对 <code class="literal">a</code> 与 <code class="literal">b</code> 的值进行字典序比较. 元素类型必须同时是 <a class="ulink" href="https://www.boost.org/sgi/stl/EqualityComparable.html" target="_top">EqualityComparable</a> 和 <a class="ulink" href="https://www.boost.org/sgi/stl/LessThanComparable.html" target="_top">LessThanComparable</a> 的模型, 此表达式才有效.</td></tr><tr><td><code class="literal">a &gt;= b</code></td><td>bool</td><td>它对 <code class="literal">a</code> 与 <code class="literal">b</code> 的值进行字典序比较. 元素类型必须是 <a class="ulink" href="https://www.boost.org/sgi/stl/LessThanComparable.html" target="_top">LessThanComparable</a> 的模型, 此表达式才有效.</td></tr></tbody></table></div></div><br class="table-break"></div><div class="sect2" title="复杂度保证"><div class="titlepage"><div><div><h3 class="title"><a name="idp18588736"></a>复杂度保证</h3></div></div></div><code class="literal">begin()</code> 与 <code class="literal">end()</code> 以均摊常量时间执行. <code class="literal">size()</code> 的执行时间至多与 MultiArray 的大小呈线性关系.</div><div class="sect2" title="不变式"><div class="titlepage"><div><div><h3 class="title"><a name="idp18591264"></a>不变式</h3></div></div></div><div class="table"><a name="idp18591904"></a><p class="title"><b>表 4. 不变式</b></p><div class="table-contents"><table summary="Invariants" border="1"><colgroup><col><col></colgroup><tbody><tr><td>有效范围</td><td><code class="literal">[a.begin(),a.end())</code> 是一个有效范围.</td></tr><tr><td>范围大小</td><td>
+<code class="literal">a.size() == std::distance(a.begin(),a.end());</code>.
+</td></tr><tr><td>完整性</td><td>对范围 <code class="literal">[a.begin(),a.end())</code> 的迭代将遍历每个 <code class="literal">value_type</code>, 它们属于 <code class="literal">a</code>.</td></tr><tr><td>访问器等价性</td><td>调用 <code class="literal">a[a1][a2]...[aN]</code> (其中 <code class="literal">N==NumDims</code>) 的结果与调用 <code class="literal">a(index_list)</code> 相同, 其中 <code class="literal">index_list</code> 是一个 <a class="ulink" href="../../utility/Collection.html" target="_top">集合</a>, 包含值 <code class="literal">a1...aN</code>.</td></tr></tbody></table></div></div><br class="table-break"></div><div class="sect2" title="视图的关联类型"><div class="titlepage"><div><div><h3 class="title"><a name="view_types"></a>视图的关联类型</h3></div></div></div><p>以下 MultiArray 关联类型定义为现有 MultiArray 创建视图的接口. 下面描述它们在概念中的接口与作用.</p><div class="sect3" title="index_range"><div class="titlepage"><div><div><h4 class="title"><a name="index_range"></a><code class="literal">index_range</code></h4></div></div></div><p><code class="literal">index_range</code> 对象表示带步长的半开区间. 它们被聚合起来 (使用 <code class="literal">index_gen</code> 对象) 并传给 MultiArray 的 <code class="literal">operator[]</code> 以创建数组视图. 创建视图时, 每个 <code class="literal">index_range</code> 表示 MultiArray 某一维度上的一段有效索引. 通过所指定的这组范围访问到的元素将包含在构造出的视图中. 在某些情况下, 创建 <code class="literal">index_range</code> 时未指定起始值或结束值. 此时, 该对象被解释为从 MultiArray 某一维度的开头开始, 到其结尾结束.</p><p>
+<code class="literal">index_range</code> 对象可以通过多种方式构造和修改, 以便方便而清晰地表达索引范围. 为了指定范围, <code class="literal">index_range</code> 支持一组构造函数、可修改成员函数, 以及一种涉及不等号运算符的新颖写法. 使用不等号运算符, 半开区间 [5,10) 可按如下方式指定:</p><pre class="programlisting">5 &lt;= index_range() &lt; 10;</pre><p>或者</p><pre class="programlisting">4 &lt; index_range() &lt;= 9;</pre><p>等等. 下面描述 <code class="literal">index_range</code> 的接口.</p><div class="table"><a name="idp18614960"></a><p class="title"><b>表 5. 记法</b></p><div class="table-contents"><table summary="Notation" border="1"><colgroup><col><col></colgroup><tbody><tr><td><code class="literal">i</code></td><td>类型 <code class="literal">index_range</code> 的对象.</td></tr><tr><td><code class="literal">idx,idx1,idx2,idx3</code></td><td>类型 <code class="literal">index</code> 的对象.</td></tr></tbody></table></div></div><br class="table-break"><div class="table"><a name="idp18620944"></a><p class="title"><b>表 6. 关联类型</b></p><div class="table-contents"><table summary="Associated Types" border="1"><colgroup><col><col></colgroup><thead><tr><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code class="literal">index</code></td><td>这是一个带符号整数类型, 用于指定起始值、结束值和步长.</td></tr><tr><td><code class="literal">size_type</code></td><td>这是一个无符号整数类型, 用于报告 <code class="literal">index_range</code> 所表示范围的大小.</td></tr></tbody></table></div></div><br class="table-break"><div class="table"><a name="idp18627920"></a><p class="title"><b>表 7. 有效表达式</b></p><div class="table-contents"><table summary="Valid Expressions" border="1"><colgroup><col><col><col></colgroup><thead><tr><th>表达式</th><th>返回类型</th><th>语义</th></tr></thead><tbody><tr><td><code class="literal">index_range(idx1,idx2,idx3)</code></td><td><code class="literal">index_range</code></td><td>它构造一个 <code class="literal">index_range</code>, 表示区间 <code class="literal">[idx1,idx2)</code>, 步长为 <code class="literal">idx3</code>.</td></tr><tr><td><code class="literal">index_range(idx1,idx2)</code></td><td><code class="literal">index_range</code></td><td>它构造一个 <code class="literal">index_range</code>, 表示区间 <code class="literal">[idx1,idx2)</code>, 步长为 1. 它等价于 <code class="literal">index_range(idx1,idx2,1)</code>.</td></tr><tr><td><code class="literal">index_range()</code></td><td><code class="literal">index_range</code></td><td>它构造一个 起始值和结束值未指定的 <code class="literal">index_range</code>.</td></tr><tr><td><code class="literal">i.start(idx1)</code></td><td><code class="literal">index&amp;</code></td><td>它把 <code class="literal">i</code> 的起始索引设为 <code class="literal">idx</code>.</td></tr><tr><td><code class="literal">i.finish(idx)</code></td><td><code class="literal">index&amp;</code></td><td>它把 <code class="literal">i</code> 的结束索引设为 <code class="literal">idx</code>.</td></tr><tr><td><code class="literal">i.stride(idx)</code></td><td><code class="literal">index&amp;</code></td><td>它把 <code class="literal">i</code> 的步长设为 <code class="literal">idx</code>.</td></tr><tr><td><code class="literal">i.start()</code></td><td><code class="literal">index</code></td><td>它返回 <code class="literal">i</code> 的起始索引.</td></tr><tr><td><code class="literal">i.finish()</code></td><td><code class="literal">index</code></td><td>它返回 <code class="literal">i</code> 的结束索引.</td></tr><tr><td><code class="literal">i.stride()</code></td><td><code class="literal">index</code></td><td>它返回 <code class="literal">i</code> 的步长.</td></tr><tr><td><code class="literal">i.get_start(idx)</code></td><td><code class="literal">index</code></td><td>若 <code class="literal">i</code> 指定了起始值, 则此表达式等价于 <code class="literal">i.start()</code>. 否则它返回 <code class="literal">idx</code>.</td></tr><tr><td><code class="literal">i.get_finish(idx)</code></td><td><code class="literal">index</code></td><td>若 <code class="literal">i</code> 指定了结束值, 则此表达式等价于 <code class="literal">i.finish()</code>. 否则它返回 <code class="literal">idx</code>.</td></tr><tr><td><code class="literal">i.size(idx)</code></td><td><code class="literal">size_type</code></td><td>若 <code class="literal">i</code> 同时指定了结束值和起始值, 则此表达式等价于 <code class="literal">(i.finish()-i.start())/i.stride()</code>. 否则它返回 <code class="literal">idx</code>.</td></tr><tr><td><code class="literal">i &lt; idx</code></td><td><code class="literal">index</code></td><td>这是指定结束值的另一种语法. 这种记法不会把 <code class="literal">idx</code> 包含在有效索引范围内. 它等价于 <code class="literal">index_range(r.start(), idx, r.stride())</code>.</td></tr><tr><td><code class="literal">i &lt;= idx</code></td><td><code class="literal">index</code></td><td>这是指定结束值的另一种语法. 这种记法会把 <code class="literal">idx</code> 包含在有效索引范围内. 它等价于 <code class="literal">index_range(r.start(), idx + 1, r.stride())</code>.</td></tr><tr><td><code class="literal">idx &lt; i</code></td><td><code class="literal">index</code></td><td>这是指定起始值的另一种语法. 这种记法不会把 <code class="literal">idx</code> 包含在有效索引范围内. 它等价于 <code class="literal">index_range(idx + 1, i.finish(), i.stride())</code>.</td></tr><tr><td><code class="literal">idx &lt;= i</code></td><td><code class="literal">index</code></td><td>这是指定起始值的另一种语法. 这种记法会把 <code class="literal">idx1</code> 包含在有效索引范围内. 它等价于 <code class="literal">index_range(idx, i.finish(), i.stride())</code>.</td></tr><tr><td><code class="literal">i + idx</code></td><td><code class="literal">index</code></td><td>此表达式把 <code class="literal">i</code> 的起始值和结束值上移 <code class="literal">idx</code>. 它等价于 <code class="literal">index_range(r.start()+idx1, r.finish()+idx, r.stride())</code>.</td></tr><tr><td><code class="literal">i - idx</code></td><td><code class="literal">index</code></td><td>此表达式把 <code class="literal">i</code> 的起始值和结束值上移 <code class="literal">idx</code>. 它等价于 <code class="literal">index_range(r.start()-idx1, r.finish()-idx, r.stride())</code>.</td></tr></tbody></table></div></div><br class="table-break"></div><div class="sect3" title="index_gen"><div class="titlepage"><div><div><h4 class="title"><a name="index_gen"></a><code class="literal">index_gen</code></h4></div></div></div><p> <code class="literal">index_gen</code> 聚合多个 <code class="literal">index_range</code> 对象, 以指定视图参数. 对 <code class="literal">operator[]</code> 的链式调用会把用于在 MultiArray 中实例化新视图的范围与维度信息存储下来.</p><div class="table"><a name="idp18699808"></a><p class="title"><b>表 8. 记法</b></p><div class="table-contents"><table summary="Notation" border="1"><colgroup><col><col></colgroup><tbody><tr><td><code class="literal">Dims,Ranges</code></td><td>无符号整数值.</td></tr><tr><td><code class="literal">x</code></td><td>类型 <code class="literal">template gen_type&lt;Dims,Ranges&gt;::type</code> 的对象.</td></tr><tr><td><code class="literal">i</code></td><td>类型 <code class="literal">index_range</code> 的对象.</td></tr><tr><td><code class="literal">idx</code></td><td>类型 <code class="literal">index</code> 的对象.</td></tr></tbody></table></div></div><br class="table-break"><div class="table"><a name="idp18709408"></a><p class="title"><b>表 9. 关联类型</b></p><div class="table-contents"><table summary="Associated Types" border="1"><colgroup><col><col></colgroup><thead><tr><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code class="literal">index</code></td><td>这是一个带符号整数类型, 用于指定退化维度.</td></tr><tr><td><code class="literal">size_type</code></td><td>这是一个无符号整数类型, 用于报告 <code class="literal">index_range</code> 所表示范围的大小.</td></tr><tr><td>
+<code class="literal">template gen_type::&lt;Dims,Ranges&gt;::type</code></td><td>此类型生成器命名 <code class="literal">Dims</code> 次链式调用 <code class="literal">index_gen::operator[]</code> 的结果. <code class="literal">Ranges</code> 参数由所指定的退化范围数量 (即对 <code class="literal">operator[](index)</code> 的调用次数) 决定. 注意 <code class="classname">index_gen</code> 与 <code class="classname">gen_type&lt;0,0&gt;::type</code> 是同一类型.</td></tr></tbody></table></div></div><br class="table-break"><div class="table"><a name="idp18721296"></a><p class="title"><b>表 10. 有效表达式</b></p><div class="table-contents"><table summary="Valid Expressions" border="1"><colgroup><col><col><col></colgroup><thead><tr><th>表达式</th><th>返回类型</th><th>语义</th></tr></thead><tbody><tr><td><code class="literal">index_gen()</code></td><td><code class="literal">gen_type&lt;0,0&gt;::type</code></td><td>它构造一个 <code class="literal">index_gen</code> 对象. 该对象随后可用于生成由 <code class="literal">index_range</code> 值构成的元组.</td></tr><tr><td><code class="literal">x[i]</code></td><td><code class="literal">gen_type&lt;Dims+1,Ranges+1&gt;::type</code>
+</td><td>返回一个新对象, 它在原有全部 <code class="classname">index_range</code> 对象之外还包含 <code class="literal">i.</code>. 对 <code class="function">operator[]</code> 的链式调用是聚合 <code class="classname">index_range</code> 对象的手段.</td></tr><tr><td><code class="literal">x[idx]</code></td><td><code class="literal">gen_type&lt;Dims,Ranges+1&gt;::type</code>
+</td><td>返回一个新对象, 它在原有全部 <code class="classname">index_range</code> 对象之外还包含一个退化范围 <code class="literal">index_range(idx,idx).</code>. 注意这不等价于 <code class="literal">x[index_range(idx,idx)].</code>, 后者将返回类型为 <code class="literal">gen_type&lt;Dims+1,Ranges+1&gt;::type</code> 的对象.</td></tr></tbody></table></div></div><br class="table-break"></div></div><div class="sect2" title="模型"><div class="titlepage"><div><div><h3 class="title"><a name="idp18737792"></a>模型</h3></div></div></div><div class="itemizedlist"><ul class="itemizedlist" type="disc"><li class="listitem"><code class="literal">multi_array</code></li><li class="listitem"><code class="literal">multi_array_ref</code></li><li class="listitem"><code class="literal">const_multi_array_ref</code></li><li class="listitem"><code class="literal">template array_view&lt;Dims&gt;::type</code></li><li class="listitem"><code class="literal">template const_array_view&lt;Dims&gt;::type</code></li><li class="listitem"><code class="literal">template subarray&lt;Dims&gt;::type</code></li><li class="listitem"><code class="literal">template const_subarray&lt;Dims&gt;::type</code></li></ul></div></div></div><div class="sect1" title="数组组件"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="array_types"></a>数组组件</h2></div></div></div><p>Boost.MultiArray 定义了一个数组类 <code class="literal">multi_array</code> 以及两个适配器类 <code class="literal">multi_array_ref</code> 和 <code class="literal">const_multi_array_ref</code>. 这三个类都是 MultiArray 的模型, 因此共享大量功能. <code class="literal">multi_array_ref</code> 与 <code class="literal">multi_array</code> 的区别在于: <code class="literal">multi_array</code> 管理自己的内存, 而 <code class="literal">multi_array_ref</code> 则被传入一块预期由外部管理的内存. <code class="literal">const_multi_array_ref</code> 与 <code class="literal">multi_array_ref</code> 的区别在于: 它所适配的底层元素不能通过其接口修改, 但某些数组属性 (包括数组形状和索引基) 仍可更改. 这些类的共有功能在下文描述.</p><p title="注释: 前置条件、效果与实现"><b>注释: 前置条件、效果与实现. </b> 在以下各节中, 将使用小的 C++ 代码片段来指定前置条件、效果和后置条件等约束. 这些约束不一定描述数组组件的底层实现, 而是描述指定操作的预期输入与行为. 不满足前置条件将导致未定义行为. 并非所有效果 (如拷贝构造函数等) 都必须完全复现; 用于说明效果的代码片段旨在抓住所述操作的实质.</p><p title="查询"><b>查询. </b></p><div class="variablelist"><dl><dt><span class="term"><pre class="programlisting">element* data();
+const element* data() const;</pre></span></dt><dd><p>它返回指向包含数组数据的连续内存块开头的指针. 若数组的所有维度都从 0 开始索引且按升序存储, 则此函数等价于 <code class="literal">origin()</code>. 注意 <code class="literal">const_multi_array_ref</code> 只提供此函数的 const 版本.</p></dd><dt><span class="term"><pre class="programlisting">element* origin();
+const element* origin() const;</pre></span></dt><dd><p>它返回 <code class="literal">multi_array</code> 的原点元素. 注意 <code class="literal">const_multi_array_ref</code> 只提供此函数的 const 版本. (MultiArray 所要求)</p></dd><dt><span class="term"><code class="function">const index* index_bases();</code></span></dt><dd><p>它返回 <code class="literal">multi_array</code> 的索引基. (MultiArray 所要求)</p></dd><dt><span class="term"><code class="function">const index* strides();</code></span></dt><dd><p>它返回 <code class="literal">multi_array</code> 的步长. (MultiArray 所要求)</p></dd><dt><span class="term"><code class="function">const size_type* shape();</code></span></dt><dd><p>它返回 <code class="literal">multi_array</code> 的形状. (MultiArray 所要求)</p></dd></dl></div><p title="比较器"><b>比较器. </b></p><div class="variablelist"><dl><dt><span class="term"><pre class="programlisting">
+bool operator==(const *array-type*&amp; rhs);
+bool operator!=(const *array-type*&amp; rhs);
+bool operator&lt;(const *array-type*&amp; rhs);
+bool operator&gt;(const *array-type*&amp; rhs);
+bool operator&gt;=(const *array-type*&amp; rhs);
+bool operator&lt;=(const *array-type*&amp; rhs);</pre></span></dt><dd><p>每个比较器对两个数组的值类型执行字典序比较. (MultiArray 所要求)</p><p title="前置条件"><b>前置条件. </b><code class="literal">element</code> 必须支持与在 <code class="literal">multi_array</code> 上调用的比较器相对应的那个比较器.</p><p title="复杂度"><b>复杂度. </b>O(<code class="literal">num_elements()</code>).</p></dd></dl></div><p title="修改器"><b>修改器. </b></p><div class="variablelist"><dl><dt><span class="term">
+<pre class="programlisting">
+
+template &lt;typename SizeList&gt;
+void reshape(const SizeList&amp; sizes)
+
+</pre>
+</span></dt><dd><p>它改变 <code class="literal">multi_array</code> 的形状. 元素数量和索引基保持不变, 但嵌套容器层次结构中每一层上的值的数量可能改变.</p><p title="SizeList 要求"><b><code class="literal">SizeList</code> 要求. </b><code class="literal">SizeList</code> 必须是 <a class="ulink" href="../../utility/Collection.html" target="_top">Collection</a> 的模型.</p><p title="前置条件"><b>前置条件. </b>
+</p><pre class="programlisting">
+std::accumulate(sizes.begin(),sizes.end(),size_type(1),std::times&lt;size_type&gt;()) == this-&gt;num_elements();
+sizes.size() == NumDims;
+</pre><p title="后置条件"><b>后置条件. </b>
+<code class="literal">std::equal(sizes.begin(),sizes.end(),this-&gt;shape) == true;</code>
+</p></dd><dt><span class="term">
+<pre class="programlisting">
+
+template &lt;typename BaseList&gt;
+void reindex(const BaseList&amp; values);
+
+</pre>
+</span></dt><dd><p>它把 <code class="literal">multi_array</code> 的索引基改为与 <code class="literal">values</code> 中的值相对应.</p><p title="BaseList 要求"><b><code class="literal">BaseList</code> 要求. </b><code class="literal">BaseList</code> 必须是 <a class="ulink" href="../../utility/Collection.html" target="_top">Collection</a> 的模型.</p><p title="前置条件"><b>前置条件. </b><code class="literal">values.size() == NumDims;</code></p><p title="后置条件"><b>后置条件. </b><code class="literal">std::equal(values.begin(),values.end(),this-&gt;index_bases());
+</code></p></dd><dt><span class="term">
+<pre class="programlisting">
+
+void reindex(index value);
+
+</pre>
+</span></dt><dd><p>它把 <code class="literal">multi_array</code> 所有维度的索引基改为 <code class="literal">value</code>.</p><p title="后置条件"><b>后置条件. </b>
+</p><pre class="programlisting">
+
+std::count_if(this-&gt;index_bases(),this-&gt;index_bases()+this-&gt;num_dimensions(),
+              std::bind_2nd(std::equal_to&lt;index&gt;(),value)) == 
+              this-&gt;num_dimensions();
+
+</pre><p title="后置条件">
+</p></dd></dl></div><div class="sect2" title="multi_array"><div class="titlepage"><div><div><h3 class="title"><a name="multi_array_class"></a><code class="literal">multi_array</code></h3></div></div></div><p>
+<code class="literal">multi_array</code> 是一个支持随机访问迭代的多维容器. 其维数在编译期固定, 但其形状和所含元素的数量在构造时指定. 在 <code class="literal">multi_array</code> 的生存期内, 元素数量保持不变, 但容器的形状可以改变. <code class="literal">multi_array</code> 使用可替换的分配器管理其数据元素.</p><p title="所建模的概念."><b>所建模的概念. </b>
+<a class="link" href="#MultiArray" title="MultiArray 概念">MultiArray</a>、<a class="ulink" href="../../../libs/utility/CopyConstructible.html" target="_top">CopyConstructible</a>. 视元素类型而定, 它也可能同时是 <a class="ulink" href="https://www.boost.org/sgi/stl/EqualityComparable.html" target="_top">EqualityComparable</a> 和 <a class="ulink" href="https://www.boost.org/sgi/stl/LessThanComparable.html" target="_top">LessThanComparable</a> 的模型.</p><p title="概要"><b>概要. </b></p><pre class="programlisting">
+
+namespace boost {
+
+template &lt;typename ValueType, 
+          std::size_t NumDims, 
+          typename Allocator = std::allocator&lt;ValueType&gt; &gt;
+class multi_array {
+public:
+// types:
+  typedef ValueType                             element;
+  typedef *unspecified*                         value_type;
+  typedef *unspecified*                         reference;
+  typedef *unspecified*                         const_reference;
+  typedef *unspecified*                         difference_type;
+  typedef *unspecified*                         iterator;
+  typedef *unspecified*                         const_iterator;
+  typedef *unspecified*                         reverse_iterator;
+  typedef *unspecified*                         const_reverse_iterator;
+  typedef multi_array_types::size_type          size_type;
+  typedef multi_array_types::index              index;
+  typedef multi_array_types::index_gen          index_gen;
+  typedef multi_array_types::index_range        index_range;
+  typedef multi_array_types::extent_gen         extent_gen;
+  typedef multi_array_types::extent_range       extent_range;
+  typedef *unspecified*                         storage_order_type;
+
+
+  // template typedefs
+  template &lt;std::size_t Dims&gt; struct            subarray;
+  template &lt;std::size_t Dims&gt; struct            const_subarray;
+  template &lt;std::size_t Dims&gt; struct            array_view;
+  template &lt;std::size_t Dims&gt; struct            const_array_view;
+  
+
+  static const std::size_t dimensionality = NumDims;
+  
+
+  // constructors and destructors
+
+  multi_array();
+
+  template &lt;typename ExtentList&gt;
+  explicit multi_array(const ExtentList&amp; sizes,
+                       const storage_order_type&amp; store = c_storage_order(),
+                       const Allocator&amp; alloc = Allocator());
+  explicit multi_array(const extents_tuple&amp; ranges,
+                       const storage_order_type&amp; store = c_storage_order(),
+	               const Allocator&amp; alloc = Allocator());
+  multi_array(const multi_array&amp; x);
+  multi_array(const const_multi_array_ref&lt;ValueType,NumDims&gt;&amp; x);
+  multi_array(const const_subarray&lt;NumDims&gt;::type&amp; x);
+  multi_array(const const_array_view&lt;NumDims&gt;::type&amp; x);
+
+  multi_array(const multi_array_ref&lt;ValueType,NumDims&gt;&amp; x);
+  multi_array(const subarray&lt;NumDims&gt;::type&amp; x);
+  multi_array(const array_view&lt;NumDims&gt;::type&amp; x);
+
+  ~multi_array();
+
+  // modifiers
+
+  multi_array&amp; operator=(const multi_array&amp; x);
+  template &lt;class Array&gt; multi_array&amp; operator=(const Array&amp; x);
+
+  // iterators:
+  iterator				begin();
+  iterator				end();
+  const_iterator			begin() const;
+  const_iterator			end() const;
+  reverse_iterator			rbegin();
+  reverse_iterator			rend();
+  const_reverse_iterator		rbegin() const;
+  const_reverse_iterator		rend() const;
+
+  // capacity:
+  size_type				size() const;
+  size_type				num_elements() const;
+  size_type				num_dimensions() const;
+ 
+  // element access:
+  template &lt;typename IndexList&gt; 
+    element&amp;			operator()(const IndexList&amp; indices);
+  template &lt;typename IndexList&gt;
+    const element&amp;		operator()(const IndexList&amp; indices) const;
+  reference			operator[](index i);
+  const_reference		operator[](index i) const;
+  array_view&lt;Dims&gt;::type	operator[](const indices_tuple&amp; r);
+  const_array_view&lt;Dims&gt;::type	operator[](const indices_tuple&amp; r) const;
+
+  // queries
+  element*			data();
+  const element*		data() const;
+  element*			origin();
+  const element*		origin() const;
+  const size_type*		shape() const;
+  const index*			strides() const;
+  const index*			index_bases() const;
+  const storage_order_type&amp;     storage_order() const;
+
+  // comparators
+  bool operator==(const multi_array&amp; rhs);
+  bool operator!=(const multi_array&amp; rhs);
+  bool operator&lt;(const multi_array&amp; rhs);
+  bool operator&gt;(const multi_array&amp; rhs);
+  bool operator&gt;=(const multi_array&amp; rhs);
+  bool operator&lt;=(const multi_array&amp; rhs);
+
+  // modifiers:
+  template &lt;typename InputIterator&gt;
+    void			assign(InputIterator begin, InputIterator end);
+  template &lt;typename SizeList&gt;
+    void			reshape(const SizeList&amp; sizes)
+  template &lt;typename BaseList&gt;	void reindex(const BaseList&amp; values);
+    void			reindex(index value);
+  template &lt;typename ExtentList&gt;
+    multi_array&amp;		resize(const ExtentList&amp; extents);
+  multi_array&amp;                  resize(extents_tuple&amp; extents);
+};
+
+</pre><p title="构造函数"><b>构造函数. </b></p><div class="variablelist"><dl><dt><span class="term"><pre class="programlisting">template &lt;typename ExtentList&gt;
+explicit multi_array(const ExtentList&amp; sizes,
+                     const storage_order_type&amp; store = c_storage_order(),
+                     const Allocator&amp; alloc = Allocator());
+</pre></span></dt><dd><p>它使用指定的参数构造一个 <code class="literal">multi_array</code>. <code class="literal">sizes</code> 指定所构造 <code class="literal">multi_array</code> 的形状. <code class="literal">store</code> 指定数组各维度的存储顺序或内存布局. <code class="literal">alloc</code> 用于分配被包含的元素.</p><p title="ExtentList 要求"><b><code class="literal">ExtentList</code> 要求. </b>
+<code class="literal">ExtentList</code> 必须是 <a class="ulink" href="../../utility/Collection.html" target="_top">Collection</a> 的模型.</p><p title="前置条件"><b>前置条件. </b><code class="literal">sizes.size() == NumDims;</code></p></dd><dt><span class="term">
+<pre class="programlisting">explicit multi_array(extent_gen::gen_type&lt;NumDims&gt;::type ranges,
+                     const storage_order_type&amp; store = c_storage_order(),
+                     const Allocator&amp; alloc = Allocator());
+</pre></span></dt><dd><p>它使用指定的参数构造一个 <code class="literal">multi_array</code>. <code class="literal">ranges</code> 指定所构造 multi_array 的形状和索引基, 它是 <code class="literal">NumDims</code> 次链式调用 <code class="literal">extent_gen::operator[]</code> 的结果. <code class="literal">store</code> 指定数组各维度的存储顺序或内存布局. <code class="literal">alloc</code> 是用于分配内存以存储 <code class="literal">multi_array</code> 元素的分配器.</p></dd><dt><span class="term"><pre class="programlisting">
+multi_array(const multi_array&amp; x);
+multi_array(const const_multi_array_ref&lt;ValueType,NumDims&gt;&amp; x);
+multi_array(const const_subarray&lt;NumDims&gt;::type&amp; x);
+multi_array(const const_array_view&lt;NumDims&gt;::type&amp; x);
+multi_array(const multi_array_ref&lt;ValueType,NumDims&gt;&amp; x);
+multi_array(const subarray&lt;NumDims&gt;::type&amp; x);
+multi_array(const array_view&lt;NumDims&gt;::type&amp; x);
+</pre></span></dt><dd><p>这些构造函数都构造一个 <code class="literal">multi_array</code>, 并对 <code class="literal">x</code> 执行深拷贝.</p><p title="复杂度"><b>复杂度. </b> 此操作执行 O(<code class="literal">x.num_elements()</code>) 次 <code class="literal">element</code> 拷贝构造函数调用.</p></dd><dt><span class="term"><pre class="programlisting">
+multi_array();
+</pre></span></dt><dd><p>它构造一个形状为 (0,...,0) 且不含任何元素的 <code class="literal">multi_array</code>.</p></dd></dl></div><p title="关于构造函数的注释"><b>关于构造函数的注释. </b> <code class="literal">multi_array</code> 构造表达式</p><pre class="programlisting">
+     multi_array&lt;int,3&gt; A(boost::extents[5][4][3]);
+</pre><p title="关于构造函数的注释">以及</p><pre class="programlisting">
+     boost::array&lt;multi_array_base::index,3&gt; my_extents = {{5, 4, 3}};
+     multi_array&lt;int,3&gt; A(my_extents);
+</pre><p title="关于构造函数的注释">是等价的.</p><p title="修改器"><b>修改器. </b></p><div class="variablelist"><dl><dt><span class="term"><pre class="programlisting">
+multi_array&amp; operator=(const multi_array&amp; x);
+template &lt;class Array&gt; multi_array&amp; operator=(const Array&amp; x);
+</pre>
+</span></dt><dd><p>它把 <code class="literal">x</code> 逐元素拷贝到当前 <code class="literal">multi_array</code> 中.</p><p title="数组要求"><b><code class="literal">Array</code> 要求. </b><code class="literal">Array</code> 必须是 MultiArray 的模型.</p><p title="前置条件"><b>前置条件. </b>
+</p><pre class="programlisting">std::equal(this-&gt;shape(),this-&gt;shape()+this-&gt;num_dimensions(),
+x.shape());</pre><p title="后置条件"><b>后置条件. </b>
+</p><pre class="programlisting">(*.this) == x;</pre><p title="后置条件">
+</p><p title="复杂度"><b>复杂度. </b>赋值运算符执行 O(<code class="literal">x.num_elements()</code>) 次 <code class="literal">element</code> 拷贝构造函数调用.</p></dd><dt><span class="term">
+<pre class="programlisting">
+
+template &lt;typename InputIterator&gt;
+void assign(InputIterator begin, InputIterator end);
+</pre>
+</span></dt><dd><p>它把范围 <code class="literal">[begin,end)</code> 中的元素拷贝到数组中. 它等价于 <code class="literal">std::copy(begin,end,this-&gt;data())</code>.</p><p title="前置条件"><b>前置条件. </b><code class="literal">std::distance(begin,end) == this-&gt;num_elements();</code>
+</p><p title="复杂度"><b>复杂度. </b> <code class="literal">assign</code> 成员函数执行 O(<code class="literal">this-&gt;num_elements()</code>) 次 <code class="literal">ValueType</code> 拷贝构造函数调用.</p></dd><dt><span class="term">
+<pre class="programlisting">multi_array&amp; resize(extent_gen::gen_type&lt;NumDims&gt;::type extents);
+template &lt;typename ExtentList&gt;
+  multi_array&amp; resize(const ExtentList&amp; extents);
+
+</pre></span></dt><dd><p>此函数把数组重新调整为由 <code class="literal">extents</code> 指定的形状, 该实参可以是生成的维度列表, 也可以是 <code class="literal">Collection</code> 概念的一个模型. 数组内容会被尽可能保留; 若新数组大小更小, 则会丢失一些数据. 调整数组大小所创建的任何新元素都用 <code class="literal">element</code> 的默认构造函数初始化.</p></dd></dl></div><p title="查询"><b>查询. </b></p><div class="variablelist"><dl><dt><span class="term"><pre class="programlisting">
+storage_order_type&amp; storage_order() const;
+</pre>
+</span></dt><dd><p>此查询返回与所论 <code class="literal">multi_array</code> 相关联的存储顺序对象. 它可用于构造一个具有相同存储顺序的新数组.</p></dd></dl></div></div><div class="sect2" title="multi_array_ref"><div class="titlepage"><div><div><h3 class="title"><a name="multi_array_ref"></a><code class="literal">multi_array_ref</code></h3></div></div></div><p>
+<code class="literal">multi_array_ref</code> 是一个多维容器适配器. 它在任意连续的元素块上提供 MultiArray 接口. <code class="literal">multi_array_ref</code> 导出与 <code class="literal">multi_array</code> 相同的接口, 构造函数除外.</p><p title="所建模的概念."><b>所建模的概念. </b>
+<code class="literal">multi_array_ref</code> 是 <a class="link" href="#MultiArray" title="MultiArray 概念">MultiArray</a>、<a class="ulink" href="../../../libs/utility/CopyConstructible.html" target="_top">CopyConstructible</a> 的模型; 视元素类型而定, 它也可能同时是 <a class="ulink" href="https://www.boost.org/sgi/stl/EqualityComparable.html" target="_top">EqualityComparable</a> 和 <a class="ulink" href="https://www.boost.org/sgi/stl/LessThanComparable.html" target="_top">LessThanComparable</a> 的模型. 此处仅对 <code class="literal">multi_array</code> 参考手册中未描述的操作提供详细说明.</p><p title="概要"><b>概要. </b></p><pre class="programlisting">
+
+namespace boost {
+
+template &lt;typename ValueType, 
+          std::size_t NumDims&gt;
+class multi_array_ref {
+public:
+// types:
+  typedef ValueType                             element;
+  typedef *unspecified*                         value_type;
+  typedef *unspecified*                         reference;
+  typedef *unspecified*                         const_reference;
+  typedef *unspecified*                         difference_type;
+  typedef *unspecified*                         iterator;
+  typedef *unspecified*                         const_iterator;
+  typedef *unspecified*                         reverse_iterator;
+  typedef *unspecified*                         const_reverse_iterator;
+  typedef multi_array_types::size_type          size_type;
+  typedef multi_array_types::index              index;
+  typedef multi_array_types::index_gen          index_gen;
+  typedef multi_array_types::index_range        index_range;
+  typedef multi_array_types::extent_gen         extent_gen;
+  typedef multi_array_types::extent_range       extent_range;
+  typedef *unspecified*                         storage_order_type;
+  
+  // template typedefs
+  template &lt;std::size_t Dims&gt; struct            subarray;
+  template &lt;std::size_t Dims&gt; struct            const_subarray;
+  template &lt;std::size_t Dims&gt; struct            array_view;
+  template &lt;std::size_t Dims&gt; struct            const_array_view;
+  
+
+  static const std::size_t dimensionality = NumDims;
+
+
+  // constructors and destructors
+
+  template &lt;typename ExtentList&gt;
+  explicit multi_array_ref(element* data, const ExtentList&amp; sizes,
+                       const storage_order_type&amp; store = c_storage_order());
+  explicit multi_array_ref(element* data, const extents_tuple&amp; ranges,
+                       const storage_order_type&amp; store = c_storage_order());
+  multi_array_ref(const multi_array_ref&amp; x);
+  ~multi_array_ref();
+
+  // modifiers
+
+  multi_array_ref&amp; operator=(const multi_array_ref&amp; x);
+  template &lt;class Array&gt; multi_array_ref&amp; operator=(const Array&amp; x);
+
+  // iterators:
+  iterator				begin();
+  iterator				end();
+  const_iterator			begin() const;
+  const_iterator			end() const;
+  reverse_iterator			rbegin();
+  reverse_iterator			rend();
+  const_reverse_iterator		rbegin() const;
+  const_reverse_iterator		rend() const;
+
+  // capacity:
+  size_type				size() const;
+  size_type				num_elements() const;
+  size_type				num_dimensions() const;
+ 
+  // element access:
+  template &lt;typename IndexList&gt; 
+    element&amp;			operator()(const IndexList&amp; indices);
+  template &lt;typename IndexList&gt;
+    const element&amp;		operator()(const IndexList&amp; indices) const;
+  reference			operator[](index i);
+  const_reference		operator[](index i) const;
+  array_view&lt;Dims&gt;::type	operator[](const indices_tuple&amp; r);
+  const_array_view&lt;Dims&gt;::type	operator[](const indices_tuple&amp; r) const;
+
+  // queries
+  element*			data();
+  const element*		data() const;
+  element*			origin();
+  const element*		origin() const;
+  const size_type*		shape() const;
+  const index*			strides() const;
+  const index*			index_bases() const;
+  const storage_order_type&amp;     storage_order() const;
+
+  // comparators
+  bool operator==(const multi_array_ref&amp; rhs);
+  bool operator!=(const multi_array_ref&amp; rhs);
+  bool operator&lt;(const multi_array_ref&amp; rhs);
+  bool operator&gt;(const multi_array_ref&amp; rhs);
+  bool operator&gt;=(const multi_array_ref&amp; rhs);
+  bool operator&lt;=(const multi_array_ref&amp; rhs);
+
+  // modifiers:
+  template &lt;typename InputIterator&gt;
+    void			assign(InputIterator begin, InputIterator end);
+  template &lt;typename SizeList&gt;
+    void			reshape(const SizeList&amp; sizes)
+  template &lt;typename BaseList&gt;	void reindex(const BaseList&amp; values);
+  void				reindex(index value);
+};
+
+</pre><p title="构造函数"><b>构造函数. </b></p><div class="variablelist"><dl><dt><span class="term"><pre class="programlisting">template &lt;typename ExtentList&gt;
+explicit multi_array_ref(element* data, 
+                     const ExtentList&amp; sizes,
+                     const storage_order&amp; store = c_storage_order(),
+                     const Allocator&amp; alloc = Allocator());
+</pre></span></dt><dd><p>它使用指定的参数构造一个 <code class="literal">multi_array_ref</code>. <code class="literal">sizes</code> 指定所构造 <code class="literal">multi_array_ref</code> 的形状. <code class="literal">store</code> 指定数组各维度的存储顺序或内存布局. <code class="literal">alloc</code> 用于分配被包含的元素.</p><p title="ExtentList 要求"><b><code class="literal">ExtentList</code> 要求. </b>
+<code class="literal">ExtentList</code> 必须是 <a class="ulink" href="../../utility/Collection.html" target="_top">Collection</a> 的模型.</p><p title="前置条件"><b>前置条件. </b><code class="literal">sizes.size() == NumDims;</code></p></dd><dt><span class="term">
+<pre class="programlisting">explicit multi_array_ref(element* data,
+                     extent_gen::gen_type&lt;NumDims&gt;::type ranges,
+                     const storage_order&amp; store = c_storage_order());
+</pre></span></dt><dd><p>它使用指定的参数构造一个 <code class="literal">multi_array_ref</code>. <code class="literal">ranges</code> 指定所构造 multi_array_ref 的形状和索引基, 它是 <code class="literal">NumDims</code> 次链式调用 <code class="literal">extent_gen::operator[]</code> 的结果. <code class="literal">store</code> 指定数组各维度的存储顺序或内存布局.</p></dd><dt><span class="term"><pre class="programlisting">
+multi_array_ref(const multi_array_ref&amp; x);
+</pre></span></dt><dd><p>它构造 <code class="literal">x</code> 的一个浅拷贝.</p><p title="复杂度"><b>复杂度. </b>常量时间 (相比之下, 可与 <code class="literal">multi_array</code> 类的拷贝构造函数作比较).</p></dd></dl></div><p title="修改器"><b>修改器. </b></p><div class="variablelist"><dl><dt><span class="term"><pre class="programlisting">
+multi_array_ref&amp; operator=(const multi_array_ref&amp; x);
+template &lt;class Array&gt; multi_array_ref&amp; operator=(const Array&amp; x);
+</pre>
+</span></dt><dd><p>它把 <code class="literal">x</code> 逐元素拷贝到当前 <code class="literal">multi_array_ref</code> 中.</p><p title="数组要求"><b><code class="literal">Array</code> 要求. </b><code class="literal">Array</code> 必须是 MultiArray 的模型.</p><p title="前置条件"><b>前置条件. </b>
+</p><pre class="programlisting">std::equal(this-&gt;shape(),this-&gt;shape()+this-&gt;num_dimensions(),
+x.shape());</pre><p title="后置条件"><b>后置条件. </b>
+</p><pre class="programlisting">(*.this) == x;</pre><p title="后置条件">
+</p><p title="复杂度"><b>复杂度. </b>赋值运算符执行 O(<code class="literal">x.num_elements()</code>) 次 <code class="literal">element</code> 拷贝构造函数调用.</p></dd></dl></div></div><div class="sect2" title="const_multi_array_ref"><div class="titlepage"><div><div><h3 class="title"><a name="const_multi_array_ref"></a><code class="literal">const_multi_array_ref</code></h3></div></div></div><p>
+<code class="literal">const_multi_array_ref</code> 是一个多维容器适配器. 它在任意连续的元素块上提供 MultiArray 接口. <code class="literal">const_multi_array_ref</code> 导出与 <code class="literal">multi_array</code> 相同的接口, 构造函数除外.</p><p title="所建模的概念."><b>所建模的概念. </b>
+<code class="literal">const_multi_array_ref</code> 是 <a class="link" href="#MultiArray" title="MultiArray 概念">MultiArray</a>、<a class="ulink" href="../../../libs/utility/CopyConstructible.html" target="_top">CopyConstructible</a> 的模型; 视元素类型而定, 它也可能同时是 <a class="ulink" href="https://www.boost.org/sgi/stl/EqualityComparable.html" target="_top">EqualityComparable</a> 和 <a class="ulink" href="https://www.boost.org/sgi/stl/LessThanComparable.html" target="_top">LessThanComparable</a> 的模型. 此处仅对 <code class="literal">multi_array</code> 参考手册中未描述的操作提供详细说明.</p><p title="概要"><b>概要. </b></p><pre class="programlisting">
+
+namespace boost {
+
+template &lt;typename ValueType, 
+          std::size_t NumDims, 
+          typename TPtr = const T*&gt;
+class const_multi_array_ref {
+public:
+// types:
+  typedef ValueType                             element;
+  typedef *unspecified*                         value_type;
+  typedef *unspecified*                         reference;
+  typedef *unspecified*                         const_reference;
+  typedef *unspecified*                         difference_type;
+  typedef *unspecified*                         iterator;
+  typedef *unspecified*                         const_iterator;
+  typedef *unspecified*                         reverse_iterator;
+  typedef *unspecified*                         const_reverse_iterator;
+  typedef multi_array_types::size_type          size_type;
+  typedef multi_array_types::index              index;
+  typedef multi_array_types::index_gen          index_gen;
+  typedef multi_array_types::index_range        index_range;
+  typedef multi_array_types::extent_gen         extent_gen;
+  typedef multi_array_types::extent_range       extent_range;
+  typedef *unspecified*                         storage_order_type;
+  
+  // template typedefs
+  template &lt;std::size_t Dims&gt; struct            subarray;
+  template &lt;std::size_t Dims&gt; struct            const_subarray;
+  template &lt;std::size_t Dims&gt; struct            array_view;
+  template &lt;std::size_t Dims&gt; struct            const_array_view;
+  
+
+  // structors
+
+  template &lt;typename ExtentList&gt;
+  explicit const_multi_array_ref(TPtr data, const ExtentList&amp; sizes,
+                       const storage_order_type&amp; store = c_storage_order());
+  explicit const_multi_array_ref(TPtr data, const extents_tuple&amp; ranges,
+                       const storage_order_type&amp; store = c_storage_order());
+  const_multi_array_ref(const const_multi_array_ref&amp; x);
+  ~const_multi_array_ref();
+
+
+
+  // iterators:
+  const_iterator			begin() const;
+  const_iterator			end() const;
+  const_reverse_iterator		rbegin() const;
+  const_reverse_iterator		rend() const;
+
+  // capacity:
+  size_type				size() const;
+  size_type				num_elements() const;
+  size_type				num_dimensions() const;
+ 
+  // element access:
+  template &lt;typename IndexList&gt;
+    const element&amp;		operator()(const IndexList&amp; indices) const;
+  const_reference		operator[](index i) const;
+  const_array_view&lt;Dims&gt;::type	operator[](const indices_tuple&amp; r) const;
+
+  // queries
+  const element*		data() const;
+  const element*		origin() const;
+  const size_type*		shape() const;
+  const index*			strides() const;
+  const index*			index_bases() const;
+  const storage_order_type&amp;     storage_order() const;
+
+  // comparators
+  bool operator==(const const_multi_array_ref&amp; rhs);
+  bool operator!=(const const_multi_array_ref&amp; rhs);
+  bool operator&lt;(const const_multi_array_ref&amp; rhs);
+  bool operator&gt;(const const_multi_array_ref&amp; rhs);
+  bool operator&gt;=(const const_multi_array_ref&amp; rhs);
+  bool operator&lt;=(const const_multi_array_ref&amp; rhs);
+
+  // modifiers:
+  template &lt;typename SizeList&gt;
+  void			reshape(const SizeList&amp; sizes)
+  template &lt;typename BaseList&gt;	void reindex(const BaseList&amp; values);
+  void				reindex(index value);
+};
+
+</pre><p title="构造函数"><b>构造函数. </b></p><div class="variablelist"><dl><dt><span class="term"><pre class="programlisting">template &lt;typename ExtentList&gt;
+explicit const_multi_array_ref(TPtr data, 
+                     const ExtentList&amp; sizes,
+                     const storage_order&amp; store = c_storage_order());
+</pre></span></dt><dd><p>它使用指定的参数构造一个 <code class="literal">const_multi_array_ref</code>. <code class="literal">sizes</code> 指定所构造 <code class="literal">const_multi_array_ref</code> 的形状. <code class="literal">store</code> 指定数组各维度的存储顺序或内存布局.</p><p title="ExtentList 要求"><b><code class="literal">ExtentList</code> 要求. </b>
+<code class="literal">ExtentList</code> 必须是 <a class="ulink" href="../../utility/Collection.html" target="_top">Collection</a> 的模型.</p><p title="前置条件"><b>前置条件. </b><code class="literal">sizes.size() == NumDims;</code></p></dd><dt><span class="term">
+<pre class="programlisting">explicit const_multi_array_ref(TPtr data,
+                     extent_gen::gen_type&lt;NumDims&gt;::type ranges,
+                     const storage_order&amp; store = c_storage_order());
+</pre></span></dt><dd><p title="效果"><b>效果. </b> 它使用指定的参数构造一个 <code class="literal">const_multi_array_ref</code>. <code class="literal">ranges</code> 指定所构造 const_multi_array_ref 的形状和索引基, 它是 <code class="literal">NumDims</code> 次链式调用 <code class="literal">extent_gen::operator[]</code> 的结果. <code class="literal">store</code> 指定数组各维度的存储顺序或内存布局.</p></dd><dt><span class="term"><pre class="programlisting">
+const_multi_array_ref(const const_multi_array_ref&amp; x);
+</pre></span></dt><dd><p title="效果"><b>效果. </b>它构造 <code class="literal">x</code> 的一个浅拷贝.</p></dd></dl></div></div></div><div class="sect1" title="辅助组件"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="auxiliary"></a>辅助组件</h2></div></div></div><div class="sect2" title="multi_array_types"><div class="titlepage"><div><div><h3 class="title"><a name="multi_array_types"></a><code class="literal">multi_array_types</code></h3></div></div></div><pre class="programlisting">
+namespace multi_array_types {
+  typedef *unspecified* index;
+  typedef *unspecified* size_type;
+  typedef *unspecified* difference_type;
+  typedef *unspecified* index_range;
+  typedef *unspecified* extent_range;
+  typedef *unspecified* index_gen;
+  typedef *unspecified* extent_gen;
+}
+</pre><p>命名空间 <code class="literal">multi_array_types</code> 定义了与 <code class="literal">multi_array</code>、<code class="literal">multi_array_ref</code> 和 <code class="literal">const_multi_array_ref</code> 相关联且不依赖于模板参数的类型. 这些类型普遍用于所有 Boost.MultiArray 组件. 它们定义在一个命名空间中, 可从中方便地访问. 除 <code class="literal">extent_gen</code> 和 <code class="literal">extent_range</code> 之外, 这些类型承担 MultiArray 所要求的同名角色, 并已在 MultiArray 的概念定义中描述. <code class="literal">extent_gen</code> 和 <code class="literal">extent_range</code> 在下文描述.</p></div><div class="sect2" title="extent_range"><div class="titlepage"><div><div><h3 class="title"><a name="extent_range"></a><code class="classname">extent_range</code></h3></div></div></div><p><code class="classname">extent_range</code> 对象定义半开区间. 它们向 <code class="literal">multi_array</code>、<code class="literal">multi_array_ref</code> 和 <code class="literal">const_multi_array_ref</code> 构造函数提供形状和索引基信息. 多个 <code class="classname">extent_range</code> 以聚合形式传给数组构造函数 (详见 <code class="classname">extent_gen</code>).</p><p title="概要"><b>概要. </b></p><pre class="programlisting">
+class extent_range {
+public:
+  typedef multi_array_types::index      index;
+  typedef multi_array_types::size_type  size_type;
+
+  // Structors
+  extent_range(index start, index finish);
+  extent_range(index finish);
+  ~extent_range();
+
+  // Queries
+  index start();
+  index finish();
+  size_type size();
+};</pre><p title="所建模的概念"><b>所建模的概念. </b>DefaultConstructible、CopyConstructible</p><p title="方法与类型"><b>方法与类型. </b></p><div class="variablelist"><dl><dt><span class="term"><code class="function">extent_range(index start, index finish)</code></span></dt><dd><p>此构造函数定义半开区间 <code class="literal">[start,finish)</code>. 表达式 <code class="literal">finish</code> 必须大于 <code class="literal">start</code>.</p></dd><dt><span class="term"><code class="function">extent_range(index finish)</code></span></dt><dd><p>此构造函数定义半开区间 <code class="literal">[0,finish)</code>. <code class="literal">finish</code> 的值必须为正.</p></dd><dt><span class="term"><code class="function">index start()</code></span></dt><dd><p>此函数返回该范围表示的第一个索引.</p></dd><dt><span class="term"><code class="function">index finish()</code></span></dt><dd><p>此函数返回半开区间的上边界值. 注意该范围不包含此值.</p></dd><dt><span class="term"><code class="function">size_type size()</code></span></dt><dd><p>此函数返回指定范围的大小. 它等价于 <code class="literal">finish()-start()</code>.</p></dd></dl></div></div><div class="sect2" title="extent_gen"><div class="titlepage"><div><div><h3 class="title"><a name="extent_gen"></a><code class="classname">extent_gen</code></h3></div></div></div><p> <code class="classname">extent_gen</code> 类定义了一个接口, 用于聚合数组形状与索引信息并传给 <code class="literal">multi_array</code>、<code class="literal">multi_array_ref</code> 或 <code class="literal">const_multi_array_ref</code> 构造函数. 其接口模拟了 C++ 中声明内建数组类型的语法. 例如, 虽然在 C++ 中一个由 <code class="classname">int</code> 值构成的 3 维数组会声明为:</p><pre class="programlisting">int A[3][4][5],</pre><p>一个类似的 <code class="classname">multi_array</code> 则声明为:</p><pre class="programlisting">multi_array&lt;int,3&gt; A(extents[3][4][5]).</pre><p>
+</p><p title="概要"><b>概要. </b></p><pre class="programlisting">
+template &lt;std::size_t NumRanges&gt;
+class *implementation_defined* {
+public:
+  typedef multi_array_types::index index;
+  typedef multi_array_types::size_type size_type;
+
+  template &lt;std::size_t NumRanges&gt; class gen_type;
+
+  gen_type&lt;NumRanges+1&gt;::type  operator[](const range&amp; a_range) const;
+  gen_type&lt;NumRanges+1&gt;::type  operator[](index idx) const;
+};
+
+typedef *implementation_defined*&lt;0&gt; extent_gen;
+</pre><p title="方法与类型"><b>方法与类型. </b></p><div class="variablelist"><dl><dt><span class="term"><code class="function">template gen_type&lt;Ranges&gt;::type</code></span></dt><dd><p>此类型生成器用于指代 <code class="literal">Ranges</code> 次链式调用 <code class="literal">extent_gen::operator[].</code> 的结果. 类型 <code class="classname">extent_gen</code> 与 <code class="classname">gen_type&lt;0&gt;::type</code> 相同.</p></dd><dt><span class="term"><code class="function">gen_type&lt;NumRanges+1&gt;::type  
+operator[](const extent_range&amp; a_range) const;</code></span></dt><dd><p>此函数返回一个新对象, 它在原有全部 <code class="classname">extent_range</code> 对象之外还包含 <code class="literal">a_range.</code>. <code class="classname">extent_range</code> 对象通过对 <code class="function">operator[]</code> 的链式调用进行聚合.</p></dd><dt><span class="term"><code class="function">gen_type&lt;NumRanges+1&gt;::type
+operator[](index idx) const;</code></span></dt><dd><p>此函数返回一个新对象, 它在原有全部 <code class="classname">extent_range</code> 对象之外还包含 <code class="literal">extent_range(0,idx).</code>. 此函数让数组构造函数获得与传统 C 多维数组声明类似的语法.</p></dd></dl></div></div><div class="sect2" title="全局对象"><div class="titlepage"><div><div><h3 class="title"><a name="idp19487120"></a>全局对象</h3></div></div></div><p>为语法上的便利, Boost.MultiArray 在其接口中定义了两个全局对象. 这些对象扮演对象生成器的角色; 涉及它们的表达式会创建其他所需的对象.</p><p>在某些情况下, 这两个全局对象可能被视为过多的开销. 要避免构造它们, 只需先定义预处理器符号 <code class="literal">BOOST_MULTI_ARRAY_NO_GENERATORS</code>, 再包含 <code class="filename">boost/multi_array.hpp.</code></p><div class="sect3" title="extents"><div class="titlepage"><div><div><h4 class="title"><a name="extents"></a><code class="literal">extents</code></h4></div></div></div><pre class="programlisting">
+namespace boost {
+  multi_array_base::extent_gen extents;
+}
+</pre><p>Boost.MultiArray 的数组类在构造时使用 <code class="literal">extents</code> 全局对象来指定数组形状. 例如, 一个 3×3×3 的 <code class="classname">multi_array</code> 按如下方式构造:</p><pre class="programlisting">multi_array&lt;int,3&gt; A(extents[3][3][3]);</pre><p>同一个数组也可以通过在局部显式声明一个 <code class="literal">extent_gen</code> 对象来创建, 但全局对象使这种声明变得不必要.</p></div><div class="sect3" title="indices"><div class="titlepage"><div><div><h4 class="title"><a name="indices"></a><code class="literal">indices</code></h4></div></div></div><pre class="programlisting">
+namespace boost {
+  multi_array_base::index_gen  indices;
+}
+</pre><p>MultiArray 概念规定了一个用于创建视图的 <code class="literal">index_gen</code> 关联类型. <code class="literal">indices</code> 是一个全局对象, 对本库提供的所有数组组件及其关联的子数组和视图, 它都充当 <code class="literal">index_gen</code> 的角色.</p><p>例如, 使用 <code class="literal">indices</code> 对象, 数组 <code class="literal">A</code> 的视图按如下方式构造:</p><pre class="programlisting">
+A[indices[index_range(0,5)][2][index_range(2,4)]];
+</pre><p>
+</p></div></div><div class="sect2" title="视图与子数组生成器"><div class="titlepage"><div><div><h3 class="title"><a name="generators"></a>视图与子数组生成器</h3></div></div></div><p>Boost.MultiArray 提供特征类 <code class="literal">subarray_gen</code>、<code class="literal">const_subarray_gen</code>、<code class="literal">array_view_gen</code> 和 <code class="literal">const_array_view_gen</code>, 用于在函数模板内命名数组的关联类型. 通常这并不比嵌套类型生成器更方便, 但本库作者发现某些 C++ 编译器不能正确处理嵌套在函数模板参数类型中的模板. 这些生成器正是针对这一缺陷的变通办法. 下面的代码片段展示了 <code class="literal">array_view_gen</code> 特征类与数组所关联的 <code class="literal">array_view</code> 类型之间的对应关系:</p><pre class="programlisting">
+template &lt;typename Array&gt;
+void my_function() {
+  typedef typename Array::template array_view&lt;3&gt;::type view1_t;
+  typedef typename boost::array_view_gen&lt;Array,3&gt;::type view2_t;
+  // ...
+}
+</pre><p>在上面的例子中, <code class="literal">view1_t</code> 与 <code class="literal">view2_t</code> 的类型相同.</p></div><div class="sect2" title="内存布局指定器"><div class="titlepage"><div><div><h3 class="title"><a name="memory_layout"></a>内存布局指定器</h3></div></div></div><p>多维数组虽然表示元素的容器层次结构, 但最终这些元素必须以某种方式布置在内存中. 因此, 同一个多维数组在内存中可以有多种表示方式.</p><p>例如, 考虑下面以矩阵记法给出的二维数组:</p><div><img src="matrix.gif"></div><p>上述数组在 C++ 中的表达如下:</p><pre class="programlisting">
+int a[3][4] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
+</pre><p>这是按行优先存储的一个例子, 每行的元素连续存放. 虽然 C++ 透明地处理数组元素的访问, 但你也可以手动管理数组及其索引. 其在内存中的一种表示方式如下:</p><pre class="programlisting">
+int a[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
+int s[] = { 4, 1 };
+</pre><p>使用后一种 <code class="literal">a</code> 声明和步长 <code class="literal">s</code>, 可用如下表达式访问数组的元素 <code class="literal">a(i,j)</code>:</p><pre class="programlisting">*a+i*s[0]+j*s[1]</pre><p>.
+</p><p>同一个二维数组也可以按列布置, 如下所示:</p><pre class="programlisting">
+int a[] = { 0, 4, 8, 1, 5, 9, 2, 6, 10, 3, 7, 11 };
+int s[] = { 3, 1 };
+</pre><p>注意这里的步长有所不同. 因此, 上面给出的访问值的表达式同样适用于这对数据和步长.</p><p>除维度顺序之外, 也可以按降序存储任何一个维度. 例如, 回到第一个例子, 该例数组的第一个维度 (即各行) 可以反向存储, 结果如下:</p><pre class="programlisting">
+int data[] = { 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3 };
+int *a = data + 8;
+int s[] = { -4, 1 };
+</pre><p>注意在本例中必须把 <code class="literal">a</code> 显式设置为原点. 在前面的例子中, 内存中存储的第一个元素就是原点; 而这里不再如此.</p><p>也可以反过来: 反转第二个维度 (即各列), 而各行按升序存储:</p><pre class="programlisting">
+int data[] = { 3, 2, 1, 0,  7, 6, 5, 4, 11, 10, 9, 8 };
+int *a = data + 3;
+int s[] = { 4, -1 };
+</pre><p>
+</p><p>最后, 两个维度都可以按降序存储:</p><pre class="programlisting">
+int data[] = {11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0};
+int *a = data + 11;
+int s[] = { -4, -1 };
+</pre><p>
+<code class="literal">
+</code>
+</p><p>上述所有数组都是等价的. 无论内存布局如何, 上面给出的关于 <code class="literal">a(i,j)</code> 的表达式都会得到相同的值. 如上所述, Boost.MultiArray 数组可以用自定义的存储参数创建. 因此, 现有数据可以通过 <code class="literal">multi_array_ref</code> 或 <code class="literal">const_multi_array_ref</code> 进行适配, 以符合数组抽象. 这一功能的常见用途是包装必须与 Fortran 例程互操作的数组, 使它们在 C++ 和 Fortran 两个层面都能被自然地操作. 以下各节描述用于指定内存布局的 Boost.MultiArray 组件.</p><div class="sect3" title="c_storage_order"><div class="titlepage"><div><div><h4 class="title"><a name="c_storage_order"></a><code class="literal">c_storage_order</code></h4></div></div></div><pre class="programlisting">
+class c_storage_order {
+  c_storage_order();
+};
+</pre><p><code class="literal">c_storage_order</code> 用于指定数组使用与原始 C++ 多维数组相同的布局存储元素, 即从最后一个维度到第一个维度. 这是本库所提供数组的默认存储顺序.</p></div><div class="sect3" title="fortran_storage_order"><div class="titlepage"><div><div><h4 class="title"><a name="fortran_storage_order"></a><code class="literal">fortran_storage_order</code></h4></div></div></div><pre class="programlisting">
+class fortran_storage_order {
+  fortran_storage_order();
+};
+</pre><p><code class="literal">fortran_storage_order</code> 用于指定数组使用与 Fortran 多维数组相同的内存布局存储元素, 即从第一个维度到最后一个维度.</p></div><div class="sect3" title="general_storage_order"><div class="titlepage"><div><div><h4 class="title"><a name="general_storage_order"></a><code class="literal">general_storage_order</code></h4></div></div></div><pre class="programlisting">
+template &lt;std::size_t NumDims&gt; 
+class general_storage_order {
+
+  template &lt;typename OrderingIter, typename AscendingIter&gt;
+  general_storage_order(OrderingIter ordering, AscendingIter ascending);
+};
+</pre><p><code class="literal">general_storage_order</code> 允许用户为数组内容指定任意的内存布局. 构造出的对象会传给数组构造函数, 以指定存储顺序.</p><p>
+<code class="literal">OrderingIter</code> 和 <code class="literal">AscendingIter</code> 必须是 <code class="literal">InputIterator</code> 概念的模型. 两个迭代器都必须引用一个含有 <code class="literal">NumDims</code> 个元素的范围. <code class="literal">AscendingIter</code> 指向可转换为 <code class="literal">bool</code> 的对象. <code class="literal">true</code> 的值表示一个维度按升序存储, 而 <code class="literal">false</code> 表示一个维度按降序存储. <code class="literal">OrderingIter</code> 指定各维度的存储顺序.</p></div></div><div class="sect2" title="范围检查"><div class="titlepage"><div><div><h3 class="title"><a name="range_checking"></a>范围检查</h3></div></div></div><p>默认情况下, 数组访问方法 <code class="literal">operator()</code> 和 <code class="literal">operator[]</code> 会执行范围检查. 如果提供的索引超出为数组定义的范围, 断言将中止程序. 要禁用范围检查 (出于发布版本的性能考虑), 在应用程序中包含 multi_array.hpp 之前定义 <code class="literal">BOOST_DISABLE_ASSERTS</code> 预处理宏即可.</p></div></div></div></body></html>

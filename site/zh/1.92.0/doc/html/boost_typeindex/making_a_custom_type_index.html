@@ -1,0 +1,236 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>制作自定义 type_index</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../boost_typeindex.html" title="第 38 章 Boost.TypeIndex 4.3">
+<link rel="prev" href="../doxygen/boost_typeindex_header_reference/type__index__facade_8hpp_1a20a9e97693898043009d53006aaaf3c3.html" title="函数模板 hash_value">
+<link rel="next" href="c_20_module.html" title="C++20 模块">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../doxygen/boost_typeindex_header_reference/type__index__facade_8hpp_1a20a9e97693898043009d53006aaaf3c3.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../boost_typeindex.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="c_20_module.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="boost_typeindex.making_a_custom_type_index"></a><a class="link" href="making_a_custom_type_index.html" title="制作自定义 type_index">制作自定义 type_index</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="making_a_custom_type_index.html#boost_typeindex.making_a_custom_type_index.basics">基础</a></span></dt>
+<dt><span class="section"><a href="making_a_custom_type_index.html#boost_typeindex.making_a_custom_type_index.getting_type_infos_at_runtime">在运行期获取 type info</a></span></dt>
+<dt><span class="section"><a href="making_a_custom_type_index.html#boost_typeindex.making_a_custom_type_index.using_new_type_infos_all_around_">在整个代码中使用新的 type info</a></span></dt>
+</dl></div>
+<p>有时可能需要创建你自己的类型信息系统. 如果你希望存储更多关于类型的信息 (平凡可拷贝性、类型大小、常用函数的指针...) 或者你对更紧凑的类型表示形式有自己的想法, 这可能会很有用.</p>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_typeindex.making_a_custom_type_index.basics"></a><a class="link" href="making_a_custom_type_index.html#boost_typeindex.making_a_custom_type_index.basics" title="基础">基础</a>
+</h3></div></div></div>
+<p>以下示例展示如何创建和使用用户自定义的 type_info. 无论是否启用 RTTI 都可用.</p>
+<p>考虑用户仅在 <code class="computeroutput"><span class="keyword">typeid</span><span class="special">()</span></code> 中使用这些类型的情况:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">vector</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">string</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">my_namespace</span> <span class="special">{</span>
+
+<span class="keyword">class</span> <span class="identifier">my_class</span><span class="special">;</span>
+<span class="keyword">struct</span> <span class="identifier">my_struct</span><span class="special">;</span>
+
+<span class="keyword">using</span> <span class="identifier">my_classes</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">my_class</span><span class="special">&gt;;</span>
+<span class="keyword">using</span> <span class="identifier">my_string</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">;</span>
+
+<span class="special">}</span> <span class="comment">// namespace my_namespace</span>
+</pre>
+<p>在这种情况下, 用户可能希望节省二进制文件中的空间并创建自己的类型系统. 为此添加了 <code class="computeroutput"><span class="identifier">detail</span><span class="special">::</span><span class="identifier">typenum</span><span class="special">&lt;&gt;</span></code> 元函数. 该函数会根据输入类型 T 返回不同的数值.</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">type_index</span><span class="special">/</span><span class="identifier">type_index_facade</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">my_namespace</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">detail</span> <span class="special">{</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">&gt;</span> <span class="keyword">struct</span> <span class="identifier">typenum</span><span class="special">;</span>
+    <span class="keyword">template</span> <span class="special">&lt;&gt;</span> <span class="keyword">struct</span> <span class="identifier">typenum</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;{</span>       <span class="keyword">enum</span> <span class="special">{</span><span class="identifier">value</span> <span class="special">=</span> <span class="number">0</span><span class="special">};</span> <span class="special">};</span>
+    <span class="keyword">template</span> <span class="special">&lt;&gt;</span> <span class="keyword">struct</span> <span class="identifier">typenum</span><span class="special">&lt;</span><span class="identifier">my_class</span><span class="special">&gt;{</span>   <span class="keyword">enum</span> <span class="special">{</span><span class="identifier">value</span> <span class="special">=</span> <span class="number">1</span><span class="special">};</span> <span class="special">};</span>
+    <span class="keyword">template</span> <span class="special">&lt;&gt;</span> <span class="keyword">struct</span> <span class="identifier">typenum</span><span class="special">&lt;</span><span class="identifier">my_struct</span><span class="special">&gt;{</span>  <span class="keyword">enum</span> <span class="special">{</span><span class="identifier">value</span> <span class="special">=</span> <span class="number">2</span><span class="special">};</span> <span class="special">};</span>
+    <span class="keyword">template</span> <span class="special">&lt;&gt;</span> <span class="keyword">struct</span> <span class="identifier">typenum</span><span class="special">&lt;</span><span class="identifier">my_classes</span><span class="special">&gt;{</span> <span class="keyword">enum</span> <span class="special">{</span><span class="identifier">value</span> <span class="special">=</span> <span class="number">3</span><span class="special">};</span> <span class="special">};</span>
+    <span class="keyword">template</span> <span class="special">&lt;&gt;</span> <span class="keyword">struct</span> <span class="identifier">typenum</span><span class="special">&lt;</span><span class="identifier">my_string</span><span class="special">&gt;{</span>  <span class="keyword">enum</span> <span class="special">{</span><span class="identifier">value</span> <span class="special">=</span> <span class="number">4</span><span class="special">};</span> <span class="special">};</span>
+
+<span class="preprocessor">#ifdef</span> <span class="identifier">BOOST_MSVC</span>
+<span class="preprocessor">#pragma</span> <span class="identifier">warning</span><span class="special">(</span><span class="identifier">push</span><span class="special">)</span>
+<span class="preprocessor">#pragma</span> <span class="identifier">warning</span><span class="special">(</span><span class="identifier">disable</span><span class="special">:</span> <span class="number">4510</span> <span class="number">4512</span> <span class="number">4610</span><span class="special">)</span> <span class="comment">// non-copyable non-constructable type</span>
+<span class="preprocessor">#endif</span>
+
+    <span class="comment">// my_typeinfo structure is used to save type number</span>
+    <span class="keyword">struct</span> <span class="identifier">my_typeinfo</span> <span class="special">{</span>
+        <span class="keyword">const</span> <span class="keyword">char</span><span class="special">*</span> <span class="keyword">const</span> <span class="identifier">type_</span><span class="special">;</span>
+    <span class="special">};</span>
+
+<span class="preprocessor">#ifdef</span> <span class="identifier">BOOST_MSVC</span>
+<span class="preprocessor">#pragma</span> <span class="identifier">warning</span><span class="special">(</span><span class="identifier">pop</span><span class="special">)</span>
+<span class="preprocessor">#endif</span>
+
+    <span class="keyword">const</span> <span class="identifier">my_typeinfo</span> <span class="identifier">infos</span><span class="special">[</span><span class="number">5</span><span class="special">]</span> <span class="special">=</span> <span class="special">{</span>
+        <span class="special">{</span><span class="string">"void"</span><span class="special">},</span> <span class="special">{</span><span class="string">"my_class"</span><span class="special">},</span> <span class="special">{</span><span class="string">"my_struct"</span><span class="special">},</span> <span class="special">{</span><span class="string">"my_classes"</span><span class="special">},</span> <span class="special">{</span><span class="string">"my_string"</span><span class="special">}</span>
+    <span class="special">};</span>
+
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">&gt;</span>
+    <span class="keyword">inline</span> <span class="keyword">const</span> <span class="identifier">my_typeinfo</span><span class="special">&amp;</span> <span class="identifier">my_typeinfo_construct</span><span class="special">()</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">infos</span><span class="special">[</span><span class="identifier">typenum</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;::</span><span class="identifier">value</span><span class="special">];</span>
+    <span class="special">}</span>
+<span class="special">}}</span> <span class="comment">// my_namespace::detail</span>
+</pre>
+<p>
+        <code class="computeroutput"><span class="identifier">my_type_index</span></code> 是用户创建的 type_index 类. 如果在此阶段有疑问, 你随时可以查看 <code class="computeroutput"><span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">type_index</span><span class="special">/</span><span class="identifier">ctti_type_index</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span></code> 或 <code class="computeroutput"><span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">type_index</span><span class="special">/</span><span class="identifier">stl_type_index</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span></code> 文件. <code class="computeroutput"><span class="identifier">type_index_facade</span></code> 的文档也可能有用.</p>
+<p>由于我们不打算重写 <code class="computeroutput"><span class="identifier">type_index_facade</span><span class="special">::</span><span class="identifier">hash_code</span><span class="special">()</span></code>, 我们必须额外包含 <code class="computeroutput"><span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">container_hash</span><span class="special">/</span><span class="identifier">hash</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span></code>.</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">container_hash</span><span class="special">/</span><span class="identifier">hash</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<p>参见 <code class="computeroutput"><span class="identifier">my_type_index</span></code> 的实现:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">my_namespace</span> <span class="special">{</span>
+
+<span class="keyword">class</span> <span class="identifier">my_type_index</span><span class="special">:</span> <span class="keyword">public</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">typeindex</span><span class="special">::</span><span class="identifier">type_index_facade</span><span class="special">&lt;</span><span class="identifier">my_type_index</span><span class="special">,</span> <span class="identifier">detail</span><span class="special">::</span><span class="identifier">my_typeinfo</span><span class="special">&gt;</span> <span class="special">{</span>
+    <span class="keyword">const</span> <span class="identifier">detail</span><span class="special">::</span><span class="identifier">my_typeinfo</span><span class="special">*</span> <span class="identifier">data_</span><span class="special">;</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="keyword">using</span> <span class="identifier">type_info_t</span> <span class="special">=</span> <span class="identifier">detail</span><span class="special">::</span><span class="identifier">my_typeinfo</span><span class="special">;</span>
+
+    <span class="keyword">inline</span> <span class="identifier">my_type_index</span><span class="special">()</span> <span class="keyword">noexcept</span>
+        <span class="special">:</span> <span class="identifier">data_</span><span class="special">(&amp;</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">my_typeinfo_construct</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;())</span>
+    <span class="special">{}</span>
+
+    <span class="keyword">inline</span> <span class="identifier">my_type_index</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">type_info_t</span><span class="special">&amp;</span> <span class="identifier">data</span><span class="special">)</span> <span class="keyword">noexcept</span>
+        <span class="special">:</span> <span class="identifier">data_</span><span class="special">(&amp;</span><span class="identifier">data</span><span class="special">)</span>
+    <span class="special">{}</span>
+
+    <span class="keyword">inline</span> <span class="keyword">const</span> <span class="identifier">type_info_t</span><span class="special">&amp;</span>  <span class="identifier">type_info</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="special">*</span><span class="identifier">data_</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">inline</span> <span class="keyword">const</span> <span class="keyword">char</span><span class="special">*</span>  <span class="identifier">raw_name</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">data_</span><span class="special">-&gt;</span><span class="identifier">type_</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">inline</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span>  <span class="identifier">pretty_name</span><span class="special">()</span> <span class="keyword">const</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">data_</span><span class="special">-&gt;</span><span class="identifier">type_</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">&gt;</span>
+    <span class="keyword">inline</span> <span class="keyword">static</span> <span class="identifier">my_type_index</span> <span class="identifier">type_id</span><span class="special">()</span> <span class="keyword">noexcept</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">detail</span><span class="special">::</span><span class="identifier">my_typeinfo_construct</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;();</span>
+    <span class="special">}</span>
+
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">&gt;</span>
+    <span class="keyword">inline</span> <span class="keyword">static</span> <span class="identifier">my_type_index</span> <span class="identifier">type_id_with_cvr</span><span class="special">()</span> <span class="keyword">noexcept</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">detail</span><span class="special">::</span><span class="identifier">my_typeinfo_construct</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;();</span>
+    <span class="special">}</span>
+
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">&gt;</span>
+    <span class="keyword">inline</span> <span class="keyword">static</span> <span class="identifier">my_type_index</span> <span class="identifier">type_id_runtime</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">T</span><span class="special">&amp;</span> <span class="identifier">variable</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="special">}</span> <span class="comment">// namespace my_namespace</span>
+</pre>
+<p>注意我们使用了 boost::typeindex::type_index_facade 类作为基类. 该类负责所有的辅助函数和运算符 (比较、哈希、流输出等).</p>
+<p>最后, 我们可以使用 my_type_index 类来获取类型索引:</p>
+<pre class="programlisting"><span class="identifier">my_type_index</span>
+    <span class="identifier">cl1</span> <span class="special">=</span> <span class="identifier">my_type_index</span><span class="special">::</span><span class="identifier">type_id</span><span class="special">&lt;</span><span class="identifier">my_class</span><span class="special">&gt;(),</span>
+    <span class="identifier">st1</span> <span class="special">=</span> <span class="identifier">my_type_index</span><span class="special">::</span><span class="identifier">type_id</span><span class="special">&lt;</span><span class="identifier">my_struct</span><span class="special">&gt;(),</span>
+    <span class="identifier">st2</span> <span class="special">=</span> <span class="identifier">my_type_index</span><span class="special">::</span><span class="identifier">type_id</span><span class="special">&lt;</span><span class="identifier">my_struct</span><span class="special">&gt;(),</span>
+    <span class="identifier">vec</span> <span class="special">=</span> <span class="identifier">my_type_index</span><span class="special">::</span><span class="identifier">type_id</span><span class="special">&lt;</span><span class="identifier">my_classes</span><span class="special">&gt;()</span>
+<span class="special">;</span>
+
+<span class="identifier">assert</span><span class="special">(</span><span class="identifier">cl1</span> <span class="special">!=</span> <span class="identifier">st1</span><span class="special">);</span>
+<span class="identifier">assert</span><span class="special">(</span><span class="identifier">st2</span> <span class="special">==</span> <span class="identifier">st1</span><span class="special">);</span>
+<span class="identifier">assert</span><span class="special">(</span><span class="identifier">vec</span><span class="special">.</span><span class="identifier">pretty_name</span><span class="special">()</span> <span class="special">==</span> <span class="string">"my_classes"</span><span class="special">);</span>
+<span class="identifier">assert</span><span class="special">(</span><span class="identifier">cl1</span><span class="special">.</span><span class="identifier">pretty_name</span><span class="special">()</span> <span class="special">==</span> <span class="string">"my_class"</span><span class="special">);</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_typeindex.making_a_custom_type_index.getting_type_infos_at_runtime"></a><a class="link" href="making_a_custom_type_index.html#boost_typeindex.making_a_custom_type_index.getting_type_infos_at_runtime" title="在运行期获取类型信息">在运行期获取类型信息</a>
+</h3></div></div></div>
+<p>通常, 要启用运行期类型信息, 需要用某个宏注册类. 让我们看看如何实现 <code class="computeroutput"><span class="identifier">MY_TYPEINDEX_REGISTER_CLASS</span></code> 宏以用于我们的 <code class="computeroutput"><span class="identifier">my_type_index</span></code> 类:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">my_namespace</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">detail</span> <span class="special">{</span>
+
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">&gt;</span>
+    <span class="keyword">inline</span> <span class="keyword">const</span> <span class="identifier">my_typeinfo</span><span class="special">&amp;</span> <span class="identifier">my_typeinfo_construct_ref</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">T</span><span class="special">*)</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">my_typeinfo_construct</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;();</span>
+    <span class="special">}</span>
+
+<span class="preprocessor">#define</span> <span class="identifier">MY_TYPEINDEX_REGISTER_CLASS</span>                                             <span class="special">\</span>
+    <span class="keyword">virtual</span> <span class="keyword">const</span> <span class="identifier">my_namespace</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">my_typeinfo</span><span class="special">&amp;</span> <span class="identifier">type_id_runtime</span><span class="special">()</span> <span class="keyword">const</span> <span class="special">{</span>  <span class="special">\</span>
+        <span class="keyword">return</span> <span class="identifier">my_namespace</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">my_typeinfo_construct_ref</span><span class="special">(</span><span class="keyword">this</span><span class="special">);</span>           <span class="special">\</span>
+    <span class="special">}</span>
+
+<span class="special">}}</span> <span class="comment">// namespace my_namespace::detail</span>
+</pre>
+<p>现在有了 MY_TYPEINDEX_REGISTER_CLASS, 让我们实现一个 <code class="computeroutput"><span class="identifier">my_type_index</span><span class="special">::</span><span class="identifier">type_id_runtime</span></code> 方法:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">my_namespace</span> <span class="special">{</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">&gt;</span>
+    <span class="identifier">my_type_index</span> <span class="identifier">my_type_index</span><span class="special">::</span><span class="identifier">type_id_runtime</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">T</span><span class="special">&amp;</span> <span class="identifier">variable</span><span class="special">)</span> <span class="keyword">noexcept</span> <span class="special">{</span>
+        <span class="comment">// Classes that were marked with `MY_TYPEINDEX_REGISTER_CLASS` will have a</span>
+        <span class="comment">// `type_id_runtime()` method.</span>
+        <span class="keyword">return</span> <span class="identifier">variable</span><span class="special">.</span><span class="identifier">type_id_runtime</span><span class="special">();</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+</pre>
+<p>考虑 <code class="computeroutput"><span class="identifier">my_class</span></code> 和 <code class="computeroutput"><span class="identifier">my_struct</span></code> 是多态类的情形:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">my_namespace</span> <span class="special">{</span>
+
+<span class="keyword">class</span> <span class="identifier">my_class</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">MY_TYPEINDEX_REGISTER_CLASS</span>
+    <span class="keyword">virtual</span> <span class="special">~</span><span class="identifier">my_class</span><span class="special">()</span> <span class="special">{}</span>
+<span class="special">};</span>
+
+<span class="keyword">struct</span> <span class="identifier">my_struct</span><span class="special">:</span> <span class="keyword">public</span> <span class="identifier">my_class</span> <span class="special">{</span>
+    <span class="identifier">MY_TYPEINDEX_REGISTER_CLASS</span>
+<span class="special">};</span>
+
+<span class="special">}</span> <span class="comment">// namespace my_namespace</span>
+</pre>
+<p>现在下面的示例可以编译并正常运行.</p>
+<pre class="programlisting"><span class="identifier">my_struct</span> <span class="identifier">str</span><span class="special">;</span>
+<span class="identifier">my_class</span><span class="special">&amp;</span> <span class="identifier">reference</span> <span class="special">=</span> <span class="identifier">str</span><span class="special">;</span>
+<span class="identifier">assert</span><span class="special">(</span><span class="identifier">my_type_index</span><span class="special">::</span><span class="identifier">type_id</span><span class="special">&lt;</span><span class="identifier">my_struct</span><span class="special">&gt;()</span> <span class="special">==</span> <span class="identifier">my_type_index</span><span class="special">::</span><span class="identifier">type_id_runtime</span><span class="special">(</span><span class="identifier">reference</span><span class="special">));</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_typeindex.making_a_custom_type_index.using_new_type_infos_all_around_"></a><a class="link" href="making_a_custom_type_index.html#boost_typeindex.making_a_custom_type_index.using_new_type_infos_all_around_" title="在全部代码中使用新的类型信息">在全部代码中使用新的类型信息</a>
+</h3></div></div></div>
+<p>有一种简单的方法可以强制 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">typeindex</span><span class="special">::</span><span class="identifier">type_id</span></code> 使用你自己的 type_index 类.</p>
+<p>我们只需将 <code class="computeroutput"><span class="identifier">BOOST_TYPE_INDEX_USER_TYPEINDEX</span></code> 定义为你的类型索引类头文件的完整路径:</p>
+<pre class="programlisting"><span class="comment">// BOOST_TYPE_INDEX_USER_TYPEINDEX must be defined *BEFORE* first inclusion of &lt;boost/type_index.hpp&gt;</span>
+<span class="preprocessor">#define</span> <span class="identifier">BOOST_TYPE_INDEX_USER_TYPEINDEX</span> <span class="special">&lt;</span><span class="identifier">user_defined_typeinfo</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">type_index</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<p>你还需要向你的 "user_defined_typeinfo.hpp" 头文件添加一些 typedef 和宏:</p>
+<pre class="programlisting"><span class="preprocessor">#define</span> <span class="identifier">BOOST_TYPE_INDEX_REGISTER_CLASS</span> <span class="identifier">MY_TYPEINDEX_REGISTER_CLASS</span>
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">typeindex</span> <span class="special">{</span>
+    <span class="keyword">using</span> <span class="identifier">type_index</span> <span class="special">=</span> <span class="identifier">my_namespace</span><span class="special">::</span><span class="identifier">my_type_index</span><span class="special">;</span>
+<span class="special">}}</span>
+</pre>
+<p>就是这样! 现在所有 TypeIndex 全局方法和 typedef 都将使用你的类:</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">typeindex</span><span class="special">::</span><span class="identifier">type_index</span> <span class="identifier">worldwide</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">typeindex</span><span class="special">::</span><span class="identifier">type_id</span><span class="special">&lt;</span><span class="identifier">my_classes</span><span class="special">&gt;();</span>
+<span class="identifier">assert</span><span class="special">(</span><span class="identifier">worldwide</span><span class="special">.</span><span class="identifier">pretty_name</span><span class="special">()</span> <span class="special">==</span> <span class="string">"my_classes"</span><span class="special">);</span>
+<span class="identifier">assert</span><span class="special">(</span><span class="identifier">worldwide</span> <span class="special">==</span> <span class="identifier">my_type_index</span><span class="special">::</span><span class="identifier">type_id</span><span class="special">&lt;</span><span class="identifier">my_classes</span><span class="special">&gt;());</span>
+</pre>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2012-2026 Antony Polukhin<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../doxygen/boost_typeindex_header_reference/type__index__facade_8hpp_1a20a9e97693898043009d53006aaaf3c3.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../boost_typeindex.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="c_20_module.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

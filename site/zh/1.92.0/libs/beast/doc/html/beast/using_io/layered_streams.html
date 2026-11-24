@@ -1,0 +1,142 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>分层流</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Boost.Beast">
+<link rel="up" href="../using_io.html" title="网络">
+<link rel="prev" href="rate_limiting.html" title="限速 💡">
+<link rel="next" href="layered_streams/counted_stream_example.html" title="计数流 💡">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="rate_limiting.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../using_io.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="layered_streams/counted_stream_example.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="beast.using_io.layered_streams"></a><a class="link" href="layered_streams.html" title="分层流">分层流</a>
+</h3></div></div></div>
+<p>Networking 的 <a href="../../../../../../doc/html/boost_asio/reference/ssl__stream.html" target="_top"><code class="computeroutput"><span class="identifier">net</span><span class="special">::</span><span class="identifier">ssl</span><span class="special">::</span><span class="identifier">stream</span></code></a> 是一个类模板, 同时满足同步与异步读写流的要求, 它以 "下一层" 对象实现, 下一层的类型由类模板参数决定. SSL 流内部构造下一层对象的实例, 同时通过观察器 <code class="computeroutput"><span class="identifier">net</span><span class="special">::</span><span class="identifier">ssl</span><span class="special">::</span><span class="identifier">stream</span><span class="special">::</span><span class="identifier">next_layer</span><span class="special">()</span></code> 允许外部访问. 下面声明一个以常规 TCP/IP 套接字为下一层的 SSL 流:</p>
+<pre class="programlisting"><span class="identifier">net</span><span class="special">::</span><span class="identifier">ssl</span><span class="special">::</span><span class="identifier">stream</span><span class="special">&lt;</span><span class="identifier">net</span><span class="special">::</span><span class="identifier">ip</span><span class="special">::</span><span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span><span class="special">&gt;</span> <span class="identifier">ss</span><span class="special">(</span><span class="identifier">ioc</span><span class="special">,</span> <span class="identifier">ctx</span><span class="special">);</span>
+</pre>
+<p>使用此设计模式的对象在 networking 中称为 "流层栈". Beast 中使用的术语是 <span class="emphasis"><em>分层流</em></span>, 不过拥有下一层的特性并不限于流. 与 SSL 流一样, <a class="link" href="../ref/boost__beast__websocket__stream.html" title="websocket::stream"><code class="computeroutput"><span class="identifier">websocket</span><span class="special">::</span><span class="identifier">stream</span></code></a> 是以下一层对象为参数的类模板. 下面声明一个以常规 TCP/IP 套接字为下一层的 websocket 流:</p>
+<pre class="programlisting"><span class="identifier">websocket</span><span class="special">::</span><span class="identifier">stream</span><span class="special">&lt;</span><span class="identifier">net</span><span class="special">::</span><span class="identifier">ip</span><span class="special">::</span><span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span><span class="special">&gt;</span> <span class="identifier">ws</span><span class="special">(</span><span class="identifier">ioc</span><span class="special">);</span>
+</pre>
+<p>若需要安全 WebSocket 流, 只需更改下一层的类型并相应调整构造函数实参即可:</p>
+<pre class="programlisting"><span class="identifier">websocket</span><span class="special">::</span><span class="identifier">stream</span><span class="special">&lt;</span><span class="identifier">net</span><span class="special">::</span><span class="identifier">ssl</span><span class="special">::</span><span class="identifier">stream</span><span class="special">&lt;</span><span class="identifier">net</span><span class="special">::</span><span class="identifier">ip</span><span class="special">::</span><span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span><span class="special">&gt;&gt;</span> <span class="identifier">ws</span><span class="special">(</span><span class="identifier">ioc</span><span class="special">,</span> <span class="identifier">ctx</span><span class="special">);</span>
+</pre>
+<p>可以按这种方式嵌套任意深度的流层来开发更高层的抽象. 流层栈实际上形成一条编译期单链表. 位于链表末端的对象称为 <span class="emphasis"><em>最底层</em></span>, 它与其他层的不同之处在于通常代表底层套接字.</p>
+<p>Beast 自带若干分层流包装器, 以及编写和使用分层流的设施:</p>
+<div class="table">
+<a name="beast.using_io.layered_streams.layered_stream_algorithms_and_ty"></a><p class="title"><b>表 1.6. 分层流算法与类型</b></p>
+<div class="table-contents"><table class="table" summary="Layered Stream Algorithms and Types">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>名称</p>
+              </th>
+<th>
+                <p>说明</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <a class="link" href="../ref/boost__beast__basic_stream.html" title="basic_stream"><code class="computeroutput"><span class="identifier">basic_stream</span></code></a> <a class="link" href="../ref/boost__beast__tcp_stream.html" title="tcp_stream"><code class="computeroutput"><span class="identifier">tcp_stream</span></code></a>
+                </p>
+              </td>
+<td>
+                <p>此流可用于同步与异步读写. 它允许在逻辑操作上设置超时, 并且可以为流关联执行器以调用完成处理器. 这让你只需为流设置一次 strand, 之后所有异步操作都会自动使用它.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <a class="link" href="../ref/boost__beast__buffered_read_stream.html" title="buffered_read_stream"><code class="computeroutput"><span class="identifier">buffered_read_stream</span></code></a>
+                </p>
+              </td>
+<td>
+                <p>带缓冲的读取流满足同步与异步读写流的要求, 并额外实现了可配置的读取缓冲.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <a class="link" href="../ref/boost__beast__close_socket.html" title="close_socket"><code class="computeroutput"><span class="identifier">close_socket</span></code></a>
+                </p>
+              </td>
+<td>
+                <p>此函数通过不加限定地调用 <a class="link" href="../ref/boost__beast__beast_close_socket.html" title="beast_close_socket"><code class="computeroutput"><span class="identifier">beast_close_socket</span></code></a> 定制点来关闭套接字, 使套接字能在泛型上下文中以可扩展的方式关闭.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <a class="link" href="../ref/boost__beast__get_lowest_layer.html" title="get_lowest_layer"><code class="computeroutput"><span class="identifier">get_lowest_layer</span></code></a>
+                </p>
+              </td>
+<td>
+                <p>通过递归调用 <code class="computeroutput"><span class="identifier">next_layer</span></code> 成员函数 (逐层调用直到遇到缺少该成员的对象) 返回流层栈中的最底层. 本示例通过取得最底层中的 TCP/IP 套接字并修改套接字选项, 把分层流置为非阻塞模式:</p>
+<pre class="programlisting"><span class="comment">// Set non-blocking mode on a stack of stream</span>
+<span class="comment">// layers with a regular socket at the lowest layer.</span>
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Stream</span><span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">set_non_blocking</span> <span class="special">(</span><span class="identifier">Stream</span><span class="special">&amp;</span> <span class="identifier">stream</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">error_code</span> <span class="identifier">ec</span><span class="special">;</span>
+    <span class="comment">// A compile error here means your lowest layer is not the right type!</span>
+    <span class="identifier">get_lowest_layer</span><span class="special">(</span><span class="identifier">stream</span><span class="special">).</span><span class="identifier">non_blocking</span><span class="special">(</span><span class="keyword">true</span><span class="special">,</span> <span class="identifier">ec</span><span class="special">);</span>
+    <span class="keyword">if</span><span class="special">(</span><span class="identifier">ec</span><span class="special">)</span>
+        <span class="keyword">throw</span> <span class="identifier">system_error</span><span class="special">{</span><span class="identifier">ec</span><span class="special">};</span>
+<span class="special">}</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <a class="link" href="../ref/boost__beast__http__icy_stream.html" title="http::icy_stream"><code class="computeroutput"><span class="identifier">http</span><span class="special">::</span><span class="identifier">icy_stream</span></code></a>
+                </p>
+              </td>
+<td>
+                <p>ICY 流把来自 Shoutcast 服务器的非标准 "ICY 200 OK" HTTP 响应透明地转换为符合规范的 200 级 HTTP 响应.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <a class="link" href="../ref/boost__beast__lowest_layer_type.html" title="lowest_layer_type"><code class="computeroutput"><span class="identifier">lowest_layer_type</span></code></a>
+                </p>
+              </td>
+<td>
+                <p>此元函数返回表示流层栈的类型所用的最底层类型. 这是 <a class="link" href="../ref/boost__beast__get_lowest_layer.html" title="get_lowest_layer"><code class="computeroutput"><span class="identifier">get_lowest_layer</span></code></a>
+                </p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break">
+</div>
+<div class="copyright-footer">版权所有 © 2016-2019 Vinnie Falco<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="rate_limiting.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../using_io.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="layered_streams/counted_stream_example.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

@@ -1,0 +1,237 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>对象接口</title>
+<link rel="stylesheet" href="../../boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost.Python 教程">
+<link rel="up" href="../index.html" title="Boost.Python 教程">
+<link rel="prev" href="functions.html" title="函数">
+<link rel="next" href="embedding.html" title="嵌入">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr><td valign="top"><img alt="" width="" height="" src="../../images/boost.png"></td></tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="functions.html"><img src="../../images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../images/home.png" alt="首页"></a><a accesskey="n" href="embedding.html"><img src="../../images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="tutorial.object"></a><a class="link" href="object.html" title="对象接口">对象接口</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="object.html#tutorial.object.basic_interface">基本接口</a></span></dt>
+<dt><span class="section"><a href="object.html#tutorial.object.derived_object_types">派生对象类型</a></span></dt>
+<dt><span class="section"><a href="object.html#tutorial.object.extracting_c_objects">提取 C++ 对象</a></span></dt>
+<dt><span class="section"><a href="object.html#tutorial.object.enums">枚举</a></span></dt>
+<dt><span class="section"><a href="object.html#tutorial.object.creating_python_object">创建 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">object</span></code>——自 <code class="computeroutput"><span class="identifier">PyObject</span><span class="special">*</span></code></a></span></dt>
+</dl></div>
+<p>Python 是动态类型的, 不像静态类型的 C++. Python 变量可以持有整数、浮点数、list、dict、tuple、str、long 等. 在 Boost.Python 与 C++ 的视角中, 这些 Python 式变量只是类 <code class="literal">object</code> 的实例. 本章我们将看到如何处理 Python 对象.</p>
+<p>如前所述, Boost.Python 的目标之一是在保持 Python 风格的同时提供 C++ 与 Python 之间的双向映射. Boost.Python 的 C++ <code class="literal">object</code> 尽可能贴近 Python. 这应当能显著减少学习曲线.</p>
+<p>
+      <span class="inlinemediaobject"><img src="../../images/python.png"></span>
+    </p>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="tutorial.object.basic_interface"></a><a class="link" href="object.html#tutorial.object.basic_interface" title="基本接口">基本接口</a>
+</h3></div></div></div>
+<p>类 <code class="literal">object</code> 包装 <code class="literal">PyObject*</code>. 处理 <code class="literal">PyObject</code> 的种种复杂之处——比如管理引用计数——都由 <code class="literal">object</code> 类处理. C++ 对象互操作是无缝的. 事实上, Boost.Python 的 C++ <code class="literal">object</code> 可以从任何 C++ 对象显式构造.</p>
+<p>为了说明, 看这段 Python 代码片段:</p>
+<pre class="programlisting"><span class="keyword">def</span> <span class="identifier">f</span><span class="special">(</span><span class="identifier">x</span><span class="special">,</span> <span class="identifier">y</span><span class="special">):</span>
+     <span class="keyword">if</span> <span class="special">(</span><span class="identifier">y</span> <span class="special">==</span> <span class="string">'foo'</span><span class="special">):</span>
+         <span class="identifier">x</span><span class="special">[</span><span class="number">3</span><span class="special">:</span><span class="number">7</span><span class="special">]</span> <span class="special">=</span> <span class="string">'bar'</span>
+     <span class="keyword">else</span><span class="special">:</span>
+         <span class="identifier">x</span><span class="special">.</span><span class="identifier">items</span> <span class="special">+=</span> <span class="identifier">y</span><span class="special">(</span><span class="number">3</span><span class="special">,</span> <span class="identifier">x</span><span class="special">)</span>
+     <span class="keyword">return</span> <span class="identifier">x</span>
+
+<span class="keyword">def</span> <span class="identifier">getfunc</span><span class="special">():</span>
+   <span class="keyword">return</span> <span class="identifier">f</span><span class="special">;</span>
+</pre>
+<p>可以用 Boost.Python 设施以如下方式用 C++ 重写:</p>
+<pre class="programlisting"><span class="identifier">object</span> <span class="identifier">f</span><span class="special">(</span><span class="identifier">object</span> <span class="identifier">x</span><span class="special">,</span> <span class="identifier">object</span> <span class="identifier">y</span><span class="special">)</span> <span class="special">{</span>
+     <span class="keyword">if</span> <span class="special">(</span><span class="identifier">y</span> <span class="special">==</span> <span class="string">"foo"</span><span class="special">)</span>
+         <span class="identifier">x</span><span class="special">.</span><span class="identifier">slice</span><span class="special">(</span><span class="number">3</span><span class="special">,</span><span class="number">7</span><span class="special">)</span> <span class="special">=</span> <span class="string">"bar"</span><span class="special">;</span>
+     <span class="keyword">else</span>
+         <span class="identifier">x</span><span class="special">.</span><span class="identifier">attr</span><span class="special">(</span><span class="string">"items"</span><span class="special">)</span> <span class="special">+=</span> <span class="identifier">y</span><span class="special">(</span><span class="number">3</span><span class="special">,</span> <span class="identifier">x</span><span class="special">);</span>
+     <span class="keyword">return</span> <span class="identifier">x</span><span class="special">;</span>
+<span class="special">}</span>
+<span class="identifier">object</span> <span class="identifier">getfunc</span><span class="special">()</span> <span class="special">{</span>
+    <span class="keyword">return</span> <span class="identifier">object</span><span class="special">(</span><span class="identifier">f</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>除了因为用 C++ 写代码而带来的表面差异之外, Python 程序员应当能立即认出其外观和手感.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="tutorial.object.derived_object_types"></a><a class="link" href="object.html#tutorial.object.derived_object_types" title="派生对象类型">派生对象类型</a>
+</h3></div></div></div>
+<p>Boost.Python 自带一组与 Python 对应的派生 <code class="literal">object</code> 类型:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            list
+          </li>
+<li class="listitem">
+            dict
+          </li>
+<li class="listitem">
+            tuple
+          </li>
+<li class="listitem">
+            str
+          </li>
+<li class="listitem">
+            long_
+          </li>
+<li class="listitem">
+            enum
+          </li>
+</ul></div>
+<p>这些派生 <code class="literal">object</code> 类型的行为就像真正的 Python 类型. 例如:</p>
+<pre class="programlisting"><span class="identifier">str</span><span class="special">(</span><span class="number">1</span><span class="special">)</span> <span class="special">==&gt;</span> <span class="string">"1"</span>
+</pre>
+<p>在适当之处, 特定的派生 <code class="literal">object</code> 具有对应 Python 类型的方法. 例如, <code class="literal">dict</code> 有一个 <code class="literal">keys()</code> 方法:</p>
+<pre class="programlisting"><span class="identifier">d</span><span class="special">.</span><span class="identifier">keys</span><span class="special">()</span>
+</pre>
+<p>提供 <code class="literal">make_tuple</code> 用于声明<span class="emphasis"><em>元组字面量</em></span>. 例如:</p>
+<pre class="programlisting"><span class="identifier">make_tuple</span><span class="special">(</span><span class="number">123</span><span class="special">,</span> <span class="char">'D'</span><span class="special">,</span> <span class="string">"Hello, World"</span><span class="special">,</span> <span class="number">0.0</span><span class="special">);</span>
+</pre>
+<p>在 C++ 中, 当 Boost.Python <code class="literal">object</code> 用作函数参数时, 需要子类型匹配. 例如, 当如下声明的函数 <code class="literal">f</code> 被包装时, 它只接受 Python 的 <code class="literal">str</code> 类型及其子类型的实例.</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">f</span><span class="special">(</span><span class="identifier">str</span> <span class="identifier">name</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">object</span> <span class="identifier">n2</span> <span class="special">=</span> <span class="identifier">name</span><span class="special">.</span><span class="identifier">attr</span><span class="special">(</span><span class="string">"upper"</span><span class="special">)();</span>   <span class="comment">// NAME = name.upper()</span>
+    <span class="identifier">str</span> <span class="identifier">NAME</span> <span class="special">=</span> <span class="identifier">name</span><span class="special">.</span><span class="identifier">upper</span><span class="special">();</span>            <span class="comment">// better</span>
+    <span class="identifier">object</span> <span class="identifier">msg</span> <span class="special">=</span> <span class="string">"%s is bigger than %s"</span> <span class="special">%</span> <span class="identifier">make_tuple</span><span class="special">(</span><span class="identifier">NAME</span><span class="special">,</span><span class="identifier">name</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>更细致地说:</p>
+<pre class="programlisting"><span class="identifier">str</span> <span class="identifier">NAME</span> <span class="special">=</span> <span class="identifier">name</span><span class="special">.</span><span class="identifier">upper</span><span class="special">();</span>
+</pre>
+<p>说明我们以 C++ 成员函数的形式提供了 str 类型方法的版本.</p>
+<pre class="programlisting"><span class="identifier">object</span> <span class="identifier">msg</span> <span class="special">=</span> <span class="string">"%s is bigger than %s"</span> <span class="special">%</span> <span class="identifier">make_tuple</span><span class="special">(</span><span class="identifier">NAME</span><span class="special">,</span><span class="identifier">name</span><span class="special">);</span>
+</pre>
+<p>演示你可以写出 <code class="literal">"format"
+        % x,y,z</code> 在 Python 中的 C++ 等价物, 这很有用, 因为在标准 C++ 中没有容易的办法做到这一点.</p>
+<div class="blurb">
+<div class="titlepage"><div><div><p class="title"><b></b></p></div></div></div>
+<p>
+        <span class="inlinemediaobject"><img src="../../images/alert.png"></span>
+        <span class="bold"><strong>当心</strong></span>一个常见陷阱: 忘记大多数 Python 可变类型的构造函数会制作副本, 就像在 Python 中一样.</p>
+</div>
+<p>
+        Python:
+      </p>
+<pre class="programlisting"><span class="special">&gt;&gt;&gt;</span> <span class="identifier">d</span> <span class="special">=</span> <span class="identifier">dict</span><span class="special">(</span><span class="identifier">x</span><span class="special">.</span><span class="identifier">__dict__</span><span class="special">)</span>     <span class="comment"># copies x.__dict__</span>
+<span class="special">&gt;&gt;&gt;</span> <span class="identifier">d</span><span class="special">[</span><span class="string">'whatever'</span><span class="special">]</span> <span class="special">=</span> <span class="number">3</span>        <span class="comment"># modifies the copy</span>
+</pre>
+<p>
+        C++:
+      </p>
+<pre class="programlisting"><span class="identifier">dict</span> <span class="identifier">d</span><span class="special">(</span><span class="identifier">x</span><span class="special">.</span><span class="identifier">attr</span><span class="special">(</span><span class="string">"__dict__"</span><span class="special">));</span>  <span class="comment">// copies x.__dict__</span>
+<span class="identifier">d</span><span class="special">[</span><span class="char">'whatever'</span><span class="special">]</span> <span class="special">=</span> <span class="number">3</span><span class="special">;</span>           <span class="comment">// modifies the copy</span>
+</pre>
+<h3>
+<a name="tutorial.object.derived_object_types.h0"></a>
+        <span class="phrase"><a name="tutorial.object.derived_object_types.class_t_as_objects"></a></span><a class="link" href="object.html#tutorial.object.derived_object_types.class_t_as_objects">作为对象的 class_&lt;T&gt;</a>
+      </h3>
+<p>由于 Boost.Python 对象的动态本性, 任何 <code class="literal">class_&lt;T&gt;</code> 也可能是这些类型之一! 下面的代码片段包装了类 (类型) 对象.</p>
+<p>我们可以用它创建被包装的实例. 例如:</p>
+<pre class="programlisting"><span class="identifier">object</span> <span class="identifier">vec345</span> <span class="special">=</span> <span class="special">(</span>
+    <span class="identifier">class_</span><span class="special">&lt;</span><span class="identifier">Vec2</span><span class="special">&gt;(</span><span class="string">"Vec2"</span><span class="special">,</span> <span class="identifier">init</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">,</span> <span class="keyword">double</span><span class="special">&gt;())</span>
+        <span class="special">.</span><span class="identifier">def_readonly</span><span class="special">(</span><span class="string">"length"</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">Point</span><span class="special">::</span><span class="identifier">length</span><span class="special">)</span>
+        <span class="special">.</span><span class="identifier">def_readonly</span><span class="special">(</span><span class="string">"angle"</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">Point</span><span class="special">::</span><span class="identifier">angle</span><span class="special">)</span>
+    <span class="special">)(</span><span class="number">3.0</span><span class="special">,</span> <span class="number">4.0</span><span class="special">);</span>
+
+<span class="identifier">assert</span><span class="special">(</span><span class="identifier">vec345</span><span class="special">.</span><span class="identifier">attr</span><span class="special">(</span><span class="string">"length"</span><span class="special">)</span> <span class="special">==</span> <span class="number">5.0</span><span class="special">);</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="tutorial.object.extracting_c_objects"></a><a class="link" href="object.html#tutorial.object.extracting_c_objects" title="提取 C++ 对象">提取 C++ 对象</a>
+</h3></div></div></div>
+<p>某个时候, 我们需要从 object 实例中取出 C++ 值. 这可以用 <code class="literal">extract&lt;T&gt;</code> 函数实现. 考虑以下代码:</p>
+<pre class="programlisting"><span class="keyword">double</span> <span class="identifier">x</span> <span class="special">=</span> <span class="identifier">o</span><span class="special">.</span><span class="identifier">attr</span><span class="special">(</span><span class="string">"length"</span><span class="special">);</span> <span class="comment">// compile error</span>
+</pre>
+<p>在上面的代码中, 我们遇到了编译错误, 因为 Boost.Python <code class="literal">object</code> 不能隐式转换为 <code class="literal">double</code>. 上面想做的事情可以这样写来实现:</p>
+<pre class="programlisting"><span class="keyword">double</span> <span class="identifier">l</span> <span class="special">=</span> <span class="identifier">extract</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">&gt;(</span><span class="identifier">o</span><span class="special">.</span><span class="identifier">attr</span><span class="special">(</span><span class="string">"length"</span><span class="special">));</span>
+<span class="identifier">Vec2</span><span class="special">&amp;</span> <span class="identifier">v</span> <span class="special">=</span> <span class="identifier">extract</span><span class="special">&lt;</span><span class="identifier">Vec2</span><span class="special">&amp;&gt;(</span><span class="identifier">o</span><span class="special">);</span>
+<span class="identifier">assert</span><span class="special">(</span><span class="identifier">l</span> <span class="special">==</span> <span class="identifier">v</span><span class="special">.</span><span class="identifier">length</span><span class="special">());</span>
+</pre>
+<p>第一行尝试提取 Boost.Python <code class="literal">object</code> 的 "length" 属性. 第二行尝试<span class="emphasis"><em>提取</em></span> <code class="literal">Vec2</code> 对象——由 Boost.Python <code class="literal">object</code> 所持有.</p>
+<p>注意我们上面说的是 "尝试". 如果 Boost.Python <code class="literal">object</code> 实际上并不持有 <code class="literal">Vec2</code> 类型怎么办? 鉴于 Python <code class="literal">object</code> 的动态本性, 这当然有可能. 保险起见, 如果无法提取 C++ 类型, 将抛出适当的异常. 为避免异常, 我们需要测试可提取性:</p>
+<pre class="programlisting"><span class="identifier">extract</span><span class="special">&lt;</span><span class="identifier">Vec2</span><span class="special">&amp;&gt;</span> <span class="identifier">x</span><span class="special">(</span><span class="identifier">o</span><span class="special">);</span>
+<span class="keyword">if</span> <span class="special">(</span><span class="identifier">x</span><span class="special">.</span><span class="identifier">check</span><span class="special">())</span> <span class="special">{</span>
+    <span class="identifier">Vec2</span><span class="special">&amp;</span> <span class="identifier">v</span> <span class="special">=</span> <span class="identifier">x</span><span class="special">();</span> <span class="special">...</span>
+</pre>
+<p>
+        <span class="inlinemediaobject"><img src="../../images/tip.png"></span> 敏锐的读者可能已经注意到, <code class="literal">extract&lt;T&gt;</code> 设施实际上解决了可变复制问题:</p>
+<pre class="programlisting"><span class="identifier">dict</span> <span class="identifier">d</span> <span class="special">=</span> <span class="identifier">extract</span><span class="special">&lt;</span><span class="identifier">dict</span><span class="special">&gt;(</span><span class="identifier">x</span><span class="special">.</span><span class="identifier">attr</span><span class="special">(</span><span class="string">"__dict__"</span><span class="special">));</span>
+<span class="identifier">d</span><span class="special">[</span><span class="string">"whatever"</span><span class="special">]</span> <span class="special">=</span> <span class="number">3</span><span class="special">;</span>          <span class="comment">// modifies x.__dict__ !</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="tutorial.object.enums"></a><a class="link" href="object.html#tutorial.object.enums" title="枚举">枚举</a>
+</h3></div></div></div>
+<p>Boost.Python 有一个巧妙的设施来捕获并包装 C++ 枚举. 虽然 Python 没有 <code class="literal">enum</code> 类型, 我们常常想把 C++ 枚举作为 <code class="literal">int</code> 暴露给 Python. Boost.Python 的枚举设施使这变得容易, 同时处理好从 Python 动态类型到 C++ 强静态类型的正确转换 (在 C++ 中, int 不能隐式转换为枚举). 为了说明, 给定一个 C++ 枚举:</p>
+<pre class="programlisting"><span class="keyword">enum</span> <span class="identifier">choice</span> <span class="special">{</span> <span class="identifier">red</span><span class="special">,</span> <span class="identifier">blue</span> <span class="special">};</span>
+</pre>
+<p>如下构造:</p>
+<pre class="programlisting"><span class="identifier">enum_</span><span class="special">&lt;</span><span class="identifier">choice</span><span class="special">&gt;(</span><span class="string">"choice"</span><span class="special">)</span>
+    <span class="special">.</span><span class="identifier">value</span><span class="special">(</span><span class="string">"red"</span><span class="special">,</span> <span class="identifier">red</span><span class="special">)</span>
+    <span class="special">.</span><span class="identifier">value</span><span class="special">(</span><span class="string">"blue"</span><span class="special">,</span> <span class="identifier">blue</span><span class="special">)</span>
+    <span class="special">;</span>
+</pre>
+<p>可用于暴露给 Python. 新的枚举类型在当前 <code class="literal">scope()</code> 中创建, 它通常是当前模块. 上面的代码片段创建了一个派生自 Python 的 <code class="literal">int</code> 类型的 Python 类, 该类与作为其第一个参数传入的 C++ 类型相关联.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top">
+<p>
+          <span class="bold"><strong>什么是作用域?</strong></span>
+        </p>
+<p>scope 是一个类, 它有一个关联的全局 Python 对象, 该对象控制新的扩展类和被包装函数将以属性形式定义于其中的 Python 命名空间. 细节可在<a href="../../reference/high_level_components/boost_python_scope_hpp.html#high_level_components.boost_python_scope_hpp.class_scope" target="_top">此处</a>找到.</p>
+</td></tr>
+</table></div>
+<p>你可以在 Python 中这样访问这些值</p>
+<pre class="programlisting"><span class="special">&gt;&gt;&gt;</span> <span class="identifier">my_module</span><span class="special">.</span><span class="identifier">choice</span><span class="special">.</span><span class="identifier">red</span>
+<span class="identifier">my_module</span><span class="special">.</span><span class="identifier">choice</span><span class="special">.</span><span class="identifier">red</span>
+</pre>
+<p>其中 my_module 是声明枚举的模块. 你还可以在类周围创建一个新的作用域:</p>
+<pre class="programlisting"><span class="identifier">scope</span> <span class="identifier">in_X</span> <span class="special">=</span> <span class="identifier">class_</span><span class="special">&lt;</span><span class="identifier">X</span><span class="special">&gt;(</span><span class="string">"X"</span><span class="special">)</span>
+                <span class="special">.</span><span class="identifier">def</span><span class="special">(</span> <span class="special">...</span> <span class="special">)</span>
+                <span class="special">.</span><span class="identifier">def</span><span class="special">(</span> <span class="special">...</span> <span class="special">)</span>
+            <span class="special">;</span>
+
+<span class="comment">// Expose X::nested as X.nested</span>
+<span class="identifier">enum_</span><span class="special">&lt;</span><span class="identifier">X</span><span class="special">::</span><span class="identifier">nested</span><span class="special">&gt;(</span><span class="string">"nested"</span><span class="special">)</span>
+    <span class="special">.</span><span class="identifier">value</span><span class="special">(</span><span class="string">"red"</span><span class="special">,</span> <span class="identifier">red</span><span class="special">)</span>
+    <span class="special">.</span><span class="identifier">value</span><span class="special">(</span><span class="string">"blue"</span><span class="special">,</span> <span class="identifier">blue</span><span class="special">)</span>
+    <span class="special">;</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="tutorial.object.creating_python_object"></a><a class="link" href="object.html#tutorial.object.creating_python_object" title="从 PyObject* 创建 boost::python::object">创建 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">object</span></code>——自 <code class="computeroutput"><span class="identifier">PyObject</span><span class="special">*</span></code></a>
+</h3></div></div></div>
+<p>当你想让 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">object</span></code> 管理一个指向 <code class="computeroutput"><span class="identifier">PyObject</span><span class="special">*</span></code> pyobj 的指针时, 可以这样做:</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">object</span> <span class="identifier">o</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">handle</span><span class="special">&lt;&gt;(</span><span class="identifier">pyobj</span><span class="special">));</span>
+</pre>
+<p>在这种情况下, <code class="computeroutput"><span class="identifier">o</span></code> 对象管理 <code class="computeroutput"><span class="identifier">pyobj</span></code>, 构造时不会增加引用计数.</p>
+<p>否则, 若要使用借用引用:</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">object</span> <span class="identifier">o</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">handle</span><span class="special">&lt;&gt;(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">borrowed</span><span class="special">(</span><span class="identifier">pyobj</span><span class="special">)));</span>
+</pre>
+<p>在这种情况下, 会调用 <code class="computeroutput"><span class="identifier">Py_INCREF</span></code>, 因此当对象 o 离开作用域时 <code class="computeroutput"><span class="identifier">pyobj</span></code> 不会被析构.</p>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2002-2005 Joel de Guzman, David Abrahams<p>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 LICENSE_1_0.txt 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>
+      </p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="functions.html"><img src="../../images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../images/home.png" alt="首页"></a><a accesskey="n" href="embedding.html"><img src="../../images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

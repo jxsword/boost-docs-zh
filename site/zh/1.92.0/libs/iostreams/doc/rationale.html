@@ -1,0 +1,123 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+<HEAD>
+    <TITLE>设计理由</TITLE>
+    <LINK REL="stylesheet" HREF="../../../boost.css">
+    <LINK REL="stylesheet" HREF="theme/iostreams.css">
+    <STYLE>
+        OL OL { list-style-type:lower-alpha }
+    </STYLE>
+</HEAD>
+<BODY>
+
+<!-- Begin Banner -->
+
+    <H1 CLASS="title">设计理由</H1>
+    <HR CLASS="banner">
+
+<!-- End Banner -->
+
+<H3>目录</H3>
+
+<DL CLASS="page-index">
+  <DT><A href="#goals">设计目标</A>
+    <DL CLASS="page-index">
+      <DT><A href="#simplicity">简单性</A></DT>
+      <DT><A href="#flexibility">Flexibility</A></DT>
+      <DT><A href="#efficiency">效率</A></DT>
+      <DT><A href="#interoperability">互操作性</A></DT>
+    </DL>
+  </DT>
+  <DT><A href="#decisions">设计决策</A>
+    <DL CLASS="page-index">
+      <DT><A href="#generic">泛型设计</A></DT>
+      <DT><A href="#modes">模式</A></DT>
+      <DT><A href="#lifetime">生命期管理</A></DT>
+      <DT><A href="#chain">链接口</A></DT>
+      <DT><A href="#asynchronous">异步与非阻塞 I/O</A></DT>
+    </DL>
+  </DT>
+</DL>
+
+<HR>
+
+<A NAME="goals"></A>
+<H2>设计目标</H2>
+
+<P>四个准则塑造了 Boost.Iostreams 的设计:<P>
+
+<OL>
+    <LI><B>简单性: </B>库应易于学习、使用和扩展.<LI><B>灵活性:</B> 库应足够灵活, 能够生成具有几乎任意所需特性的流和流缓冲.<LI><B>效率:</B> 在大多数情况下, 使用该库生成的流和流缓冲应与手写组件一样高效.<LI><B>互操作性:</B> 库应能轻松融入 C++ 标准库的框架. 特别是, <OL>
+        <LI>用于构造流和流缓冲的组件 — <A HREF="concepts/source.html">Source</A>、<A HREF="concepts/sink.html">汇</A>、<A HREF="concepts/input_filter.html">InputFilter</A> 与 <A HREF="concepts/output_filter.html">OutputFilter</A> — 不应要求比标准库流和流缓冲更丰富的接口.<LI>使用该库构造的流和流缓冲不应要求比标准库流和流缓冲更丰富的接口.</OL>
+</OL>
+
+<P>本质上, 4a 表示凡可用源和汇之处都应能使用标准库流和流缓冲, 而 4b 表示凡可用标准库流和流缓冲之处都应能使用 (本库的) 流和流缓冲. 两条准则都旨在让 Boost.Iostreams 易于集成到现有代码中.</P>
+
+<A NAME="simplicity"></A>
+<H3>简单性</H3>
+
+<P>许多用户反映本库易于学习和使用, 事实证明它也相对易于扩展. 不过, 对灵活性和效率的需求使设计变得复杂. 一个很好的例子是表示流和流缓冲全部范围所需的数量庞大的 <A HREF="guide/modes.html">模式</A>. 另一个例子是: 需要优化对表示内存中字符序列的 <A HREF="concepts/device.html">设备</A> (例如 <A HREF="classes/mapped_file.html">内存映射文件</A>) 的处理; 这导致引入了 <A HREF="concepts/direct.html">Direct</A> 设备, 它们比其他设备更难使用一些.</P>
+
+<A NAME="flexibility"></A>
+<H3>灵活性</H3>
+
+<P>尽管 Boost.Iostreams 极其灵活, 但它有一些局限. 例如, 无法自定义 <A HREF="guide/generic_streams.html#stream_buffer"><CODE>stream_buffer</CODE></A> 所用的缓冲策略: 用户要么选择默认缓冲策略, 要么请求无缓冲 I/O. 让用户完全控制缓冲策略会大幅复杂化库的接口和实现.</P>
+
+<A NAME="efficiency"></A>
+<H3>效率</H3>
+
+<P>初步测量表明, 使用 Boost.Iostreams 构建的流和流缓冲的性能与手写组件相当. 进一步的测量 — 以及对库实现的相应调整 — 有待建立一整套全面的基准测试.</P>
+
+<A NAME="interoperability"></A>
+<H3>互操作性</H3>
+
+<P>目前, 凡允许使用设备之处都可以使用标准库流和流缓冲; 但随着对 <A HREF="guide/asynchronous.html">异步与非阻塞 I/O</A> 支持的增多, 这一点将会改变, 因为流和流缓冲无法区分满足读或写请求的暂时失败与永久失败. 此外, 使用 Boost.Iostreams 定义的流和流缓冲可在需要标准库流或流缓冲之处使用, 但前提是流或流缓冲已被正确初始化. 例如, <A HREF="classes/filtering_stream.html"><CODE>filtering_stream</CODE></A> 的用户必须先将一系列过滤器和设备推入底层 <A HREF="classes/chain.html">过滤链</A>, 然后 <CODE>filtering_stream</CODE> 才能被现有代码使用. 不过这一局限无法避免, 因为所有流和流缓冲都需要一些专门的初始化, 包括 <CODE>std::fstream</CODE> 与 <CODE>std::stringstream</CODE>.</P>
+
+<A NAME="decisions"></A>
+<H2>设计决策</H2>
+
+<A NAME="generic"></A>
+<H3>泛型设计</H3>
+
+<P>泛型设计的好处众所周知. 例如,</P>
+<UL>
+    <LI>现有组件 — 例如流、流缓冲和迭代器 — 可以轻松集成到库中.<LI>库可以轻松扩展以处理新的过滤器和设备概念.<LI>库的内部 — 例如将 <A HREF="classes/chain.html">过滤链</A> 实现为流缓冲列表 — 可以重新设计而不影响用户代码.</UL>
+<P>泛型设计的一个典型好处在本例中可以忽略: 当虚函数调用被内联代码取代时带来的性能提升. 因为 <CODE>std::basic_streambuf</CODE> 使用虚函数作为定制点, 库无法合理期望消除虚函数调用. 不过, 这些调用的开销在很大程度上被缓冲所缓解.</P>
+
+<A NAME="modes"></A>
+<H3>模式</H3>
+
+<P>支持的 <A HREF="guide/modes.html">模式</A> 数量大大增加了库的复杂性. 遗憾的是, 为满足灵活性准则, 所有模式似乎都是必要的. <A HREF="guide/modes.html#definitions">此处</A>的示例表明, 除一种模式外, 其余模式都有重要用例. 例外是 <A HREF="guide/modes.html#bidirectional_seekable">双向可寻位</A>; 不过, 一旦实现了其他模式, 这种模式基本上是免费的.</P>
+
+<P>I/O 库往往以以下两种方式之一处理这种情况:</P>
+<UL>
+    <LI>它们只支持 <A HREF="guide/modes.html#input">input</A> 与 <A HREF="guide/modes.html#output">output</A>, 或者<LI>它们支持额外的模式, 但允许不同模式的组件自由混合. 为避免运行期故障, 用户必须研读各组件的文档, 以确定它们是否兼容.</UL>
+
+<P>第二种选择显然不可接受. 第一种选择因其简单而有吸引力, 但遗漏了关键用例. Boost.Iostreams 试图两全其美: 建议新用户忽略 <A HREF="guide/modes.html#input">input</A> 与 <A HREF="guide/modes.html#output">output</A> 之外的所有模式.</P>
+
+<A NAME="lifetime"></A>
+<H3>生命期管理</H3>
+
+<P>
+    <A HREF="concepts/filter.html">过滤器</A> 和 <A HREF="concepts/device.html">设备</A> 必须要么满足 <A HREF="../../../doc/html/CopyConstructible.html" TARGET="_top">CopyConstructible</A>, 要么使用 <A HREF="../../../doc/html/ref.html"><CODE>boost::ref</CODE></A> 传递给流和流缓冲. 这一要求会使过滤器和设备的设计复杂化, 因为某些原本可以不可复制的组件必须使用引用计数. 模板 <A HREF="classes/file.html#file"><CODE>basic_file</CODE></A> 就是一个很好的例证. Boost.Iostreams 的一个预发布版本允许将动态分配的过滤器和设备以指针形式传递给流和流缓冲, 并可由用户选择让 Iostreams 库取得其所有权. 这一设计因两个原因被否决: 它不是异常安全的, 且它需要一个额外的函数参数来指示对象是否要归库所有.</P>
+
+<A NAME="chain"></A>
+<H3>链接口</H3>
+
+<P>Boost.Iostreams 的某些预发布版本为 <A HREF="classes/chain.html">过滤链</A> 提供了丰富的接口, 允许链在任意位置断开和重新连接, 与 <CODE>std::list</CODE> 十分类似. 为使库更易学习, 这一功能已被移除; 如果用户发现需要它, 可以轻松恢复.</P>
+
+<A NAME="asynchronous"></A>
+<H3>异步与非阻塞 I/O</H3>
+
+<P>Boost.Iostreams 提供的 <A HREF="concepts/filter.html">Filter</A> 概念经过设计, 以适应 <A HREF="guide/asynchronous.html">异步与非阻塞 I/O</A>. <A HREF="concepts/device.html">设备</A> 概念可以适应非阻塞 I/O, 但对异步 I/O 的支持将需要引入新的设备概念. 添加这一有限的支持是为了向前兼容: 当引入更多概念和组件时, 用户不应需要重新设计其现有组件. 此外, 如果异步与非阻塞 I/O 最终被证明不够有用, 可以移除库的内部支持而不影响现有接口.</P>
+
+<!-- Begin Footer -->
+
+<HR>
+
+
+<P CLASS="copyright">© 版权所有 2008 <a href="http://www.coderage.com/" target="_top">CodeRage, LLC</a><br/>© 版权所有 2004-2007 <a href="https://www.boost.org/users/people/jonathan_turkanis.html" target="_top">Jonathan Turkanis</a></P>
+<P CLASS="copyright">按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <A HREF="http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</A>)</P>
+<!-- End Footer -->
+
+</BODY>

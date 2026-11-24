@@ -1,0 +1,147 @@
+<html>
+
+<head>
+<meta http-equiv="Content-Language" content="en-us"/>
+<meta name="GENERATOR" content="Microsoft FrontPage 5.0"/>
+<meta name="ProgId" content="FrontPage.Editor.Document"/>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<title>Filesystem V3 设计</title>
+<link href="styles.css" rel="stylesheet"/>
+</head>
+
+<body>
+
+<table border="0" cellpadding="5" cellspacing="0" style="border-collapse: collapse"
+ bordercolor="#111111">
+  <tr>
+    <td>
+<a href="../../../index.htm">
+<img src="../../../boost.png" alt="boost.png (6897 字节)" align="middle" border="0"
+ width="300" height="86"/></a></td>
+    <td align="middle">
+    <font size="7">Filesystem Version 3<br/> 设计</font></td>
+  </tr>
+</table>
+
+<table border="0" cellpadding="5" cellspacing="0" style="border-collapse: collapse"
+ bordercolor="#111111" bgcolor="#D7EEFF" width="100%">
+  <tr>
+    <td><a href="index.htm">首页</a> <a href="tutorial.html">教程</a> <a href="reference.html">参考</a> <a href="faq.htm">常见问题 (FAQ)</a> <a href="release_history.html">发布</a> <a href="portability_guide.htm">可移植性</a> <a href="v4.html">V4</a> <a href="v3.html">V3 简介</a> <a href="v3_design.html">V3 设计</a> <a href="deprecated.html">已弃用</a> <a href="issue_reporting.html">缺陷报告</a> </td>
+  </tr>
+</table>
+
+<table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse"
+ bordercolor="#111111" align="right">
+  <tr>
+    <td width="100%" bgcolor="#D7EEFF" align="center">
+      <i><b>目录</b></i></td>
+  </tr>
+  <tr>
+    <td width="100%" bgcolor="#E8F5FF">
+    <a href="#Introduction">引言</a><br/>
+    <a href="#Problem">问题</a><br/>
+    <a href="#Solution">解决方案</a><br/>
+    <a href="#Details">细节</a><br/>
+    <a href="#Other-changes">其他变更</a><br/>
+    <a href="#Acknowledgements">致谢</a></td>
+  </tr>
+  </table>
+
+<p><b>注意:</b> 本页记录 V3 开发过程早期的思考, 用于历史目的. 它未更新以反映库的当前状态.</p>
+
+<h2><a name="Introduction">引言</a></h2>
+
+<p>在 Boost.Filesystem.V2 (国际化) 评审期间, Peter Dimov 提出 <code>basic_path</code> 类模板过于笨重, 而能容纳多种字符类型与编码的单一 path 类型会更加灵活. 虽然当时我不愿意停下开发去探索这一想法如何实现, 或偏离 C++ 标准库所用的国际化模式, 但我常常想起 Peter 的建议. 随着 C++0x <code>char16_t</code> 与 <code>char32_t</code> 字符类型的出现, <code>basic_path</code> 类模板方法变得更加笨重, 因此是时候参照 Peter 的建议重新审视这个问题了.</p>
+
+<h2><b><a name="Problem">问题</a></b></h2>
+
+<p>在 Filesystem.V2 中, 要容纳多种字符类型与编码的用户自定义函数的路径参数必须写成模板. 必须采用“正确行事”的重载或模板元编程, 才能允许参数写成字符串字面量. 它看起来是这样的:</p>
+
+<blockquote>
+  <pre>template&lt;class Path&gt;
+void foo( const Path &amp; p );</pre>
+  <pre>inline void foo( const path &amp; p )
+{
+  return foo&lt;path&gt;( p );
+}
+inline void foo( const wpath &amp; p )
+{
+  return foo&lt;wpath&gt;( p );
+}</pre>
+</blockquote>
+<p>对于如此简单的需求, 这实在难看; 如果函数接受多个 Path 参数且每个都可能是窄或宽字符, 就会出现组合爆炸. 如果要支持 C++0x 的 <code>char16_t</code> 与 <code>
+char32_t</code> 类型, 情况还会更糟.</p>
+
+<h2><a name="Solution">解决方案</a></h2>
+
+<p>概览:</p>
+
+<ul>
+  <li>单一的非模板 <code>class path</code>.</li>
+  <li>每个成员函数都是一个模板, 容纳各种适用的字符类型, 包括用户定义的字符类型.</li>
+  <li>在内部以操作系统 API 使用的类型的字符串保存路径; POSIX 用 <code>std::string</code>, Windows 用 <code>std::wstring</code>.</li>
+</ul>
+
+<p> <a href="#Problem">问题</a>中给出的签名简化为:</p>
+<blockquote>
+  <pre>void foo( const path &amp; p );</pre>
+</blockquote>
+
+<p>这是代码复杂度的显著降低. 规范也变得更简单. 我相信它将更容易讲授, 并产生灵活得多的用户代码.</p>
+
+<p>其他好处:</p>
+<ul>
+  <li>所有多态性仍然发生在编译期.</li>
+  <li>效率得到提高: 如有需要, 编码转换只在创建时发生一次, 而不是每次使用路径时都发生.</li>
+  <li>实现代码的规模大约减半, 并且变得可读得多.</li>
+</ul>
+  <p>可能的问题:</p>
+<ul>
+  <li>成员函数模板与隐式构造函数的组合, 可能在用户犯简单常见编码错误时导致不清晰的错误消息. 有了 C++ concepts 这应当会不成问题, 但在此之前, 通过 enable_if/disable_if 限制过于激进模板的工作仍在继续.</li>
+</ul>
+  <h2><a name="Details">详情</a></h2>
+
+<table border="1" cellpadding="4" cellspacing="0" style="border-collapse: collapse"
+ bordercolor="#111111" width="100%">
+  <tr>
+    <td width="33%" colspan="3">
+    <p align="center"><b><i>编码 </i></b><i><b>转换</b></i></p></td>
+  </tr>
+  <tr>
+    <td width="33%">
+    <p align="center"><i><b>宿主系统</b></i></p></td>
+    <td width="33%">
+    <p align="center"><i><b>char 字符串路径参数</b></i></p></td>
+    <td width="34%">
+    <p align="center"><i><b>宽字符串路径参数</b></i></p></td>
+  </tr>
+  <tr>
+    <td width="33%">以 <code>char</code> 为原生 API 路径字符类型的系统 (即类 POSIX 系统)</td>
+    <td width="33%">无转换.</td>
+    <td width="34%">发生转换, 由当前 path locale 的 <code>codecvt</code> facet 执行.</td>
+  </tr>
+  <tr>
+    <td width="33%">以 <code>wchar_t</code> 为原生 API 路径字符类型的系统 (即类 Windows 系统).</td>
+    <td width="33%">发生转换, 由当前 path locale 的 <code>codecvt</code> facet 执行.</td>
+    <td width="34%">无转换.</td>
+  </tr>
+</table>
+
+<p>当类 path 函数参数类型与操作系统针对路径的 API 参数类型匹配时, 不执行转换, 而不是转换为指定的编码 (如某种 Unicode 编码). 这避免了意外后果等.</p>
+
+<h2><a name="Other-changes">其他变更</a></h2>
+
+<p><b>统一的混合错误处理: </b>混合错误处理惯用法已一致地应用于所有适用的函数.</p>
+
+<h2><a name="Acknowledgements">致谢</a></h2>
+
+<p>Peter Dimov 提出了能应付多种字符类型与编码的单一 path 类的想法. Walter Landry 贡献了 copy_any、copy_directory、copy_symlink 与 read_symlink 函数的设计与实现.</p>
+
+<hr/>
+
+<p>版权所有 © Beman Dawes, 2008</p>
+<p>使用、修改与分发均受 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 约束. 参见 <a href="http://www.boost.org/LICENSE_1_0.txt"> www.boost.org/LICENSE_1_0.txt</a></p>
+
+</body>
+
+</html>

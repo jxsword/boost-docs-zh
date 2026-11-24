@@ -1,0 +1,493 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>通过 Thrust 使用 CUDA (或 OpenMP, TBB, ...)</title>
+<link rel="stylesheet" href="../../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Boost.Numeric.Odeint">
+<link rel="up" href="../tutorial.html" title="Tutorial">
+<link rel="prev" href="self_expanding_lattices.html" title="自扩展晶格">
+<link rel="next" href="using_opencl_via_vexcl.html" title="通过 VexCL 使用 OpenCL">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../logo.jpg"></td>
+<td align="center"><a href="../../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="self_expanding_lattices.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../tutorial.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="using_opencl_via_vexcl.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_numeric_odeint.tutorial.using_cuda__or_openmp__tbb_______via_thrust"></a><a class="link" href="using_cuda__or_openmp__tbb_______via_thrust.html" title="通过 Thrust 使用 CUDA (或 OpenMP, TBB, ...)">通过 Thrust 使用 CUDA (或 OpenMP, TBB, ...)</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="using_cuda__or_openmp__tbb_______via_thrust.html#boost_numeric_odeint.tutorial.using_cuda__or_openmp__tbb_______via_thrust.phase_oscillator_ensemble">相位振子系综</a></span></dt>
+<dt><span class="section"><a href="using_cuda__or_openmp__tbb_______via_thrust.html#boost_numeric_odeint.tutorial.using_cuda__or_openmp__tbb_______via_thrust.large_oscillator_chains">大型振子链</a></span></dt>
+<dt><span class="section"><a href="using_cuda__or_openmp__tbb_______via_thrust.html#boost_numeric_odeint.tutorial.using_cuda__or_openmp__tbb_______via_thrust.parameter_studies">参数研究</a></span></dt>
+</dl></div>
+<p>现代显卡 (图形处理单元, GPU) 可以通过大规模并行化来加速耗时算法. 它们被设计为并行执行许多操作. odeint 可以借助 CUDA 和 <a href="http://code.google.com/p/thrust/" target="_top">Thrust</a> (一个面向原生 CUDA API 的类 STL 接口) 利用 GPU 的能力.</p>
+<div class="important"><table border="0" summary="Important">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[重要]" src="../../../../../../../doc/src/images/important.png"></td>
+<th align="left">重要</th>
+</tr>
+<tr><td align="left" valign="top"><p>Thrust 还支持使用 OpenMP 和 Intel Threading Building Blocks (TBB) 的并行化. 你可以通过一个简单的编译器开关在 CUDA、OpenMP 和 TBB 并行化之间切换. 因此, 这也提供了一种把基本 OpenMP 并行化引入 odeint 的简便途径. 不过, 下面讨论的示例聚焦于 GPU 并行化.</p></td></tr>
+</table></div>
+<p>要将 odeint 与 CUDA 配合使用, 必须考虑几个要点. 首先, 必须选好问题. 试图对三维系统并行化代码是完全没有意义的, 它实在太小, 不值得费力. GPU 上的一次函数调用 (内核执行) 很慢, 但你可以只通过一次调用对海量数据执行操作. 我们的经验是, 被并行化的向量大小应达到 <span class="emphasis"><em>10<sup>6</sup></em></span> 量级, 才能充分利用 GPU. 其次, 在实现 ODE 的右端项时必须使用 <a href="http://code.google.com/p/thrust/" target="_top">Thrust</a> 的算法和函数对象. 这可能比较棘手, 因为它涉及某种函数式编程知识.</p>
+<p>CUDA 与 odeint 的典型应用是大型系统, 如晶格或 PDE 离散化, 以及参数研究. 现在我们介绍三个示例, 展示如何将 GPU 的能力与 odeint 结合使用.</p>
+<div class="important"><table border="0" summary="Important">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[重要]" src="../../../../../../../doc/src/images/important.png"></td>
+<th align="left">重要</th>
+</tr>
+<tr><td align="left" valign="top"><p>CUDA 的全部威力只对真正的大型系统可用, 即耦合常微分方程数量达到 <span class="emphasis"><em>N=10<sup>6</sup></em></span> 或更大的系统. 对于较小的系统, CPU 通常快得多. 你也可以并行积分由多个互不耦合的 ODE 组成的系综, 如最后一个示例所示.</p></td></tr>
+</table></div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.tutorial.using_cuda__or_openmp__tbb_______via_thrust.phase_oscillator_ensemble"></a><a class="link" href="using_cuda__or_openmp__tbb_______via_thrust.html#boost_numeric_odeint.tutorial.using_cuda__or_openmp__tbb_______via_thrust.phase_oscillator_ensemble" title="相位振子系综">相位振子系综</a>
+</h4></div></div></div>
+<p>第一个示例是上一节的相位振子系综:</p>
+<p>
+          <span class="emphasis"><em>dφ<sub>​k</sub> / dt = ω<sub>​k</sub> + ε / N Σ<sub>​j</sub> sin( φ<sub>​j</sub> - φ<sub>​k</sub> ).</em></span>
+        </p>
+<p>在振子数 <span class="emphasis"><em>N</em></span> 趋于无穷的极限下, 它在 <span class="emphasis"><em>ε = 2</em></span> 处有一个相变. 当 <span class="emphasis"><em>N</em></span> 有限时, 这一转变被抹平, 但仍然清晰可见.</p>
+<p>非常适合这类需要大量粒子 (振子) 的问题的是 <a href="http://code.google.com/p/thrust/" target="_top">Thrust</a> 与 CUDA. 我们先定义状态类型, 它是一个 <code class="computeroutput"><span class="identifier">thrust</span><span class="special">::</span><span class="identifier">device_vector</span></code>. 这个向量的内容存放在 GPU 上. 如果你对此不熟悉, 我们建议阅读 <span class="emphasis"><em>Getting started</em></span> 一节, 见 <a href="http://code.google.com/p/thrust/" target="_top">Thrust</a> 网站.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">//change this to float if your device does not support double computation</span>
+<span class="keyword">typedef</span> <span class="keyword">double</span> <span class="identifier">value_type</span><span class="special">;</span>
+
+<span class="comment">//change this to host_vector&lt; ... &gt; of you want to run on CPU</span>
+<span class="keyword">typedef</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">device_vector</span><span class="special">&lt;</span> <span class="identifier">value_type</span> <span class="special">&gt;</span> <span class="identifier">state_type</span><span class="special">;</span>
+<span class="comment">// typedef thrust::host_vector&lt; value_type &gt; state_type;</span>
+</pre>
+<p>
+        </p>
+<p>Thrust 遵循函数式编程的方法. 如果你想在 GPU 上执行计算, 通常必须调用诸如 <code class="computeroutput"><span class="identifier">thrust</span><span class="special">::</span><span class="identifier">for_each</span></code>、<code class="computeroutput"><span class="identifier">thrust</span><span class="special">::</span><span class="identifier">reduce</span></code> 之类的全局函数, 并配上一个执行基本操作的适当的局部函数对象. 例如</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">add_two</span>
+<span class="special">{</span>
+    <span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">class</span> <span class="identifier">T</span> <span class="special">&gt;</span>
+    <span class="identifier">__host__</span> <span class="identifier">__device__</span>
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="identifier">T</span> <span class="special">&amp;</span><span class="identifier">t</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="identifier">t</span> <span class="special">+=</span> <span class="identifier">T</span><span class="special">(</span> <span class="number">2</span> <span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="comment">// ...</span>
+
+<span class="identifier">thrust</span><span class="special">::</span><span class="identifier">for_each</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">add_two</span><span class="special">()</span> <span class="special">);</span>
+</pre>
+<p>这段代码泛型地为容器 <code class="computeroutput"><span class="identifier">x</span></code> 中的每个元素加 2.</p>
+<p>为了积分相位振子系综, 我们需要</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">计算系统函数, 即 ODE 的右端项;</li>
+<li class="listitem">这涉及计算振子示例的平均场, 即 <span class="emphasis"><em>R</em></span> 和 <span class="emphasis"><em>θ</em></span> 的值.</li>
+</ul></div>
+<p>平均场在一个类 <code class="computeroutput"><span class="identifier">mean_field_calculator</span></code> 中计算</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">mean_field_calculator</span>
+<span class="special">{</span>
+    <span class="keyword">struct</span> <span class="identifier">sin_functor</span> <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">unary_function</span><span class="special">&lt;</span> <span class="identifier">value_type</span> <span class="special">,</span> <span class="identifier">value_type</span> <span class="special">&gt;</span>
+    <span class="special">{</span>
+        <span class="identifier">__host__</span> <span class="identifier">__device__</span>
+        <span class="identifier">value_type</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="identifier">value_type</span> <span class="identifier">x</span><span class="special">)</span> <span class="keyword">const</span>
+        <span class="special">{</span>
+            <span class="keyword">return</span> <span class="identifier">sin</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">);</span>
+        <span class="special">}</span>
+    <span class="special">};</span>
+
+    <span class="keyword">struct</span> <span class="identifier">cos_functor</span> <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">unary_function</span><span class="special">&lt;</span> <span class="identifier">value_type</span> <span class="special">,</span> <span class="identifier">value_type</span> <span class="special">&gt;</span>
+    <span class="special">{</span>
+        <span class="identifier">__host__</span> <span class="identifier">__device__</span>
+        <span class="identifier">value_type</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="identifier">value_type</span> <span class="identifier">x</span><span class="special">)</span> <span class="keyword">const</span>
+        <span class="special">{</span>
+            <span class="keyword">return</span> <span class="identifier">cos</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">);</span>
+        <span class="special">}</span>
+    <span class="special">};</span>
+
+    <span class="keyword">static</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span><span class="special">&lt;</span> <span class="identifier">value_type</span> <span class="special">,</span> <span class="identifier">value_type</span> <span class="special">&gt;</span> <span class="identifier">get_mean</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">x</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">value_type</span> <span class="identifier">sin_sum</span> <span class="special">=</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">reduce</span><span class="special">(</span>
+                <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_transform_iterator</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">sin_functor</span><span class="special">()</span> <span class="special">)</span> <span class="special">,</span>
+                <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_transform_iterator</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">sin_functor</span><span class="special">()</span> <span class="special">)</span> <span class="special">);</span>
+        <span class="identifier">value_type</span> <span class="identifier">cos_sum</span> <span class="special">=</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">reduce</span><span class="special">(</span>
+                <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_transform_iterator</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">cos_functor</span><span class="special">()</span> <span class="special">)</span> <span class="special">,</span>
+                <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_transform_iterator</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">cos_functor</span><span class="special">()</span> <span class="special">)</span> <span class="special">);</span>
+
+        <span class="identifier">cos_sum</span> <span class="special">/=</span> <span class="identifier">value_type</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">size</span><span class="special">()</span> <span class="special">);</span>
+        <span class="identifier">sin_sum</span> <span class="special">/=</span> <span class="identifier">value_type</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">size</span><span class="special">()</span> <span class="special">);</span>
+
+        <span class="identifier">value_type</span> <span class="identifier">K</span> <span class="special">=</span> <span class="identifier">sqrt</span><span class="special">(</span> <span class="identifier">cos_sum</span> <span class="special">*</span> <span class="identifier">cos_sum</span> <span class="special">+</span> <span class="identifier">sin_sum</span> <span class="special">*</span> <span class="identifier">sin_sum</span> <span class="special">);</span>
+        <span class="identifier">value_type</span> <span class="identifier">Theta</span> <span class="special">=</span> <span class="identifier">atan2</span><span class="special">(</span> <span class="identifier">sin_sum</span> <span class="special">,</span> <span class="identifier">cos_sum</span> <span class="special">);</span>
+
+        <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">make_pair</span><span class="special">(</span> <span class="identifier">K</span> <span class="special">,</span> <span class="identifier">Theta</span> <span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>在这个类内部定义了两个成员结构 <code class="computeroutput"><span class="identifier">sin_functor</span></code> 和 <code class="computeroutput"><span class="identifier">cos_functor</span></code>. 它们计算一个值的正弦和余弦, 并在 transform 迭代器中用于计算 <span class="emphasis"><em>sin(φ<sub>​k</sub>)</em></span> 与 <span class="emphasis"><em>cos(φ<sub>​k</sub>)</em></span> 的和. 说明符 <code class="computeroutput"><span class="identifier">__host__</span></code> 和 <code class="computeroutput"><span class="identifier">__device__</span></code> 是 CUDA 特有的, 它们定义一个既可在 GPU 上也可在 CPU 上执行的函数或运算符. 这一行</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">value_type</span> <span class="identifier">sin_sum</span> <span class="special">=</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">reduce</span><span class="special">(</span>
+        <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_transform_iterator</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">sin_functor</span><span class="special">()</span> <span class="special">)</span> <span class="special">,</span>
+        <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_transform_iterator</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">sin_functor</span><span class="special">()</span> <span class="special">)</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+<p>在 GPU 上 (或 CPU 上, 取决于你的 thrust 配置) 执行这个正弦和的计算.</p>
+<p>系统函数通过如下方式定义:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">phase_oscillator_ensemble</span>
+<span class="special">{</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+
+    <span class="keyword">struct</span> <span class="identifier">sys_functor</span>
+    <span class="special">{</span>
+        <span class="identifier">value_type</span> <span class="identifier">m_K</span> <span class="special">,</span> <span class="identifier">m_Theta</span> <span class="special">,</span> <span class="identifier">m_epsilon</span><span class="special">;</span>
+
+        <span class="identifier">sys_functor</span><span class="special">(</span> <span class="identifier">value_type</span> <span class="identifier">K</span> <span class="special">,</span> <span class="identifier">value_type</span> <span class="identifier">Theta</span> <span class="special">,</span> <span class="identifier">value_type</span> <span class="identifier">epsilon</span> <span class="special">)</span>
+        <span class="special">:</span> <span class="identifier">m_K</span><span class="special">(</span> <span class="identifier">K</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">m_Theta</span><span class="special">(</span> <span class="identifier">Theta</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">m_epsilon</span><span class="special">(</span> <span class="identifier">epsilon</span> <span class="special">)</span> <span class="special">{</span> <span class="special">}</span>
+
+        <span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">class</span> <span class="identifier">Tuple</span> <span class="special">&gt;</span>
+        <span class="identifier">__host__</span> <span class="identifier">__device__</span>
+        <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="identifier">Tuple</span> <span class="identifier">t</span> <span class="special">)</span>
+        <span class="special">{</span>
+            <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span><span class="number">2</span><span class="special">&gt;(</span><span class="identifier">t</span><span class="special">)</span> <span class="special">=</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span><span class="number">1</span><span class="special">&gt;(</span><span class="identifier">t</span><span class="special">)</span> <span class="special">+</span> <span class="identifier">m_epsilon</span> <span class="special">*</span> <span class="identifier">m_K</span> <span class="special">*</span> <span class="identifier">sin</span><span class="special">(</span> <span class="identifier">m_Theta</span> <span class="special">-</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span><span class="number">0</span><span class="special">&gt;(</span><span class="identifier">t</span><span class="special">)</span> <span class="special">);</span>
+        <span class="special">}</span>
+    <span class="special">};</span>
+
+    <span class="comment">// ...</span>
+
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()</span> <span class="special">(</span> <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">x</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">dxdt</span> <span class="special">,</span> <span class="keyword">const</span> <span class="identifier">value_type</span> <span class="identifier">dt</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span><span class="special">&lt;</span> <span class="identifier">value_type</span> <span class="special">,</span> <span class="identifier">value_type</span> <span class="special">&gt;</span> <span class="identifier">mean_field</span> <span class="special">=</span> <span class="identifier">mean_field_calculator</span><span class="special">::</span><span class="identifier">get_mean</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">);</span>
+
+        <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">for_each</span><span class="special">(</span>
+                <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_zip_iterator</span><span class="special">(</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_tuple</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">m_omega</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">dxdt</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">)</span> <span class="special">),</span>
+                <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_zip_iterator</span><span class="special">(</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_tuple</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">m_omega</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">dxdt</span><span class="special">.</span><span class="identifier">end</span><span class="special">())</span> <span class="special">)</span> <span class="special">,</span>
+                <span class="identifier">sys_functor</span><span class="special">(</span> <span class="identifier">mean_field</span><span class="special">.</span><span class="identifier">first</span> <span class="special">,</span> <span class="identifier">mean_field</span><span class="special">.</span><span class="identifier">second</span> <span class="special">,</span> <span class="identifier">m_epsilon</span> <span class="special">)</span>
+                <span class="special">);</span>
+    <span class="special">}</span>
+
+    <span class="comment">// ...</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>这个类在 <code class="computeroutput"><span class="identifier">do_step</span></code> 和 <code class="computeroutput"><span class="identifier">integrate</span></code> 方法中使用. 它为每个振子的右端项定义了一个成员结构 <code class="computeroutput"><span class="identifier">sys_functor</span></code>, 并定义 <code class="computeroutput"><span class="keyword">operator</span><span class="special">()</span></code> 以便在 odeint 的步进器和积分器中使用. 该函数对象首先计算 <span class="emphasis"><em>φ<sub>​k</sub></em></span> 的平均场, 然后用这个平均场计算 ODE 的完整右端项. 注意 <code class="computeroutput"><span class="identifier">thrust</span><span class="special">::</span><span class="identifier">tuple</span></code> 和 <code class="computeroutput"><span class="identifier">thrust</span><span class="special">::</span><span class="identifier">zip_iterator</span></code> 配合得多么好.</p>
+<p>现在我们准备好把所有东西组合起来. 要让 odeint 准备好使用 GPU, 我们只需用 <code class="computeroutput"><span class="identifier">state_type</span></code> 和 <code class="computeroutput"><span class="identifier">value_type</span></code> 参数化步进器:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="identifier">runge_kutta4</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">,</span> <span class="identifier">value_type</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">,</span> <span class="identifier">value_type</span> <span class="special">&gt;</span> <span class="identifier">stepper_type</span><span class="special">;</span>
+</pre>
+<p>
+        </p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>我们特意定义了四个模板参数, 因为我们必须用 <code class="computeroutput"><span class="keyword">double</span></code> 覆盖默认参数值 <code class="computeroutput"><span class="identifier">value_type</span></code>, 以确保在使用 <code class="computeroutput"><span class="keyword">float</span></code> 作为基本数据类型时程序能正常运行.</p></td></tr>
+</table></div>
+<p>你也可以使用受控步进器或稠密输出步进器, 例如</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="identifier">runge_kutta_dopri5</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">,</span> <span class="identifier">value_type</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">,</span> <span class="identifier">value_type</span> <span class="special">&gt;</span> <span class="identifier">stepper_type</span><span class="special">;</span>
+</pre>
+<p>
+        </p>
+<p>然后, 通过创建右端项类的实例并使用积分函数, 积分相位系综就很直接了:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">phase_oscillator_ensemble</span> <span class="identifier">ensemble</span><span class="special">(</span> <span class="identifier">N</span> <span class="special">,</span> <span class="number">1.0</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">size_t</span> <span class="identifier">steps1</span> <span class="special">=</span> <span class="identifier">integrate_const</span><span class="special">(</span> <span class="identifier">make_controlled</span><span class="special">(</span> <span class="number">1.0e-6</span> <span class="special">,</span> <span class="number">1.0e-6</span> <span class="special">,</span> <span class="identifier">stepper_type</span><span class="special">()</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span> <span class="identifier">ensemble</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">,</span> <span class="number">0.0</span> <span class="special">,</span> <span class="identifier">t_transients</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+<p>我们必须在这里使用 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">ref</span></code>, 以便按引用而不是按值传递右端项类. 这确保调用 <code class="computeroutput"><span class="identifier">integrate_const</span></code> 时各振子的固有频率不被复制. 完整示例中比较了 Runge-Kutta-4 与 Dopri5 求解器的性能和结果.</p>
+<p>完整示例见 <a href="https://github.com/headmyshoulder/odeint-v2/blob/master/examples/thrust/phase_oscillator_ensemble.cu" target="_top">phase_oscillator_example.cu</a>.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.tutorial.using_cuda__or_openmp__tbb_______via_thrust.large_oscillator_chains"></a><a class="link" href="using_cuda__or_openmp__tbb_______via_thrust.html#boost_numeric_odeint.tutorial.using_cuda__or_openmp__tbb_______via_thrust.large_oscillator_chains" title="大型振子链">大型振子链</a>
+</h4></div></div></div>
+<p>下一个示例是一个大型的、由最近邻耦合相位振子组成的一维链, 其运动方程为:</p>
+<p>
+          <span class="emphasis"><em>d φ<sub>​k</sub> / dt = ω<sub>​k</sub> + sin( φ<sub>​k+1</sub> - φ<sub>​k</sub> ) + sin( φ<sub>​k</sub> - φ<sub>​k-1</sub>)</em></span>
+        </p>
+<p>原则上我们可以使用上一个相位振子系综示例中的所有技术, 但必须特别注意振子之间的耦合. 要高效实现耦合, 可以使用一种非常优雅的方式, 即 Thrust 的置换迭代器 (permutation iterator). 置换迭代器的行为类似于向量上的普通迭代器, 但它不按元素通常的顺序迭代, 而是按某个索引映射定义的元素排列迭代. 为了实现最近邻耦合, 我们创建一个在普通迭代器之后一步处行进的置换迭代器, 以及另一个在前面一步处行进的置换迭代器. 完整的系统类是:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">//change this to host_vector&lt; ... &gt; if you want to run on CPU</span>
+<span class="keyword">typedef</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">device_vector</span><span class="special">&lt;</span> <span class="identifier">value_type</span> <span class="special">&gt;</span> <span class="identifier">state_type</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">device_vector</span><span class="special">&lt;</span> <span class="identifier">size_t</span> <span class="special">&gt;</span> <span class="identifier">index_vector_type</span><span class="special">;</span>
+<span class="comment">//typedef thrust::host_vector&lt; value_type &gt; state_type;</span>
+<span class="comment">//typedef thrust::host_vector&lt; size_t &gt; index_vector_type;</span>
+
+<span class="keyword">class</span> <span class="identifier">phase_oscillators</span>
+<span class="special">{</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+
+    <span class="keyword">struct</span> <span class="identifier">sys_functor</span>
+    <span class="special">{</span>
+        <span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">class</span> <span class="identifier">Tuple</span> <span class="special">&gt;</span>
+        <span class="identifier">__host__</span> <span class="identifier">__device__</span>
+        <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="identifier">Tuple</span> <span class="identifier">t</span> <span class="special">)</span>  <span class="comment">// this functor works on tuples of values</span>
+        <span class="special">{</span>
+            <span class="comment">// first, unpack the tuple into value, neighbors and omega</span>
+            <span class="keyword">const</span> <span class="identifier">value_type</span> <span class="identifier">phi</span> <span class="special">=</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span><span class="number">0</span><span class="special">&gt;(</span><span class="identifier">t</span><span class="special">);</span>
+            <span class="keyword">const</span> <span class="identifier">value_type</span> <span class="identifier">phi_left</span> <span class="special">=</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span><span class="number">1</span><span class="special">&gt;(</span><span class="identifier">t</span><span class="special">);</span>  <span class="comment">// left neighbor</span>
+            <span class="keyword">const</span> <span class="identifier">value_type</span> <span class="identifier">phi_right</span> <span class="special">=</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span><span class="number">2</span><span class="special">&gt;(</span><span class="identifier">t</span><span class="special">);</span> <span class="comment">// right neighbor</span>
+            <span class="keyword">const</span> <span class="identifier">value_type</span> <span class="identifier">omega</span> <span class="special">=</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span><span class="number">3</span><span class="special">&gt;(</span><span class="identifier">t</span><span class="special">);</span>
+            <span class="comment">// the dynamical equation</span>
+            <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span><span class="number">4</span><span class="special">&gt;(</span><span class="identifier">t</span><span class="special">)</span> <span class="special">=</span> <span class="identifier">omega</span> <span class="special">+</span> <span class="identifier">sin</span><span class="special">(</span> <span class="identifier">phi_right</span> <span class="special">-</span> <span class="identifier">phi</span> <span class="special">)</span> <span class="special">+</span> <span class="identifier">sin</span><span class="special">(</span> <span class="identifier">phi</span> <span class="special">-</span> <span class="identifier">phi_left</span> <span class="special">);</span>
+        <span class="special">}</span>
+    <span class="special">};</span>
+
+    <span class="identifier">phase_oscillators</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">omega</span> <span class="special">)</span>
+        <span class="special">:</span> <span class="identifier">m_omega</span><span class="special">(</span> <span class="identifier">omega</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">m_N</span><span class="special">(</span> <span class="identifier">omega</span><span class="special">.</span><span class="identifier">size</span><span class="special">()</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">m_prev</span><span class="special">(</span> <span class="identifier">omega</span><span class="special">.</span><span class="identifier">size</span><span class="special">()</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">m_next</span><span class="special">(</span> <span class="identifier">omega</span><span class="special">.</span><span class="identifier">size</span><span class="special">()</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="comment">// build indices pointing to left and right neighbours</span>
+        <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">counting_iterator</span><span class="special">&lt;</span><span class="identifier">size_t</span><span class="special">&gt;</span> <span class="identifier">c</span><span class="special">(</span> <span class="number">0</span> <span class="special">);</span>
+        <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">copy</span><span class="special">(</span> <span class="identifier">c</span> <span class="special">,</span> <span class="identifier">c</span><span class="special">+</span><span class="identifier">m_N</span><span class="special">-</span><span class="number">1</span> <span class="special">,</span> <span class="identifier">m_prev</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()+</span><span class="number">1</span> <span class="special">);</span>
+        <span class="identifier">m_prev</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="comment">// m_prev = { 0 , 0 , 1 , 2 , 3 , ... , N-1 }</span>
+
+        <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">copy</span><span class="special">(</span> <span class="identifier">c</span><span class="special">+</span><span class="number">1</span> <span class="special">,</span> <span class="identifier">c</span><span class="special">+</span><span class="identifier">m_N</span> <span class="special">,</span> <span class="identifier">m_next</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">);</span>
+        <span class="identifier">m_next</span><span class="special">[</span><span class="identifier">m_N</span><span class="special">-</span><span class="number">1</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">m_N</span><span class="special">-</span><span class="number">1</span><span class="special">;</span> <span class="comment">// m_next = { 1 , 2 , 3 , ... , N-1 , N-1 }</span>
+    <span class="special">}</span>
+
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()</span> <span class="special">(</span> <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">x</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">dxdt</span> <span class="special">,</span> <span class="keyword">const</span> <span class="identifier">value_type</span> <span class="identifier">dt</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">for_each</span><span class="special">(</span>
+                <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_zip_iterator</span><span class="special">(</span>
+                        <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_tuple</span><span class="special">(</span>
+                                <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span>
+                                <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_permutation_iterator</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">m_prev</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">)</span> <span class="special">,</span>
+                                <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_permutation_iterator</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">m_next</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">)</span> <span class="special">,</span>
+                                <span class="identifier">m_omega</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span>
+                                <span class="identifier">dxdt</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span>
+                                <span class="special">)</span> <span class="special">),</span>
+                <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_zip_iterator</span><span class="special">(</span>
+                        <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_tuple</span><span class="special">(</span>
+                                <span class="identifier">x</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">,</span>
+                                <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_permutation_iterator</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">m_prev</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">)</span> <span class="special">,</span>
+                                <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_permutation_iterator</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">m_next</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">)</span> <span class="special">,</span>
+                                <span class="identifier">m_omega</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">,</span>
+                                <span class="identifier">dxdt</span><span class="special">.</span><span class="identifier">end</span><span class="special">())</span> <span class="special">)</span> <span class="special">,</span>
+                <span class="identifier">sys_functor</span><span class="special">()</span>
+                <span class="special">);</span>
+    <span class="special">}</span>
+
+<span class="keyword">private</span><span class="special">:</span>
+
+    <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">m_omega</span><span class="special">;</span>
+    <span class="keyword">const</span> <span class="identifier">size_t</span> <span class="identifier">m_N</span><span class="special">;</span>
+    <span class="identifier">index_vector_type</span> <span class="identifier">m_prev</span><span class="special">;</span>
+    <span class="identifier">index_vector_type</span> <span class="identifier">m_next</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>注意, 在系统函数对象中使用置换迭代器可以多么容易地取得左右相邻振子的值. 不过, <code class="computeroutput"><span class="identifier">thrust</span><span class="special">::</span><span class="identifier">for_each</span></code> 函数的调用看起来相对复杂. ODE 右端项的每一项都由一个迭代器表示, 其打包方式与上面函数对象中的解包方式完全一致.</p>
+<p>现在我们把所有东西组合起来. 我们创建随机初始条件和递减的频率, 这样我们应该能得到同步. 我们把频率和初始条件复制到设备上, 最后初始化并执行积分. 作为结果, 我们简单写出当前状态, 即每个振子的相位.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// create initial conditions and omegas on host:</span>
+<span class="identifier">vector</span><span class="special">&lt;</span> <span class="identifier">value_type</span> <span class="special">&gt;</span> <span class="identifier">x_host</span><span class="special">(</span> <span class="identifier">N</span> <span class="special">);</span>
+<span class="identifier">vector</span><span class="special">&lt;</span> <span class="identifier">value_type</span> <span class="special">&gt;</span> <span class="identifier">omega_host</span><span class="special">(</span> <span class="identifier">N</span> <span class="special">);</span>
+<span class="keyword">for</span><span class="special">(</span> <span class="identifier">size_t</span> <span class="identifier">i</span><span class="special">=</span><span class="number">0</span> <span class="special">;</span> <span class="identifier">i</span><span class="special">&lt;</span><span class="identifier">N</span> <span class="special">;</span> <span class="special">++</span><span class="identifier">i</span> <span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">x_host</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">=</span> <span class="number">2.0</span> <span class="special">*</span> <span class="identifier">pi</span> <span class="special">*</span> <span class="identifier">drand48</span><span class="special">();</span>
+    <span class="identifier">omega_host</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">=</span> <span class="special">(</span> <span class="identifier">N</span> <span class="special">-</span> <span class="identifier">i</span> <span class="special">)</span> <span class="special">*</span> <span class="identifier">epsilon</span><span class="special">;</span> <span class="comment">// decreasing frequencies</span>
+<span class="special">}</span>
+
+<span class="comment">// copy to device</span>
+<span class="identifier">state_type</span> <span class="identifier">x</span> <span class="special">=</span> <span class="identifier">x_host</span><span class="special">;</span>
+<span class="identifier">state_type</span> <span class="identifier">omega</span> <span class="special">=</span> <span class="identifier">omega_host</span><span class="special">;</span>
+
+<span class="comment">// create stepper</span>
+<span class="identifier">runge_kutta4</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">,</span> <span class="identifier">value_type</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">,</span> <span class="identifier">value_type</span> <span class="special">&gt;</span> <span class="identifier">stepper</span><span class="special">;</span>
+
+<span class="comment">// create phase oscillator system function</span>
+<span class="identifier">phase_oscillators</span> <span class="identifier">sys</span><span class="special">(</span> <span class="identifier">omega</span> <span class="special">);</span>
+
+<span class="comment">// integrate</span>
+<span class="identifier">integrate_const</span><span class="special">(</span> <span class="identifier">stepper</span> <span class="special">,</span> <span class="identifier">sys</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">,</span> <span class="number">0.0</span> <span class="special">,</span> <span class="number">10.0</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+
+<span class="identifier">thrust</span><span class="special">::</span><span class="identifier">copy</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">ostream_iterator</span><span class="special">&lt;</span> <span class="identifier">value_type</span> <span class="special">&gt;(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">,</span> <span class="string">"\n"</span> <span class="special">)</span> <span class="special">);</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+</pre>
+<p>
+        </p>
+<p>完整示例见 <a href="https://github.com/headmyshoulder/odeint-v2/blob/master/examples/thrust/phase_oscillator_chain.cu" target="_top">phase_oscillator_chain.cu</a>.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.tutorial.using_cuda__or_openmp__tbb_______via_thrust.parameter_studies"></a><a class="link" href="using_cuda__or_openmp__tbb_______via_thrust.html#boost_numeric_odeint.tutorial.using_cuda__or_openmp__tbb_______via_thrust.parameter_studies" title="参数研究">参数研究</a>
+</h4></div></div></div>
+<p> <a href="http://code.google.com/p/thrust/" target="_top">Thrust</a> 与 CUDA 的另一个重要用例是对相对较小的系统进行参数研究. 例如考虑上一节混沌系统示例中的三维 Lorenz 系统, 它有三个参数. 如果想研究该系统在不同参数下的行为, 通常必须对许多参数值分别积分该系统. 使用 thrust 和 odeint, 你可以并行执行这些积分, 即积分一个完整的 Lorenz 系统系综, 其中每个个体实现具有不同的参数值.</p>
+<p>下面我们将展示如何使用 <a href="http://code.google.com/p/thrust/" target="_top">Thrust</a> 积分上述 Lorenz 系统系综. 我们只变化参数 <span class="emphasis"><em>β</em></span>, 但同样直接的做法也可以变化其他参数, 甚至两个或全部三个参数. 此外, 我们将使用最大 Lyapunov 指数来量化系统的行为 (混沌程度).</p>
+<p>我们先定义要研究的参数范围. state_type 同样是一个 <code class="computeroutput"><span class="identifier">thrust</span><span class="special">::</span><span class="identifier">device_vector</span><span class="special">&lt;</span> <span class="identifier">value_type</span>
+          <span class="special">&gt;</span></code>.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">vector</span><span class="special">&lt;</span> <span class="identifier">value_type</span> <span class="special">&gt;</span> <span class="identifier">beta_host</span><span class="special">(</span> <span class="identifier">N</span> <span class="special">);</span>
+<span class="keyword">const</span> <span class="identifier">value_type</span> <span class="identifier">beta_min</span> <span class="special">=</span> <span class="number">0.0</span> <span class="special">,</span> <span class="identifier">beta_max</span> <span class="special">=</span> <span class="number">56.0</span><span class="special">;</span>
+<span class="keyword">for</span><span class="special">(</span> <span class="identifier">size_t</span> <span class="identifier">i</span><span class="special">=</span><span class="number">0</span> <span class="special">;</span> <span class="identifier">i</span><span class="special">&lt;</span><span class="identifier">N</span> <span class="special">;</span> <span class="special">++</span><span class="identifier">i</span> <span class="special">)</span>
+    <span class="identifier">beta_host</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">beta_min</span> <span class="special">+</span> <span class="identifier">value_type</span><span class="special">(</span> <span class="identifier">i</span> <span class="special">)</span> <span class="special">*</span> <span class="special">(</span> <span class="identifier">beta_max</span> <span class="special">-</span> <span class="identifier">beta_min</span> <span class="special">)</span> <span class="special">/</span> <span class="identifier">value_type</span><span class="special">(</span> <span class="identifier">N</span> <span class="special">-</span> <span class="number">1</span> <span class="special">);</span>
+
+<span class="identifier">state_type</span> <span class="identifier">beta</span> <span class="special">=</span> <span class="identifier">beta_host</span><span class="special">;</span>
+</pre>
+<p>
+        </p>
+<p>接下来必须实现的是不带扰动的 Lorenz 系统. 稍后还会实现带扰动的系统, 用于计算 Lyapunov 指数. 我们将采用一种方案, 其中每个 device 函数计算 Lorenz 系综的一个具体实现</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">lorenz_system</span>
+<span class="special">{</span>
+    <span class="keyword">struct</span> <span class="identifier">lorenz_functor</span>
+    <span class="special">{</span>
+        <span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">class</span> <span class="identifier">T</span> <span class="special">&gt;</span>
+        <span class="identifier">__host__</span> <span class="identifier">__device__</span>
+        <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="identifier">T</span> <span class="identifier">t</span> <span class="special">)</span> <span class="keyword">const</span>
+        <span class="special">{</span>
+            <span class="comment">// unpack the parameter we want to vary and the Lorenz variables</span>
+            <span class="identifier">value_type</span> <span class="identifier">R</span> <span class="special">=</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span> <span class="number">3</span> <span class="special">&gt;(</span> <span class="identifier">t</span> <span class="special">);</span>
+            <span class="identifier">value_type</span> <span class="identifier">x</span> <span class="special">=</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span> <span class="number">0</span> <span class="special">&gt;(</span> <span class="identifier">t</span> <span class="special">);</span>
+            <span class="identifier">value_type</span> <span class="identifier">y</span> <span class="special">=</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span> <span class="number">1</span> <span class="special">&gt;(</span> <span class="identifier">t</span> <span class="special">);</span>
+            <span class="identifier">value_type</span> <span class="identifier">z</span> <span class="special">=</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span> <span class="number">2</span> <span class="special">&gt;(</span> <span class="identifier">t</span> <span class="special">);</span>
+            <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span> <span class="number">4</span> <span class="special">&gt;(</span> <span class="identifier">t</span> <span class="special">)</span> <span class="special">=</span> <span class="identifier">sigma</span> <span class="special">*</span> <span class="special">(</span> <span class="identifier">y</span> <span class="special">-</span> <span class="identifier">x</span> <span class="special">);</span>
+            <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span> <span class="number">5</span> <span class="special">&gt;(</span> <span class="identifier">t</span> <span class="special">)</span> <span class="special">=</span> <span class="identifier">R</span> <span class="special">*</span> <span class="identifier">x</span> <span class="special">-</span> <span class="identifier">y</span> <span class="special">-</span> <span class="identifier">x</span> <span class="special">*</span> <span class="identifier">z</span><span class="special">;</span>
+            <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span> <span class="number">6</span> <span class="special">&gt;(</span> <span class="identifier">t</span> <span class="special">)</span> <span class="special">=</span> <span class="special">-</span><span class="identifier">b</span> <span class="special">*</span> <span class="identifier">z</span> <span class="special">+</span> <span class="identifier">x</span> <span class="special">*</span> <span class="identifier">y</span> <span class="special">;</span>
+
+        <span class="special">}</span>
+    <span class="special">};</span>
+
+    <span class="identifier">lorenz_system</span><span class="special">(</span> <span class="identifier">size_t</span> <span class="identifier">N</span> <span class="special">,</span> <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">beta</span> <span class="special">)</span>
+    <span class="special">:</span> <span class="identifier">m_N</span><span class="special">(</span> <span class="identifier">N</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">m_beta</span><span class="special">(</span> <span class="identifier">beta</span> <span class="special">)</span> <span class="special">{</span> <span class="special">}</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">class</span> <span class="identifier">State</span> <span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Deriv</span> <span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span>  <span class="keyword">const</span> <span class="identifier">State</span> <span class="special">&amp;</span><span class="identifier">x</span> <span class="special">,</span> <span class="identifier">Deriv</span> <span class="special">&amp;</span><span class="identifier">dxdt</span> <span class="special">,</span> <span class="identifier">value_type</span> <span class="identifier">t</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">for_each</span><span class="special">(</span>
+                <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_zip_iterator</span><span class="special">(</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_tuple</span><span class="special">(</span>
+                        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">)</span> <span class="special">,</span>
+                        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">)</span> <span class="special">+</span> <span class="identifier">m_N</span> <span class="special">,</span>
+                        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">)</span> <span class="special">+</span> <span class="number">2</span> <span class="special">*</span> <span class="identifier">m_N</span> <span class="special">,</span>
+                        <span class="identifier">m_beta</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span>
+                        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span> <span class="identifier">dxdt</span> <span class="special">)</span> <span class="special">,</span>
+                        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span> <span class="identifier">dxdt</span> <span class="special">)</span> <span class="special">+</span> <span class="identifier">m_N</span> <span class="special">,</span>
+                        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span> <span class="identifier">dxdt</span> <span class="special">)</span> <span class="special">+</span> <span class="number">2</span> <span class="special">*</span> <span class="identifier">m_N</span>  <span class="special">)</span> <span class="special">)</span> <span class="special">,</span>
+                <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_zip_iterator</span><span class="special">(</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">make_tuple</span><span class="special">(</span>
+                        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">)</span> <span class="special">+</span> <span class="identifier">m_N</span> <span class="special">,</span>
+                        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">)</span> <span class="special">+</span> <span class="number">2</span> <span class="special">*</span> <span class="identifier">m_N</span> <span class="special">,</span>
+                        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">)</span> <span class="special">+</span> <span class="number">3</span> <span class="special">*</span> <span class="identifier">m_N</span> <span class="special">,</span>
+                        <span class="identifier">m_beta</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span>
+                        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span> <span class="identifier">dxdt</span> <span class="special">)</span> <span class="special">+</span> <span class="identifier">m_N</span> <span class="special">,</span>
+                        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span> <span class="identifier">dxdt</span> <span class="special">)</span> <span class="special">+</span> <span class="number">2</span> <span class="special">*</span> <span class="identifier">m_N</span> <span class="special">,</span>
+                        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span><span class="special">(</span> <span class="identifier">dxdt</span> <span class="special">)</span> <span class="special">+</span> <span class="number">3</span> <span class="special">*</span> <span class="identifier">m_N</span>  <span class="special">)</span> <span class="special">)</span> <span class="special">,</span>
+                <span class="identifier">lorenz_functor</span><span class="special">()</span> <span class="special">);</span>
+    <span class="special">}</span>
+    <span class="identifier">size_t</span> <span class="identifier">m_N</span><span class="special">;</span>
+    <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">m_beta</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>作为 <code class="computeroutput"><span class="identifier">state_type</span></code>, 使用 <code class="computeroutput"><span class="identifier">thrust</span><span class="special">::</span><span class="identifier">device_vector</span></code> 或某个 <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a>, 其元素为 <code class="computeroutput"><span class="identifier">device_vector</span></code>. 状态的长度是 <span class="emphasis"><em>3N</em></span>, 其中 <span class="emphasis"><em>N</em></span> 是系统的数量. 系统按如下方式编码进该向量: 所有 <span class="emphasis"><em>x</em></span> 分量排在前, 然后是所有 <span class="emphasis"><em>y</em></span> 分量, 最后是所有 <span class="emphasis"><em>z</em></span> 分量. 实现 device 函数就成为一个简单任务, 你只需分解来自 zip 迭代器的元组.</p>
+<p>除了不带扰动的系统之外, 我们还需要计算包含支配小扰动时间演化的线性化方程的系统. 使用上面的方法这很直接, 只有一个小困难: Thrust 的元组最大元数为 10. 但这只是个小问题, 因为我们可以创建一个用 zip 迭代器打包的 zip 迭代器. 于是顶层 zip 迭代器包含一个用于状态的 zip 迭代器、一个用于参数的普通迭代器, 以及一个用于导数的 zip 迭代器. 在系统函数中访问这个元组的元素也很直接, 用 <code class="computeroutput"><span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;&gt;()</span></code> 解包元组即可. 我们在此不展示代码, 它太长了. 它可以在 <a href="https://github.com/headmyshoulder/odeint-v2/blob/master/examples/thrust/lorenz_parameters.cu" target="_top">这里</a> 找到, 而且容易理解.</p>
+<p>此外, 我们还需要一个观察器, 它确定扰动的范数, 对其归一化, 并对范数的对数取平均. 该观察器中使用的 device 函数对象定义如下:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">lyap_functor</span>
+<span class="special">{</span>
+    <span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">class</span> <span class="identifier">T</span> <span class="special">&gt;</span>
+    <span class="identifier">__host__</span> <span class="identifier">__device__</span>
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="identifier">T</span> <span class="identifier">t</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="identifier">value_type</span> <span class="special">&amp;</span><span class="identifier">dx</span> <span class="special">=</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span> <span class="number">0</span> <span class="special">&gt;(</span> <span class="identifier">t</span> <span class="special">);</span>
+        <span class="identifier">value_type</span> <span class="special">&amp;</span><span class="identifier">dy</span> <span class="special">=</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span> <span class="number">1</span> <span class="special">&gt;(</span> <span class="identifier">t</span> <span class="special">);</span>
+        <span class="identifier">value_type</span> <span class="special">&amp;</span><span class="identifier">dz</span> <span class="special">=</span> <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span> <span class="number">2</span> <span class="special">&gt;(</span> <span class="identifier">t</span> <span class="special">);</span>
+        <span class="identifier">value_type</span> <span class="identifier">norm</span> <span class="special">=</span> <span class="identifier">sqrt</span><span class="special">(</span> <span class="identifier">dx</span> <span class="special">*</span> <span class="identifier">dx</span> <span class="special">+</span> <span class="identifier">dy</span> <span class="special">*</span> <span class="identifier">dy</span> <span class="special">+</span> <span class="identifier">dz</span> <span class="special">*</span> <span class="identifier">dz</span> <span class="special">);</span>
+        <span class="identifier">dx</span> <span class="special">/=</span> <span class="identifier">norm</span><span class="special">;</span>
+        <span class="identifier">dy</span> <span class="special">/=</span> <span class="identifier">norm</span><span class="special">;</span>
+        <span class="identifier">dz</span> <span class="special">/=</span> <span class="identifier">norm</span><span class="special">;</span>
+        <span class="identifier">thrust</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span> <span class="number">3</span> <span class="special">&gt;(</span> <span class="identifier">t</span> <span class="special">)</span> <span class="special">+=</span> <span class="identifier">log</span><span class="special">(</span> <span class="identifier">norm</span> <span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>注意, 这个函数对象会修改状态, 即扰动.</p>
+<p>现在我们补全计算 Lyapunov 指数的完整代码. 首先, 必须定义一个状态向量. 该向量包含 <span class="emphasis"><em>6N</em></span> 个条目: 状态 <span class="emphasis"><em>x,y,z</em></span> 及其扰动 <span class="emphasis"><em>dx,dy,dz</em></span>. 我们按 <span class="emphasis"><em>x=y=z=10</em></span>、<span class="emphasis"><em>dx=1</em></span>、<span class="emphasis"><em>dy=dz=0</em></span> 初始化它们. 我们定义一个步进器类型, 即受控 Runge-Kutta Dormand-Prince 5 步进器. 我们先做一段积分以克服暂态行为. 为此, 我们不涉及扰动, 只在状态 <span class="emphasis"><em>x,y,z</em></span> 上运行算法, 不带任何观察器. 注意 <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a> 如何用于对状态向量中不带扰动的部分 (整个状态的前一半) 进行部分积分. 暂态之后, 对带扰动的完整系统积分, 计算出 Lyapunov 指数并写入 <code class="computeroutput"><span class="identifier">stdout</span></code>.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">state_type</span> <span class="identifier">x</span><span class="special">(</span> <span class="number">6</span> <span class="special">*</span> <span class="identifier">N</span> <span class="special">);</span>
+
+<span class="comment">// initialize x,y,z</span>
+<span class="identifier">thrust</span><span class="special">::</span><span class="identifier">fill</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">+</span> <span class="number">3</span> <span class="special">*</span> <span class="identifier">N</span> <span class="special">,</span> <span class="number">10.0</span> <span class="special">);</span>
+
+<span class="comment">// initial dx</span>
+<span class="identifier">thrust</span><span class="special">::</span><span class="identifier">fill</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">+</span> <span class="number">3</span> <span class="special">*</span> <span class="identifier">N</span> <span class="special">,</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">+</span> <span class="number">4</span> <span class="special">*</span> <span class="identifier">N</span> <span class="special">,</span> <span class="number">1.0</span> <span class="special">);</span>
+
+<span class="comment">// initialize dy,dz</span>
+<span class="identifier">thrust</span><span class="special">::</span><span class="identifier">fill</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">+</span> <span class="number">4</span> <span class="special">*</span> <span class="identifier">N</span> <span class="special">,</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">,</span> <span class="number">0.0</span> <span class="special">);</span>
+
+
+<span class="comment">// create error stepper, can be used with make_controlled or make_dense_output</span>
+<span class="keyword">typedef</span> <span class="identifier">runge_kutta_dopri5</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">,</span> <span class="identifier">value_type</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">,</span> <span class="identifier">value_type</span> <span class="special">&gt;</span> <span class="identifier">stepper_type</span><span class="special">;</span>
+
+
+<span class="identifier">lorenz_system</span> <span class="identifier">lorenz</span><span class="special">(</span> <span class="identifier">N</span> <span class="special">,</span> <span class="identifier">beta</span> <span class="special">);</span>
+<span class="identifier">lorenz_perturbation_system</span> <span class="identifier">lorenz_perturbation</span><span class="special">(</span> <span class="identifier">N</span> <span class="special">,</span> <span class="identifier">beta</span> <span class="special">);</span>
+<span class="identifier">lyap_observer</span> <span class="identifier">obs</span><span class="special">(</span> <span class="identifier">N</span> <span class="special">,</span> <span class="number">1</span> <span class="special">);</span>
+
+<span class="comment">// calculate transients</span>
+<span class="identifier">integrate_adaptive</span><span class="special">(</span> <span class="identifier">make_controlled</span><span class="special">(</span> <span class="number">1.0e-6</span> <span class="special">,</span> <span class="number">1.0e-6</span> <span class="special">,</span> <span class="identifier">stepper_type</span><span class="special">()</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">lorenz</span> <span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">make_pair</span><span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">+</span> <span class="number">3</span> <span class="special">*</span> <span class="identifier">N</span> <span class="special">)</span> <span class="special">,</span> <span class="number">0.0</span> <span class="special">,</span> <span class="number">10.0</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+
+<span class="comment">// calculate the Lyapunov exponents -- the main loop</span>
+<span class="keyword">double</span> <span class="identifier">t</span> <span class="special">=</span> <span class="number">0.0</span><span class="special">;</span>
+<span class="keyword">while</span><span class="special">(</span> <span class="identifier">t</span> <span class="special">&lt;</span> <span class="number">10000.0</span> <span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">integrate_adaptive</span><span class="special">(</span> <span class="identifier">make_controlled</span><span class="special">(</span> <span class="number">1.0e-6</span> <span class="special">,</span> <span class="number">1.0e-6</span> <span class="special">,</span> <span class="identifier">stepper_type</span><span class="special">()</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">lorenz_perturbation</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">+</span> <span class="number">1.0</span> <span class="special">,</span> <span class="number">0.1</span> <span class="special">);</span>
+    <span class="identifier">t</span> <span class="special">+=</span> <span class="number">1.0</span><span class="special">;</span>
+    <span class="identifier">obs</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">);</span>
+<span class="special">}</span>
+
+<span class="identifier">vector</span><span class="special">&lt;</span> <span class="identifier">value_type</span> <span class="special">&gt;</span> <span class="identifier">lyap</span><span class="special">(</span> <span class="identifier">N</span> <span class="special">);</span>
+<span class="identifier">obs</span><span class="special">.</span><span class="identifier">fill_lyap</span><span class="special">(</span> <span class="identifier">lyap</span> <span class="special">);</span>
+
+<span class="keyword">for</span><span class="special">(</span> <span class="identifier">size_t</span> <span class="identifier">i</span><span class="special">=</span><span class="number">0</span> <span class="special">;</span> <span class="identifier">i</span><span class="special">&lt;</span><span class="identifier">N</span> <span class="special">;</span> <span class="special">++</span><span class="identifier">i</span> <span class="special">)</span>
+    <span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">beta_host</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">&lt;&lt;</span> <span class="string">"\t"</span> <span class="special">&lt;&lt;</span> <span class="identifier">lyap</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">&lt;&lt;</span> <span class="string">"\n"</span><span class="special">;</span>
+</pre>
+<p>
+        </p>
+<p>完整示例见 <a href="https://github.com/headmyshoulder/odeint-v2/blob/master/examples/thrust/lorenz_parameters.cu" target="_top">lorenz_parameters.cu</a>.</p>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2009-2015 Karsten Ahnert 和 Mario Mulansky<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="self_expanding_lattices.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../tutorial.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="using_opencl_via_vexcl.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

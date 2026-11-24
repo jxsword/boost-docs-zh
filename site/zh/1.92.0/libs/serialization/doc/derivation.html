@@ -1,0 +1,86 @@
+<!doctype HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!--
+(C) Copyright 2002-4 Robert Ramey - http://www.rrsd.com .
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt)
+-->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<link rel="stylesheet" type="text/css" href="../../../boost.css">
+<link rel="stylesheet" type="text/css" href="style.css">
+<title>Serialization - 从现有档案派生</title>
+</head>
+<body link="#0000ff" vlink="#800080">
+<table border="0" cellpadding="7" cellspacing="0" width="100%" summary="header">
+  <tr> 
+    <td valign="top" width="300"> 
+      <h3><a href="../../../index.htm"><img height="86" width="277" alt="C++ Boost" src="../../../boost.png" border="0"></a></h3>
+    </td>
+    <td valign="top"> 
+      <h1 align="center">序列化</h1>
+      <h2 align="center">从现有档案派生</h2>
+    </td>
+  </tr>
+</table>
+<hr>
+<dl class="page-index">
+</dl>
+
+<h3>日志档案</h3> 有时人们希望通过从随附的档案类之一派生来创建新的档案类. 库中包含一个示例程序, 演示如何从库中自带的档案派生新档案. 第一个示例是 <a href="../example/demo_log.cpp" target="demo_log_cpp"> demo_log.cpp </a>. <p>这个从 xml 档案派生的档案以 xml 形式写出输出, 但不包含把数据读回应用程序所需的额外信息. 它可用于把数据导出为简单 xml 供其他应用程序使用, 或在调试时记录数据.<p>为此, 它从随附的 xml 档案派生, 并且针对此应用为某些类型特化了 save 函数.<p>序列化库是使用<b> C </b>uriously <b> R </b>ecurring <b> T </b>emplate <b> P </b>attern (<b> CRTP </b>) 实现的. 此外, 所有公共代码都被分解到独立模块中, 以尽量减少代码重复. 这使得从现有档案派生比原本更不直接.<p>这个示例说明了做这类事情时必须处理的几个问题<ol>
+    <li><i> 它派生自 </i> <code style="white-space: normal">xml_oarchive_impl<log_archive></code> 
+        <b> 而不是 </b> <code style="white-space: normal">xml_oarchive</code> <br> 如 <a href="../../../boost/archive/xml_oarchive.hpp" target="xml_oarchive_hpp"> xml_oarchive.hpp </a> 中的注释所述. <code style="white-space: normal">xml_oarchive</code> 实际上是 <code style="white-space: normal">xml_oarchive_impl&lt;xml_oarchive&gt;</code> 的简写名. 所以我们应当从 <code style="white-space: normal">xml_oarchive_impl&lt;log_archive&gt;</code> 派生, 而不是从 <code style="white-space: normal">xml_oarchive</code>. <pre><code>
+class log_archive :
+    // don't derive from xml_oarchive !!!
+    public xml_oarchive_impl&lt;log_archive&gt;
+{
+...
+</code></pre>
+    <li><i> 注意 </i> <code style="white-space: normal">log_archive</code> <i> 位于 </i> &lt;&gt; 之间——这样做是必需的, 使基类能够把它们的 <code style="white-space: normal">this</code> 指针向下转换为最派生的类. 这称为<b> C </b>uriously <b> R </b>ecurring <b> T </b>emplate <b> P </b>attern (<b> CRTP </b>) <a href="bibliography.html#11"> [11] </a>. 它用于实现静态多态.<li><i> 基类需要被显式授予对派生类的访问权. </i> 这可以通过把成员设为 public, 或为基类加入 friend 声明来实现. <pre><code>
+    friend class detail::common_oarchive&lt;log_archive&gt;;
+    friend class basic_xml_oarchive&lt;log_archive&gt;;
+    friend class boost::serialization::save_access;
+</code></pre>
+
+    <li><i></i> 重读 <a target="detail" href="headers.html#archiveinternals"> 档案内部机制 </a>. 它描述了类层次结构, 使你知道应当重写什么.<li><i> 基类函数通常需要显式调用. </i> 我们通常为保存原始类型而特化函数名 <code style="white-space: normal">save_override</code>. 在派生类中使用某个函数名会"隐藏"基类中同名的函数. 也就是说, 函数名重载不会自动包含基类. 为解决这个问题, 可以使用: <pre><code>
+    using xml_oarchive_impl&lt;derived_t&gt;::save;
+    void save(const unsigned int t);
+    ...
+</code></pre> 在符合标准的编译器上应当有效. 不过我发现下面这个等价写法在更多编译器上有效. <pre><code>
+    // default fall through for any types not specified here
+    template&lt;class T&gt;
+    void save(const T &amp; t){
+        xml_oarchive_impl&lt;derived_t&gt;::save(t);
+    }
+    void save(const unsigned int t);
+    ...
+</code></pre> 所以我使用后者.<li><i> 基类的模板定义可能需要显式实例化. </i> 示例中为这个目的专门包含了 <pre><code>
+// explicitly instantiate for this type of binary stream
+#include &lt;boost/archive/basic_binary_oprimitive.ipp&gt;
+</code></pre>. 如果不包含所需的模板定义, 程序链接时会出现未定义符号错误.<li><i> 不加改动的话, 这个类无法再被进一步派生. </i><br> 使用<b> CRTP </b>的基类必须是模板, 其形参对应最派生的类. 如这里所示, 该类不满足这一条件, 因此不能用作基类. 要从此类进一步派生, 就必须按照原始 <code style="white-space: normal">xml_oarchive</code> 的思路重新组织. 具体来说, 它会像这样: <pre><code>
+template&lt;class Archive&gt;
+class log_archive_impl :
+    // don't derive from xml_oarchive !!!
+    public xml_oarchive_impl&lt;Archive&gt;
+{
+    ...
+};
+
+// do not derive from this class !!!
+class log_archive : 
+    public log_archive_impl&lt;log_archive&gt;
+{
+public:
+    log_archive(std::ostream &amp; os, unsigned int flags = 0) :
+        log_archive_impl&lt;xml_oarchive&gt;(os, flags)
+    {}
+};
+</code></pre>
+
+</ol>  
+
+<hr>
+<p><i> 版权所有 © <a href="http://www.rrsd.com"> Robert Ramey </a> 2002-2004. 按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt) </i></p>
+</body>
+</html>

@@ -1,0 +1,530 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.20.1: https://docutils.sourceforge.io/" />
+<meta name="author" content="David Abrahams" />
+<meta name="organization" content="Boost Consulting" />
+<meta name="date" content="2003-05-14" />
+<meta name="author" content="Ralf W. Grosse-Kunstleve" />
+<meta name="copyright" content="Copyright David Abrahams and Ralf W. Grosse-Kunstleve 2003. All rights reserved" />
+<title>使用 Boost.Python 构建混合系统</title>
+<link rel="stylesheet" href="rst.css" type="text/css" />
+</head>
+<body>
+<div class="document" id="building-hybrid-systems-with-boost-python">
+<h1 class="title">使用 Boost.Python 构建混合系统</h1>
+<table class="docinfo" frame="void" rules="none">
+<col class="docinfo-name" />
+<col class="docinfo-content" />
+<tbody valign="top">
+<tr><th class="docinfo-name">Author:</th>
+<td>David Abrahams</td></tr>
+<tr><th class="docinfo-name">Contact:</th>
+<td><a class="first last reference external" href="mailto:dave&#64;boost-consulting.com">dave&#64;boost-consulting.com</a></td></tr>
+<tr><th class="docinfo-name">Organization:</th>
+<td><a class="first last reference external" href="http://www.boost-consulting.com">Boost Consulting</a></td></tr>
+<tr><th class="docinfo-name">Date:</th>
+<td>2003-05-14</td></tr>
+<tr><th class="docinfo-name">Author:</th>
+<td>Ralf W. Grosse-Kunstleve</td></tr>
+<tr><th class="docinfo-name">版权:</th>
+<td>版权所有 David Abrahams 与 Ralf W. Grosse-Kunstleve 2003. 保留所有权利</td></tr>
+</tbody>
+</table>
+<div class="contents topic" id="table-of-contents">
+<p class="topic-title">目录</p>
+<ul class="simple">
+<li><a class="reference internal" href="#abstract" id="toc-entry-1"> 抽象 </a></li>
+<li><a class="reference internal" href="#introduction" id="toc-entry-2">引言</a></li>
+<li><a class="reference internal" href="#boost-python-design-goals" id="toc-entry-3">Boost.Python 的设计目标</a></li>
+<li><a class="reference internal" href="#hello-boost-python-world" id="toc-entry-4">Hello Boost.Python World</a></li>
+<li><a class="reference internal" href="#library-overview" id="toc-entry-5">库概述</a><ul>
+<li><a class="reference internal" href="#exposing-classes" id="toc-entry-6">暴露类</a><ul>
+<li><a class="reference internal" href="#constructors" id="toc-entry-7">构造函数</a></li>
+<li><a class="reference internal" href="#data-members-and-properties" id="toc-entry-8">数据成员与属性</a></li>
+<li><a class="reference internal" href="#operator-overloading" id="toc-entry-9">运算符重载</a></li>
+<li><a class="reference internal" href="#inheritance" id="toc-entry-10">继承</a></li>
+<li><a class="reference internal" href="#virtual-functions" id="toc-entry-11">虚函数</a></li>
+<li><a class="reference internal" href="#deeper-reflection-on-the-horizon" id="toc-entry-12">更深层的反射即将到来?</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#serialization" id="toc-entry-13">序列化</a></li>
+<li><a class="reference internal" href="#object-interface" id="toc-entry-14">对象接口</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#thinking-hybrid" id="toc-entry-15">混合式思维</a></li>
+<li><a class="reference internal" href="#development-history" id="toc-entry-16">开发历史</a></li>
+<li><a class="reference internal" href="#conclusions" id="toc-entry-17">结论</a></li>
+<li><a class="reference internal" href="#citations" id="toc-entry-18">引用文献</a></li>
+<li><a class="reference internal" href="#footnotes" id="toc-entry-19">脚注</a></li>
+</ul>
+</div>
+<div class="section" id="abstract">
+<h1><a class="toc-backref" href="#toc-entry-1"> 抽象 </a></h1>
+<p>Boost.Python 是一个开源 C++ 库, 为将 C++ 类和函数绑定到 Python 提供了简洁的类 IDL 接口. 它充分利用 C++ 编译期自省的全部能力以及近年发展的元编程技术, 完全以纯 C++ 实现, 无需引入新的语法. Boost.Python 丰富的特性集与高层接口使开发者能够从一开始就把软件包设计为混合系统, 让程序员轻松而连贯地同时获得 C++ 高效的编译期多态与 Python 极为便利的运行期多态.</p>
+</div>
+<div class="section" id="introduction">
+<h1><a class="toc-backref" href="#toc-entry-2">引言</a></h1>
+<p>Python 与 C++ 在许多方面的差异不亚于任何两种语言之间可能存在的差异: C++ 通常编译为机器码, 而 Python 是解释执行的. Python 的动态类型系统常被认为是其灵活性的根基, 而在 C++ 中静态类型是其效率的基石. C++ 拥有一套复杂难懂的编译期元语言, 而在 Python 中, 几乎一切都发生在运行时.</p>
+<p>然而对许多程序员来说, 恰恰是这些差异意味着 Python 与 C++ 可以完美互补. Python 程序的性能瓶颈可以用 C++ 重写以获得最高速度, 强大 C++ 库的作者则选择 Python 作为中间件语言, 取其灵活的系统集成能力. 此外, 表面的差异之下还隐藏着一些深刻的相似性:</p>
+<ul class="simple">
+<li>'C' 语言族的控制结构 (if, while, for...)</li>
+<li>支持面向对象、函数式编程和泛型编程 (两者都是<em>多范式</em>编程语言.)</li>
+<li>全面的运算符重载设施, 充分认识到语法灵活性对可读性与表达力的重要性.</li>
+<li>集合与迭代器等高层概念.</li>
+<li>高层封装设施 (C++ 的命名空间, Python 的模块), 以支持可复用库的设计.</li>
+<li>异常处理, 以有效管理错误状态.</li>
+<li>常用的 C++ 习语, 如 handle/body 类与引用计数智能指针, 与 Python 的引用语义相互呼应.</li>
+</ul>
+<p>鉴于 Python 拥有丰富的 'C' 互操作 API, 原则上应当能够以与其 C++ 原型相对应的接口把 C++ 类型与函数接口暴露给 Python. 然而, 仅靠 Python 自身提供的与 C++ 集成的设施相当贫乏. 与 C++ 和 Python 相比, 'C' 只有非常初级的抽象设施, 并且完全缺乏对异常处理的支持. 'C' 扩展模块的作者必须手动管理 Python 引用计数, 这既繁琐得令人厌烦, 又极易出错. 传统的扩展模块还往往包含大量重复的样板代码, 使其难以维护, 尤其是在包装一个不断演化的 API 时.</p>
+<p>这些局限催生了各种包装系统的发展. <a class="reference external" href="http://www.swig.org/">SWIG</a> 可能是 C/C++ 与 Python 集成方面最流行的软件包. 较新的发展是 <a class="reference external" href="http://www.riverbankcomputing.co.uk/sip/index.php">SIP</a>, 它专为 Python 与 <a class="reference external" href="http://www.trolltech.com/">Qt</a> 图形用户界面库的接口而设计. SWIG 与 SIP 都引入了各自专用的语言来定制跨语言绑定. 这有某些优势, 但必须处理三种不同的语言 (Python、C/C++ 与接口语言) 也带来了实际操作与思维上的困难. <a class="reference external" href="http://cxx.sourceforge.net/">CXX</a> 软件包展示了一种有趣的替代方案. 它表明 Python 的 'C' API 中至少有一部分可以通过一个对用户友好得多的 C++ 接口来包装和呈现. 然而, 与 SWIG 和 SIP 不同, CXX 不包含把 C++ 类包装为新 Python 类型的支持.</p>
+<p> <a class="reference external" href="http://www.boost.org/libs/python/doc">Boost.Python</a> 的特性与目标同许多其他系统有明显重叠. 尽管如此, Boost.Python 力求在不引入单独的包装语言的前提下最大化便利性与灵活性. 相反, 它为用户提供一个用于包装 C++ 类和函数的高层 C++ 接口, 并用静态元编程在幕后管理大部分复杂性. 此外, Boost.Python 还超越了早期系统的范围, 提供:</p>
+<ul class="simple">
+<li>支持可在 Python 中改写的 C++ 虚函数.</li>
+<li>针对底层 C++ 指针和引用的全面生命周期管理设施.</li>
+<li>支持把扩展组织为 Python 包, 并提供跨语言类型转换的中央注册表.</li>
+<li>一种安全而便捷的机制, 可接入 Python 强大的序列化引擎 (pickle).</li>
+<li>与处理 C++ 左值和右值的规则保持一致, 而这种一致性只能来自对 Python 与 C++ 两种类型系统的深刻理解.</li>
+</ul>
+<p>激发 Boost.Python 开发的关键洞见在于: 传统扩展模块中的大量样板代码可以借助 C++ 编译期自省予以消除. 被包装的 C++ 函数的每个参数都必须从 Python 对象中提取, 提取过程取决于参数类型. 同样, 函数的返回类型决定了返回值如何从 C++ 转换为 Python. 当然, 参数类型与返回类型都是函数类型的一部分, 而这正是 Boost.Python 推导所需大部分信息的来源.</p>
+<p>这种方法引出了<em>用户引导的包装</em>: 在纯 C++ 框架允许的范围内, 尽可能直接从被包装的源代码中提取信息, 另有一些附加信息由用户显式提供. 大多数情况下引导是机械性的, 几乎不需要真正的干预. 由于接口规格说明与被暴露的代码使用同一种功能完备的语言编写, 当用户确实需要掌控时, 他拥有前所未有的能力.</p>
+</div>
+<div class="section" id="boost-python-design-goals">
+<h1><a class="toc-backref" href="#toc-entry-3">Boost.Python 的设计目标</a></h1>
+<p>Boost.Python 的首要目标是让用户仅凭一个 C++ 编译器就能把 C++ 类和函数暴露给 Python. 概括地说, 用户获得的体验应当是直接从 Python 操纵 C++ 对象.</p>
+<p>然而, 同样重要的是不要把所有接口<em>过于</em>照字面翻译: 必须尊重每种语言的习语. 例如, 尽管 C++ 和 Python 都有迭代器概念, 但两者的表达方式截然不同. Boost.Python 必须能够弥合这一接口鸿沟.</p>
+<p>必须能够让 Python 用户免于因对 C++ 接口的微小误用而导致的崩溃, 例如访问已删除的对象. 同样, 该库也应当让 C++ 用户免于接触底层 Python 'C' API, 用更健壮的替代方案取代手动引用计数管理和裸 <tt class="docutils literal">PyObject</tt> 指针等易错的 'C' 接口.</p>
+<p>对基于组件的开发的支持至关重要, 这样在一个扩展模块中暴露的 C++ 类型才能传递给另一个模块中暴露的函数, 而不丢失 C++ 继承关系等关键信息.</p>
+<p>最后, 所有包装都必须是<em>非侵入式</em>的, 无需修改甚至无需查看原始 C++ 源代码. 现有的 C++ 库必须能够由仅能接触头文件和二进制文件的第三方来包装.</p>
+</div>
+<div class="section" id="hello-boost-python-world">
+<h1><a class="toc-backref" href="#toc-entry-4">Hello Boost.Python World</a></h1>
+<p>现在预览一下 Boost.Python, 看看它如何改进 Python 提供的原始设施. 下面是我们可能想暴露的一个函数:</p>
+<pre class="literal-block">
+char const* greet(unsigned x)
+{
+   static char const* const msgs[] = { &quot;hello&quot;, &quot;Boost.Python&quot;, &quot;world!&quot; };
+
+   if (x &gt; 2)
+       throw std::range_error(&quot;greet: index out of range&quot;);
+
+   return msgs[x];
+}
+</pre>
+<p>要使用 Python 'C' API 以标准 C++ 包装这个函数, 我们需要写出类似这样的代码:</p>
+<pre class="literal-block">
+extern &quot;C&quot; // all Python interactions use 'C' linkage and calling convention
+{
+    // Wrapper to handle argument/result conversion and checking
+    PyObject* greet_wrap(PyObject* args, PyObject * keywords)
+    {
+         int x;
+         if (PyArg_ParseTuple(args, &quot;i&quot;, &amp;x))    // extract/check arguments
+         {
+             char const* result = greet(x);      // invoke wrapped function
+             return PyString_FromString(result); // convert result to Python
+         }
+         return 0;                               // error occurred
+    }
+
+    // Table of wrapped functions to be exposed by the module
+    static PyMethodDef methods[] = {
+        { &quot;greet&quot;, greet_wrap, METH_VARARGS, &quot;return one of 3 parts of a greeting&quot; }
+        , { NULL, NULL, 0, NULL } // sentinel
+    };
+
+    // module initialization function
+    DL_EXPORT init_hello()
+    {
+        (void) Py_InitModule(&quot;hello&quot;, methods); // add the methods to the module
+    }
+}
+</pre>
+<p>下面是我们用 Boost.Python 暴露它时要写的包装代码:</p>
+<pre class="literal-block">
+#include &lt;boost/python.hpp&gt;
+using namespace boost::python;
+BOOST_PYTHON_MODULE(hello)
+{
+    def(&quot;greet&quot;, greet, &quot;return one of 3 parts of a greeting&quot;);
+}
+</pre>
+<p>以及它的实际运行效果:</p>
+<pre class="literal-block">
+&gt;&gt;&gt; import hello
+&gt;&gt;&gt; for x in range(3):
+...     print hello.greet(x)
+...
+hello
+Boost.Python
+world!
+</pre>
+<p>'C' API 版本不仅冗长得多, 还有一些问题值得注意, 它没有正确处理以下几件事:</p>
+<ul class="simple">
+<li>原函数接受一个无符号整数, 而 Python 'C' API 只提供了提取有符号整数的方法. 如果我们试图给 <tt class="docutils literal">hello.greet</tt> 传入负数, Boost.Python 版本会抛出 Python 异常, 而另一个版本则会继续执行 C++ 实现把负整数转换为无符号数时的行为 (通常回绕成某个非常大的数), 并把这个错误的转换结果传给被包装的函数.</li>
+<li>这就引出了第二个问题: 如果 C++ 的 <tt class="docutils literal">greet()</tt> 函数在调用时传入大于 2 的数字, 它会抛出异常. 通常, 若 C++ 异常传播跨越了由 'C' 编译器生成的代码边界, 就会导致崩溃. 正如第一个版本所示, 那里没有任何 C++ 支架代码来防止这种情况发生. 由 Boost.Python 包装的函数自动包含一个异常处理层, 它把未被处理的 C++ 异常转换为相应的 Python 异常, 从而保护 Python 用户.</li>
+<li>一个更微妙些的局限是, Python 'C' API 方式所用的参数转换在取得那个整数 <tt class="docutils literal">x</tt> 时只能<em>采用一种方式</em>. PyArg_ParseTuple 无法转换恰好能放进 <tt class="docutils literal">unsigned int</tt> 但放不进 <tt class="docutils literal">signed long</tt> 的 Python <tt class="docutils literal">long</tt> 对象 (任意精度整数), 也永远不会处理带有用户自定义隐式 <tt class="docutils literal">operator unsigned int()</tt> 转换的被包装 C++ 类. Boost.Python 的动态类型转换注册表允许用户添加任意的转换方法.</li>
+</ul>
+</div>
+<div class="section" id="library-overview">
+<h1><a class="toc-backref" href="#toc-entry-5">库概述</a></h1>
+<p>本节概述该库的一些主要特性. 除为避免混淆所必需之外, 省略库的实现细节.</p>
+<div class="section" id="exposing-classes">
+<h2><a class="toc-backref" href="#toc-entry-6">暴露类</a></h2>
+<p>C++ 类和结构体以同样简洁的接口暴露. 给定:</p>
+<pre class="literal-block">
+struct World
+{
+    void set(std::string msg) { this-&gt;msg = msg; }
+    std::string greet() { return msg; }
+    std::string msg;
+};
+</pre>
+<p>以下代码会把它暴露到我们的扩展模块中:</p>
+<pre class="literal-block">
+#include &lt;boost/python.hpp&gt;
+BOOST_PYTHON_MODULE(hello)
+{
+    class_&lt;World&gt;(&quot;World&quot;)
+        .def(&quot;greet&quot;, &amp;World::greet)
+        .def(&quot;set&quot;, &amp;World::set)
+    ;
+}
+</pre>
+<p>虽然这段代码有一种 Python 式的熟悉感, 但人们有时会觉得这种语法有点令人困惑, 因为它看起来不像他们习惯的大多数 C++ 代码. 尽管如此, 这只是标准 C++. 由于灵活的语法和运算符重载, C++ 和 Python 都非常适合定义领域特定的 (子) 语言 (DSL), 这正是我们在 Boost.Python 中所做的. 具体拆解如下:</p>
+<pre class="literal-block">
+class_&lt;World&gt;(&quot;World&quot;)
+</pre>
+<p>构造一个 <tt class="docutils literal">class_&lt;World&gt;</tt> 类型的未命名对象, 并把 <tt class="docutils literal">"World"</tt> 传给其构造函数. 这会在扩展模块中创建一个名为 <tt class="docutils literal">World</tt> 的新式 (new-style) Python 类, 并把它与 Boost.Python 类型转换注册表中的 C++ 类型 <tt class="docutils literal">World</tt> 关联起来. 我们本也可以写成:</p>
+<pre class="literal-block">
+class_&lt;World&gt; w(&quot;World&quot;);
+</pre>
+<p>但那样会更冗长, 因为必须再次写出 <tt class="docutils literal">w</tt> 才能调用其 <tt class="docutils literal">def()</tt> 成员函数:</p>
+<pre class="literal-block">
+w.def(&quot;greet&quot;, &amp;World::greet)
+</pre>
+<p>在最初的例子中, 用于成员访问的点的位置并无特殊之处: C++ 允许记号两侧有任意数量的空白, 把点放在每行开头使我们能够以统一的语法串联任意多次连续的成员函数调用. 允许这种串联的另一个关键事实是, <tt class="docutils literal">class_&lt;&gt;</tt> 的成员函数都返回对 <tt class="docutils literal">*this</tt> 的引用.</p>
+<p>因此该例子等价于:</p>
+<pre class="literal-block">
+class_&lt;World&gt; w(&quot;World&quot;);
+w.def(&quot;greet&quot;, &amp;World::greet);
+w.def(&quot;set&quot;, &amp;World::set);
+</pre>
+<p>能够以这种方式拆解 Boost.Python 类包装器的各个组成部分偶尔是有用的, 但本文余下部分仍将坚持使用这种简洁语法.</p>
+<p>为完整起见, 下面是被包装类在使用中的样子:</p>
+<pre class="literal-block">
+&gt;&gt;&gt; import hello
+&gt;&gt;&gt; planet = hello.World()
+&gt;&gt;&gt; planet.set('howdy')
+&gt;&gt;&gt; planet.greet()
+'howdy'
+</pre>
+<div class="section" id="constructors">
+<h3><a class="toc-backref" href="#toc-entry-7">构造函数</a></h3>
+<p>由于我们的 <tt class="docutils literal">World</tt> 类只是一个普通的 <tt class="docutils literal">struct</tt>, 它有一个隐式的无参构造函数. Boost.Python 默认暴露无参构造函数, 这正是我们能够写出以下代码的原因:</p>
+<pre class="literal-block">
+&gt;&gt;&gt; planet = hello.World()
+</pre>
+<p>然而, 任何语言中设计良好的类都可能需要构造函数参数来建立其不变式. 在 Python 中 <tt class="docutils literal">__init__</tt> 只是一个特殊命名的方法, 与之不同, 在 C++ 中构造函数不能像普通成员函数那样处理. 特别地, 我们无法取得它们的地址: <tt class="docutils literal"><span class="pre">&amp;World::World</span></tt> 是一个错误. 该库为指定构造函数提供了不同的接口. 给定:</p>
+<pre class="literal-block">
+struct World
+{
+    World(std::string msg); // added constructor
+    ...
+</pre>
+<p>我们可以如下修改包装代码:</p>
+<pre class="literal-block">
+class_&lt;World&gt;(&quot;World&quot;, init&lt;std::string&gt;())
+    ...
+</pre>
+<p>当然, 一个 C++ 类可能有多个构造函数, 我们可以通过传入更多 <tt class="docutils literal"><span class="pre">init&lt;...&gt;</span></tt> 实例给 <tt class="docutils literal">def()</tt> 来暴露它们:</p>
+<pre class="literal-block">
+class_&lt;World&gt;(&quot;World&quot;, init&lt;std::string&gt;())
+    .def(init&lt;double, double&gt;())
+    ...
+</pre>
+<p>Boost.Python 允许对被包装的函数、成员函数和构造函数进行重载, 以对应 C++ 的重载.</p>
+</div>
+<div class="section" id="data-members-and-properties">
+<h3><a class="toc-backref" href="#toc-entry-8">数据成员与属性</a></h3>
+<p>C++ 类中任何可公开访问的数据成员都可以轻松暴露为 <tt class="docutils literal">readonly</tt> 或 <tt class="docutils literal">readwrite</tt> 属性:</p>
+<pre class="literal-block">
+class_&lt;World&gt;(&quot;World&quot;, init&lt;std::string&gt;())
+    .def_readonly(&quot;msg&quot;, &amp;World::msg)
+    ...
+</pre>
+<p>并且可以在 Python 中直接使用:</p>
+<pre class="literal-block">
+&gt;&gt;&gt; planet = hello.World('howdy')
+&gt;&gt;&gt; planet.msg
+'howdy'
+</pre>
+<p>这<em>不会</em>把属性添加到 <tt class="docutils literal">World</tt> 实例的 <tt class="docutils literal">__dict__</tt> 中, 在包装大型数据结构时这可以显著节省内存. 实际上, 除非从 Python 显式添加属性, 否则根本不会创建实例的 <tt class="docutils literal">__dict__</tt>. Boost.Python 之所以具备这一能力, 要归功于新的 Python 2.2 类型系统, 特别是描述符接口和 <tt class="docutils literal">property</tt> 类型.</p>
+<p>在 C++ 中, 可公开访问的数据成员被视为不良设计的标志, 因为它们破坏封装, 风格指南通常要求改用 "getter" 和 "setter" 函数. 然而在 Python 中, <tt class="docutils literal">__getattr__</tt>、<tt class="docutils literal">__setattr__</tt>, 以及 2.2 版起的 <tt class="docutils literal">property</tt>, 意味着属性访问只是程序员可用的又一种封装良好的语法工具. Boost.Python 通过让用户可以直接创建 Python <tt class="docutils literal">property</tt> 来弥合这一习语差异. 若 <tt class="docutils literal">msg</tt> 是私有的, 我们仍可以如下把它作为属性暴露:</p>
+<pre class="literal-block">
+class_&lt;World&gt;(&quot;World&quot;, init&lt;std::string&gt;())
+    .add_property(&quot;msg&quot;, &amp;World::greet, &amp;World::set)
+    ...
+</pre>
+<p>上面的例子对应 Python 2.2+ 中 property 的常见用法:</p>
+<pre class="literal-block">
+&gt;&gt;&gt; class World(object):
+...     __init__(self, msg):
+...         self.__msg = msg
+...     def greet(self):
+...         return self.__msg
+...     def set(self, msg):
+...         self.__msg = msg
+...     msg = property(greet, set)
+</pre>
+</div>
+<div class="section" id="operator-overloading">
+<h3><a class="toc-backref" href="#toc-entry-9">运算符重载</a></h3>
+<p>能够为用户自定义类型编写算术运算符, 是这两种语言在数值计算领域获得成功的一个重要因素, 而 <a class="reference external" href="http://www.pfdubois.com/numpy/">NumPy</a> 等软件包的成功也证明了在扩展模块中暴露运算符的力量. Boost.Python 提供了一种简洁的机制来包装运算符重载. 下面的示例展示了 Boost 有理数库包装器的一个片段:</p>
+<pre class="literal-block">
+class_&lt;rational&lt;int&gt; &gt;(&quot;rational_int&quot;)
+  .def(init&lt;int, int&gt;()) // constructor, e.g. rational_int(3,4)
+  .def(&quot;numerator&quot;, &amp;rational&lt;int&gt;::numerator)
+  .def(&quot;denominator&quot;, &amp;rational&lt;int&gt;::denominator)
+  .def(-self)        // __neg__ (unary minus)
+  .def(self + self)  // __add__ (homogeneous)
+  .def(self * self)  // __mul__
+  .def(self + int()) // __add__ (heterogenous)
+  .def(int() + self) // __radd__
+  ...
+</pre>
+<p>这里的魔法是通过对 "表达式模板" <a class="citation-reference" href="#veld1995" id="citation-reference-1">[VELD1995]</a> 的简化应用实现的, 该技术最初为优化高性能矩阵代数表达式而开发. 其本质是: 运算符并不立即执行计算, 而是被重载为构造一个<em>表示</em>该计算的类型. 在矩阵代数中, 当能够考虑整个表达式的结构而非 "贪婪地" 逐个求值时, 往往可以获得显著的优化. Boost.Python 使用同样的技术, 基于涉及 <tt class="docutils literal">self</tt> 的表达式构建适当的 Python 方法对象.</p>
+</div>
+<div class="section" id="inheritance">
+<h3><a class="toc-backref" href="#toc-entry-10">继承</a></h3>
+<p>可以在 <tt class="docutils literal"><span class="pre">class_&lt;...&gt;</span></tt> 模板参数表中添加一个可选的 <tt class="docutils literal"><span class="pre">bases&lt;...&gt;</span></tt> 参数, 以向 Boost.Python 表示 C++ 的继承关系, 如下所示:</p>
+<pre class="literal-block">
+class_&lt;Derived, bases&lt;Base1,Base2&gt; &gt;(&quot;Derived&quot;)
+     ...
+</pre>
+<p>这有两个效果:</p>
+<ol class="arabic simple">
+<li>创建 <tt class="docutils literal"><span class="pre">class_&lt;...&gt;</span></tt> 时, 会在 Boost.Python 的注册表中查找与 <tt class="docutils literal">Base1</tt> 和 <tt class="docutils literal">Base2</tt> 对应的 Python 类型对象, 并把它们用作新的 Python <tt class="docutils literal">Derived</tt> 类型对象的基类, 因而为 Python <tt class="docutils literal">Base1</tt> 和 <tt class="docutils literal">Base2</tt> 类型暴露的方法会自动成为 <tt class="docutils literal">Derived</tt> 类型的成员. 由于注册表是全局的, 即使 <tt class="docutils literal">Derived</tt> 在与任一基类不同的模块中暴露, 这一机制也能正确工作.</li>
+<li>从 <tt class="docutils literal">Derived</tt> 到其基类的 C++ 转换会被加入 Boost.Python 注册表. 因此, 期望得到任一基类型对象 (指针或引用) 的被包装 C++ 方法, 可以用包装了 <tt class="docutils literal">Derived</tt> 实例的对象来调用. 类 <tt class="docutils literal">T</tt> 的被包装成员函数被视为带有一个隐式的 <tt class="docutils literal">T&amp;</tt> 首参数, 因此这些转换使得基类方法能够用于派生类对象的调用.</li>
+</ol>
+<p>当然, 可以从被包装的 C++ 类实例派生新的 Python 类. 由于 Boost.Python 使用新式类系统, 其工作方式与 Python 内置类型非常相似. 只有一个重要细节有所不同: 内置类型通常在 <tt class="docutils literal">__new__</tt> 函数中建立其不变式, 因此派生类在调用基类方法之前不需要调用基类的 <tt class="docutils literal">__init__</tt>:</p>
+<pre class="literal-block">
+&gt;&gt;&gt; class L(list):
+...      def __init__(self):
+...          pass
+...
+&gt;&gt;&gt; L().reverse()
+&gt;&gt;&gt;
+</pre>
+<p>由于 C++ 对象的构造是单步操作, 在参数可用之前无法构造 C++ 实例数据, 即要在 <tt class="docutils literal">__init__</tt> 函数中:</p>
+<pre class="literal-block">
+&gt;&gt;&gt; class D(SomeBoostPythonClass):
+...      def __init__(self):
+...          pass
+...
+&gt;&gt;&gt; D().some_boost_python_method()
+Traceback (most recent call last):
+  File &quot;&lt;stdin&gt;&quot;, line 1, in ?
+TypeError: bad argument type for built-in operation
+</pre>
+<p>这是因为 Boost.Python 无法在 <tt class="docutils literal">D</tt> 实例内找到类型为 <tt class="docutils literal">SomeBoostPythonClass</tt> 的实例数据; <tt class="docutils literal">D</tt> 的 <tt class="docutils literal">__init__</tt> 函数屏蔽了基类的构造. 修正方法可以是移除 <tt class="docutils literal">D</tt> 的 <tt class="docutils literal">__init__</tt> 函数, 或者让它显式调用 <tt class="docutils literal"><span class="pre">SomeBoostPythonClass.__init__(...)</span></tt>.</p>
+</div>
+<div class="section" id="virtual-functions">
+<h3><a class="toc-backref" href="#toc-entry-11">虚函数</a></h3>
+<p>除非派生的新 Python 类型能够从 C++ 多态地使用, 否则从扩展类派生新类型并没有太大意义. 换言之, 当<em>从 C++ 通过基类指针/引用</em>调用时, Python 方法的实现看起来应当改写 C++ 虚函数的实现. 由于改变虚函数行为的唯一途径是在派生类中改写它, 用户必须构建一个特殊的派生类来分派多态类的虚函数:</p>
+<pre class="literal-block">
+//
+// interface to wrap:
+//
+class Base
+{
+ public:
+    virtual int f(std::string x) { return 42; }
+    virtual ~Base();
+};
+
+int calls_f(Base const&amp; b, std::string x) { return b.f(x); }
+
+//
+// Wrapping Code
+//
+
+// Dispatcher class
+struct BaseWrap : Base
+{
+    // Store a pointer to the Python object
+    BaseWrap(PyObject* self_) : self(self_) {}
+    PyObject* self;
+
+    // Default implementation, for when f is not overridden
+    int f_default(std::string x) { return this-&gt;Base::f(x); }
+    // Dispatch implementation
+    int f(std::string x) { return call_method&lt;int&gt;(self, &quot;f&quot;, x); }
+};
+
+...
+    def(&quot;calls_f&quot;, calls_f);
+    class_&lt;Base, BaseWrap&gt;(&quot;Base&quot;)
+        .def(&quot;f&quot;, &amp;Base::f, &amp;BaseWrap::f_default)
+        ;
+</pre>
+<p>下面是一段演示这一点的 Python 代码:</p>
+<pre class="literal-block">
+&gt;&gt;&gt; class Derived(Base):
+...     def f(self, s):
+...          return len(s)
+...
+&gt;&gt;&gt; calls_f(Base(), 'foo')
+42
+&gt;&gt;&gt; calls_f(Derived(), 'forty-two')
+9
+</pre>
+<p>关于该分派器 (dispatcher) 类需要注意的几点:</p>
+<ul class="simple">
+<li>允许在 Python 中改写的关键元素是 <tt class="docutils literal">call_method</tt> 调用, 它与 C++ 函数包装使用同一个全局类型转换注册表, 把参数从 C++ 转换为 Python, 把返回类型从 Python 转换为 C++.</li>
+<li>你希望包装的任何构造函数签名都必须带一个作为首参数的 <tt class="docutils literal">PyObject*</tt> 加以复制</li>
+<li>分派器必须保存这一参数, 以便用它来调用 <tt class="docutils literal">call_method</tt></li>
+<li>当被暴露的函数不是纯虚函数时, 需要 <tt class="docutils literal">f_default</tt> 成员函数; 否则, <tt class="docutils literal"><span class="pre">Base::f</span></tt> 在 <tt class="docutils literal">BaseWrap</tt> 类型的对象上便没有其他可被调用的途径, 因为它改写了 <tt class="docutils literal">f</tt>.</li>
+</ul>
+</div>
+<div class="section" id="deeper-reflection-on-the-horizon">
+<h3><a class="toc-backref" href="#toc-entry-12">更深层的反射即将到来?</a></h3>
+<p>诚然, 这个套路重复起来十分乏味, 尤其是在包含许多多态类的项目中. 它之所以必要, 反映了 C++ 编译期自省能力的某些局限: 无法枚举一个类的成员并找出其中哪些是虚函数. 至少已经启动了一个非常有前景的项目, 编写能从 C++ 头文件自动生成这些分派器 (及其他包装代码) 的前端.</p>
+<p><a class="reference external" href="http://www.boost.org/libs/python/pyste">Pyste</a> 由 Bruno da Silva de Oliveira 开发. 它构建在 <a class="reference external" href="http://www.gccxml.org/HTML/Index.html">GCC_XML</a> 之上, 后者生成 GCC 内部程序表示的 XML 版本. 由于 GCC 是高度符合标准的 C++ 编译器, 这保证了对最复杂的模板代码的正确处理, 并能完全访问底层类型系统. 契合 Boost.Python 的理念, Pyste 接口描述既不侵入被包装的代码, 也不用某种陌生的语言表达: 它是一个 100% 纯 Python 脚本. 如果 Pyste 成功, 对我们的许多用户而言, 它将标志着告别在 C++ 中直接包装一切的做法. 它还让我们可以选择把部分元程序代码从 C++ 转移到 Python. 我们期待不久之后, 不仅是我们的用户, Boost.Python 的开发者自己也会对自己的代码 "混合式思维".</p>
+</div>
+</div>
+<div class="section" id="serialization">
+<h2><a class="toc-backref" href="#toc-entry-13">序列化</a></h2>
+<p><em>序列化</em>是把内存中的对象转换为可存储到磁盘或经网络连接发送的形式的过程. 被序列化的对象 (最常见的是普通字符串) 可以被取回并转换回原对象. 好的序列化系统会自动转换整个对象层次结构. Python 标准的 <tt class="docutils literal">pickle</tt> 模块正是这样一个系统. 它利用该语言强大的运行期自省设施, 可以序列化几乎所有用户自定义的对象. 通过少量简单且非侵入式的设置, 这一强大机制可以扩展为同样适用于被包装的 C++ 对象. 下面是一个例子:</p>
+<pre class="literal-block">
+#include &lt;string&gt;
+
+struct World
+{
+    World(std::string a_msg) : msg(a_msg) {}
+    std::string greet() const { return msg; }
+    std::string msg;
+};
+
+#include &lt;boost/python.hpp&gt;
+using namespace boost::python;
+
+struct World_picklers : pickle_suite
+{
+  static tuple
+  getinitargs(World const&amp; w) { return make_tuple(w.greet()); }
+};
+
+BOOST_PYTHON_MODULE(hello)
+{
+    class_&lt;World&gt;(&quot;World&quot;, init&lt;std::string&gt;())
+        .def(&quot;greet&quot;, &amp;World::greet)
+        .def_pickle(World_picklers())
+    ;
+}
+</pre>
+<p>现在让我们创建一个 <tt class="docutils literal">World</tt> 对象并把它安放到磁盘上:</p>
+<pre class="literal-block">
+&gt;&gt;&gt; import hello
+&gt;&gt;&gt; import pickle
+&gt;&gt;&gt; a_world = hello.World(&quot;howdy&quot;)
+&gt;&gt;&gt; pickle.dump(a_world, open(&quot;my_world&quot;, &quot;w&quot;))
+</pre>
+<p>在一个可能<em>不同的脚本</em>中、在一台可能<em>不同的计算机</em>上、使用可能<em>不同的操作系统</em>:</p>
+<pre class="literal-block">
+&gt;&gt;&gt; import pickle
+&gt;&gt;&gt; resurrected_world = pickle.load(open(&quot;my_world&quot;, &quot;r&quot;))
+&gt;&gt;&gt; resurrected_world.greet()
+'howdy'
+</pre>
+<p>当然, 也可以使用 <tt class="docutils literal">cPickle</tt> 模块以获得更快的处理速度.</p>
+<p>Boost.Python 的 <tt class="docutils literal">pickle_suite</tt> 完全支持标准 Python 文档中定义的 <tt class="docutils literal">pickle</tt> 协议. 与 Python 中的 __getinitargs__ 函数一样, pickle_suite 的 getinitargs() 负责创建用于重建被 pickle 对象的参数元组. Python pickling 协议的其他元素 __getstate__ 和 __setstate__ 可以通过 C++ 的 getstate 和 setstate 函数选择性提供. C++ 的静态类型系统使该库能够在编译期确保不会使用无意义的函数组合 (例如有 getstate 而无 setstate).</p>
+<p>为更复杂的 C++ 对象启用序列化需要比上面的例子多做一点工作. 幸好 <tt class="docutils literal">object</tt> 接口 (见下一节) 极大地帮助保持代码的可管理性.</p>
+</div>
+<div class="section" id="object-interface">
+<h2><a class="toc-backref" href="#toc-entry-14">对象接口</a></h2>
+<p>经验丰富的 'C' 语言扩展模块作者对无处不在的 <tt class="docutils literal">PyObject*</tt>、手动引用计数, 以及需要记住哪些 API 调用返回 "新" (拥有) 引用或 "借用" (裸) 引用这些事并不陌生. 这些约束不仅繁琐, 而且是错误的主要来源, 在有异常的情况下尤其如此.</p>
+<p>Boost.Python 提供了一个 <tt class="docutils literal">object</tt> 类, 它自动管理引用计数, 并提供从任意类型的 C++ 对象到 Python 的转换. 这大大减轻了未来扩展模块作者的学习负担.</p>
+<p>从任何其他类型创建 <tt class="docutils literal">object</tt> 都极为简单:</p>
+<pre class="literal-block">
+object s(&quot;hello, world&quot;);  // s manages a Python string
+</pre>
+<p><tt class="docutils literal">object</tt> 与所有其他类型的交互都是模板化的, 带有自动的到 Python 转换. 这一切发生得如此自然, 以致很容易被忽视:</p>
+<pre class="literal-block">
+object ten_Os = 10 * s[4]; // -&gt; &quot;oooooooooo&quot;
+</pre>
+<p>在上面的例子中, <tt class="docutils literal">4</tt> 和 <tt class="docutils literal">10</tt> 会在索引和乘法操作被调用之前转换为 Python 对象.</p>
+<p>类模板 <tt class="docutils literal">extract&lt;T&gt;</tt> 可用于把 Python 对象转换为 C++ 类型:</p>
+<pre class="literal-block">
+double x = extract&lt;double&gt;(o);
+</pre>
+<p>如果任一方向的转换无法执行, 会在运行期抛出相应的异常.</p>
+<p> <tt class="docutils literal">object</tt> 类型还附带一组派生类型, 它们尽可能对应 <tt class="docutils literal">list</tt>、<tt class="docutils literal">dict</tt>、<tt class="docutils literal">tuple</tt> 等 Python 内置类型. 这使得从 C++ 便利地操纵这些高层类型成为可能:</p>
+<pre class="literal-block">
+dict d;
+d[&quot;some&quot;] = &quot;thing&quot;;
+d[&quot;lucky_number&quot;] = 13;
+list l = d.keys();
+</pre>
+<p>这看起来和运行起来几乎与常规 Python 代码一样, 但它是纯 C++. 当然, 我们可以包装接受或返回 <tt class="docutils literal">object</tt> 实例的 C++ 函数.</p>
+</div>
+</div>
+<div class="section" id="thinking-hybrid">
+<h1><a class="toc-backref" href="#toc-entry-15">混合式思维</a></h1>
+<p>由于组合使用多种编程语言会带来实际操作与思维上的困难, 任何开发工作通常都会在开始时确定单一语言. 对许多应用来说, 性能方面的考虑决定了核心算法必须使用编译型语言. 遗憾的是, 由于静态类型系统的复杂性, 我们为运行期性能付出的代价往往是开发时间的大幅增加. 经验表明, 编写可维护的 C++ 代码通常比开发可比的 Python 代码耗时更长, 并且需要<em>多得</em>多的来之不易的工作经验. 即使开发者完全习惯于使用编译型语言工作, 他们也常常为了用户的利益给自己的系统加上某种临时拼凑的脚本层, 而自己却从未享用同样的优势.</p>
+<p>Boost.Python 使我们能够<em>混合式思维</em>. Python 可用于快速构建新应用的原型; 它的易用性和庞大的标准库使我们朝着可运行的系统抢先迈出一步. 如有必要, 可以利用能运行的代码找出限制速度的热点. 为最大化性能, 可以用 C++ 重新实现这些热点, 并配上把它们重新挂接到既有更高层流程所需的 Boost.Python 绑定.</p>
+<p>当然, 如果从一开始就很清楚许多算法最终必须用 C++ 实现, 这种<em>自顶向下</em>的方法就不那么有吸引力. 幸好 Boost.Python 也使我们能够采用<em>自底向上</em>的方法. 在开发一个面向科学应用的工具箱时, 我们非常成功地使用了这种方法. 该工具箱最初主要是一个带 Boost.Python 绑定的 C++ 类库, 一段时间内增长主要集中在 C++ 部分. 然而, 随着工具箱日趋完善, 越来越多新增功能可以用 Python 实现.</p>
+<img alt="images/python_cpp_mix.png" src="images/python_cpp_mix.png" />
+<p>该图展示了随着新算法的实现, 新增 C++ 与 Python 代码随时间变化的估计比例. 我们预计这一比例将稳定在接近 70% Python 的水平. 能够主要用 Python 而非更难掌握的静态类型语言解决新问题, 正是我们在 Boost.Python 上投入的回报. 能够从 Python 访问我们全部代码, 使更广泛的开发者群体能够在新应用的快速开发中使用它.</p>
+</div>
+<div class="section" id="development-history">
+<h1><a class="toc-backref" href="#toc-entry-16">开发历史</a></h1>
+<p>Boost.Python 的第一个版本由 Dave Abrahams 于 2000 年在 Dragon Systems 开发, 在那里他有幸得到 Tim Peters 指点 "Python 之禅". Dave 的一项工作是开发一个基于 Python 的自然语言处理系统. 由于该系统最终要面向嵌入式硬件, 大家一直假定计算密集的核心会用 C++ 重写, 以优化速度和内存占用<a class="footnote-reference" href="#proto" id="footnote-reference-1"><sup>1</sup></a>. 项目还希望用 Python 测试脚本测试其全部 C++ 代码<a class="footnote-reference" href="#test" id="footnote-reference-2"><sup>2</sup></a>. 我们所知的唯一能绑定 C++ 与 Python 的工具是 <a class="reference external" href="http://www.swig.org/">SWIG</a>, 而当时它对 C++ 的支持很弱. 若宣称此刻已对 Boost.Python 方法的潜在优势有任何深刻洞见, 那是不实之辞. Dave 对花哨 C++ 模板技巧的兴趣和专业造诣刚达到足以 "大显身手" 的程度, Boost.Python 便应运而生, 因为它填补了需求, 也因为尝试它看起来是件很酷的事.</p>
+<p>这个早期版本瞄准的目标与本文所述的许多基本目标相同, 最显著的差异在于语法略显繁琐, 并且缺乏对运算符重载、pickling 和基于组件开发的特别支持. 这后三个特性由 Ullrich Koethe 和 Ralf Grosse-Kunstleve 快速添加<a class="footnote-reference" href="#feature" id="footnote-reference-3"><sup>3</sup></a>, 其他热情的贡献者也纷纷加入, 贡献了诸如嵌套模块支持和静态成员函数支持之类的增强.</p>
+<p>到 2001 年初, 开发已趋稳定, 几乎没有新增特性, 然而一个令人不安的新事实浮出水面: Ralf 开始在一款使用 <a class="reference external" href="http://www.edg.com">EDG</a> 前端的编译器的预发布版本上测试 Boost.Python, 而 Boost.Python 核心中负责处理 Python 与 C++ 类型间转换的机制编译失败. 事实证明, 我们一直在利用我们所测试过的所有 C++ 编译器实现中一个十分常见的缺陷. 我们知道, 随着 C++ 编译器迅速提高对标准的符合度, 该库将开始在更多平台上编译失败. 不幸的是, 由于该机制对库的运作如此核心, 修复这个问题看起来非常困难.</p>
+<p>幸运的是, 同年晚些时候 Lawrence Berkeley 以及稍后的 Lawrence Livermore 国家实验室与 <a class="reference external" href="http://www.boost-consulting.com">Boost Consulting</a> 签约支持并开发 Boost.Python, 这带来了一个新的机会去解决根本性问题并为该库确保未来. 重新设计工作从底层类型转换架构开始, 内建对标准的符合性和基于组件开发的支持 (与之相对, 版本 1 中的转换必须在模块边界上显式导入和导出). 还对 Python 对象与 C++ 对象的关系做了新的分析, 使 C++ 左值和右值的处理更为直观.</p>
+<p>Python 2.2 中强大的新类型系统的出现, 使是否维持对 Python 1.5.2 兼容的抉择变得容易: 仅仅是抛弃大量用于模拟经典 Python 类的繁复代码的机会, 就让人无法错过. 此外, Python 迭代器和描述符为表示类似的 C++ 构造提供了关键而优雅的工具. 泛化的 <tt class="docutils literal">object</tt> 接口的开发使我们得以进一步把 C++ 程序员与 Python 'C' API 的危险和语法负担隔离开. 在此期间还添加了大量其他特性, 包括 C++ 异常转换、改进的重载函数支持, 以及最重要的、用于处理指针和引用的 CallPolicies.</p>
+<p>2002 年 10 月, Boost.Python 版本 2 发布. 此后的开发集中在改进对 C++ 运行期多态和智能指针的支持上. 尤其是 Peter Dimov 巧妙的 <tt class="docutils literal"><span class="pre">boost::shared_ptr</span></tt> 设计, 使我们得以给混合系统开发者一个一致的接口, 让对象在语言屏障两侧来回传递而不丢失信息. 起初, 我们担心 Boost.Python v2 实现的精妙与复杂可能令贡献者望而却步, 但 <a class="reference external" href="http://www.boost.org/libs/python/pyste">Pyste</a> 的出现和其他几项重要的特性贡献打消了这些担忧. Python C++-sig 邮件列表上的日常提问和积压的期望改进清单表明, 该库正在被使用. 在我们看来, 未来一片光明.</p>
+</div>
+<div class="section" id="conclusions">
+<h1><a class="toc-backref" href="#toc-entry-17">结论</a></h1>
+<p>Boost.Python 在两个丰富且互补的语言环境之间实现了无缝互操作. 由于它利用模板元编程对类型和函数进行自省, 用户无需学习第三种语法: 接口定义以简洁且可维护的 C++ 编写. 此外, 包装系统不必解析 C++ 头文件或表示类型系统: 这些工作由编译器替我们完成.</p>
+<p>计算密集型任务正合 C++ 的长处, 在纯 Python 中往往无法高效实现, 而像序列化这种在 Python 中轻而易举的工作, 在纯 C++ 中可能非常困难. 既然有幸从一开始就构建混合软件系统, 我们便能以新的信心和力量来对待设计.</p>
+</div>
+<div class="section" id="citations">
+<h1><a class="toc-backref" href="#toc-entry-18">引用文献</a></h1>
+<table class="docutils citation" frame="void" id="veld1995" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#citation-reference-1">[VELD1995]</a></td><td>T. Veldhuizen, &quot;Expression Templates,&quot; C++ Report,
+Vol. 7 No. 5 June 1995, pp. 26-31.
+<a class="reference external" href="http://osl.iu.edu/~tveldhui/papers/Expression-Templates/exprtmpl.html">http://osl.iu.edu/~tveldhui/papers/Expression-Templates/exprtmpl.html</a></td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="footnotes">
+<h1><a class="toc-backref" href="#toc-entry-19">脚注</a></h1>
+<table class="docutils footnote" frame="void" id="proto" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#footnote-reference-1">[1]</a></td><td>事后看来, 对那个 NLP 系统而言, 一开始就 "混合式思维" 也许更好: 纯 Python 原型所定义的自然的组件边界, 结果证明并不适合从 C++ 核心中获得期望的性能与内存占用, 这最终在核心迁移到 C++ 时给 Python 侧造成了一些重新设计的开销.</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="test" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#footnote-reference-2">[2]</a></td><td>对于通过 Python 接口驱动所有 C++ 测试, 我们也有所保留, 除非这最终是它唯一的使用方式. 跨越对象模型差异如此之大的语言边界的任何转换, 都不可避免地可能掩盖缺陷.</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="feature" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#footnote-reference-3">[3]</a></td><td>在 Boost.Python v1 中, 这些特性的表达方式截然不同</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</body>
+</html>

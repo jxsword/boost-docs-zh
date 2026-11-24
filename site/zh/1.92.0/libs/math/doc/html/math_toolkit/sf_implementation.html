@@ -1,0 +1,390 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>补充实现说明</title>
+<link rel="stylesheet" href="../math.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Math Toolkit 4.2.1">
+<link rel="up" href="../backgrounders.html" title="第 24 章 背景知识">
+<link rel="prev" href="../backgrounders.html" title="第 24 章 背景知识">
+<link rel="next" href="special_tut.html" title="教程: 如何编写一个新的特殊函数">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../backgrounders.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../backgrounders.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="special_tut.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="math_toolkit.sf_implementation"></a><a class="link" href="sf_implementation.html" title="补充实现说明">补充实现说明</a>
+</h2></div></div></div>
+<p>大多数实现说明包含在每个函数或分布的文档中. 这里的说明更具一般性, 更多地反映了所采用的总体实现理念.</p>
+<h5>
+<a name="math_toolkit.sf_implementation.h0"></a>
+      <span class="phrase"><a name="math_toolkit.sf_implementation.implementation_philosophy"></a></span><a class="link" href="sf_implementation.html#math_toolkit.sf_implementation.implementation_philosophy">实现理念</a>
+    </h5>
+<p>"先求正确, 再求快速."</p>
+<p>在速度与精度之间总有可能需要权衡. 或许可以找到更快的方法, 特别是针对某些受限的参数范围; 但对于数学函数和分布的大多数应用, 我们判断速度很少像精度那样重要.</p>
+<p>因此我们把精度放在首位.</p>
+<p>为了能够评估特殊函数的精度, 生成极其精确的测试值表投入了相当多的精力.</p>
+<p>(这也需要大量 CPU 算力, JM 的笔记本电脑底部一度有滴落熔化塑料的危险, 于是改用 PAB 的双核台式机, 让它保持 50% 的占用率连转 <span class="bold"><strong>数天</strong></span> 来计算部分测试值表!)</p>
+<p>对于特定的 RealType (比如 <code class="computeroutput"><span class="keyword">float</span></code> 或 <code class="computeroutput"><span class="keyword">double</span></code>), 或许能为某些函数找到更简单因而更快的近似, 但精度较低 (例如在计算反函数时, 可能因为没有精化迭代).</p>
+<p>如果这些近似被证明足够精确, 达到"符合其目的"的程度, 用户就可以替换为自己的定制特化.</p>
+<p>例如, 有一些近似可以追溯到计算代价 <span class="bold"><strong>高昂得多</strong></span> 的年代:</p>
+<p>H Goldberg and H Levine, t 与卡方的百分点及正规化近似公式, Ann. Math. Stat., 17(4), 216 - 225 (Dec 1946).</p>
+<p>
+      A H Carter, Approximations to percentage points of the z-distribution, Biometrika
+      34(2), 352 - 358 (Dec 1947).
+    </p>
+<p>对于某些对速度敏感的应用, 它们仍可提供足够的精度.</p>
+<h5>
+<a name="math_toolkit.sf_implementation.h1"></a>
+      <span class="phrase"><a name="math_toolkit.sf_implementation.accuracy_and_representation_of_t"></a></span><a class="link" href="sf_implementation.html#math_toolkit.sf_implementation.accuracy_and_representation_of_t">测试值的精度与表示</a>
+    </h5>
+<p>为了让常量值对尽可能多的实数类型足够精确, 在可获得的范围内它们被给出 50 位十进制数字 (尽管许多来源经证明只在接近 64 位 double 精度处是精确的). 数值通过追加 L 指定为 long double 类型, 除非它们可以被精确表示, 例如整数, 或像 0.125 这样的二进制分数. 这避免了从默认类型 double 转换时丢失精度的风险. 数值在 <code class="computeroutput"><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">RealType</span><span class="special">&gt;(</span><span class="number">1.2345L</span><span class="special">)</span></code> 之后使用, 为抽点测试提供相应的 RealType.</p>
+<p>返回常量值的函数 (例如峰度) 写作</p>
+<p>
+      <code class="computeroutput"><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">RealType</span><span class="special">&gt;(-</span><span class="number">3</span><span class="special">)</span> <span class="special">/</span>
+      <span class="number">5</span><span class="special">;</span></code>
+    </p>
+<p>以提供编译器能为该实数类型计算出的最精确值. (分母是整数, 因此会被精确提升).</p>
+<p>因此, 对三分之一这样的数 (用基数为 2 的浮点数 <span class="bold"><strong>无法</strong></span> 精确表示) 的测试应当 (例如) 使用:</p>
+<p>
+      <code class="computeroutput"><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">RealType</span><span class="special">&gt;(</span><span class="number">1</span><span class="special">)</span> <span class="special">/</span>
+      <span class="number">3</span><span class="special">;</span></code>
+    </p>
+<p>如果函数对输入的变化非常敏感, 指定一个不精确的值作为输入 (比如 0.1) 可能使结果产生明显偏差: 例如 0.1f 会"错"约 1e-7 (因为 0.1 没有精确的二进制表示). 这就是为什么测试代码中使用精确的二进制值 (二分之一、四分之一、八分之一等), 偶尔配合形如 <code class="computeroutput"><span class="identifier">a</span><span class="special">/</span><span class="identifier">b</span></code> 的分数, 其中 <code class="computeroutput"><span class="identifier">b</span></code> 是 2 的幂 (以确保结果是可精确表示的二进制值).</p>
+<h5>
+<a name="math_toolkit.sf_implementation.h2"></a>
+      <span class="phrase"><a name="math_toolkit.sf_implementation.tolerance_of_tests"></a></span><a class="link" href="sf_implementation.html#math_toolkit.sf_implementation.tolerance_of_tests">测试的容差</a>
+    </h5>
+<p>容差需要设置为以下各项的最大值:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">某个 epsilon 值.</li>
+<li class="listitem">数据的精度 (通常只接近 64 位 double).</li>
+</ul></div>
+<p>否则, 当 long double 的位数多于测试数据时, 无论怎样调整基于 epsilon 的容差都无济于事.</p>
+<p>一个常见问题是: 容差适用于 Microsoft VS.NET 这类 double 与 long double 大小相同的实现, 但在 long double 比 double 更精确的其他系统上测试会失败. 请先检查后缀 L 是否存在, 然后检查容差是否足够大.</p>
+<h5>
+<a name="math_toolkit.sf_implementation.h3"></a>
+      <span class="phrase"><a name="math_toolkit.sf_implementation.handling_unsuitable_arguments"></a></span><a class="link" href="sf_implementation.html#math_toolkit.sf_implementation.handling_unsuitable_arguments">处理不合适的参数</a>
+    </h5>
+<p>在 J. Marraffino 和 M. Paterno 的 <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2004/n1665.pdf" target="_top">Errors in Mathematical Special Functions</a> 中, 作者提议: 当参数会导致数学上未定义的结果时, 必须发出定义域错误信号.</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">准则 1</li></ul></div>
+<div class="blockquote"><blockquote class="blockquote"><p>如果当 x = (x1, x2, . . .) '从所有方向逼近 a' 时各极限一致, 则称数学函数在点 a = (a1, a2, . . .) 处有定义. 该定义值可以是任何数, 也可以是 +infinity 或 -infinity.</p></blockquote></div>
+<p>粗略地说, 如果函数趋于 +infinity, 然后又从'背后'以 -infinity 出现, 那么它是没有定义的.</p>
+<div class="blockquote"><blockquote class="blockquote"><p>逼近某个数学函数的库函数, 凡在数学函数未定义的参数值处求值, 都应当发出定义域错误信号.</p></blockquote></div>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">准则 2</li></ul></div>
+<div class="blockquote"><blockquote class="blockquote"><p>逼近某个数学函数的库函数, 凡在数学函数取得非实数值的参数值处求值, 都应当发出定义域错误信号.</p></blockquote></div>
+<p>本实现被认为遵循了这些提议, 并且有助于与 <span class="emphasis"><em>ISO/IEC 9899:1999 Programming languages - C</em></span> 以及 <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2005/n1836.pdf" target="_top">Draft Technical Report on C++ Library Extensions, 2005-06-24, section 5.2.1, paragraph 5</a> 保持兼容. 另参见 <a class="link" href="error_handling.html" title="错误处理">domain_error</a>.</p>
+<p>参见 <a class="link" href="pol_ref.html" title="策略参考">policy reference</a> 了解错误处理策略的细节, 它们应能让用户遵循上述任一建议以及其他行为.</p>
+<p>机制的详细说明参见 <a class="link" href="error_handling.html" title="错误处理">error handling</a>, 示例参见 <a class="link" href="stat_tut/weg/error_eg.html" title="错误处理示例">error_handling example</a> 和 <a href="../../../example/error_handling_example.cpp" target="_top">error_handling_example.cpp</a>
+    </p>
+<div class="caution"><table border="0" summary="Caution">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注意]" src="../../../../../doc/src/images/caution.png"></td>
+<th align="left">注意</th>
+</tr>
+<tr><td align="left" valign="top"><p>如果你启用了抛出却没有 try &amp; catch 块, 程序将因未捕获的异常而终止并很可能中止. 因此, 为了获得有益的错误信息, 建议所有应用程序启用 <span class="bold"><strong>全部</strong></span> 异常 <span class="bold"><strong>并</strong></span> 使用 try&amp;catch. 不过为了简单起见, 大多数示例并未这样做.</p></td></tr>
+</table></div>
+<h5>
+<a name="math_toolkit.sf_implementation.h4"></a>
+      <span class="phrase"><a name="math_toolkit.sf_implementation.handling_of_functions_that_are_n"></a></span><a class="link" href="sf_implementation.html#math_toolkit.sf_implementation.handling_of_functions_that_are_n">对数学上未定义的函数的处理</a>
+    </h5>
+<p>数学上未定义的函数 (如柯西分布的均值) 默认无法通过编译. <a class="link" href="pol_ref/assert_undefined.html" title="数学上未定义函数策略">policy</a> 允许对此进行控制.</p>
+<p>如果策略允许未定义的函数, 那么调用它们默认会抛出定义域错误. 但错误策略可以设置为不抛出, 而是返回 NaN. 例如,</p>
+<p>
+      <code class="computeroutput"><span class="preprocessor">#define</span> <span class="identifier">BOOST_MATH_DOMAIN_ERROR_POLICY</span>
+      <span class="identifier">ignore_error</span></code>
+    </p>
+<p>出现在第一个 Boost include 之前, 那么调用未实现的函数时, mean(cauchy&lt;&gt;()) 将返回 std::numeric_limits&lt;T&gt;::quiet_NaN().</p>
+<div class="warning"><table border="0" summary="Warning">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[警告]" src="../../../../../doc/src/images/warning.png"></td>
+<th align="left">警告</th>
+</tr>
+<tr><td align="left" valign="top"><p>如果 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">numeric_limits</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;::</span><span class="identifier">has_quiet_NaN</span></code> 为 false (例如, T 是不支持 NaN 的用户自定义类型), 那么发生定义域错误时将总是抛出异常. 因此强烈建议捕获异常.</p></td></tr>
+</table></div>
+<h5>
+<a name="math_toolkit.sf_implementation.h5"></a>
+      <span class="phrase"><a name="math_toolkit.sf_implementation.median_of_distributions"></a></span><a class="link" href="sf_implementation.html#math_toolkit.sf_implementation.median_of_distributions">分布的中位数</a>
+    </h5>
+<p>有许多分布我们一直无法找到解析公式, 这让我们迟迟没有实现 <a href="http://en.wikipedia.org/wiki/Median" target="_top">median functions</a>, 即一列值的中点.</p>
+<p>不过, 正如通常那样, 分布 <code class="computeroutput"><span class="identifier">dist</span></code> 有一个有用的数值近似, 以访问器非成员函数 median 的形式提供, 使用 <code class="computeroutput"><span class="identifier">median</span><span class="special">(</span><span class="identifier">dist</span><span class="special">)</span></code>, 它可以 (在缺少解析公式的情况下) 通过调用下式求值</p>
+<p>
+      <code class="computeroutput"><span class="identifier">quantile</span><span class="special">(</span><span class="identifier">dist</span><span class="special">,</span> <span class="number">0.5</span><span class="special">)</span></code> (这当然是 <span class="emphasis"><em>数学</em></span> 定义).</p>
+<p>
+      <a href="http://www.amstat.org/publications/jse/v13n2/vonhippel.html" target="_top">Mean,
+      Median, and Skew, Paul T von Hippel</a>
+    </p>
+<p>
+      <a href="http://documents.wolfram.co.jp/teachersedition/MathematicaBook/24.5.html" target="_top">Descriptive
+      Statistics,</a>
+    </p>
+<p>
+      <a href="http://documents.wolfram.co.jp/v5/Add-onsLinks/StandardPackages/Statistics/DescriptiveStatistics.html" target="_top">与 </a>
+    </p>
+<p>
+      <a href="http://documents.wolfram.com/v5/TheMathematicaBook/AdvancedMathematicsInMathematica/NumericalOperationsOnData/3.8.1.html" target="_top">Mathematica Basic Statistics.</a> 提供了更多细节, 尤其是针对离散分布.</p>
+<h5>
+<a name="math_toolkit.sf_implementation.h6"></a>
+      <span class="phrase"><a name="math_toolkit.sf_implementation.handling_of_floating_point_infin"></a></span><a class="link" href="sf_implementation.html#math_toolkit.sf_implementation.handling_of_floating_point_infin">对浮点无穷大的处理</a>
+    </h5>
+<p>有些函数和分布在以 +infinity 或 -infinity 作为参数时是有良好定义的, 但在尝试把无穷参数作为特殊情形处理之后, 我们得出结论: 禁止这种做法通常更有用, 改为返回 <a class="link" href="error_handling.html#math_toolkit.error_handling.domain_error">domain_error</a> 的结果.</p>
+<p>把无穷大作为特殊情形处理还带来额外的复杂性, 因为与大多数 (但非全部) 平台上的内置类型不同, 并非所有用户自定义类型都特化以提供 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">numeric_limits</span><span class="special">&lt;</span><span class="identifier">RealType</span><span class="special">&gt;::</span><span class="identifier">infinity</span><span class="special">()</span></code>, 它们会返回零而不是任何无穷大的表示.</p>
+<p>理由是: 非有限值可能因用户代码中的错误或上溢而发生, 及时诊断它比继续运行更有帮助. 此外, 代码也变得更加复杂、更容易出错、测试工作量大得多, 可读性也差得多.</p>
+<p>不过在少数我们觉得显而易见的情形下 (例如正态分布), 我们允许参数为无穷大, 条件是该实现为 <code class="computeroutput"><span class="identifier">RealType</span></code> 实现了无穷大, 并且该分布支持并测试了这一点.</p>
+<p>这些分布的范围在平台支持时被设为无穷大 (通过测试 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">numeric_limits</span><span class="special">&lt;</span><span class="identifier">RealType</span><span class="special">&gt;::</span><span class="identifier">has_infinity</span></code>), 否则设为 Boost.Math 为 <code class="computeroutput"><span class="identifier">RealType</span></code> 提供的最大值.</p>
+<p>对 has_infinity 的测试显然很重要, 对于任意精度类型, 无穷大的意义远不如 IEEE754 浮点数.</p>
+<p>到目前为止, 我们尚未设置 <code class="computeroutput"><span class="identifier">support</span><span class="special">()</span></code> 函数 (只设置了范围), 理由是无穷处的 PDF 无意义/为零.</p>
+<p>需要对无穷大 (或其他特定值) 进行特殊处理的用户当然总可以在调用分布或函数之前拦截它, 返回自己选择的值或其他行为. 这通常比试图处理错误策略的后果更简单.</p>
+<p>上溢、下溢和非规格化数可以使用 <a class="link" href="pol_ref/error_handling_policies.html" title="错误处理策略">error handling policies</a> 处理.</p>
+<p>我们还尝试捕获数学规格会导致除以零或上溢的边界情形, 并以类似方式发出信号. 极点处 (及其附近) 发生的情况可以通过 <a class="link" href="pol_ref/error_handling_policies.html" title="错误处理策略">error handling policies</a> 控制.</p>
+<h5>
+<a name="math_toolkit.sf_implementation.h7"></a>
+      <span class="phrase"><a name="math_toolkit.sf_implementation.scale_shape_and_location"></a></span><a class="link" href="sf_implementation.html#math_toolkit.sf_implementation.scale_shape_and_location">尺度、形状与位置</a>
+    </h5>
+<p>我们曾考虑把位置和尺度加入函数列表, 例如:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">RealType</span><span class="special">&gt;</span>
+<span class="keyword">inline</span> <span class="identifier">RealType</span> <span class="identifier">scale</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">triangular_distribution</span><span class="special">&lt;</span><span class="identifier">RealType</span><span class="special">&gt;&amp;</span> <span class="identifier">dist</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="identifier">RealType</span> <span class="identifier">lower</span> <span class="special">=</span> <span class="identifier">dist</span><span class="special">.</span><span class="identifier">lower</span><span class="special">();</span>
+  <span class="identifier">RealType</span> <span class="identifier">mode</span> <span class="special">=</span> <span class="identifier">dist</span><span class="special">.</span><span class="identifier">mode</span><span class="special">();</span>
+  <span class="identifier">RealType</span> <span class="identifier">upper</span> <span class="special">=</span> <span class="identifier">dist</span><span class="special">.</span><span class="identifier">upper</span><span class="special">();</span>
+  <span class="identifier">RealType</span> <span class="identifier">result</span><span class="special">;</span>  <span class="comment">// of checks.</span>
+  <span class="keyword">if</span><span class="special">(</span><span class="keyword">false</span> <span class="special">==</span> <span class="identifier">detail</span><span class="special">::</span><span class="identifier">check_triangular</span><span class="special">(</span><span class="identifier">BOOST_CURRENT_FUNCTION</span><span class="special">,</span> <span class="identifier">lower</span><span class="special">,</span> <span class="identifier">mode</span><span class="special">,</span> <span class="identifier">upper</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">result</span><span class="special">))</span>
+  <span class="special">{</span>
+    <span class="keyword">return</span> <span class="identifier">result</span><span class="special">;</span>
+  <span class="special">}</span>
+  <span class="keyword">return</span> <span class="special">(</span><span class="identifier">upper</span> <span class="special">-</span> <span class="identifier">lower</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>但发现这些概念对太多分布没有定义 (或其定义争议太大), 因而不具备普遍适用性. 由于它们是非成员函数, 需要时可以随时添加.</p>
+<h5>
+<a name="math_toolkit.sf_implementation.h8"></a>
+      <span class="phrase"><a name="math_toolkit.sf_implementation.notes_on_implementation_of_speci"></a></span><a class="link" href="sf_implementation.html#math_toolkit.sf_implementation.notes_on_implementation_of_speci">特定函数与分布的实现说明</a>
+    </h5>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">三角分布的默认参数. 我们不确定最佳的默认参数是什么. 一些资料认为标准三角分布取 lower = 0、mode = half 和 upper = 1. 然而, 作为最常见用法即对正态分布的近似, lower = -1、mode = 0 和 upper = 1 会更合适.</li></ul></div>
+<h5>
+<a name="math_toolkit.sf_implementation.h9"></a>
+      <span class="phrase"><a name="math_toolkit.sf_implementation.rational_approximations_used"></a></span><a class="link" href="sf_implementation.html#math_toolkit.sf_implementation.rational_approximations_used">所使用的有理近似</a>
+    </h5>
+<p>本库中的一些特殊函数通过有理近似实现. 这些近似要么取自文献, 要么由 John Maddock 使用 <a class="link" href="internals/minimax.html" title="极小极大近似与 Remez 算法">我们的 Remez 代码</a> 设计.</p>
+<p>使用有理近似而非多项式近似是为了确保精度: 多项式近似在一定精度水平上往往表现出色, 但无论再添加多少项, 都常常无法提供高得多的精度.</p>
+<p>我们自己的近似要么是为了更高的精度而设计 (例如支持 128 位 long double), 要么是因为文献方法不可用或其许可证与 BSL 不兼容. 已知我们的 Remez 代码在相当简单的"玩具"情形中能与文献结果良好吻合. 所有近似都检查过收敛性, 并确保它们不是病态的 (系数可以给出理论上良好的解, 但在固定精度下, 所得到的有理函数可能是无法计算的).</p>
+<p>用不同的 Remez 实现重新计算很可能产生不同的系数: 大家都知道该问题一般而言是病态的, 我们的 Remez 实现对其中许多近似常常找到一个宽泛且界定不清的极小值 (当然, 对于像逼近 <code class="computeroutput"><span class="identifier">exp</span></code> 这样简单的"玩具"例子, 极小值是明确界定的, 无论使用谁的 Remez 实现, 系数都应当一致). 一般而言, 这不应影响近似的有效性: 有很好的文献支持这样一种观点, 即系数可以"有误差"而不必然对结果产生不利影响. 注意, "有误差"在此语境中具有特殊含义, 参见 <a href="http://front.math.ucdavis.edu/0101.5042" target="_top">"Approximate construction of rational approximations and the effect of error autocorrection.", Grigori Litvinov, eprint arXiv:math/0101042</a>. 因此, 系数仍然需要被精确计算, 即使它们相对于"真正的"极小极大解可能有误差.</p>
+<h5>
+<a name="math_toolkit.sf_implementation.h10"></a>
+      <span class="phrase"><a name="math_toolkit.sf_implementation.representation_of_mathematical_c"></a></span><a class="link" href="sf_implementation.html#math_toolkit.sf_implementation.representation_of_mathematical_c">数学常量的表示</a>
+    </h5>
+<p>constants.hpp 中的宏 BOOST_DEFINE_MATH_CONSTANT 用于向数学函数和分布提供高精度常量, 因为必须统一地为内置的 float、double 和 long double 类型, 以及 <a href="../../../../../libs/multiprecision/doc/html/index.html" target="_top">Boost.Multiprecision</a> 中 <a href="../../../../../libs/multiprecision/doc/html/boost_multiprecision/tut/floats/cpp_dec_float.html" target="_top">cpp_dec_float</a> 之类的用户自定义类型, 还有 NTL::quad_float 和 NTL::RR 等, 提供数值.</p>
+<p>为了允许在本 Math ToolKit 及其测试 (以及其他地方) 中使用 NTL::RR 类型以约 100 位十进制数字进行计算, 显然有必要按这一精度定义常量.</p>
+<p>然而, 一些编译器不接受这么长的十进制数字字符串. 因此常量被拆分成两部分: 第一部分至少包含 long double 精度, 第二部分在不需要或未知时为零. 第三部分允许在必要时提供指数 (若无则用零); 另外两个参数只能包含十进制数字 (以及符号和小数点), 不能包含像 1.234E99 这样的指数 (也不能有结尾的 F 或 L). 第二个数字字符串只在 T 是用户自定义类型时使用, 此时常量被转换为长字符串字面量并 lexical_cast 到类型 T. (这是必要的, 因为你不能使用数值常量, 即使是 long double 也可能没有足够的位数).</p>
+<p>例如, pi 定义如下:</p>
+<pre class="programlisting"><span class="identifier">BOOST_DEFINE_MATH_CONSTANT</span><span class="special">(</span><span class="identifier">pi</span><span class="special">,</span>
+  <span class="number">3.141592653589793238462643383279502884197169399375105820974944</span><span class="special">,</span>
+  <span class="number">5923078164062862089986280348253421170679821480865132823066470938446095505</span><span class="special">,</span>
+  <span class="number">0</span><span class="special">)</span>
+</pre>
+<p>并这样使用:</p>
+<pre class="programlisting"><span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">constants</span><span class="special">;</span>
+
+<span class="keyword">double</span> <span class="identifier">diameter</span> <span class="special">=</span> <span class="number">1.</span><span class="special">;</span>
+<span class="keyword">double</span> <span class="identifier">radius</span> <span class="special">=</span> <span class="identifier">diameter</span> <span class="special">*</span> <span class="identifier">pi</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">&gt;();</span>
+
+<span class="keyword">or</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">constants</span><span class="special">::</span><span class="identifier">pi</span><span class="special">&lt;</span><span class="identifier">NTL</span><span class="special">::</span><span class="identifier">RR</span><span class="special">&gt;()</span>
+</pre>
+<p>注意, 必须显式指定类型 (尽管这不太方便).</p>
+<p>因此你不能写</p>
+<pre class="programlisting"><span class="keyword">double</span> <span class="identifier">p</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">constants</span><span class="special">::</span><span class="identifier">pi</span><span class="special">&lt;&gt;();</span>  <span class="comment">// could not deduce template argument for 'T'</span>
+</pre>
+<p>也不能写:</p>
+<pre class="programlisting"><span class="keyword">double</span> <span class="identifier">p</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">constants</span><span class="special">::</span><span class="identifier">pi</span><span class="special">;</span> <span class="comment">// Context does not allow for disambiguation of overloaded function</span>
+<span class="keyword">double</span> <span class="identifier">p</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">constants</span><span class="special">::</span><span class="identifier">pi</span><span class="special">();</span> <span class="comment">// Context does not allow for disambiguation of overloaded function</span>
+</pre>
+<h5>
+<a name="math_toolkit.sf_implementation.h11"></a>
+      <span class="phrase"><a name="math_toolkit.sf_implementation.thread_safety"></a></span><a class="link" href="sf_implementation.html#math_toolkit.sf_implementation.thread_safety">线程安全</a>
+    </h5>
+<p>通过设置 <code class="computeroutput"><span class="identifier">errno</span></code> 报告错误应当已经是线程安全的 (否则标准库的数学函数就都不是线程安全的了?). 如果你启用通过异常报告错误, <code class="computeroutput"><span class="identifier">errno</span></code> 反正会被弃置不用.</p>
+<p>对于常规的 C++ 用法, Boost.Math 的 <code class="computeroutput"><span class="keyword">static</span>
+      <span class="keyword">const</span></code> 常量现在是线程安全的, 因此对于内置实数类型: <code class="computeroutput"><span class="keyword">float</span></code>、<code class="computeroutput"><span class="keyword">double</span></code> 和 <code class="computeroutput"><span class="keyword">long</span>
+      <span class="keyword">double</span></code> 都是线程安全的.</p>
+<p>对于用户自定义类型 (例如 <a href="../../../../../libs/multiprecision/doc/html/boost_multiprecision/tut/floats/cpp_dec_float.html" target="_top">cpp_dec_float</a>), Boost.Math 也应当是线程安全的 (尽管我们不确定如何严格证明这一点).</p>
+<p>(线程安全在 C++11 标准修订中受到了关注, 所以希望所有编译器最终都能在这方面做对.)</p>
+<h5>
+<a name="math_toolkit.sf_implementation.h12"></a>
+      <span class="phrase"><a name="math_toolkit.sf_implementation.sources_of_test_data"></a></span><a class="link" href="sf_implementation.html#math_toolkit.sf_implementation.sources_of_test_data">测试数据的来源</a>
+    </h5>
+<p>我们找到了大量测试数据来源. 如果它们与我们的测试结果一致, 我们就假定它们是 <span class="emphasis"><em>"已知良好"</em></span> 的; 只有在严重分歧的情况下, 才会参考其他来源, 听取它们的 <span class="emphasis"><em>'投票'</em></span>. 精度 (无论是实际的还是声称的) 差异极大. 只有 <a href="http://functions.wolfram.com/" target="_top">Wolfram Mathematica functions</a> 提供了高于 C++ double (64 位浮点) 的精度, 并被视为迄今为止最可信的来源. <a href="http://www.r-project.org/" target="_top">The R Project for Statistical Computing</a> 提供了最广的分布范围, 但通常的 Intel X86 发行版使用 64 位 double, 因此我们的使用局限于 15 到 17 位十进制数字的精度.</p>
+<p>一个有用的来源索引是: <a href="http://www.sal.hut.fi/Teaching/Resources/ProbStat/table.html" target="_top">Web-oriented Teaching Resources in Probability and Statistics</a>
+    </p>
+<p>
+      <a href="http://espse.ed.psu.edu/edpsych/faculty/rhale/hale/507Mat/statlets/free/pdist.htm" target="_top">Statlet</a>: 一个 Javascript 应用程序, 用于计算和绘制概率分布, 提供了最完整的分布种类:</p>
+<div class="blockquote"><blockquote class="blockquote"><p>伯努利、二项、离散均匀、几何、超几何、负二项、泊松、贝塔、柯西-洛伦兹、卡方、埃尔朗、指数、极值、费希尔、伽马、拉普拉斯、逻辑斯蒂、对数正态、正态、帕累托、学生 t、三角、均匀与威布尔。</p></blockquote></div>
+<p>它计算 pdf、cdf、survivor、log survivor、hazard、尾部面积以及 5 个尾值的关键值.</p>
+<p>它也是找到的 Weibull 分布唯一独立来源; 遗憾的是, 在底层特殊函数公认难以实现的区域, 它的精度似乎非常差.</p>
+<h5>
+<a name="math_toolkit.sf_implementation.h13"></a>
+      <span class="phrase"><a name="math_toolkit.sf_implementation.testing_for_invalid_parameters_t"></a></span><a class="link" href="sf_implementation.html#math_toolkit.sf_implementation.testing_for_invalid_parameters_t">对传给函数和构造函数的无效参数的测试</a>
+    </h5>
+<p>在发现一些'坏'参数 (如 NaN) 没有像应当的那样抛出 <code class="computeroutput"><span class="identifier">domain_error</span></code> 异常之后, 设计了一个函数</p>
+<p>
+      <code class="computeroutput"><span class="identifier">check_out_of_range</span></code> (位于 <code class="computeroutput"><span class="identifier">test_out_of_range</span><span class="special">.</span><span class="identifier">hpp</span></code> 中) 由 JM 设计, 用于检查 (使用 Boost.Test 的 BOOST_CHECK_THROW 宏) 传给构造函数和函数的坏参数是否会抛出 <code class="computeroutput"><span class="identifier">domain_error</span></code> 异常.</p>
+<p>用法为 <code class="computeroutput"><span class="identifier">check_out_of_range</span><span class="special">&lt;</span> <span class="identifier">DistributionType</span>
+      <span class="special">&gt;(</span><span class="identifier">list</span><span class="special">-</span><span class="identifier">of</span><span class="special">-</span><span class="identifier">params</span><span class="special">);</span></code>, 其中 list-of-params 是一个 <span class="bold"><strong>有效</strong></span> 参数的列表, 分布可以由它们构造, 即传给函数的参数个数与传给分布构造函数的相同.</p>
+<p>参数的取值并不重要, 但必须是 <span class="bold"><strong>有效</strong></span> 的, 以通过构造函数的检查; 默认值是合适的, 但必须显式提供, 例如:</p>
+<pre class="programlisting"><span class="identifier">check_out_of_range</span><span class="special">&lt;</span><span class="identifier">extreme_value_distribution</span><span class="special">&lt;</span><span class="identifier">RealType</span><span class="special">&gt;</span> <span class="special">&gt;(</span><span class="number">1</span><span class="special">,</span> <span class="number">2</span><span class="special">);</span>
+</pre>
+<p>所做的检查包括:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">在每个有效参数的位置传入 Infinity 或 NaN (如果可用).</li>
+<li class="listitem">以 Infinity 或 NaN (如果可用) 作为随机变量.</li>
+<li class="listitem">把超出范围的随机变量传给 pdf 和 cdf (即在 "range(DistributionType)" 之外).</li>
+<li class="listitem">把超出范围的概率传给分位数函数及其补.</li>
+</ul></div>
+<p>但 <span class="bold"><strong>不会</strong></span> 检查传给构造函数的有限但超出范围的参数, 因为这些是每个分布特有的, 例如:</p>
+<pre class="programlisting"><span class="identifier">BOOST_CHECK_THROW</span><span class="special">(</span><span class="identifier">pdf</span><span class="special">(</span><span class="identifier">pareto_distribution</span><span class="special">&lt;</span><span class="identifier">RealType</span><span class="special">&gt;(</span><span class="number">0</span><span class="special">,</span> <span class="number">1</span><span class="special">),</span> <span class="number">0</span><span class="special">),</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">domain_error</span><span class="special">);</span>
+<span class="identifier">BOOST_CHECK_THROW</span><span class="special">(</span><span class="identifier">pdf</span><span class="special">(</span><span class="identifier">pareto_distribution</span><span class="special">&lt;</span><span class="identifier">RealType</span><span class="special">&gt;(</span><span class="number">1</span><span class="special">,</span> <span class="number">0</span><span class="special">),</span> <span class="number">0</span><span class="special">),</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">domain_error</span><span class="special">);</span>
+</pre>
+<p>它检查 <code class="computeroutput"><span class="identifier">scale</span></code> 和 <code class="computeroutput"><span class="identifier">shape</span></code> 参数都 &gt; 0, 其方式是检查当任一参数 == 0 时会抛出 <code class="computeroutput"><span class="identifier">domain_error</span></code> 异常.</p>
+<p>(使用 <code class="computeroutput"><span class="identifier">check_out_of_range</span></code> 函数可能意味着之前的一些测试现在是多余的).</p>
+<p>还注意到, 如果有不止一个参数是坏的, 那么错误消息只报告第一个被检测到的.</p>
+<h5>
+<a name="math_toolkit.sf_implementation.h14"></a>
+      <span class="phrase"><a name="math_toolkit.sf_implementation.creating_and_managing_the_equati"></a></span><a class="link" href="sf_implementation.html#math_toolkit.sf_implementation.creating_and_managing_the_equati">创建与管理公式</a>
+    </h5>
+<p>能放在单行上的公式最容易通过内联 Quickbook 代码生成, 其中使用 Unicode 希腊字母和 Unicode 数学符号的模板. 所有希腊字母和一小部分数学符号可在 /boost-path/libs/math/doc/sf_and_dist/html4_symbols.qbk 找到</p>
+<p>当公式需要多行时, 使用了真正的数学编辑器.</p>
+<p>公式的主要来源现在是 <a href="http://www.w3.org/Math/" target="_top">MathML</a>: 见 libs/math/doc/sf_and_dist/equations/ 中的 *.mml 文件.</p>
+<p>这些文件最容易用 <a href="http://mathcast.sourceforge.net/home.html" target="_top">Mathcast</a> 这样的 GUI 编辑器编辑. 请注意, Open Office 附带的公式编辑器目前会损坏这些文件, 目前不应使用.</p>
+<p>转换为 SVG 使用 <a href="https://sourceforge.net/projects/svgmath/" target="_top">SVGMath</a> 完成, 命令行如下:</p>
+<pre class="programlisting">$for file in *.mml; do
+&gt;/cygdrive/c/Python25/python.exe 'C:\download\open\SVGMath-0.3.1\math2svg.py' \
+&gt;&gt;$file &gt; $(basename $file .mml).svg
+&gt;done
+</pre>
+<p>另参见"使用 Python 运行 Inkscape"和"使用 Inkscape 把可缩放矢量 SVG 文件转换为便携式网络图形 PNG"两节.</p>
+<p>注意, SVGMath 要求 mml 文件 <span class="bold"><strong>不要</strong></span> 包裹在 XHTML XML 包装器中, 而 Mathcast 默认会添加这种包装. 一种变通办法是复制一个现有的 mml 文件, 然后用 Mathcast 编辑它: 这样应能保留原有格式. 这是 SVGMath 所用 XML 解析器中的一个缺陷, 作者已知晓.</p>
+<p>必要时可以用以下命令移除 XHTML 包装器:</p>
+<pre class="programlisting">cat filename | tr -d "\r\n" | sed -e 's/.*\(&lt;math[^&gt;]*&gt;.*&lt;/math&gt;\).*/\1/' &gt; newfile</pre>
+<p>为 SVGMath 设置字体目前相当麻烦. 在 Windows XP 系统上, JM 的字体设置与 SVGMath 附带的示例配置文件相同, 但把</p>
+<pre class="programlisting">    &lt;!-- Double-struck --&gt;
+    &lt;mathvariant name="double-struck" family="Mathematica7, Lucida Sans Unicode"/&gt;
+</pre>
+<p>改成了:</p>
+<pre class="programlisting">    &lt;!-- Double-struck --&gt;
+    &lt;mathvariant name="double-struck" family="Lucida Sans Unicode"/&gt;
+</pre>
+<p>注意, 与 SVGMath 附带的示例配置文件不同, 这里没有使用 <a href="http://support.wolfram.com/technotes/fonts/windows/latestfonts.html" target="_top">Mathematica 7 字体</a>, 因为它缺乏足够的 Unicode 信息, 无法"原样"用于 SVGMath 或 XEP.</p>
+<p>另请注意, 仓库中的 SVG 文件几乎肯定是 Windows 专用的, 因为它们引用了各种 Windows 字体.</p>
+<p>可以使用 <a href="http://xmlgraphics.apache.org/batik/tools/rasterizer.html" target="_top">Batik</a> 从 SVG 创建 PNG 文件, 命令如下:</p>
+<pre class="programlisting">java -jar 'C:\download\open\batik-1.7\batik-rasterizer.jar' -dpi 120 *.svg</pre>
+<p>或者使用 Inkscape (File, Export bitmap, Drawing 选项卡, 位图尺寸 (默认尺寸, 100 dpi), 文件名 (默认), png)</p>
+<p>或者使用 Cygwin, 命令如下:</p>
+<pre class="programlisting">for file in *.svg; do
+  /cygdrive/c/progra~1/Inkscape/inkscape -d 120 -e $(cygpath -a -w $(basename $file .svg).png) $(cygpath -a -w $file);
+done</pre>
+<p>使用 BASH</p>
+<pre class="programlisting"># Convert single SVG to PNG file.
+# /c/progra~1/Inkscape/inkscape -d 120 -e a.png a.svg
+</pre>
+<p>或者把 SVG 文件夹中的所有文件转换为 PNG.</p>
+<pre class="programlisting">for file in *.svg; do
+/c/progra~1/Inkscape/inkscape -d 120 -e $(basename $file .svg).png $file
+done
+</pre>
+<p>目前 Inkscape 生成的 PNG 看起来更好.</p>
+<p>PDF 生成到 \pdf\math.pdf, 所用命令在当前目录为 \math_toolkit\libs\math\doc\sf_and_dist 的 shell 或命令窗口中执行, 通常是:</p>
+<pre class="programlisting">bjam -a pdf &gt;math_pdf.log</pre>
+<p>注意, 必须配置 XEP 以 <span class="bold"><strong>使用并嵌入</strong></span> SVG 公式所用的字体 (几乎肯定要编辑 XEP 安装提供的示例 xep.xml). 如果不这样做, 你会在日志文件中看到如下 XEP 警告</p>
+<pre class="programlisting">[warning]could not find any font family matching "Times New Roman"; replaced by Helvetica</pre>
+<p>(html 是默认格式, 因此它生成在 libs\math\doc\html\index.html, 使用命令行 &gt;bjam -a &gt; math_toolkit.docs.log).</p>
+<pre class="programlisting"><span class="special">&lt;!--</span> <span class="identifier">Sample</span> <span class="identifier">configuration</span> <span class="keyword">for</span> <span class="identifier">Windows</span> <span class="identifier">TrueType</span> <span class="identifier">fonts</span><span class="special">.</span>  <span class="special">--&gt;</span>
+</pre>
+<p>在下载的 xep.xml 中已提供, 但 Windows TrueType 字体被注释掉了.</p>
+<p>JM 的 XEP 配置文件 \xep\xep.xml 添加了如下字体配置节:</p>
+<pre class="programlisting">    &lt;font-group xml:base="file:/C:/Windows/Fonts/" label="Windows TrueType" embed="true" subset="true"&gt;
+      &lt;font-family name="Arial"&gt;
+        &lt;font&gt;&lt;font-data ttf="arial.ttf"/&gt;&lt;/font&gt;
+        &lt;font style="oblique"&gt;&lt;font-data ttf="ariali.ttf"/&gt;&lt;/font&gt;
+        &lt;font weight="bold"&gt;&lt;font-data ttf="arialbd.ttf"/&gt;&lt;/font&gt;
+        &lt;font weight="bold" style="oblique"&gt;&lt;font-data ttf="arialbi.ttf"/&gt;&lt;/font&gt;
+      &lt;/font-family&gt;
+
+      &lt;font-family name="Times New Roman" ligatures="&amp;#xFB01; &amp;#xFB02;"&gt;
+        &lt;font&gt;&lt;font-data ttf="times.ttf"/&gt;&lt;/font&gt;
+        &lt;font style="italic"&gt;&lt;font-data ttf="timesi.ttf"/&gt;&lt;/font&gt;
+        &lt;font weight="bold"&gt;&lt;font-data ttf="timesbd.ttf"/&gt;&lt;/font&gt;
+        &lt;font weight="bold" style="italic"&gt;&lt;font-data ttf="timesbi.ttf"/&gt;&lt;/font&gt;
+      &lt;/font-family&gt;
+
+      &lt;font-family name="Courier New"&gt;
+        &lt;font&gt;&lt;font-data ttf="cour.ttf"/&gt;&lt;/font&gt;
+        &lt;font style="oblique"&gt;&lt;font-data ttf="couri.ttf"/&gt;&lt;/font&gt;
+        &lt;font weight="bold"&gt;&lt;font-data ttf="courbd.ttf"/&gt;&lt;/font&gt;
+        &lt;font weight="bold" style="oblique"&gt;&lt;font-data ttf="courbi.ttf"/&gt;&lt;/font&gt;
+      &lt;/font-family&gt;
+
+      &lt;font-family name="Tahoma" embed="true"&gt;
+        &lt;font&gt;&lt;font-data ttf="tahoma.ttf"/&gt;&lt;/font&gt;
+        &lt;font weight="bold"&gt;&lt;font-data ttf="tahomabd.ttf"/&gt;&lt;/font&gt;
+      &lt;/font-family&gt;
+
+      &lt;font-family name="Verdana" embed="true"&gt;
+        &lt;font&gt;&lt;font-data ttf="verdana.ttf"/&gt;&lt;/font&gt;
+        &lt;font style="oblique"&gt;&lt;font-data ttf="verdanai.ttf"/&gt;&lt;/font&gt;
+        &lt;font weight="bold"&gt;&lt;font-data ttf="verdanab.ttf"/&gt;&lt;/font&gt;
+        &lt;font weight="bold" style="oblique"&gt;&lt;font-data ttf="verdanaz.ttf"/&gt;&lt;/font&gt;
+      &lt;/font-family&gt;
+
+      &lt;font-family name="Palatino" embed="true" ligatures="&amp;#xFB00; &amp;#xFB01; &amp;#xFB02; &amp;#xFB03; &amp;#xFB04;"&gt;
+        &lt;font&gt;&lt;font-data ttf="pala.ttf"/&gt;&lt;/font&gt;
+        &lt;font style="italic"&gt;&lt;font-data ttf="palai.ttf"/&gt;&lt;/font&gt;
+        &lt;font weight="bold"&gt;&lt;font-data ttf="palab.ttf"/&gt;&lt;/font&gt;
+        &lt;font weight="bold" style="italic"&gt;&lt;font-data ttf="palabi.ttf"/&gt;&lt;/font&gt;
+      &lt;/font-family&gt;
+
+    &lt;font-family name="Lucida Sans Unicode"&gt;
+         &lt;!-- &lt;font&gt;&lt;font-data ttf="lsansuni.ttf"&gt;&lt;<span class="emphasis"><em>font&gt; --&gt;
+         &lt;!-- actually called l_10646.ttf on Windows 2000 and Vista Sp1 --&gt;
+         &lt;font&gt;&lt;font-data ttf="l_10646.ttf"</em></span>&gt;&lt;/font&gt;
+    &lt;/font-family&gt;
+</pre>
+<p>PAB 不得不修改他的配置, 因为 Lucida Sans Unicode 字体的名称不同. 如果你不是使用 Windows, 很可能还需要其他更改.</p>
+<p>XZ 使用久经考验的 Latex 编写他的公式, JM 使用 <a href="http://gentoo-wiki.com/HOWTO_Convert_LaTeX_to_HTML_with_MathML" target="_top">mxlatex</a> 把它们转换为 MathML. 这一过程目前不可靠, 需要一些人工干预: 因此, Latex 源不被认为是自动生成公式 SVG 版本的可行途径.</p>
+<p>公式通过 math.qbk 中定义的 <span class="emphasis"><em>equation</em></span> 模板嵌入 quickbook 源. 这会输出类似下面这样的 Docbook XML:</p>
+<pre class="programlisting">&lt;inlinemediaobject&gt;
+&lt;imageobject role="html"&gt;
+&lt;imagedata fileref="../equations/myfile.png"&gt;&lt;/imagedata&gt;
+&lt;/imageobject&gt;
+&lt;imageobject role="print"&gt;
+&lt;imagedata fileref="../equations/myfile.svg"&gt;&lt;/imagedata&gt;
+&lt;/imageobject&gt;
+&lt;/inlinemediaobject&gt;
+</pre>
+<p>Docbook 输出和生成的 HTML 中目前都没有 MathML: 这需要进一步调查.</p>
+<h5>
+<a name="math_toolkit.sf_implementation.h15"></a>
+      <span class="phrase"><a name="math_toolkit.sf_implementation.producing_graphs"></a></span><a class="link" href="sf_implementation.html#math_toolkit.sf_implementation.producing_graphs">生成图形</a>
+    </h5>
+<p>图形以 SVG 格式生成, 然后使用与公式相同的过程转换为 PNG.</p>
+<p>程序 <code class="computeroutput"><span class="special">/</span><span class="identifier">libs</span><span class="special">/</span><span class="identifier">math</span><span class="special">/</span><span class="identifier">doc</span><span class="special">/</span><span class="identifier">sf_and_dist</span><span class="special">/</span><span class="identifier">graphs</span><span class="special">/</span><span class="identifier">dist_graphs</span><span class="special">.</span><span class="identifier">cpp</span></code> 和 <code class="computeroutput"><span class="special">/</span><span class="identifier">libs</span><span class="special">/</span><span class="identifier">math</span><span class="special">/</span><span class="identifier">doc</span><span class="special">/</span><span class="identifier">sf_and_dist</span><span class="special">/</span><span class="identifier">graphs</span><span class="special">/</span><span class="identifier">sf_graphs</span><span class="special">.</span><span class="identifier">cpp</span></code> 使用 Jacob Voytko 的 <a href="http://code.google.com/soc/2007/boost/about.html" target="_top">Google Summer of Code 2007</a> 项目直接生成 SVG (其工作迄今已由 Paul A. Bristow 大幅增强, 现在相当成熟可用, 位于 .\boost-sandbox\SOC\2007\visualization).</p>
+</div>
+<div class="copyright-footer">版权所有 © 2006-2021 Nikhar Agrawal, Anton Bikineev, Matthew Borland, Paul A. Bristow, Marco Guazzone, Christopher Kormanyos, Hubert Holin, Bruno Lalande, John Maddock, Evan Miller, Jeremy Murphy, Matthew Pulver, Johan Råde, Gautam Sewani, Benjamin Sobotta, Nicholas Thompson, Thijs van den Berg, Daryle Walker, Xiaogang Zhang, and Maksym Zhelyeznyakov<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../backgrounders.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../backgrounders.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="special_tut.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

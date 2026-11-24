@@ -1,0 +1,182 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>实现</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../circular_buffer.html" title="Chapter 6. Boost.Circular Buffer">
+<link rel="prev" href="rationale.html" title="设计理由">
+<link rel="next" href="examples.html" title="更多示例">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="rationale.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../circular_buffer.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="examples.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="circular_buffer.implementation"></a><a class="link" href="implementation.html" title="实现">实现 </a>
+</h2></div></div></div>
+<p>以下几段描述在实现 circular_buffer 时必须考虑的问题:</p>
+<h4>
+<a name="circular_buffer.implementation.h0"></a>
+      <span class="phrase"><a name="circular_buffer.implementation.thread_safety"></a></span><a class="link" href="implementation.html#circular_buffer.implementation.thread_safety">线程安全</a>
+    </h4>
+<p> <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 的线程安全性与大多数 STL 实现中容器的线程安全性相同. 这意味着 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 不是完全线程安全的. 线程安全性仅在如下意义上得到保证: 对 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 的不同实例的同时访问是安全的, 对共享的 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 的同时读访问是安全的.</p>
+<p>如果多个线程访问同一个 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code>, 且其中至少一个线程可能进行写操作, 则用户有责任确保各线程在容器访问期间的互斥. 线程间的互斥可以通过用锁的获取与释放包裹底层 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 的操作来实现. (参见 <a href="../../../libs/circular_buffer/example/circular_buffer_bound_example.cpp" target="_top">circular_buffer_bound_example.cpp</a> 处的有界缓冲区示例代码)</p>
+<h4>
+<a name="circular_buffer.implementation.h1"></a>
+      <span class="phrase"><a name="circular_buffer.implementation.overwrite_operation"></a></span><a class="link" href="implementation.html#circular_buffer.implementation.overwrite_operation">覆写操作</a>
+    </h4>
+<p>当向一个已满的 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 插入元素时, 就会发生覆写 (overwrite) 操作——旧元素被新元素覆写. 在正式评审期间曾讨论过"元素的覆写"到底意味着什么: 它可以是先析构原元素、随后就地构造新元素, 也可以是把新元素赋值到旧元素上. <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 实现的是赋值, 因为它更高效.</p>
+<p>从所存元素的业务逻辑角度看, 析构/构造操作与赋值通常意味着同样的事. 然而, 在极少数情况下 (如果存在的话) 二者可能不同. 如果要求元素必须被析构/构造而不是被赋值, 可以考虑实现一个实现了赋值运算符的元素包装器 (wrapper), 并改为存储这些包装器. 需要指出, 存储这样的包装器有一个缺点: 析构/构造会在每次对包装器赋值时被调用——不仅发生在包装器被覆写时 (缓冲区已满时), 也发生在所存包装器被移位时 (例如作为向容器中部插入的结果).</p>
+<h4>
+<a name="circular_buffer.implementation.h2"></a>
+      <span class="phrase"><a name="circular_buffer.implementation.writing_to_a_full_buffer"></a></span><a class="link" href="implementation.html#circular_buffer.implementation.writing_to_a_full_buffer">向已满缓冲区写入</a>
+    </h4>
+<p>当数据源产生的数据超出定长缓冲区的容量时, 有几种应对方式:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">通知数据源等待, 直到缓冲区中有空位 (例如通过抛出上溢异常).</li>
+<li class="listitem">若最旧的数据最重要, 则忽略来自数据源的新数据, 直到缓冲区重新有空位.</li>
+<li class="listitem">若最新的数据最重要, 则覆写最旧的数据.</li>
+<li class="listitem">让生产者负责在写入之前检查缓冲区的大小.</li>
+</ul></div>
+<p>显然, <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 实现的是第三种方式. 但不太明显的是, 它不实现其他任何方式——尤其是前两种. 有人可能会以为 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 应该实现前三种方式, 并提供在它们之间选择的机制. 这种印象是错误的.</p>
+<p> <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 的设计与优化目标就是环形 (即满时覆写最旧的数据). 如果启用这样一种控制机制, 只会把事情复杂化, <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 的用法很可能不再那么直接了当.</p>
+<p>此外, 前两种方式 (第四种也一样) 根本不要求缓冲区是环形的. 如果需要第一种或第二种方式, 可以考虑实现一个适配器, 例如基于 std::vector 的适配器. 在这种情况下 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 并不适合用作适配对象, 因为与 std::vector 不同, 它为其环形行为承担着额外开销.</p>
+<h4>
+<a name="circular_buffer.implementation.h3"></a>
+      <span class="phrase"><a name="circular_buffer.implementation.reading_removing_from_an_empty_b"></a></span><a class="link" href="implementation.html#circular_buffer.implementation.reading_removing_from_an_empty_b">从空缓冲区读取/移除</a>
+    </h4>
+<p>从空缓冲区读取或移除元素时, 缓冲区应当能够通知数据消费者 (例如通过抛出下溢异常) 其中没有存储任何元素. <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 没有实现这种行为, 原因有二:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">它会带来性能开销.</li>
+<li class="listitem">没有其他 std 容器以这种方式实现它.</li>
+</ul></div>
+<p>从空的 std 容器读取或移除元素 (例如调用 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html#doxygen.boost_circular_buffer_c___reference.classboost_1_1circular__buffer_1a0d5fdeabeb352f47d1f7bb1ea8d9819f">front()</a></code> 或 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html#doxygen.boost_circular_buffer_c___reference.classboost_1_1circular__buffer_1adf0da00cb501bea75afbbfab9f546a07">pop_back()</a></code>) 被视为缺陷, 对空的 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 亦然. 数据消费者必须在读取/移除之前通过检查 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html#doxygen.boost_circular_buffer_c___reference.classboost_1_1circular__buffer_1a12c932f15d9028d99dd87ae890e60088">empty()</a></code> 来确认容器非空. 不过, 从 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 读取时, 也可以选择依赖 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html#doxygen.boost_circular_buffer_c___reference.classboost_1_1circular__buffer_1acd84838cb4fffb6c113fd0297e502edc">at()</a></code> 方法, 它在索引越界时抛出异常.</p>
+<h4>
+<a name="circular_buffer.implementation.h4"></a>
+      <span class="phrase"><a name="circular_buffer.implementation.iterator_invalidation"></a></span><a class="link" href="implementation.html#circular_buffer.implementation.iterator_invalidation">迭代器失效</a>
+    </h4>
+<p>如果迭代器所指向的元素被移除或被另一元素覆写, 该迭代器通常被视为已失效. 这一定义由调试支持 (Debug Support) 强制执行, 并在每个方法的文档中说明. 然而, 某些使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 的应用可能需要较宽松的定义: 只有当迭代器指向未初始化的内存时它才是无效的.</p>
+<p>考虑下面的示例:</p>
+<pre class="programlisting"><span class="preprocessor">#define</span> <span class="identifier">BOOST_CB_ENABLE_DEBUG</span> <span class="number">0</span> <span class="comment">// The Debug Support has to be disabled, otherwise the code produces a runtime error.</span>
+
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">circular_buffer</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">assert</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">assert</span><span class="special">.</span><span class="identifier">h</span><span class="special">&gt;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">int</span> <span class="comment">/*argc*/</span><span class="special">,</span> <span class="keyword">char</span><span class="special">*</span> <span class="comment">/*argv*/</span><span class="special">[])</span>
+<span class="special">{</span>
+
+  <span class="identifier">boost</span><span class="special">::</span><span class="identifier">circular_buffer</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">cb</span><span class="special">(</span><span class="number">3</span><span class="special">);</span>
+
+  <span class="identifier">cb</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="number">1</span><span class="special">);</span>
+  <span class="identifier">cb</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="number">2</span><span class="special">);</span>
+  <span class="identifier">cb</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="number">3</span><span class="special">);</span>
+
+  <span class="identifier">boost</span><span class="special">::</span><span class="identifier">circular_buffer</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;::</span><span class="identifier">iterator</span> <span class="identifier">it</span> <span class="special">=</span> <span class="identifier">cb</span><span class="special">.</span><span class="identifier">begin</span><span class="special">();</span>
+
+  <span class="identifier">assert</span><span class="special">(*</span><span class="identifier">it</span> <span class="special">==</span> <span class="number">1</span><span class="special">);</span>
+
+  <span class="identifier">cb</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="number">4</span><span class="special">);</span>
+
+  <span class="identifier">assert</span><span class="special">(*</span><span class="identifier">it</span> <span class="special">==</span> <span class="number">4</span><span class="special">);</span> <span class="comment">// The iterator still points to the initialized memory.</span>
+
+  <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>该迭代器不再指向原来的元素 (从"严格"的角度看已被视为无效), 但它仍指向内存中同一处有效位置. <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 支持这种迭代器失效的"软"定义, 但应将其视为实现细节而非完整特性. 迭代器何时仍然有效的规则可以从 <a href="../../../libs/circular_buffer/test/soft_iterator_invalidation.cpp" target="_top">soft_iterator_invalidation.cpp</a> 中的代码推断.</p>
+<h4>
+<a name="circular_buffer.implementation.h5"></a>
+      <span class="phrase"><a name="circular_buffer.implementation.move_emulation_and_rvalues"></a></span><a class="link" href="implementation.html#circular_buffer.implementation.move_emulation_and_rvalues">移动仿真与右值</a>
+    </h4>
+<p>自 Boost 1.54.0 起, 移动语义的支持用 <a href="../../../libs/move/index.html" target="_top">Boost.Move</a> 库实现. 若右值引用可用, <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 会使用它们; 否则它使用一种接近但不完美的仿真. 在这类编译器上:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">不可复制对象可以存入容器. 它们可以用 <code class="computeroutput"><span class="identifier">emplace</span></code> 就地构造, 或者 (若支持 Boost.Move) 移动到位.</li>
+<li class="listitem">容器本身不可移动.</li>
+<li class="listitem">实参转发并不完美.</li>
+</ul></div>
+<p>仅当值类型的移动构造函数和移动赋值运算符不抛出异常, 或值类型没有拷贝构造函数时, <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 才会对该值类型使用右值和移动仿真.</p>
+<p>若构造函数会抛出异常, 某些方法将完全不对值类型使用移动构造函数. 这样做是为了保证数据一致性, 并避免异常发生后 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 中同时混有已被移走对象与完好对象的情形.</p>
+<p>请参阅 <a href="../../../libs/type_traits/doc/html/boost_typetraits/reference/is_copy_constructible.html" target="_top"><code class="computeroutput"><span class="identifier">is_copy_constructible</span></code></a>、<a href="../../../libs/type_traits/doc/html/boost_typetraits/reference/is_nothrow_move_assignable.html" target="_top"><code class="computeroutput"><span class="identifier">is_nothrow_move_assignable</span></code></a> 和 <a href="../../../libs/type_traits/doc/html/boost_typetraits/reference/is_nothrow_move_constructible.html" target="_top"><code class="computeroutput"><span class="identifier">is_nothrow_move_constructible</span></code></a> 类型特征 (type traits) 的文档. 你会在那里找到如何把类的构造函数声明为 noexcept, 以及如何在 C++03 和 C++98 中创建不可复制类的信息.</p>
+<p>若值类型具有 noexcept 移动构造函数和 noexcept 移动赋值运算符, <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 的性能将 <span class="bold"><strong>大幅提升</strong></span>.</p>
+<h4>
+<a name="circular_buffer.implementation.h6"></a>
+      <span class="phrase"><a name="circular_buffer.implementation.exceptions_of_move_if_noexcept_t"></a></span><a class="link" href="implementation.html#circular_buffer.implementation.exceptions_of_move_if_noexcept_t">move_if_noexcept(T&amp;) 的异常</a>
+    </h4>
+<p> <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 的参考文档包含诸如 "抛出: 参见 <code class="computeroutput"><span class="identifier">move_if_noexcept</span><span class="special">(</span><span class="identifier">T</span><span class="special">&amp;)</span></code> 的异常" 的注释. 该注释的含义是: <code class="computeroutput"><span class="identifier">move_if_noexcept</span><span class="special">(</span><span class="identifier">T</span><span class="special">&amp;</span>
+      <span class="identifier">value</span><span class="special">)</span></code> 本身不抛出任何异常, 但它以右值引用返回 <code class="computeroutput"><span class="identifier">value</span></code>, 仅当类 <code class="computeroutput"><span class="identifier">T</span></code> 具有 noexcept 移动构造函数和 noexcept 移动赋值运算符, 或没有拷贝构造函数. 否则 <code class="computeroutput"><span class="identifier">move_if_noexcept</span><span class="special">(</span><span class="identifier">T</span><span class="special">&amp;</span>
+      <span class="identifier">value</span><span class="special">)</span></code> 以 const 引用返回 <code class="computeroutput"><span class="identifier">value</span></code>.</p>
+<p>由此我们得到如下情形:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">若 <code class="computeroutput"><span class="identifier">value</span></code> 具有 noexcept 移动构造函数和 noexcept 移动赋值运算符, 则根本不会抛出异常.</li>
+<li class="listitem">若 <code class="computeroutput"><span class="identifier">value</span></code> 具有会抛出异常的移动构造函数和某个拷贝构造函数, 则该方法可能抛出拷贝构造函数的异常.</li>
+<li class="listitem">若 <code class="computeroutput"><span class="identifier">value</span></code> 没有拷贝构造函数, 则该方法可能抛出移动构造函数的异常.</li>
+</ul></div>
+<p>
+      <code class="computeroutput"><span class="identifier">move_if_noexcept</span><span class="special">(</span><span class="identifier">T</span><span class="special">&amp;)</span></code> 使用 <a href="../../../libs/move/index.html" target="_top">Boost.Move</a>、<a href="../../../libs/type_traits/doc/html/boost_typetraits/reference/is_copy_constructible.html" target="_top"><code class="computeroutput"><span class="identifier">is_copy_constructible</span></code></a>、<a href="../../../libs/type_traits/doc/html/boost_typetraits/reference/is_nothrow_move_assignable.html" target="_top"><code class="computeroutput"><span class="identifier">is_nothrow_move_assignable</span></code></a> 和 <a href="../../../libs/type_traits/doc/html/boost_typetraits/reference/is_nothrow_move_constructible.html" target="_top"><code class="computeroutput"><span class="identifier">is_nothrow_move_constructible</span></code></a> 类型特征 (type traits).</p>
+<h4>
+<a name="circular_buffer.implementation.h7"></a>
+      <span class="phrase"><a name="circular_buffer.implementation.caveats"></a></span><a class="link" href="implementation.html#circular_buffer.implementation.caveats">注意事项</a>
+    </h4>
+<p> <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 不应用于存储指向动态分配对象的指针. 当环形缓冲区变满后, 后续插入会覆写已存储的指针——从而导致 <span class="bold"><strong>内存泄漏</strong></span>. 推荐的替代做法是使用智能指针, 例如 <a href="http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm" target="_top">Boost Smart pointers</a>.</p>
+<p>
+      <a href="http://en.wikipedia.org/wiki/Std::auto_ptr" target="_top">std::auto_ptr</a>
+    </p>
+<div class="caution"><table border="0" summary="Caution">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注意]" src="../../../doc/src/images/caution.png"></td>
+<th align="left">注意</th>
+</tr>
+<tr><td align="left" valign="top"><p>任何 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">auto_ptr</span></code> 的容器都被认为特别危险.</p></td></tr>
+</table></div>
+<div class="tip"><table border="0" summary="Tip">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[提示]" src="../../../doc/src/images/tip.png"></td>
+<th align="left">提示</th>
+</tr>
+<tr><td align="left" valign="top"><p>绝不要创建 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">auto_ptr</span></code> 的环形缓冲区. 详细讨论请参阅 Scott Meyers 的优秀著作 Effective STL. (Meyers S., Effective STL: 50 Specific Ways to Improve Your Use of the Standard Template Library. Addison-Wesley, 2001.)</p></td></tr>
+</table></div>
+<p>虽然 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 的内部是环形的, 但 <span class="bold"><strong>迭代器不是</strong></span>. <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 的迭代器仅在范围 <code class="computeroutput"><span class="special">\[</span><span class="identifier">begin</span><span class="special">(),</span> <span class="identifier">end</span><span class="special">()\]</span></code> 内有效, 例如: 迭代器 <code class="computeroutput"><span class="special">(</span><span class="identifier">begin</span><span class="special">()</span> <span class="special">-</span> <span class="number">1</span><span class="special">)</span></code> 和 <code class="computeroutput"><span class="special">(</span><span class="identifier">end</span><span class="special">()</span> <span class="special">+</span>
+      <span class="number">1</span><span class="special">)</span></code> 都是无效的.</p>
+<h4>
+<a name="circular_buffer.implementation.h8"></a>
+      <span class="phrase"><a name="circular_buffer.implementation.debug_support"></a></span><a class="link" href="implementation.html#circular_buffer.implementation.debug_support">调试支持</a>
+    </h4>
+<p>为帮助程序员避免和发现常见缺陷, 可以启用 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 以提供一种调试支持.</p>
+<p>启用调试功能后, <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 会维护一个有效迭代器的列表. 一旦某个元素被销毁, 所有指向该元素的迭代器都会从该列表中移除并被显式置为无效 (设置失效标志). 调试支持还包括许多断言 (<code class="computeroutput"><span class="identifier">BOOST_ASSERT</span></code> 宏), 它们确保 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 及其迭代器在运行期以正确的方式使用. 若使用了无效迭代器, 断言会报告错误. 显式迭代器失效与断言的结合构成了一种非常稳健的调试技术, 能捕获大多数错误.</p>
+<p>此外, 在调试模式下, <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 分配的未初始化内存会被填充为值 <code class="computeroutput"><span class="number">0xcc</span></code>. 调试代码时, 这可以帮助程序员区分已初始化内存与未初始化内存. 详情请参阅源代码 <a href="../../../boost/circular_buffer/debug.hpp" target="_top">circular_buffer/debug.hpp</a>.</p>
+<div class="caution"><table border="0" summary="Caution">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注意]" src="../../../doc/src/images/caution.png"></td>
+<th align="left">注意</th>
+</tr>
+<tr><td align="left" valign="top"><p>由于调试代码使 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 与其迭代器的关联更加紧密, 启用调试支持时 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 的线程安全保证会有所不同. 除容器本身外, 容器跟踪的所有迭代器 (包括其任何副本) 也必须受保护而不被并发访问. 特别是, 这包括从容器复制、销毁或获取迭代器, 即使只是只读访问.</p></td></tr>
+</table></div>
+<p>调试支持默认是禁用的. 要启用它, 必须在把宏 <code class="computeroutput"><span class="identifier">BOOST_CB_ENABLE_DEBUG</span></code> 定义为 1 的同时编译使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 的代码.</p>
+<h4>
+<a name="circular_buffer.implementation.h9"></a>
+      <span class="phrase"><a name="circular_buffer.implementation.compatibility_with_interprocess_"></a></span><a class="link" href="implementation.html#circular_buffer.implementation.compatibility_with_interprocess_">与 Interprocess 库的兼容性</a>
+    </h4>
+<p> <code class="computeroutput"><a class="link" href="../doxygen/boost_circular_buffer_c___reference/classboost_1_1circular__buffer.html" title="类模板 circular_buffer">circular_buffer</a></code> 与用于进程间通信的 <a href="../../../libs/interprocess/index.html" target="_top">Boost.Interprocess</a> 库兼容. 考虑到 circular_buffer 的调试支持依赖"裸"指针 (这是 Interprocess 库不允许的), 代码必须在禁用调试支持的情况下编译 (即不定义 <code class="computeroutput"><span class="identifier">BOOST_CB_ENABLE_DEBUG</span></code> 宏, 或将其定义为 0). 否则将导致编译失败.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2003-2013 Jan Gaspar<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="rationale.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../circular_buffer.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="examples.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

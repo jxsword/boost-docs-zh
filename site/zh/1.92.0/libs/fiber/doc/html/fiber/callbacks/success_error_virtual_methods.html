@@ -1,0 +1,107 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>成功/错误虚方法</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Fiber">
+<link rel="up" href="../callbacks.html" title="将纤程与异步回调集成">
+<link rel="prev" href="data_or_exception.html" title="数据或异常">
+<link rel="next" href="then_there_s____boost_asio__.html" title="接下来便是 Boost.Asio">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="data_or_exception.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../callbacks.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="then_there_s____boost_asio__.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="fiber.callbacks.success_error_virtual_methods"></a><a class="link" href="success_error_virtual_methods.html" title="成功/错误虚方法">成功/错误虚方法</a>
+</h3></div></div></div>
+<p>完成通知的一种经典做法是定义一个抽象基类, 其中带有 <code class="computeroutput"><span class="identifier">success</span><span class="special">()</span></code> 和 <code class="computeroutput"><span class="identifier">error</span><span class="special">()</span></code> 方法. 想要执行异步 I/O 的代码必须派生一个子类, 重写其中的每个方法, 并把指向子类实例的指针传给异步操作. 这个抽象基类大致如下:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// every async operation receives a subclass instance of this abstract base</span>
+<span class="comment">// class through which to communicate its result</span>
+<span class="keyword">struct</span> <span class="identifier">Response</span> <span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">Response</span> <span class="special">&gt;</span> <span class="identifier">ptr</span><span class="special">;</span>
+
+    <span class="comment">// called if the operation succeeds</span>
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">success</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">data</span><span class="special">)</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+
+    <span class="comment">// called if the operation fails</span>
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">error</span><span class="special">(</span> <span class="identifier">AsyncAPIBase</span><span class="special">::</span><span class="identifier">errorcode</span> <span class="identifier">ec</span><span class="special">)</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<p>此时 <code class="computeroutput"><span class="identifier">AsyncAPI</span></code> 操作可能更像下面这样:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// derive Response subclass, instantiate, pass Response::ptr</span>
+<span class="keyword">void</span> <span class="identifier">init_read</span><span class="special">(</span> <span class="identifier">Response</span><span class="special">::</span><span class="identifier">ptr</span><span class="special">);</span>
+</pre>
+<p>
+      </p>
+<p>我们可以编写一个普适的 <code class="computeroutput"><span class="identifier">PromiseResponse</span></code> 来解决这个问题:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">PromiseResponse</span><span class="special">:</span> <span class="keyword">public</span> <span class="identifier">Response</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="comment">// called if the operation succeeds</span>
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">success</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">data</span><span class="special">)</span> <span class="special">{</span>
+        <span class="identifier">promise_</span><span class="special">.</span><span class="identifier">set_value</span><span class="special">(</span> <span class="identifier">data</span><span class="special">);</span>
+    <span class="special">}</span>
+
+    <span class="comment">// called if the operation fails</span>
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">error</span><span class="special">(</span> <span class="identifier">AsyncAPIBase</span><span class="special">::</span><span class="identifier">errorcode</span> <span class="identifier">ec</span><span class="special">)</span> <span class="special">{</span>
+        <span class="identifier">promise_</span><span class="special">.</span><span class="identifier">set_exception</span><span class="special">(</span>
+                <span class="identifier">std</span><span class="special">::</span><span class="identifier">make_exception_ptr</span><span class="special">(</span>
+                    <span class="identifier">make_exception</span><span class="special">(</span><span class="string">"read"</span><span class="special">,</span> <span class="identifier">ec</span><span class="special">)</span> <span class="special">)</span> <span class="special">);</span>
+    <span class="special">}</span>
+
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">future</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="special">&gt;</span> <span class="identifier">get_future</span><span class="special">()</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">promise_</span><span class="special">.</span><span class="identifier">get_future</span><span class="special">();</span>
+    <span class="special">}</span>
+
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">promise</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="special">&gt;</span>   <span class="identifier">promise_</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<p>现在我们可以直接取得 <code class="computeroutput"><span class="identifier">future</span><span class="special">&lt;&gt;</span></code> (即由该 <code class="computeroutput"><span class="identifier">PromiseResponse</span></code> 所提供), 并在其 <code class="computeroutput"><span class="identifier">get</span><span class="special">()</span></code> 上等待:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">read</span><span class="special">(</span> <span class="identifier">AsyncAPI</span> <span class="special">&amp;</span> <span class="identifier">api</span><span class="special">)</span> <span class="special">{</span>
+    <span class="comment">// Because init_read() requires a shared_ptr, we must allocate our</span>
+    <span class="comment">// ResponsePromise on the heap, even though we know its lifespan.</span>
+    <span class="keyword">auto</span> <span class="identifier">promisep</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">make_shared</span><span class="special">&lt;</span> <span class="identifier">PromiseResponse</span> <span class="special">&gt;()</span> <span class="special">);</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">future</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="special">&gt;</span> <span class="identifier">future</span><span class="special">(</span> <span class="identifier">promisep</span><span class="special">-&gt;</span><span class="identifier">get_future</span><span class="special">()</span> <span class="special">);</span>
+    <span class="comment">// Both 'promisep' and 'future' will survive until our lambda has been</span>
+    <span class="comment">// called.</span>
+    <span class="identifier">api</span><span class="special">.</span><span class="identifier">init_read</span><span class="special">(</span> <span class="identifier">promisep</span><span class="special">);</span>
+    <span class="keyword">return</span> <span class="identifier">future</span><span class="special">.</span><span class="identifier">get</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>上述源代码位于 <a href="../../../../examples/adapt_callbacks.cpp" target="_top">adapt_callbacks.cpp</a> 和 <a href="../../../../examples/adapt_method_calls.cpp" target="_top">adapt_method_calls.cpp</a> 中.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2013 Oliver Kowalke<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="data_or_exception.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../callbacks.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="then_there_s____boost_asio__.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

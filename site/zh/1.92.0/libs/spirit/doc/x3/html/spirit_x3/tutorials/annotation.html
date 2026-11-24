@@ -1,0 +1,352 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>注解 - 装饰 AST</title>
+<link rel="stylesheet" href="../../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="Spirit X3 3.10">
+<link rel="up" href="../tutorials.html" title="教程">
+<link rel="prev" href="minimal.html" title="X3 程序结构">
+<link rel="next" href="rexpr.html" title="RExpressions - 递归 AST!">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="minimal.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../tutorials.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="rexpr.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="spirit_x3.tutorials.annotation"></a><a class="link" href="annotation.html" title="注解 - 装饰 AST">注解 - 装饰 AST</a>
+</h3></div></div></div>
+<p>作为理解本教程的先决条件, 请先回顾前面的 <a class="link" href="employee.html" title="Employee - 解析到结构体">employee 示例</a>. 本示例正是在该示例的基础上构建的.</p>
+<p>停下来想一想... 实际上, 在前面的示例中我们已经在生成 AST(抽象语法树)了. 我们解析了一个单一结构, 并以 struct 的形式生成了它的内存表示: struct employee. 如果我们修改实现以解析一个或多个 employee, 结果将是一个 std::vector&lt;employee&gt;. 我们还可以继续添加更多层次: 团队、部门、公司等等. 我们可以为这一切建立 AST 表示.</p>
+<p>本示例展示如何用迭代器位置为 AST 添加注解, 以便在使用客户端提供的 <code class="computeroutput"><span class="identifier">on_success</span></code> 处理器进行后处理时访问源代码. 该示例将展示如何获取输入源流中与 AST 中给定元素相对应的位置.</p>
+<p>此外, 本示例还展示了如何使用 “with” 指令“注入”客户端数据, 使 <code class="computeroutput"><span class="identifier">on_success</span></code> 处理器在解析遍历期间被调用时能够通过解析器的上下文访问这些数据.</p>
+<p>本示例完整的 cpp 文件可在这里找到: <a href="../../../../../example/x3/annotation.cpp" target="_top">annotation.cpp</a>
+      </p>
+<h5>
+<a name="spirit_x3.tutorials.annotation.h0"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.annotation.the_ast"></a></span><a class="link" href="annotation.html#spirit_x3.tutorials.annotation.the_ast">AST</a>
+      </h5>
+<p>首先, 我们更新之前的 employee struct, 这次把 person 拆分到它自己的 struct 中. 现在我们有两个 struct: <code class="computeroutput"><span class="identifier">person</span></code> 和 <code class="computeroutput"><span class="identifier">employee</span></code>. 另外还请注意, 我们继承了 <code class="computeroutput"><span class="identifier">person</span></code> 与 <code class="computeroutput"><span class="identifier">employee</span></code>, 它们来自 <code class="computeroutput"><span class="identifier">x3</span><span class="special">::</span><span class="identifier">position_tagged</span></code>, 后者提供位置信息, 使我们随时都能得知 AST 在输入流中的位置.</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">client</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">ast</span>
+<span class="special">{</span>
+    <span class="keyword">struct</span> <span class="identifier">person</span> <span class="special">:</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">position_tagged</span>
+    <span class="special">{</span>
+        <span class="identifier">person</span><span class="special">(</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">first_name</span> <span class="special">=</span> <span class="string">""</span>
+          <span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">last_name</span> <span class="special">=</span> <span class="string">""</span>
+        <span class="special">)</span>
+        <span class="special">:</span> <span class="identifier">first_name</span><span class="special">(</span><span class="identifier">first_name</span><span class="special">)</span>
+        <span class="special">,</span> <span class="identifier">last_name</span><span class="special">(</span><span class="identifier">last_name</span><span class="special">)</span>
+        <span class="special">{}</span>
+
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">first_name</span><span class="special">,</span> <span class="identifier">last_name</span><span class="special">;</span>
+    <span class="special">};</span>
+
+    <span class="keyword">struct</span> <span class="identifier">employee</span> <span class="special">:</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">position_tagged</span>
+    <span class="special">{</span>
+        <span class="keyword">int</span> <span class="identifier">age</span><span class="special">;</span>
+        <span class="identifier">person</span> <span class="identifier">who</span><span class="special">;</span>
+        <span class="keyword">double</span> <span class="identifier">salary</span><span class="special">;</span>
+    <span class="special">};</span>
+<span class="special">}}</span>
+</pre>
+<p>与之前一样, 我们需要把我们的 struct 告知 <a href="../../../../../../../libs/fusion/doc/html/index.html" target="_top">Boost.Fusion</a>, 使它们成为文法可以利用的一等 fusion 公民:</p>
+<pre class="programlisting"><span class="identifier">BOOST_FUSION_ADAPT_STRUCT</span><span class="special">(</span><span class="identifier">client</span><span class="special">::</span><span class="identifier">ast</span><span class="special">::</span><span class="identifier">person</span><span class="special">,</span>
+    <span class="identifier">first_name</span><span class="special">,</span> <span class="identifier">last_name</span>
+<span class="special">)</span>
+
+<span class="identifier">BOOST_FUSION_ADAPT_STRUCT</span><span class="special">(</span><span class="identifier">client</span><span class="special">::</span><span class="identifier">ast</span><span class="special">::</span><span class="identifier">employee</span><span class="special">,</span>
+    <span class="identifier">age</span><span class="special">,</span> <span class="identifier">who</span><span class="special">,</span> <span class="identifier">salary</span>
+<span class="special">)</span>
+</pre>
+<h5>
+<a name="spirit_x3.tutorials.annotation.h1"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.annotation.x3__position_cache"></a></span><a class="link" href="annotation.html#spirit_x3.tutorials.annotation.x3__position_cache">x3::position_cache</a>
+      </h5>
+<p>在继续之前, 让我介绍一个名为 <code class="computeroutput"><span class="identifier">position_cache</span></code> 的辅助类. 它是一个简单的类, 收集指向 AST 中各元素在输入流中所在位置的迭代器范围. 给定一个 AST, 你可以查询 position_cache 以获得 AST 的位置. 例如:</p>
+<pre class="programlisting"><span class="keyword">auto</span> <span class="identifier">pos</span> <span class="special">=</span> <span class="identifier">positions</span><span class="special">.</span><span class="identifier">position_of</span><span class="special">(</span><span class="identifier">my_ast</span><span class="special">);</span>
+</pre>
+<p>其中 <code class="computeroutput"><span class="identifier">my_ast</span></code> 是 AST, <code class="computeroutput"><span class="identifier">positions</span></code> 是 <code class="computeroutput"><span class="identifier">position_cache</span></code>; <code class="computeroutput"><span class="identifier">position_of</span></code> 返回一个迭代器范围, 指向 AST 被解析时的起点和终点位置 (<code class="computeroutput"><span class="identifier">pos</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span></code> 和 <code class="computeroutput"><span class="identifier">pos</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span></code>). <code class="computeroutput"><span class="identifier">positions</span><span class="special">.</span><span class="identifier">begin</span><span class="special">()</span></code> 与 <code class="computeroutput"><span class="identifier">positions</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span></code> 则指向整个输入流的起点和终点.</p>
+<h5>
+<a name="spirit_x3.tutorials.annotation.h2"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.annotation.on_success"></a></span><a class="link" href="annotation.html#spirit_x3.tutorials.annotation.on_success">on_success</a>
+      </h5>
+<p> <code class="computeroutput"><span class="identifier">on_success</span></code> 为你提供了语义动作所能提供的一切, 而又没有视觉上的杂乱. 声明式代码可以而且应当摆脱命令式代码. <code class="computeroutput"><span class="identifier">on_success</span></code> 作为一种概念和机制, 是对 Spirit 上一版本 Qi 处理方式的一次重要突破.</p>
+<p>正如前面的 <a class="link" href="employee.html" title="Employee - 解析到结构体">employee 示例</a> 所演示的, 从输入源提取数据的首选方式是让解析器在遍历输入流的过程中替我们把数据收集到 C++ struct 中. 理想情况下, Spirit X3 文法是完全带属性的, 并且以这样的方式声明: 你不必添加任何命令式代码, 也完全不需要语义动作. 解析器只是按声明的方式工作, 你随之得到自己的数据.</p>
+<p>然而, 在某些情况下, 不可避免地要引入命令式代码. 但语义动作会打乱我们整洁的声明式文法. 如果我们希望保持代码整洁, <code class="computeroutput"><span class="identifier">on_success</span></code> 处理器就是另一种回调钩子: 它们由解析器在成功解析后执行, 调用客户端代码, 而不污染文法. 与语义动作一样, <code class="computeroutput"><span class="identifier">on_success</span></code> 处理器可以访问 AST、迭代器和上下文. 但与语义动作不同, <code class="computeroutput"><span class="identifier">on_success</span></code> 处理器与实际的文法干净地分离.</p>
+<p>
+        <span class="bold"><strong>注释:</strong></span> <code class="computeroutput"><span class="identifier">on_success</span></code> 处理器收到的是已预跳过的迭代器, 即便规则定义已通过 <code class="computeroutput"><span class="identifier">no_skip</span></code> 指令禁用了预跳过.</p>
+<h5>
+<a name="spirit_x3.tutorials.annotation.h3"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.annotation.annotation_handler"></a></span><a class="link" href="annotation.html#spirit_x3.tutorials.annotation.annotation_handler">注解处理器</a>
+      </h5>
+<p>如前所述, 我们用 <code class="computeroutput"><span class="identifier">on_success</span></code> 处理器为 AST 添加其在输入流中的位置注解:</p>
+<pre class="programlisting"><span class="comment">// tag used to get the position cache from the context</span>
+<span class="keyword">struct</span> <span class="identifier">position_cache_tag</span><span class="special">;</span>
+
+<span class="keyword">struct</span> <span class="identifier">annotate_position</span>
+<span class="special">{</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">T</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Iterator</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Context</span><span class="special">&gt;</span>
+    <span class="keyword">inline</span> <span class="keyword">void</span> <span class="identifier">on_success</span><span class="special">(</span><span class="identifier">Iterator</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">first</span><span class="special">,</span> <span class="identifier">Iterator</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">last</span>
+    <span class="special">,</span> <span class="identifier">T</span><span class="special">&amp;</span> <span class="identifier">ast</span><span class="special">,</span> <span class="identifier">Context</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">context</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="keyword">auto</span><span class="special">&amp;</span> <span class="identifier">position_cache</span> <span class="special">=</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span><span class="identifier">position_cache_tag</span><span class="special">&gt;(</span><span class="identifier">context</span><span class="special">).</span><span class="identifier">get</span><span class="special">();</span>
+        <span class="identifier">position_cache</span><span class="special">.</span><span class="identifier">annotate</span><span class="special">(</span><span class="identifier">ast</span><span class="special">,</span> <span class="identifier">first</span><span class="special">,</span> <span class="identifier">last</span><span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+        <code class="computeroutput"><span class="identifier">position_cache_tag</span></code> 是一个特殊标签, 我们将用它获取对实际 <code class="computeroutput"><span class="identifier">position_cache</span></code> 的引用; 后者是客户端数据, 我们将在最初调用 parse 时注入它. 稍后会详细说明.</p>
+<p>我们的 <code class="computeroutput"><span class="identifier">on_success</span></code> 处理器获取对实际 <code class="computeroutput"><span class="identifier">position_cache</span></code> 的引用, 并调用其 <code class="computeroutput"><span class="identifier">annotate</span></code> 成员函数, 传入 AST 和迭代器. <code class="computeroutput"><span class="identifier">position_cache</span><span class="special">.</span><span class="identifier">annotate</span><span class="special">(</span><span class="identifier">ast</span><span class="special">,</span>
+        <span class="identifier">first</span><span class="special">,</span>
+        <span class="identifier">last</span><span class="special">)</span></code> 用 <code class="computeroutput"><span class="identifier">x3</span><span class="special">::</span><span class="identifier">position_tagged</span></code> 所需的信息为 AST 添加注解.</p>
+<h5>
+<a name="spirit_x3.tutorials.annotation.h4"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.annotation.the_parser"></a></span><a class="link" href="annotation.html#spirit_x3.tutorials.annotation.the_parser">解析器</a>
+      </h5>
+<p>现在我们为 employee 编写一个解析器. 为简单起见, 输入将采用如下形式:</p>
+<pre class="programlisting"><span class="special">{</span> <span class="identifier">age</span><span class="special">,</span> <span class="string">"forename"</span><span class="special">,</span> <span class="string">"surname"</span><span class="special">,</span> <span class="identifier">salary</span> <span class="special">}</span>
+</pre>
+<p>
+        <a name="__tutorial_annotated_employee_parser__"></a>开始:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">parser</span>
+<span class="special">{</span>
+    <span class="keyword">using</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">int_</span><span class="special">;</span>
+    <span class="keyword">using</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">double_</span><span class="special">;</span>
+    <span class="keyword">using</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">lexeme</span><span class="special">;</span>
+    <span class="keyword">using</span> <span class="identifier">ascii</span><span class="special">::</span><span class="identifier">char_</span><span class="special">;</span>
+
+    <span class="keyword">struct</span> <span class="identifier">quoted_string_class</span><span class="special">;</span>
+    <span class="keyword">struct</span> <span class="identifier">person_class</span><span class="special">;</span>
+    <span class="keyword">struct</span> <span class="identifier">employee_class</span><span class="special">;</span>
+
+    <span class="identifier">x3</span><span class="special">::</span><span class="identifier">rule</span><span class="special">&lt;</span><span class="identifier">quoted_string_class</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;</span> <span class="keyword">const</span> <span class="identifier">quoted_string</span> <span class="special">=</span> <span class="string">"quoted_string"</span><span class="special">;</span>
+    <span class="identifier">x3</span><span class="special">::</span><span class="identifier">rule</span><span class="special">&lt;</span><span class="identifier">person_class</span><span class="special">,</span> <span class="identifier">ast</span><span class="special">::</span><span class="identifier">person</span><span class="special">&gt;</span> <span class="keyword">const</span> <span class="identifier">person</span> <span class="special">=</span> <span class="string">"person"</span><span class="special">;</span>
+    <span class="identifier">x3</span><span class="special">::</span><span class="identifier">rule</span><span class="special">&lt;</span><span class="identifier">employee_class</span><span class="special">,</span> <span class="identifier">ast</span><span class="special">::</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="keyword">const</span> <span class="identifier">employee</span> <span class="special">=</span> <span class="string">"employee"</span><span class="special">;</span>
+
+    <span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">quoted_string_def</span> <span class="special">=</span> <span class="identifier">lexeme</span><span class="special">[</span><span class="char">'"'</span> <span class="special">&gt;&gt;</span> <span class="special">+(</span><span class="identifier">char_</span> <span class="special">-</span> <span class="char">'"'</span><span class="special">)</span> <span class="special">&gt;&gt;</span> <span class="char">'"'</span><span class="special">];</span>
+    <span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">person_def</span> <span class="special">=</span> <span class="identifier">quoted_string</span> <span class="special">&gt;&gt;</span> <span class="char">','</span> <span class="special">&gt;&gt;</span> <span class="identifier">quoted_string</span><span class="special">;</span>
+
+    <span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">employee_def</span> <span class="special">=</span>
+            <span class="char">'{'</span>
+        <span class="special">&gt;&gt;</span>  <span class="identifier">int_</span> <span class="special">&gt;&gt;</span> <span class="char">','</span>
+        <span class="special">&gt;&gt;</span>  <span class="identifier">person</span> <span class="special">&gt;&gt;</span> <span class="char">','</span>
+        <span class="special">&gt;&gt;</span>  <span class="identifier">double_</span>
+        <span class="special">&gt;&gt;</span>  <span class="char">'}'</span>
+        <span class="special">;</span>
+
+    <span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">employees</span> <span class="special">=</span> <span class="identifier">employee</span> <span class="special">&gt;&gt;</span> <span class="special">*(</span><span class="char">','</span> <span class="special">&gt;&gt;</span> <span class="identifier">employee</span><span class="special">);</span>
+
+    <span class="identifier">BOOST_SPIRIT_DEFINE</span><span class="special">(</span><span class="identifier">quoted_string</span><span class="special">,</span> <span class="identifier">person</span><span class="special">,</span> <span class="identifier">employee</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<h5>
+<a name="spirit_x3.tutorials.annotation.h5"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.annotation.rule_declarations"></a></span><a class="link" href="annotation.html#spirit_x3.tutorials.annotation.rule_declarations">规则声明</a>
+      </h5>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">quoted_string_class</span><span class="special">;</span>
+<span class="keyword">struct</span> <span class="identifier">person_class</span><span class="special">;</span>
+<span class="keyword">struct</span> <span class="identifier">employee_class</span><span class="special">;</span>
+
+<span class="identifier">x3</span><span class="special">::</span><span class="identifier">rule</span><span class="special">&lt;</span><span class="identifier">quoted_string_class</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;</span> <span class="keyword">const</span> <span class="identifier">quoted_string</span> <span class="special">=</span> <span class="string">"quoted_string"</span><span class="special">;</span>
+<span class="identifier">x3</span><span class="special">::</span><span class="identifier">rule</span><span class="special">&lt;</span><span class="identifier">person_class</span><span class="special">,</span> <span class="identifier">ast</span><span class="special">::</span><span class="identifier">person</span><span class="special">&gt;</span> <span class="keyword">const</span> <span class="identifier">person</span> <span class="special">=</span> <span class="string">"person"</span><span class="special">;</span>
+<span class="identifier">x3</span><span class="special">::</span><span class="identifier">rule</span><span class="special">&lt;</span><span class="identifier">employee_class</span><span class="special">,</span> <span class="identifier">ast</span><span class="special">::</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="keyword">const</span> <span class="identifier">employee</span> <span class="special">=</span> <span class="string">"employee"</span><span class="special">;</span>
+</pre>
+<p>回头再看一看最初的 <a class="link" href="employee.html#__tutorial_employee_parser__">employee 解析器</a>. 有什么变化?</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">我们把单一的 employee 规则拆分为三个更小的规则: <code class="computeroutput"><span class="identifier">quoted_string</span></code>、<code class="computeroutput"><span class="identifier">person</span></code> 和 <code class="computeroutput"><span class="identifier">employee</span></code>.</li>
+<li class="listitem">我们使用了前向声明的规则类: <code class="computeroutput"><span class="identifier">quoted_string_class</span></code>、<code class="computeroutput"><span class="identifier">person_class</span></code> 和 <code class="computeroutput"><span class="identifier">employee_class</span></code>.</li>
+</ul></div>
+<h5>
+<a name="spirit_x3.tutorials.annotation.h6"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.annotation.rule_classes"></a></span><a class="link" href="annotation.html#spirit_x3.tutorials.annotation.rule_classes">规则类</a>
+      </h5>
+<p>与之前一样, 在本示例中, 规则类 <code class="computeroutput"><span class="identifier">quoted_string_class</span></code>、<code class="computeroutput"><span class="identifier">person_class</span></code> 和 <code class="computeroutput"><span class="identifier">employee_class</span></code> 为规则提供 X3 执行其任务所需的静态已知 ID. 除此之外, 规则类还可以扩展出一些用户定义的定制钩子, 它们会在以下时机被调用:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">成功时: 在规则成功解析输入之后.</li>
+<li class="listitem">出错时: 在规则解析失败之后.</li>
+</ul></div>
+<p>让规则类继承自客户端提供的处理器, 例如上文我们的 <code class="computeroutput"><span class="identifier">annotate_position</span></code> 处理器:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">person_class</span> <span class="special">:</span> <span class="identifier">annotate_position</span> <span class="special">{};</span>
+<span class="keyword">struct</span> <span class="identifier">employee_class</span> <span class="special">:</span> <span class="identifier">annotate_position</span> <span class="special">{};</span>
+</pre>
+<p>上面的代码告诉 X3 检查规则类是否拥有 <code class="computeroutput"><span class="identifier">on_success</span></code> 或 <code class="computeroutput"><span class="identifier">on_error</span></code> 成员函数, 并在相应事件发生时恰当地调用它们.</p>
+<a name="__tutorial_with_directive__"></a><h5>
+<a name="spirit_x3.tutorials.annotation.h7"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.annotation.the_with_directive"></a></span><a class="link" href="annotation.html#spirit_x3.tutorials.annotation.the_with_directive">with 指令</a>
+      </h5>
+<p>对于任何解析器 <code class="computeroutput"><span class="identifier">p</span></code>, 都可以注入补充数据, 供语义动作和处理器在被调用时访问. 一般语法为:</p>
+<pre class="programlisting"><span class="identifier">with</span><span class="special">&lt;</span><span class="identifier">tag</span><span class="special">&gt;(</span><span class="identifier">data</span><span class="special">)[</span><span class="identifier">p</span><span class="special">]</span>
+</pre>
+<p>在我们这个具体示例中, 我们注入 <code class="computeroutput"><span class="identifier">position_cache</span></code> 到解析过程中, 供我们的 <code class="computeroutput"><span class="identifier">annotate_position</span></code> on_success 处理器访问:</p>
+<pre class="programlisting"><span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">parser</span> <span class="special">=</span>
+    <span class="comment">// we pass our position_cache to the parser so we can access</span>
+    <span class="comment">// it later in our on_sucess handlers</span>
+    <span class="identifier">with</span><span class="special">&lt;</span><span class="identifier">position_cache_tag</span><span class="special">&gt;(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">positions</span><span class="special">))</span>
+    <span class="special">[</span>
+        <span class="identifier">employees</span>
+    <span class="special">];</span>
+</pre>
+<p>通常, 这在调用 <code class="computeroutput"><span class="identifier">x3</span><span class="special">::</span><span class="identifier">parse</span></code> 或 <code class="computeroutput"><span class="identifier">x3</span><span class="special">::</span><span class="identifier">phrase_parse</span></code> 之前完成. <code class="computeroutput"><span class="identifier">with</span></code> 是一种非常轻量的操作. 你可以注入任意多的数据, 甚至可以叠加多个 <code class="computeroutput"><span class="identifier">with</span></code> 指令:</p>
+<pre class="programlisting"><span class="identifier">with</span><span class="special">&lt;</span><span class="identifier">tag1</span><span class="special">&gt;(</span><span class="identifier">data1</span><span class="special">)</span>
+<span class="special">[</span>
+    <span class="identifier">with</span><span class="special">&lt;</span><span class="identifier">tag2</span><span class="special">&gt;(</span><span class="identifier">data2</span><span class="special">)[</span><span class="identifier">p</span><span class="special">]</span>
+<span class="special">]</span>
+</pre>
+<p>多个 <code class="computeroutput"><span class="identifier">with</span></code> 指令可以(这一点或许并不明显)从被调用函数的外部注入. 概要如下:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Parser</span><span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">bar</span><span class="special">(</span><span class="identifier">Parser</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">p</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="comment">// Inject data2</span>
+    <span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">parser</span> <span class="special">=</span> <span class="identifier">with</span><span class="special">&lt;</span><span class="identifier">tag2</span><span class="special">&gt;(</span><span class="identifier">data2</span><span class="special">)[</span><span class="identifier">p</span><span class="special">];</span>
+    <span class="identifier">x3</span><span class="special">::</span><span class="identifier">parse</span><span class="special">(</span><span class="identifier">first</span><span class="special">,</span> <span class="identifier">last</span><span class="special">,</span> <span class="identifier">parser</span><span class="special">);</span>
+<span class="special">}</span>
+
+<span class="keyword">void</span> <span class="identifier">foo</span><span class="special">()</span>
+<span class="special">{</span>
+    <span class="comment">// Inject data1</span>
+    <span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">parser</span> <span class="special">=</span> <span class="identifier">with</span><span class="special">&lt;</span><span class="identifier">tag1</span><span class="special">&gt;(</span><span class="identifier">data1</span><span class="special">)[</span><span class="identifier">my_parser</span><span class="special">];</span>
+    <span class="identifier">bar</span><span class="special">(</span><span class="identifier">p</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<h5>
+<a name="spirit_x3.tutorials.annotation.h8"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.annotation.let_s_parse"></a></span><a class="link" href="annotation.html#spirit_x3.tutorials.annotation.let_s_parse">开始解析</a>
+      </h5>
+<p>现在我们有了支持注解的完整解析机制:</p>
+<pre class="programlisting"><span class="keyword">using</span> <span class="identifier">iterator_type</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">::</span><span class="identifier">const_iterator</span><span class="special">;</span>
+<span class="keyword">using</span> <span class="identifier">position_cache</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">x3</span><span class="special">::</span><span class="identifier">position_cache</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">iterator_type</span><span class="special">&gt;&gt;;</span>
+
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">client</span><span class="special">::</span><span class="identifier">ast</span><span class="special">::</span><span class="identifier">employee</span><span class="special">&gt;</span>
+<span class="identifier">parse</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">input</span><span class="special">,</span> <span class="identifier">position_cache</span><span class="special">&amp;</span> <span class="identifier">positions</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">using</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">x3</span><span class="special">::</span><span class="identifier">ascii</span><span class="special">::</span><span class="identifier">space</span><span class="special">;</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">client</span><span class="special">::</span><span class="identifier">ast</span><span class="special">::</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="identifier">ast</span><span class="special">;</span>
+    <span class="identifier">iterator_type</span> <span class="identifier">iter</span> <span class="special">=</span> <span class="identifier">input</span><span class="special">.</span><span class="identifier">begin</span><span class="special">();</span>
+    <span class="identifier">iterator_type</span> <span class="keyword">const</span> <span class="identifier">end</span> <span class="special">=</span> <span class="identifier">input</span><span class="special">.</span><span class="identifier">end</span><span class="special">();</span>
+
+    <span class="keyword">using</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">x3</span><span class="special">::</span><span class="identifier">with</span><span class="special">;</span>
+
+    <span class="comment">// Our parser</span>
+    <span class="keyword">using</span> <span class="identifier">client</span><span class="special">::</span><span class="identifier">parser</span><span class="special">::</span><span class="identifier">employees</span><span class="special">;</span>
+    <span class="keyword">using</span> <span class="identifier">client</span><span class="special">::</span><span class="identifier">parser</span><span class="special">::</span><span class="identifier">position_cache_tag</span><span class="special">;</span>
+
+    <span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">parser</span> <span class="special">=</span>
+        <span class="comment">// we pass our position_cache to the parser so we can access</span>
+        <span class="comment">// it later in our on_sucess handlers</span>
+        <span class="identifier">with</span><span class="special">&lt;</span><span class="identifier">position_cache_tag</span><span class="special">&gt;(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">positions</span><span class="special">))</span>
+        <span class="special">[</span>
+            <span class="identifier">employees</span>
+        <span class="special">];</span>
+
+    <span class="keyword">bool</span> <span class="identifier">r</span> <span class="special">=</span> <span class="identifier">phrase_parse</span><span class="special">(</span><span class="identifier">iter</span><span class="special">,</span> <span class="identifier">end</span><span class="special">,</span> <span class="identifier">parser</span><span class="special">,</span> <span class="identifier">space</span><span class="special">,</span> <span class="identifier">ast</span><span class="special">);</span>
+
+    <span class="comment">// ... Some error checking here</span>
+
+    <span class="keyword">return</span> <span class="identifier">ast</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>我们来走读一下这段代码.</p>
+<p>首先, 我们定义了一些 typedef: 1) 解析器所用的迭代器类型 <code class="computeroutput"><span class="identifier">iterator_type</span></code>; 2) <code class="computeroutput"><span class="identifier">position_cache</span></code> 类型. 后者是一个模板, 接受它将容纳的容器的类型. 在这里是一个 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">iterator_type</span><span class="special">&gt;</span></code>.</p>
+<p>主 parse 函数接受一个输入(一个 std::string)和对 position_cache 的引用, 并返回一个 AST: <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">client</span><span class="special">::</span><span class="identifier">ast</span><span class="special">::</span><span class="identifier">employee</span><span class="special">&gt;</span></code>.</p>
+<p>在 parse 函数内部, 我们首先创建一个 AST, 解析得到的数据将存放在其中:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">client</span><span class="special">::</span><span class="identifier">ast</span><span class="special">::</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="identifier">ast</span><span class="special">;</span>
+</pre>
+<p>最后, 我们创建解析器, 注入对 <code class="computeroutput"><span class="identifier">position_cache</span></code> 的引用, 然后调用 phrase_parse:</p>
+<pre class="programlisting"><span class="keyword">using</span> <span class="identifier">client</span><span class="special">::</span><span class="identifier">parser</span><span class="special">::</span><span class="identifier">employees</span><span class="special">;</span>
+<span class="keyword">using</span> <span class="identifier">client</span><span class="special">::</span><span class="identifier">parser</span><span class="special">::</span><span class="identifier">position_cache_tag</span><span class="special">;</span>
+
+<span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">parser</span> <span class="special">=</span>
+    <span class="comment">// we pass our position_cache to the parser so we can access</span>
+    <span class="comment">// it later in our on_sucess handlers</span>
+    <span class="identifier">with</span><span class="special">&lt;</span><span class="identifier">position_cache_tag</span><span class="special">&gt;(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">positions</span><span class="special">))</span>
+    <span class="special">[</span>
+        <span class="identifier">employees</span>
+    <span class="special">];</span>
+
+<span class="keyword">bool</span> <span class="identifier">r</span> <span class="special">=</span> <span class="identifier">phrase_parse</span><span class="special">(</span><span class="identifier">iter</span><span class="special">,</span> <span class="identifier">end</span><span class="special">,</span> <span class="identifier">parser</span><span class="special">,</span> <span class="identifier">space</span><span class="special">,</span> <span class="identifier">ast</span><span class="special">);</span>
+</pre>
+<p>解析成功后, AST(<code class="computeroutput"><span class="identifier">ast</span></code>)将包含实际解析得到的数据.</p>
+<h5>
+<a name="spirit_x3.tutorials.annotation.h9"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.annotation.getting_the_source_positions"></a></span><a class="link" href="annotation.html#spirit_x3.tutorials.annotation.getting_the_source_positions">获取源位置</a>
+      </h5>
+<p>既然已经有了主 parse 函数, 我们来准备一个示例源文件用于解析, 并展示如何在成功解析返回后获取某个 AST 元素的位置.</p>
+<p>给定如下输入:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">input</span> <span class="special">=</span> <span class="identifier">R</span><span class="string">"(
+{
+    23,
+    "</span><span class="identifier">Amanda</span><span class="string">",
+    "</span><span class="identifier">Stefanski</span><span class="string">",
+    1000.99
+},
+{
+    35,
+    "</span><span class="identifier">Angie</span><span class="string">",
+    "</span><span class="identifier">Chilcote</span><span class="string">",
+    2000.99
+},
+{
+    43,
+    "</span><span class="identifier">Dannie</span><span class="string">",
+    "</span><span class="identifier">Dillinger</span><span class="string">",
+    3000.99
+},
+{
+    22,
+    "</span><span class="identifier">Dorene</span><span class="string">",
+    "</span><span class="identifier">Dole</span><span class="string">",
+    2500.99
+},
+{
+    38,
+    "</span><span class="identifier">Rossana</span><span class="string">",
+    "</span><span class="identifier">Rafferty</span><span class="string">",
+    5000.99
+}
+)"</span><span class="special">;</span>
+</pre>
+<p>在实例化一个将保存源流位置的 <code class="computeroutput"><span class="identifier">position_cache</span></code> 对象之后, 我们调用 parse 函数:</p>
+<pre class="programlisting"><span class="identifier">position_cache</span> <span class="identifier">positions</span><span class="special">{</span><span class="identifier">input</span><span class="special">.</span><span class="identifier">begin</span><span class="special">(),</span> <span class="identifier">input</span><span class="special">.</span><span class="identifier">end</span><span class="special">()};</span>
+<span class="keyword">auto</span> <span class="identifier">ast</span> <span class="special">=</span> <span class="identifier">parse</span><span class="special">(</span><span class="identifier">input</span><span class="special">,</span> <span class="identifier">positions</span><span class="special">);</span>
+</pre>
+<p>现在我们有了一个包含解析结果的 AST(<code class="computeroutput"><span class="identifier">ast</span></code>). 我们来获取第 2 个 employee 的源位置:</p>
+<pre class="programlisting"><span class="keyword">auto</span> <span class="identifier">pos</span> <span class="special">=</span> <span class="identifier">positions</span><span class="special">.</span><span class="identifier">position_of</span><span class="special">(</span><span class="identifier">ast</span><span class="special">[</span><span class="number">1</span><span class="special">]);</span> <span class="comment">// zero based of course!</span>
+</pre>
+<p>
+        <code class="computeroutput"><span class="identifier">pos</span></code> 是一个迭代器范围, 其中包含指向输入流中 <code class="computeroutput"><span class="identifier">ast</span><span class="special">[</span><span class="number">1</span><span class="special">]</span></code> 的起点和终点的迭代器.</p>
+<h5>
+<a name="spirit_x3.tutorials.annotation.h10"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.annotation.config"></a></span><a class="link" href="annotation.html#spirit_x3.tutorials.annotation.config">Config</a>
+      </h5>
+<p>如果你读过前面的 <a class="link" href="minimal.html" title="X3 程序结构">程序结构</a> 教程(其中我们把解析器的各个逻辑模块拆分到不同的 cpp 和头文件中), 并且想知道如何提供上下文配置信息(参见 <a class="link" href="minimal.html#tutorial_configuration">Config 部分</a>), 那么我们需要像这样补充上下文:</p>
+<pre class="programlisting"><span class="keyword">using</span> <span class="identifier">phrase_context_type</span> <span class="special">=</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">phrase_parse_context</span><span class="special">&lt;</span><span class="identifier">x3</span><span class="special">::</span><span class="identifier">ascii</span><span class="special">::</span><span class="identifier">space_type</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">;</span>
+
+<span class="keyword">typedef</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">context</span><span class="special">&lt;</span>
+    <span class="identifier">position_cache_tag</span>
+  <span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">reference_wrapper</span><span class="special">&lt;</span><span class="identifier">position_cache</span><span class="special">&gt;</span>
+  <span class="special">,</span> <span class="identifier">phrase_context_type</span><span class="special">&gt;</span>
+<span class="identifier">context_type</span><span class="special">;</span>
+</pre>
+</div>
+<div class="copyright-footer">Copyright © 2001-2018 Joel de Guzman,
+      Hartmut Kaiser<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="minimal.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../tutorials.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="rexpr.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

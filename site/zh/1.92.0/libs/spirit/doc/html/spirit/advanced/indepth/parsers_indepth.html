@@ -1,0 +1,381 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>深入解析器</title>
+<link rel="stylesheet" href="../../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../../index.html" title="Spirit 2.59">
+<link rel="up" href="../indepth.html" title="深入">
+<link rel="prev" href="../indepth.html" title="深入">
+<link rel="next" href="../customize.html" title="定制 Spirit 的属性处理">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../indepth.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../indepth.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="../customize.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="spirit.advanced.indepth.parsers_indepth"></a><a class="link" href="parsers_indepth.html" title="深入解析器">深入解析器</a>
+</h4></div></div></div>
+<p>本节不适合胆小者. 这里提炼了 <span class="emphasis"><em>Spirit.Qi</em></span> 解析器的内部工作机制, 使用 <a href="http://boost-spirit.com" target="_top">Spirit</a> 库的真实代码作为示例. 不过, 也不必害怕继续读下去. 我们尽力循序渐进地解释各种内容, 同时突出重要的洞见.</p>
+<p> <code class="computeroutput"><a class="link" href="../../qi/reference/parser_concepts/parser.html" title="Parser"><code class="computeroutput"><span class="identifier">Parser</span></code></a></code> 类是所有解析器的基类.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Derived</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">parser</span>
+<span class="special">{</span>
+    <span class="keyword">struct</span> <span class="identifier">parser_id</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="identifier">Derived</span> <span class="identifier">derived_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="identifier">qi</span><span class="special">::</span><span class="identifier">domain</span> <span class="identifier">domain</span><span class="special">;</span>
+
+    <span class="comment">// Requirement: p.parse(f, l, context, skip, attr) -&gt; bool</span>
+    <span class="comment">//</span>
+    <span class="comment">//  p:          a parser</span>
+    <span class="comment">//  f, l:       first/last iterator pair</span>
+    <span class="comment">//  context:    enclosing rule context (can be unused_type)</span>
+    <span class="comment">//  skip:       skipper (can be unused_type)</span>
+    <span class="comment">//  attr:       attribute (can be unused_type)</span>
+
+    <span class="comment">// Requirement: p.what(context) -&gt; info</span>
+    <span class="comment">//</span>
+    <span class="comment">//  p:          a parser</span>
+    <span class="comment">//  context:    enclosing rule context (can be unused_type)</span>
+
+    <span class="comment">// Requirement: P::template attribute&lt;Ctx, Iter&gt;::type</span>
+    <span class="comment">//</span>
+    <span class="comment">//  P:          a parser type</span>
+    <span class="comment">//  Ctx:        A context type (can be unused_type)</span>
+    <span class="comment">//  Iter:       An iterator type (can be unused_type)</span>
+
+    <span class="identifier">Derived</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">derived</span><span class="special">()</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">return</span> <span class="special">*</span><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span> <span class="keyword">const</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p> <code class="computeroutput"><a class="link" href="../../qi/reference/parser_concepts/parser.html" title="Parser"><code class="computeroutput"><span class="identifier">Parser</span></code></a></code> 类本身并不知道如何解析任何东西, 而是依赖模板参数 <code class="computeroutput"><span class="identifier">Derived</span></code> 来进行实际的解析. 这种技术在模板元编程圈子里被称为"奇异递归模板模式". 这种继承策略为我们提供了多态的能力, 而没有虚函数的开销. 从本质上讲, 这是实现编译期多态的一种方式.</p>
+<p>派生解析器 <code class="computeroutput"><a class="link" href="../../qi/reference/parser_concepts/primitiveparser.html" title="PrimitiveParser"><code class="computeroutput"><span class="identifier">PrimitiveParser</span></code></a></code>, <code class="computeroutput"><a class="link" href="../../qi/reference/parser_concepts/unaryparser.html" title="UnaryParser"><code class="computeroutput"><span class="identifier">UnaryParser</span></code></a></code>, <code class="computeroutput"><a class="link" href="../../qi/reference/parser_concepts/binaryparser.html" title="BinaryParser"><code class="computeroutput"><span class="identifier">BinaryParser</span></code></a></code> 和 <code class="computeroutput"><a class="link" href="../../qi/reference/parser_concepts/naryparser.html" title="NaryParser"><code class="computeroutput"><span class="identifier">NaryParser</span></code></a></code> 提供了解析器检测, 自省, 变换和访问所需的必要设施.</p>
+<p>派生解析器必须支持以下内容:</p>
+<div class="variablelist">
+<p class="title"><b>bool parse(f, l, context, skip, attr)</b></p>
+<dl class="variablelist">
+<dt><span class="term"><code class="computeroutput"><span class="identifier">f</span></code>, <code class="computeroutput"><span class="identifier">l</span></code></span></dt>
+<dd><p>first/last 迭代器对</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">context</span></code></span></dt>
+<dd><p>外围 rule 上下文(可以是 unused_type)</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">skip</span></code></span></dt>
+<dd><p>跳过器(可以是 unused_type)</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">attr</span></code></span></dt>
+<dd><p>属性(可以是 unused_type)</p></dd>
+</dl>
+</div>
+<p> <span class="emphasis"><em>parse</em></span> 是主要的解析器入口点. <span class="emphasis"><em>skipper</em></span> 可以是一个 <code class="computeroutput"><span class="identifier">unused_type</span></code>. 它是 <a href="http://boost-spirit.com" target="_top">Spirit</a> 中到处使用的一种类型, 表示"不关心". <span class="emphasis"><em>skip</em></span> 有一个针对 <code class="computeroutput"><span class="identifier">unused_type</span></code> 的重载, 它只是一个空操作. 这样, 我们就不必为短语级和字符级解析编写多个 parse 函数.</p>
+<p>以下是解析的基本规则:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">解析器成功时返回 <code class="computeroutput"><span class="keyword">true</span></code>, 否则返回 <code class="computeroutput"><span class="keyword">false</span></code>.</li>
+<li class="listitem">成功时, <code class="computeroutput"><span class="identifier">first</span></code> 会被递增 N 次, 其中 N 是解析的字符数. N 可以为零 --即空(epsilon)匹配.</li>
+<li class="listitem">成功时, 解析得到的属性被赋给 <span class="emphasis"><em>attr</em></span>
+            </li>
+<li class="listitem">失败时, <code class="computeroutput"><span class="identifier">first</span></code> 会被重置为进入解析器函数之前的位置. <span class="emphasis"><em>attr</em></span> 保持不变.</li>
+</ul></div>
+<div class="variablelist">
+<p class="title"><b>void what(context)</b></p>
+<dl class="variablelist">
+<dt><span class="term"><code class="computeroutput"><span class="identifier">context</span></code></span></dt>
+<dd><p>外围 rule 上下文(可以是 <code class="computeroutput"><span class="identifier">unused_type</span></code>)</p></dd>
+</dl>
+</div>
+<p> <span class="emphasis"><em>what</em></span> 函数应当显而易见. 它提供一些关于解析器<span class="quote">"<span class="quote">什么</span>"</span> 的信息. 例如, 它可以用作调试辅助.</p>
+<div class="variablelist">
+<p class="title"><b>P::template attribute&lt;context&gt;::type</b></p>
+<dl class="variablelist">
+<dt><span class="term"><code class="computeroutput"><span class="identifier">P</span></code></span></dt>
+<dd><p>解析器类型</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">context</span></code></span></dt>
+<dd><p>上下文类型(可以是 unused_type)</p></dd>
+</dl>
+</div>
+<p> <span class="emphasis"><em>attribute</em></span> 元函数返回解析器期望的属性类型. 在某些情况下, 它依赖于上下文.</p>
+<p>在本节中, 我们将剖析两种解析器类型:</p>
+<div class="variablelist">
+<p class="title"><b>解析器</b></p>
+<dl class="variablelist">
+<dt><span class="term"><code class="computeroutput"><a class="link" href="../../qi/reference/parser_concepts/primitiveparser.html" title="PrimitiveParser"><code class="computeroutput"><span class="identifier">PrimitiveParser</span></code></a></code></span></dt>
+<dd><p>用于原始数据的解析器(例如整数解析).</p></dd>
+<dt><span class="term"><code class="computeroutput"><a class="link" href="../../qi/reference/parser_concepts/unaryparser.html" title="UnaryParser"><code class="computeroutput"><span class="identifier">UnaryParser</span></code></a></code></span></dt>
+<dd><p>具有单一主体(subject)的解析器(例如 kleene star).</p></dd>
+</dl>
+</div>
+<h6>
+<a name="spirit.advanced.indepth.parsers_indepth.h0"></a>
+          <span class="phrase"><a name="spirit.advanced.indepth.parsers_indepth.primitive_parsers"></a></span><a class="link" href="parsers_indepth.html#spirit.advanced.indepth.parsers_indepth.primitive_parsers">原语解析器</a>
+        </h6>
+<p>在剖析研究中, 我们将使用 <a href="http://boost-spirit.com" target="_top">Spirit</a> 的一个原语: boost::spirit::qi 命名空间中的 <code class="computeroutput"><span class="identifier">any_int_parser</span></code>.</p>
+<p>
+          [primitive_parsers_any_int_parser]
+        </p>
+<p> <code class="computeroutput"><span class="identifier">any_int_parser</span></code> 派生自 <code class="computeroutput"><a class="link" href="../../qi/reference/parser_concepts/primitiveparser.html" title="PrimitiveParser"><code class="computeroutput"><span class="identifier">PrimitiveParser</span></code></a><span class="special">&lt;</span><span class="identifier">Derived</span><span class="special">&gt;</span></code>, 而后者又派生自 <code class="computeroutput"><span class="identifier">parser</span><span class="special">&lt;</span><span class="identifier">Derived</span><span class="special">&gt;</span></code>. 因此, 它支持以下要求:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"> <code class="computeroutput"><span class="identifier">parse</span></code> 成员函数</li>
+<li class="listitem"> <code class="computeroutput"><span class="identifier">what</span></code> 成员函数</li>
+<li class="listitem">内嵌的 <code class="computeroutput"><span class="identifier">attribute</span></code> 元函数</li>
+</ul></div>
+<p>
+          <span class="emphasis"><em>parse</em></span> 是主入口点. 对于原语解析器, 我们要做的第一件事是调用:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">qi</span><span class="special">::</span><span class="identifier">skip</span><span class="special">(</span><span class="identifier">first</span><span class="special">,</span> <span class="identifier">last</span><span class="special">,</span> <span class="identifier">skipper</span><span class="special">);</span>
+</pre>
+<p>
+        </p>
+<p>以执行预跳过. 预跳过之后, 解析器继续做自己的事情. 实际的解析代码位于 <code class="computeroutput"><span class="identifier">extract_int</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">,</span> <span class="identifier">Radix</span><span class="special">,</span> <span class="identifier">MinDigits</span><span class="special">,</span> <span class="identifier">MaxDigits</span><span class="special">&gt;::</span><span class="identifier">call</span><span class="special">(</span><span class="identifier">first</span><span class="special">,</span> <span class="identifier">last</span><span class="special">,</span> <span class="identifier">attr</span><span class="special">);</span></code>
+        </p>
+<p>这个简单而不花哨的协议是 <a href="http://boost-spirit.com" target="_top">Spirit</a> 快速的原因之一. 如果你了解 <a href="../../../../../../../libs/spirit/classic/index.html" target="_top"><span class="emphasis"><em>Spirit.Classic</em></span></a> 的内部机制, 甚至可能用它写过一些解析器, 那么这个简单的 <a href="http://boost-spirit.com" target="_top">Spirit</a> 机制用起来会是一种享受. 没有 scanner 和那些乱七八糟的东西.</p>
+<p> <span class="emphasis"><em>what</em></span> 函数只是告诉我们它是一个整数解析器. 很简单.</p>
+<p> <span class="emphasis"><em>attribute</em></span> 元函数返回 T 模板参数. 我们把 <code class="computeroutput"><span class="identifier">any_int_parser</span></code> 关联到用于 <code class="computeroutput"><span class="identifier">short_</span></code>, <code class="computeroutput"><span class="identifier">int_</span></code>, <code class="computeroutput"><span class="identifier">long_</span></code> 和 <code class="computeroutput"><span class="identifier">long_long</span></code> 类型的一些占位符. 但首先, 我们在命名空间 boost::spirit 中启用这些占位符:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;&gt;</span> <span class="comment">// enables short_</span>
+<span class="keyword">struct</span> <span class="identifier">use_terminal</span><span class="special">&lt;</span><span class="identifier">qi</span><span class="special">::</span><span class="identifier">domain</span><span class="special">,</span> <span class="identifier">tag</span><span class="special">::</span><span class="identifier">short_</span><span class="special">&gt;</span> <span class="special">:</span> <span class="identifier">mpl</span><span class="special">::</span><span class="identifier">true_</span> <span class="special">{};</span>
+</pre>
+<p>
+        </p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;&gt;</span> <span class="comment">// enables int_</span>
+<span class="keyword">struct</span> <span class="identifier">use_terminal</span><span class="special">&lt;</span><span class="identifier">qi</span><span class="special">::</span><span class="identifier">domain</span><span class="special">,</span> <span class="identifier">tag</span><span class="special">::</span><span class="identifier">int_</span><span class="special">&gt;</span> <span class="special">:</span> <span class="identifier">mpl</span><span class="special">::</span><span class="identifier">true_</span> <span class="special">{};</span>
+</pre>
+<p>
+        </p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;&gt;</span> <span class="comment">// enables long_</span>
+<span class="keyword">struct</span> <span class="identifier">use_terminal</span><span class="special">&lt;</span><span class="identifier">qi</span><span class="special">::</span><span class="identifier">domain</span><span class="special">,</span> <span class="identifier">tag</span><span class="special">::</span><span class="identifier">long_</span><span class="special">&gt;</span> <span class="special">:</span> <span class="identifier">mpl</span><span class="special">::</span><span class="identifier">true_</span> <span class="special">{};</span>
+</pre>
+<p>
+        </p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;&gt;</span> <span class="comment">// enables long_long</span>
+<span class="keyword">struct</span> <span class="identifier">use_terminal</span><span class="special">&lt;</span><span class="identifier">qi</span><span class="special">::</span><span class="identifier">domain</span><span class="special">,</span> <span class="identifier">tag</span><span class="special">::</span><span class="identifier">long_long</span><span class="special">&gt;</span> <span class="special">:</span> <span class="identifier">mpl</span><span class="special">::</span><span class="identifier">true_</span> <span class="special">{};</span>
+</pre>
+<p>
+        </p>
+<p>注意 <code class="computeroutput"><span class="identifier">any_int_parser</span></code> 位于命名空间 boost::spirit::qi 中, 而这些 <span class="emphasis"><em>启用器</em></span> 位于命名空间 boost::spirit 中. 原因是这些占位符被 <a href="http://boost-spirit.com" target="_top">Spirit</a> 的其他 <span class="emphasis"><em>域</em></span> 共享. 解析器 <span class="emphasis"><em>Spirit.Qi</em></span> 是一个域, 生成器 <span class="emphasis"><em>Spirit.Karma</em></span> 是另一个域. 其他解析器技术也可能被开发出来并放入另一个域. 尽管如此, 为了互操作性, 所有这些域都可能共享相同的占位符. 这些占位符的解释是特定于域的.</p>
+<p>既然已经启用了占位符, 我们必须为它们编写生成器. make_xxx 之类的代码(在 boost::spirit::qi 命名空间中):</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span>
+    <span class="keyword">typename</span> <span class="identifier">T</span>
+  <span class="special">,</span> <span class="keyword">unsigned</span> <span class="identifier">Radix</span> <span class="special">=</span> <span class="number">10</span>
+  <span class="special">,</span> <span class="keyword">unsigned</span> <span class="identifier">MinDigits</span> <span class="special">=</span> <span class="number">1</span>
+  <span class="special">,</span> <span class="keyword">int</span> <span class="identifier">MaxDigits</span> <span class="special">=</span> <span class="special">-</span><span class="number">1</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">make_int</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="identifier">any_int_parser</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">,</span> <span class="identifier">Radix</span><span class="special">,</span> <span class="identifier">MinDigits</span><span class="special">,</span> <span class="identifier">MaxDigits</span><span class="special">&gt;</span> <span class="identifier">result_type</span><span class="special">;</span>
+    <span class="identifier">result_type</span> <span class="keyword">operator</span><span class="special">()(</span><span class="identifier">unused_type</span><span class="special">,</span> <span class="identifier">unused_type</span><span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">result_type</span><span class="special">();</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>上面这个是我们的主生成器. 它是一个带有 2 个(未使用的)实参的简单函数对象. 这些实参是</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">由 proto 获得的实际终结符值. 在这里, 是 short_, int_, long_ 或 long_long 之一. 我们不关心它.</li>
+<li class="listitem">修饰符. 我们也不关心它. 它允许诸如 <code class="computeroutput"><span class="identifier">no_case</span><span class="special">[</span><span class="identifier">p</span><span class="special">]</span></code> 之类的指令向内层解析器节点传递信息. 稍后我们会看到这是如何工作的.</li>
+</ol></div>
+<p>现在:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Modifiers</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">make_primitive</span><span class="special">&lt;</span><span class="identifier">tag</span><span class="special">::</span><span class="identifier">short_</span><span class="special">,</span> <span class="identifier">Modifiers</span><span class="special">&gt;</span>
+  <span class="special">:</span> <span class="identifier">make_int</span><span class="special">&lt;</span><span class="keyword">short</span><span class="special">&gt;</span> <span class="special">{};</span>
+</pre>
+<p>
+        </p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Modifiers</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">make_primitive</span><span class="special">&lt;</span><span class="identifier">tag</span><span class="special">::</span><span class="identifier">int_</span><span class="special">,</span> <span class="identifier">Modifiers</span><span class="special">&gt;</span>
+  <span class="special">:</span> <span class="identifier">make_int</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="special">{};</span>
+</pre>
+<p>
+        </p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Modifiers</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">make_primitive</span><span class="special">&lt;</span><span class="identifier">tag</span><span class="special">::</span><span class="identifier">long_</span><span class="special">,</span> <span class="identifier">Modifiers</span><span class="special">&gt;</span>
+  <span class="special">:</span> <span class="identifier">make_int</span><span class="special">&lt;</span><span class="keyword">long</span><span class="special">&gt;</span> <span class="special">{};</span>
+</pre>
+<p>
+        </p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Modifiers</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">make_primitive</span><span class="special">&lt;</span><span class="identifier">tag</span><span class="special">::</span><span class="identifier">long_long</span><span class="special">,</span> <span class="identifier">Modifiers</span><span class="special">&gt;</span>
+  <span class="special">:</span> <span class="identifier">make_int</span><span class="special">&lt;</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">long_long_type</span><span class="special">&gt;</span> <span class="special">{};</span>
+</pre>
+<p>
+        </p>
+<p>这些代码为特定的标签特化了 <code class="computeroutput"><span class="identifier">qi</span><span class="special">:</span><span class="identifier">make_primitive</span></code>. 它们都继承自 <code class="computeroutput"><span class="identifier">make_int</span></code>, 由后者完成实际工作.</p>
+<h6>
+<a name="spirit.advanced.indepth.parsers_indepth.h1"></a>
+          <span class="phrase"><a name="spirit.advanced.indepth.parsers_indepth.composite_parsers"></a></span><a class="link" href="parsers_indepth.html#spirit.advanced.indepth.parsers_indepth.composite_parsers">复合解析器</a>
+        </h6>
+<p>让我介绍一下 kleene star (同样位于命名空间 spirit::qi 中):</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Subject</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">kleene</span> <span class="special">:</span> <span class="identifier">unary_parser</span><span class="special">&lt;</span><span class="identifier">kleene</span><span class="special">&lt;</span><span class="identifier">Subject</span><span class="special">&gt;</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="identifier">Subject</span> <span class="identifier">subject_type</span><span class="special">;</span>
+
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Context</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Iterator</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">attribute</span>
+    <span class="special">{</span>
+        <span class="comment">// Build a std::vector from the subject's attribute. Note</span>
+        <span class="comment">// that build_std_vector may return unused_type if the</span>
+        <span class="comment">// subject's attribute is an unused_type.</span>
+        <span class="keyword">typedef</span> <span class="keyword">typename</span>
+            <span class="identifier">traits</span><span class="special">::</span><span class="identifier">build_std_vector</span><span class="special">&lt;</span>
+                <span class="keyword">typename</span> <span class="identifier">traits</span><span class="special">::</span>
+                    <span class="identifier">attribute_of</span><span class="special">&lt;</span><span class="identifier">Subject</span><span class="special">,</span> <span class="identifier">Context</span><span class="special">,</span> <span class="identifier">Iterator</span><span class="special">&gt;::</span><span class="identifier">type</span>
+            <span class="special">&gt;::</span><span class="identifier">type</span>
+        <span class="identifier">type</span><span class="special">;</span>
+    <span class="special">};</span>
+
+    <span class="identifier">kleene</span><span class="special">(</span><span class="identifier">Subject</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">subject_</span><span class="special">)</span>
+      <span class="special">:</span> <span class="identifier">subject</span><span class="special">(</span><span class="identifier">subject_</span><span class="special">)</span> <span class="special">{}</span>
+
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">F</span><span class="special">&gt;</span>
+    <span class="keyword">bool</span> <span class="identifier">parse_container</span><span class="special">(</span><span class="identifier">F</span> <span class="identifier">f</span><span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">while</span> <span class="special">(!</span><span class="identifier">f</span> <span class="special">(</span><span class="identifier">subject</span><span class="special">))</span>
+            <span class="special">;</span>
+        <span class="keyword">return</span> <span class="keyword">true</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Iterator</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Context</span>
+      <span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Skipper</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Attribute</span><span class="special">&gt;</span>
+    <span class="keyword">bool</span> <span class="identifier">parse</span><span class="special">(</span><span class="identifier">Iterator</span><span class="special">&amp;</span> <span class="identifier">first</span><span class="special">,</span> <span class="identifier">Iterator</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">last</span>
+      <span class="special">,</span> <span class="identifier">Context</span><span class="special">&amp;</span> <span class="identifier">context</span><span class="special">,</span> <span class="identifier">Skipper</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">skipper</span>
+      <span class="special">,</span> <span class="identifier">Attribute</span><span class="special">&amp;</span> <span class="identifier">attr_</span><span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="comment">// ensure the attribute is actually a container type</span>
+        <span class="identifier">traits</span><span class="special">::</span><span class="identifier">make_container</span><span class="special">(</span><span class="identifier">attr_</span><span class="special">);</span>
+
+        <span class="keyword">typedef</span> <span class="identifier">detail</span><span class="special">::</span><span class="identifier">fail_function</span><span class="special">&lt;</span><span class="identifier">Iterator</span><span class="special">,</span> <span class="identifier">Context</span><span class="special">,</span> <span class="identifier">Skipper</span><span class="special">&gt;</span>
+            <span class="identifier">fail_function</span><span class="special">;</span>
+
+        <span class="identifier">Iterator</span> <span class="identifier">iter</span> <span class="special">=</span> <span class="identifier">first</span><span class="special">;</span>
+        <span class="identifier">fail_function</span> <span class="identifier">f</span><span class="special">(</span><span class="identifier">iter</span><span class="special">,</span> <span class="identifier">last</span><span class="special">,</span> <span class="identifier">context</span><span class="special">,</span> <span class="identifier">skipper</span><span class="special">);</span>
+        <span class="identifier">parse_container</span><span class="special">(</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">make_pass_container</span><span class="special">(</span><span class="identifier">f</span><span class="special">,</span> <span class="identifier">attr_</span><span class="special">));</span>
+
+        <span class="identifier">first</span> <span class="special">=</span> <span class="identifier">f</span><span class="special">.</span><span class="identifier">first</span><span class="special">;</span>
+        <span class="keyword">return</span> <span class="keyword">true</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Context</span><span class="special">&gt;</span>
+    <span class="identifier">info</span> <span class="identifier">what</span><span class="special">(</span><span class="identifier">Context</span><span class="special">&amp;</span> <span class="identifier">context</span><span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">info</span><span class="special">(</span><span class="string">"kleene"</span><span class="special">,</span> <span class="identifier">subject</span><span class="special">.</span><span class="identifier">what</span><span class="special">(</span><span class="identifier">context</span><span class="special">));</span>
+    <span class="special">}</span>
+
+    <span class="identifier">Subject</span> <span class="identifier">subject</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>在形式上, 它看起来与其原语近亲 <code class="computeroutput"><span class="identifier">int_parser</span></code> 相似. 同样, 它具有 <code class="computeroutput"><span class="identifier">Derived</span></code> 所要求的相同基本要素.</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">内嵌的 attribute 元函数</li>
+<li class="listitem">parse 成员函数</li>
+<li class="listitem">what 成员函数</li>
+</ul></div>
+<p>kleene 是一个复合解析器. 它是组合另一个解析器的解析器, 即其 <span class="quote">"<span class="quote">主体</span>"</span>. 它是一个 <code class="computeroutput"><a class="link" href="../../qi/reference/parser_concepts/unaryparser.html" title="UnaryParser"><code class="computeroutput"><span class="identifier">UnaryParser</span></code></a></code> 并从其派生子类. 与 <code class="computeroutput"><a class="link" href="../../qi/reference/parser_concepts/primitiveparser.html" title="PrimitiveParser"><code class="computeroutput"><span class="identifier">PrimitiveParser</span></code></a></code> 一样, <code class="computeroutput"><a class="link" href="../../qi/reference/parser_concepts/unaryparser.html" title="UnaryParser"><code class="computeroutput"><span class="identifier">UnaryParser</span></code></a><span class="special">&lt;</span><span class="identifier">Derived</span><span class="special">&gt;</span></code> 派生自 <code class="computeroutput"><span class="identifier">parser</span><span class="special">&lt;</span><span class="identifier">Derived</span><span class="special">&gt;</span></code>.</p>
+<p>unary_parser&lt;Derived&gt; 对 Derived 有以下表达式要求:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">p.subject -&gt; 主体解析器 ( <span class="emphasis"><em>p</em></span> 是一个 <a class="link" href="../../qi/reference/parser_concepts/unaryparser.html" title="UnaryParser"><code class="computeroutput"><span class="identifier">UnaryParser</span></code></a> 解析器.)</li>
+<li class="listitem">P::subject_type -&gt; 主体解析器类型 ( <span class="emphasis"><em>P</em></span> 是一个 <a class="link" href="../../qi/reference/parser_concepts/unaryparser.html" title="UnaryParser"><code class="computeroutput"><span class="identifier">UnaryParser</span></code></a> 类型.)</li>
+</ul></div>
+<p>
+          <span class="emphasis"><em>parse</em></span> 是主要的解析器入口点. 由于这不是一个原语解析器, 我们不需要调用 <code class="computeroutput"><span class="identifier">qi</span><span class="special">::</span><span class="identifier">skip</span><span class="special">(</span><span class="identifier">first</span><span class="special">,</span> <span class="identifier">last</span><span class="special">,</span> <span class="identifier">skipper</span><span class="special">)</span></code>. <span class="emphasis"><em>subject</em></span> 如果是原语, 会执行预跳过; 如果它是另一个复合解析器, 它最终会沿调用链在某个位置调用一个原语解析器, 由后者执行预跳过. 这使得它比 <a href="../../../../../../../libs/spirit/classic/index.html" target="_top"><span class="emphasis"><em>Spirit.Classic</em></span></a> 高效得多. <a href="../../../../../../../libs/spirit/classic/index.html" target="_top"><span class="emphasis"><em>Spirit.Classic</em></span></a> 把跳过的工作交给了所谓的"scanner", 后者在每次递增迭代器时都盲目地尝试预跳过.</p>
+<p>kleene 的 <span class="emphasis"><em>attribute</em></span> 是什么? 一般来说, 它是一个 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code>, 其中 <code class="computeroutput"><span class="identifier">T</span></code> 是主体的属性. 不过有一种特殊情况. 如果 <code class="computeroutput"><span class="identifier">T</span></code> 是一个 <code class="computeroutput"><span class="identifier">unused_type</span></code>, 那么 kleene 的属性也是 <code class="computeroutput"><span class="identifier">unused_type</span></code>. <code class="computeroutput"><span class="identifier">traits</span><span class="special">::</span><span class="identifier">build_std_vector</span></code> 会处理这个细节.</p>
+<p>好, 让我们来解析. 首先, 我们需要为主体提供一个局部属性:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">typename</span> <span class="identifier">traits</span><span class="special">::</span><span class="identifier">attribute_of</span><span class="special">&lt;</span><span class="identifier">Subject</span><span class="special">,</span> <span class="identifier">Context</span><span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">val</span><span class="special">;</span>
+</pre>
+<p>
+        </p>
+<p>
+          <code class="computeroutput"><span class="identifier">traits</span><span class="special">::</span><span class="identifier">attribute_of</span><span class="special">&lt;</span><span class="identifier">Subject</span><span class="special">,</span> <span class="identifier">Context</span><span class="special">&gt;</span></code> 只是调用主体的 <code class="computeroutput"><span class="keyword">struct</span>
+          <span class="identifier">attribute</span><span class="special">&lt;</span><span class="identifier">Context</span><span class="special">&gt;</span></code> 内嵌元函数.</p>
+<p>
+          <span class="emphasis"><em>val</em></span> 初始为默认初始化. 这个 val 就是我们要传递给主体的 parse 函数的那个.</p>
+<p>只要主体解析器成功, kleene 就会无限重复. 每次成功解析时, 我们把解析得到的属性 <code class="computeroutput"><span class="identifier">push_back</span></code> 到 kleene 的属性中, 后者至少应当与一个 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span></code> 兼容. 换句话说, 尽管我们说我们希望属性是一个 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span></code>, 我们还是尽量宽容一些. kleene 的 parse 的调用者可以传递不同的属性类型. 只要它也是具有 <code class="computeroutput"><span class="identifier">push_back</span></code> 的合规 STL 容器, 就没有问题. 下面是 kleene 的循环:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">while</span> <span class="special">(</span><span class="identifier">subject</span><span class="special">.</span><span class="identifier">parse</span><span class="special">(</span><span class="identifier">first</span><span class="special">,</span> <span class="identifier">last</span><span class="special">,</span> <span class="identifier">context</span><span class="special">,</span> <span class="identifier">skipper</span><span class="special">,</span> <span class="identifier">val</span><span class="special">))</span>
+<span class="special">{</span>
+    <span class="comment">// push the parsed value into our attribute</span>
+    <span class="identifier">traits</span><span class="special">::</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">attr</span><span class="special">,</span> <span class="identifier">val</span><span class="special">);</span>
+    <span class="identifier">traits</span><span class="special">::</span><span class="identifier">clear</span><span class="special">(</span><span class="identifier">val</span><span class="special">);</span>
+<span class="special">}</span>
+<span class="keyword">return</span> <span class="keyword">true</span><span class="special">;</span>
+</pre>
+<p>请注意, 我们没有调用 attr.push_back(val), 而是调用了一个 Spirit 提供的函数:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">traits</span><span class="special">::</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">attr</span><span class="special">,</span> <span class="identifier">val</span><span class="special">);</span>
+</pre>
+<p>
+        </p>
+<p>这是一种反复出现的模式. 我们这样做的原因是 attr <span class="bold"><strong>可以</strong></span> 是 <code class="computeroutput"><span class="identifier">unused_type</span></code>. <code class="computeroutput"><span class="identifier">traits</span><span class="special">::</span><span class="identifier">push_back</span></code> 会处理这个细节. 针对 unused_type 的重载是空操作. 现在, 你可以想象 <a href="http://boost-spirit.com" target="_top">Spirit</a> 为什么这么快了! 解析器非常简单, 生成的代码与手工编写的循环一样高效. 所有这些解析器组合和递归 parse 调用都会被现代 C++ 编译器大量内联. 最终, 使用 kleene 时你得到的是一个紧凑的循环. 没有多余的负担. 如果属性未使用, 就不会为它生成代码. <a href="http://boost-spirit.com" target="_top">Spirit</a> 就是这样设计的.</p>
+<p> <span class="emphasis"><em>what</em></span> 函数只是把主体的输出包装成 "kleene<span class="quote">"<span class="quote">... </span>"</span>".</p>
+<p>好, 现在, 与 <code class="computeroutput"><span class="identifier">int_parser</span></code> 一样, 我们必须把解析器挂接到 <span class="underline">qi</span> 引擎. 方法如下:</p>
+<p>首先, 我们启用前缀星号运算符. 在 proto 中, 它被称为"dereference":</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">use_operator</span><span class="special">&lt;</span><span class="identifier">qi</span><span class="special">::</span><span class="identifier">domain</span><span class="special">,</span> <span class="identifier">proto</span><span class="special">::</span><span class="identifier">tag</span><span class="special">::</span><span class="identifier">dereference</span><span class="special">&gt;</span> <span class="comment">// enables *p</span>
+  <span class="special">:</span> <span class="identifier">mpl</span><span class="special">::</span><span class="identifier">true_</span> <span class="special">{};</span>
+</pre>
+<p>
+        </p>
+<p>这在命名空间 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span></code> 中完成, 类似于它的伙伴: 即 <code class="computeroutput"><span class="identifier">use_terminal</span></code> 特化, 对应我们的 <code class="computeroutput"><span class="identifier">int_parser</span></code>. 显然, 我们使用 <span class="emphasis"><em>use_operator</em></span> 来为 qi::domain 启用解引用.</p>
+<p>然后, 我们需要编写生成器(在 qi 命名空间中):</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Elements</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Modifiers</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">make_composite</span><span class="special">&lt;</span><span class="identifier">proto</span><span class="special">::</span><span class="identifier">tag</span><span class="special">::</span><span class="identifier">dereference</span><span class="special">,</span> <span class="identifier">Elements</span><span class="special">,</span> <span class="identifier">Modifiers</span><span class="special">&gt;</span>
+  <span class="special">:</span> <span class="identifier">make_unary_composite</span><span class="special">&lt;</span><span class="identifier">Elements</span><span class="special">,</span> <span class="identifier">kleene</span><span class="special">&gt;</span>
+<span class="special">{};</span>
+</pre>
+<p>
+        </p>
+<p>这实际上是说: 对于所有形如 <code class="computeroutput"><span class="special">*</span><span class="identifier">p</span></code> 的表达式, 构建一个 kleene 解析器. Elements 是一个 <a href="../../../../../../../libs/fusion/doc/html/index.html" target="_top">Boost.Fusion</a> 序列. kleene 是一元运算符, 因此预期序列中只有一个元素. 该元素就是 kleene 的主体.</p>
+<p>我们仍然不关心 Modifiers. 等讲到深入指令时, 我们再看修饰符是怎么回事.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2001-2011 Joel de Guzman, Hartmut Kaiser<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../indepth.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../indepth.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="../customize.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

@@ -1,0 +1,87 @@
+<html>
+<head>
+	<title>incompatible.html</title>
+	<link rel="stylesheet" type="text/css" href="../styles.css">
+</head>
+<body>
+	<h4>不兼容性</h4>
+	<div>与上一个 Boost 发布版本 (1.28) 相比存在若干不兼容之处. 它们大致分为三类:</div>
+	<ul>
+		<li>以下横向重复原语基于 <b>BOOST_PP_REPEAT</b></li>
+		<li>重入语法</li>
+		<li><i>列表</i>折叠</li>
+	</ul>
+	<h4>重复目标</h4>
+	<div>首先是传入 <b>BOOST_PP_REPEAT</b> 的目标宏, 这可能是最常用的; 还包括使用 <b>BOOST_PP_REPEAT</b> 的横向重复构造. 这涵盖所有 <b>BOOST_PP_REPEAT_</b>* 原语和所有需要目标宏的 <b>BOOST_PP_ENUM_</b>* 原语.</div>
+	<div>这种不兼容微不足道, 但它会要求更新源代码.</div>
+	<div>这些目标宏现在必须接受 <i>第三个</i>参数. 这个额外的参数成为每个目标宏的 <i>第一个</i>参数. 它表示下一个重复维度, 并使 <b>BOOST_PP_REPEAT</b> 与库的其他部分保持一致.</div>
+	<div>于是, 以前的写法是:</div>
+	<div class="code">
+		#define <i>macro</i>(<i>n</i>, <i>data</i>) ...<br>
+		<b>BOOST_PP_REPEAT</b>(<i>5</i>, <i>macro</i>, <i>data</i>)
+	</div>
+	<div>...现在变为:</div>
+	<div class="code">
+		#define <i>macro</i>(<i>z</i>, <i>n</i>, <i>data</i>) ...<br>
+		<b>BOOST_PP_REPEAT</b>(<i>5</i>, <i>macro</i>, <i>data</i>)
+	</div>
+	<div>该参数可用于高效地重入 <b>BOOST_PP_REPEAT</b> 机制. 不过, 使用它并非必需, 因为库可以自动检测下一个可用的重复维度.</div>
+	<h4>维度排序</h4>
+	<div>然而, 正因为存在这种自动检测, 乱序使用 <b>BOOST_PP_REPEAT_1ST</b>、<b>BOOST_PP_REPEAT_2ND</b> 和 <b>BOOST_PP_REPEAT_3RD</b> 是不安全的. 这些宏绕过了 <i>自动递归</i>机制, 而 <i>自动递归</i>机制依赖于宏以正确的顺序使用. 澄清一下: 如果使用这些旁路宏, 最外层的重复 <i>必须</i>是 <b>BOOST_PP_REPEAT_1ST</b>, 然后是 <b>BOOST_PP_REPEAT_2ND</b>, 最后是 <b>BOOST_PP_REPEAT_3RD</b>. 库不支持任何其他用法. 有时可能碰巧可用, 有时则不行.</div>
+	<h4>重入语法</h4>
+	<div>
+		<i>自动递归</i>也带来了另一个问题. 以前, <b>BOOST_PP_WHILE</b> (<b>BOOST_PP_FOR</b> 与之类似) 的重入语法是:</div>
+	<div class="code">
+		<b>BOOST_PP_WHILE</b> ## <i>d</i>(<i>pred</i>, <i>op</i>, <i>state</i>)
+	</div>
+	<div>...或者:</div>
+	<div class="code">
+		<b>BOOST_PP_CAT</b>(<b>BOOST_PP_WHILE</b>, <i>d</i>)(<i>pred</i>, <i>op</i>, <i>state</i>)
+	</div>
+	<div>在 <i>自动递归</i>模型下, <b>BOOST_PP_CAT</b> 版本会失效. 这是因为 <b>BOOST_PP_CAT</b> 允许其实参在拼接之前展开, 而 <b>BOOST_PP_WHILE</b> 是一个不带实参展开的宏. 库使它看起来接受三个参数, 但那正是 <i>自动递归</i>的技巧. 它的工作方式类似于以下代码:</div>
+	<div class="code">
+		#define A(x, y) ...<br>
+		#define B A<br>
+		// ...<br>
+		B(2, 3)
+	</div>
+	<div>这种语法使上面的 <i>B</i> 宏看起来接受两个实参, 但实际并非如此. <i>自动递归</i>机制就是以这种方式工作的, 只不过 "<i>B</i>" 宏会推导出下一个可用的 "<i>A</i>" 宏.</div>
+	<div>由于一些预处理器仍然缓慢, 直接重入 (不用 <i>自动递归</i>) 在非平凡的情形下仍然是必要的. 因此, 库使用一种新语法来处理重入:</div>
+	<div class="code">
+		<b>BOOST_PP_FOR_</b> ## <i>r</i>(<i>state</i>, <i>pred</i>, <i>op</i>, <i>macro</i>)<br>
+		<b>BOOST_PP_REPEAT_</b> ## <i>z</i>(<i>count</i>, <i>macro</i>, <i>data</i>)<br>
+		<b>BOOST_PP_WHILE_</b> ## <i>d</i>(<i>pred</i>, <i>op</i>, <i>state</i>)
+	</div>
+	<h4>折叠</h4>
+	<div>以前, <b>BOOST_PP_LIST_FOLD_RIGHT</b> 宏的实参与 <b>BOOST_PP_LIST_FOLD_LEFT</b> 相反. 此外, 传入 <b>BOOST_PP_LIST_FOLD_RIGHT</b> 的累加宏被调用时参数顺序也是颠倒的. 这一不一致已被消除.</div>
+	<div>举例来说, <b>BOOST_PP_LIST_FOLD_RIGHT</b> 以前的用法如下:</div>
+	<div class="code">
+		#define <i>macro</i>(<i>d</i>, <u><i>elem</i></u>, <u><i>state</i></u>)<br>
+		<b>BOOST_PP_LIST_FOLD_RIGHT</b>(<i>macro</i>, <u><i>list</i></u>, <u><i>state</i></u>)
+	</div>
+	<div>这一签名已被替换为...</div>
+	<div class="code">
+		#define <i>macro</i>(<i>d</i>, <u><i>state</i></u>, <u><i>elem</i></u>)<br>
+		<b>BOOST_PP_LIST_FOLD_RIGHT</b>(<i>macro</i>, <u><i>state</i></u>, <u><i>list</i></u>)
+	</div>
+	<h4>小结</h4>
+	<div>本库有许多 1.28 版本中没有的新特性, 这份列表并不打算一一列举. 它只是列出为了让代码与这个新版本兼容 <i>必须</i>修改的事项.</div>
+	<h4>参见</h4>
+	<ul>
+		<li><a href="../ref/for.html">BOOST_PP_FOR</a></li>
+		<li><a href="../ref/list_fold_right.html">BOOST_PP_LIST_FOLD_RIGHT</a></li>
+		<li><a href="../ref/repeat.html">BOOST_PP_REPEAT</a></li>
+		<li><a href="../ref/while.html">BOOST_PP_WHILE</a></li>
+	</ul>
+	<div class="sig">- Paul Mensonides</div>
+	<hr size="1">
+	<div style="margin-left: 0px;">
+		<i>版权所有 © <a href="http://www.housemarque.com" target="_top">Housemarque Oy</a> 2002</i>
+		</br><i>版权所有 Paul Mensonides 2002</i>
+	</div>
+	<div style="margin-left: 0px;">
+		<p><small>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <a href="../../../../LICENSE_1_0.txt">LICENSE_1_0.txt</a> 或复制于 <a href=
+		"http://www.boost.org/LICENSE_1_0.txt">www.boost.org/LICENSE_1_0.txt</a>)</small></p>
+	</div>
+</body>
+</html>

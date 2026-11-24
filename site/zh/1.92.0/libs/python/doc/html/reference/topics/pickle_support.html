@@ -1,0 +1,209 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>pickle 支持</title>
+<link rel="stylesheet" href="../../boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost.Python 参考手册">
+<link rel="up" href="../topics.html" title="第 8 章 专题">
+<link rel="prev" href="../topics.html" title="第 8 章 专题">
+<link rel="next" href="indexing_support.html" title="索引支持">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr><td valign="top"><img alt="" width="" height="" src="../../images/boost.png"></td></tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../topics.html"><img src="../../images/prev.png" alt="上一页"></a><a accesskey="u" href="../topics.html"><img src="../../images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../images/home.png" alt="首页"></a><a accesskey="n" href="indexing_support.html"><img src="../../images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="topics.pickle_support"></a><a class="link" href="pickle_support.html" title="pickle 支持">pickle 支持</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="pickle_support.html#topics.pickle_support.introduction">引言</a></span></dt>
+<dt><span class="section"><a href="pickle_support.html#topics.pickle_support.the_pickle_interface">Pickle 接口</a></span></dt>
+<dt><span class="section"><a href="pickle_support.html#topics.pickle_support.example">Example</a></span></dt>
+<dt><span class="section"><a href="pickle_support.html#topics.pickle_support.pitfall_and_safety_guard">陷阱与安全防护</a></span></dt>
+<dt><span class="section"><a href="pickle_support.html#topics.pickle_support.practical_advice">实用建议</a></span></dt>
+<dt><span class="section"><a href="pickle_support.html#topics.pickle_support.light_weight_alternative_pickle_">轻量替代: 用 Python 实现的 pickle 支持</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="topics.pickle_support.introduction"></a><a class="link" href="pickle_support.html#topics.pickle_support.introduction" title="引言">引言</a>
+</h3></div></div></div>
+<p>Pickle 是一个用于对象序列化的 Python 模块, 序列化也称为持久化、编组或展平.</p>
+<p>经常需要把对象的内容保存到文件并恢复. 解决这个问题的一种方法是编写一对以特殊格式从文件读写的函数. 一种强大的替代方法是使用 Python 的 pickle 模块. 利用 Python 的自省能力, pickle 模块递归地把几乎任意的 Python 对象转换为可写入文件的字节流.</p>
+<p>Boost Python 库通过 <a href="https://docs.python.org/2/library/pickle.html" target="_top">pickle 的 Python 库参考</a> 中详细描述的接口支持 pickle 模块. 该接口涉及下文描述的特殊方法 <code class="computeroutput"><span class="identifier">__getinitargs__</span></code>、<code class="computeroutput"><span class="identifier">__getstate__</span></code> 和 <code class="computeroutput"><span class="identifier">__setstate__</span></code>. 注意, <code class="computeroutput"><span class="identifier">Boost</span><span class="special">.</span><span class="identifier">Python</span></code> 也与 Python 的 cPickle 模块完全兼容.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="topics.pickle_support.the_pickle_interface"></a><a class="link" href="pickle_support.html#topics.pickle_support.the_pickle_interface" title="Pickle 接口">Pickle 接口</a>
+</h3></div></div></div>
+<p>在用户层面, Boost.Python pickle 接口涉及三个特殊方法:</p>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">__getinitargs__</span></dt>
+<dd>
+<p>当一个 Boost.Python 扩展类的实例被 pickle 时, pickler 会测试该实例是否有 <code class="computeroutput"><span class="identifier">__getinitargs__</span></code> 方法. 此方法必须返回一个 Python <code class="computeroutput"><span class="identifier">tuple</span></code> (最方便的是使用 <a class="link" href="../object_wrappers/boost_python_tuple_hpp.html#object_wrappers.boost_python_tuple_hpp.class_tuple" title="类 tuple"><code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">tuple</span></code></a>). 当实例被 unpickler 恢复时, 此元组的内容被用作类构造函数的参数.</p>
+<p>如果未定义 <code class="computeroutput"><span class="identifier">__getinitargs__</span></code>, <code class="computeroutput"><span class="identifier">pickle</span><span class="special">.</span><span class="identifier">load</span></code> 将不带参数调用构造函数 (<code class="computeroutput"><span class="identifier">__init__</span></code>); 也就是说, 对象必须是可默认构造的.</p>
+</dd>
+<dt><span class="term">__getstate__</span></dt>
+<dd><p>当 <code class="computeroutput"><span class="identifier">Boost</span><span class="special">.</span><span class="identifier">Python</span></code> 扩展类的实例被 pickle 时, pickler 会测试该实例是否有 <code class="computeroutput"><span class="identifier">__getstate__</span></code> 方法. 此方法应返回一个表示实例状态的 Python 对象.</p></dd>
+<dt><span class="term">__setstate__</span></dt>
+<dd><p>当 <code class="computeroutput"><span class="identifier">Boost</span><span class="special">.</span><span class="identifier">Python</span></code> 扩展类的实例被 unpickler (<code class="computeroutput"><span class="identifier">pickle</span><span class="special">.</span><span class="identifier">load</span></code>) 恢复时, 首先用 <code class="computeroutput"><span class="identifier">__getinitargs__</span></code> 的结果作为参数构造它 (见上文). 随后, unpickler 测试新实例是否有 <code class="computeroutput"><span class="identifier">__setstate__</span></code> 方法. 如果有, 则以 <code class="computeroutput"><span class="identifier">__getstate__</span></code> 的结果 (一个 Python 对象) 作为参数调用该方法.</p></dd>
+</dl>
+</div>
+<p>上述三个特殊方法可以由用户单独 <code class="computeroutput"><span class="special">.</span><span class="identifier">def</span><span class="special">()</span></code>. 不过, <code class="computeroutput"><span class="identifier">Boost</span><span class="special">.</span><span class="identifier">Python</span></code> 通过 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">pickle_suite</span></code> 类提供了一个易用的高层接口, 该接口还强制一致性: <code class="computeroutput"><span class="identifier">__getstate__</span></code> 与 <code class="computeroutput"><span class="identifier">__setstate__</span></code> 必须成对定义. 以下示例演示了此接口的使用.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="topics.pickle_support.example"></a><a class="link" href="pickle_support.html#topics.pickle_support.example" title="示例">Example</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="pickle_support.html#topics.pickle_support.example.pickle1_cpp">pickle1.cpp</a></span></dt>
+<dt><span class="section"><a href="pickle_support.html#topics.pickle_support.example.pickle2_cpp">pickle2.cpp</a></span></dt>
+<dt><span class="section"><a href="pickle_support.html#topics.pickle_support.example.pickle3_cpp">pickle3.cpp</a></span></dt>
+</dl></div>
+<p> <code class="computeroutput"><span class="identifier">python</span><span class="special">/</span><span class="identifier">test</span></code> 中有三个文件展示了如何提供 pickle 支持.</p>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="topics.pickle_support.example.pickle1_cpp"></a><a class="link" href="pickle_support.html#topics.pickle_support.example.pickle1_cpp" title="pickle1.cpp">pickle1.cpp</a>
+</h4></div></div></div>
+<p>本示例中的 C++ 类可以通过向构造函数传递适当的参数来完全恢复. 因此只需定义 pickle 接口方法 <code class="computeroutput"><span class="identifier">__getinitargs__</span></code> 即可. 做法如下: C++ pickle 函数的定义:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">world_pickle_suite</span> <span class="special">:</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">pickle_suite</span>
+<span class="special">{</span>
+  <span class="keyword">static</span>
+  <span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">tuple</span>
+  <span class="identifier">getinitargs</span><span class="special">(</span><span class="identifier">world</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">w</span><span class="special">)</span>
+  <span class="special">{</span>
+      <span class="keyword">return</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">make_tuple</span><span class="special">(</span><span class="identifier">w</span><span class="special">.</span><span class="identifier">get_country</span><span class="special">());</span>
+  <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>建立 Python 绑定:</p>
+<pre class="programlisting"><span class="identifier">class_</span><span class="special">&lt;</span><span class="identifier">world</span><span class="special">&gt;(</span><span class="string">"world"</span><span class="special">,</span> <span class="identifier">args</span><span class="special">&lt;</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;&gt;())</span>
+      <span class="comment">// ...</span>
+      <span class="special">.</span><span class="identifier">def_pickle</span><span class="special">(</span><span class="identifier">world_pickle_suite</span><span class="special">())</span>
+      <span class="comment">// ...</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="topics.pickle_support.example.pickle2_cpp"></a><a class="link" href="pickle_support.html#topics.pickle_support.example.pickle2_cpp" title="pickle2.cpp">pickle2.cpp</a>
+</h4></div></div></div>
+<p>本示例中的 C++ 类包含任何构造函数都无法恢复的成员数据. 因此有必要提供 <code class="computeroutput"><span class="identifier">__getstate__</span></code>/<code class="computeroutput"><span class="identifier">__setstate__</span></code> 这对 pickle 接口方法:</p>
+<p>C++ pickle 函数的定义:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">world_pickle_suite</span> <span class="special">:</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">pickle_suite</span>
+  <span class="special">{</span>
+    <span class="keyword">static</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">tuple</span>
+    <span class="identifier">getinitargs</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">world</span><span class="special">&amp;</span> <span class="identifier">w</span><span class="special">)</span>
+    <span class="special">{</span>
+      <span class="comment">// ...</span>
+    <span class="special">}</span>
+
+    <span class="keyword">static</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">tuple</span>
+    <span class="identifier">getstate</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">world</span><span class="special">&amp;</span> <span class="identifier">w</span><span class="special">)</span>
+    <span class="special">{</span>
+      <span class="comment">// ...</span>
+    <span class="special">}</span>
+
+    <span class="keyword">static</span>
+    <span class="keyword">void</span>
+    <span class="identifier">setstate</span><span class="special">(</span><span class="identifier">world</span><span class="special">&amp;</span> <span class="identifier">w</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">tuple</span> <span class="identifier">state</span><span class="special">)</span>
+    <span class="special">{</span>
+      <span class="comment">// ...</span>
+    <span class="special">}</span>
+  <span class="special">};</span>
+</pre>
+<p>为整个套件建立 Python 绑定:</p>
+<pre class="programlisting"><span class="identifier">class_</span><span class="special">&lt;</span><span class="identifier">world</span><span class="special">&gt;(</span><span class="string">"world"</span><span class="special">,</span> <span class="identifier">args</span><span class="special">&lt;</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;&gt;())</span>
+    <span class="comment">// ...</span>
+    <span class="special">.</span><span class="identifier">def_pickle</span><span class="special">(</span><span class="identifier">world_pickle_suite</span><span class="special">())</span>
+    <span class="comment">// ...</span>
+</pre>
+<p>为简单起见, <code class="computeroutput"><span class="identifier">__dict__</span></code> 未包含在 <code class="computeroutput"><span class="identifier">__getstate__</span></code> 的结果中. 这一般不推荐, 但如果预计对象的 <code class="computeroutput"><span class="identifier">__dict__</span></code> 总是为空, 这是一种有效做法. 注意, 下文描述的安全防护会捕获违反这一假设的情形.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="topics.pickle_support.example.pickle3_cpp"></a><a class="link" href="pickle_support.html#topics.pickle_support.example.pickle3_cpp" title="pickle3.cpp">pickle3.cpp</a>
+</h4></div></div></div>
+<p>本示例与 pickle2.cpp 类似. 然而, 对象的 <code class="computeroutput"><span class="identifier">__dict__</span></code> 包含在 <code class="computeroutput"><span class="identifier">__getstate__</span></code> 的结果中. 这需要多一点代码, 但如果对象的 <code class="computeroutput"><span class="identifier">__dict__</span></code> 并非总是为空, 这是不可避免的.</p>
+</div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="topics.pickle_support.pitfall_and_safety_guard"></a><a class="link" href="pickle_support.html#topics.pickle_support.pitfall_and_safety_guard" title="陷阱与安全防护">陷阱与安全防护</a>
+</h3></div></div></div>
+<p>上述 pickle 协议有一个重要陷阱, Boost.Python 扩展模块的最终用户可能没有意识到:</p>
+<p>
+          <span class="bold"><strong><code class="computeroutput"><span class="identifier">__getstate__</span></code> 已定义且实例的 <code class="computeroutput"><span class="identifier">__dict__</span></code> 非空.</strong></span>
+        </p>
+<p> <code class="computeroutput"><span class="identifier">Boost</span><span class="special">.</span><span class="identifier">Python</span></code> 扩展类的作者可能提供 <code class="computeroutput"><span class="identifier">__getstate__</span></code> 方法, 而没有考虑以下可能性: * 他的类在 Python 中被用作基类. 很可能派生类实例的 <code class="computeroutput"><span class="identifier">__dict__</span></code> 需要被 pickle 才能正确恢复实例. * 用户直接向实例的 <code class="computeroutput"><span class="identifier">__dict__</span></code> 添加条目. 同样, 此时实例的 <code class="computeroutput"><span class="identifier">__dict__</span></code> 也需要被 pickle.</p>
+<p>为了让用户注意到这个极不明显的问题, 提供了一个安全防护. 如果 <code class="computeroutput"><span class="identifier">__getstate__</span></code> 已定义且实例的 <code class="computeroutput"><span class="identifier">__dict__</span></code> 非空, <code class="computeroutput"><span class="identifier">Boost</span><span class="special">.</span><span class="identifier">Python</span></code> 会测试该类是否有属性 <code class="computeroutput"><span class="identifier">__getstate_manages_dict__</span></code>. 如果未定义此属性, 将引发异常:</p>
+<pre class="programlisting"><span class="identifier">RuntimeError</span><span class="special">:</span> <span class="identifier">Incomplete</span> <span class="identifier">pickle</span> <span class="identifier">support</span> <span class="special">(</span><span class="identifier">__getstate_manages_dict__</span> <span class="keyword">not</span> <span class="identifier">set</span><span class="special">)</span>
+</pre>
+<p>要解决这个问题, 应首先确认 <code class="computeroutput"><span class="identifier">__getstate__</span></code> 和 <code class="computeroutput"><span class="identifier">__setstate__</span></code> 方法正确管理实例的 <code class="computeroutput"><span class="identifier">__dict__</span></code>. 注意, 这可以在 C++ 层面或 Python 层面完成. 最后, 应有意地覆盖安全防护. 例如在 C++ 中 (来自 pickle3.cpp):</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">world_pickle_suite</span> <span class="special">:</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">python</span><span class="special">::</span><span class="identifier">pickle_suite</span>
+<span class="special">{</span>
+  <span class="comment">// ...</span>
+
+  <span class="keyword">static</span> <span class="keyword">bool</span> <span class="identifier">getstate_manages_dict</span><span class="special">()</span> <span class="special">{</span> <span class="keyword">return</span> <span class="keyword">true</span><span class="special">;</span> <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>或者在 Python 中:</p>
+<pre class="programlisting"><span class="identifier">import</span> <span class="identifier">your_bpl_module</span>
+<span class="keyword">class</span> <span class="identifier">your_class</span><span class="special">(</span><span class="identifier">your_bpl_module</span><span class="special">.</span><span class="identifier">your_class</span><span class="special">):</span>
+  <span class="identifier">__getstate_manages_dict__</span> <span class="special">=</span> <span class="number">1</span>
+  <span class="identifier">def</span> <span class="identifier">__getstate__</span><span class="special">(</span><span class="identifier">self</span><span class="special">):</span>
+    <span class="preprocessor"># your</span> <span class="identifier">code</span> <span class="identifier">here</span>
+  <span class="identifier">def</span> <span class="identifier">__setstate__</span><span class="special">(</span><span class="identifier">self</span><span class="special">,</span> <span class="identifier">state</span><span class="special">):</span>
+    <span class="preprocessor"># your</span> <span class="identifier">code</span> <span class="identifier">here</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="topics.pickle_support.practical_advice"></a><a class="link" href="pickle_support.html#topics.pickle_support.practical_advice" title="实用建议">实用建议</a>
+</h3></div></div></div>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">在带有许多扩展类的 <code class="computeroutput"><span class="identifier">Boost</span><span class="special">.</span><span class="identifier">Python</span></code> 扩展模块中, 为所有类提供完整的 pickle 支持将是很大的开销. 一般而言, 只应为最终会被 pickle 的扩展类实现完整的 pickle 支持.</li>
+<li class="listitem">避免使用 <code class="computeroutput"><span class="identifier">__getstate__</span></code>, 如果实例还能通过 <code class="computeroutput"><span class="identifier">__getinitargs__</span></code> 重建的话. 这样自动避免了上述陷阱.</li>
+<li class="listitem">如果需要 <code class="computeroutput"><span class="identifier">__getstate__</span></code>, 应把实例的 <code class="computeroutput"><span class="identifier">__dict__</span></code> 包含在返回的 Python 对象中.</li>
+</ul></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="topics.pickle_support.light_weight_alternative_pickle_"></a><a class="link" href="pickle_support.html#topics.pickle_support.light_weight_alternative_pickle_" title="轻量替代: 用 Python 实现的 pickle 支持">轻量替代: 用 Python 实现的 pickle 支持</a>
+</h3></div></div></div>
+<p>pickle4.cpp 示例演示了实现 pickle 支持的另一种技术. 首先, 我们通过 class_::enable_pickling() 成员函数指示 Boost.Python 只定义 pickle 所需的基本属性:</p>
+<pre class="programlisting"><span class="identifier">class_</span><span class="special">&lt;</span><span class="identifier">world</span><span class="special">&gt;(</span><span class="string">"world"</span><span class="special">,</span> <span class="identifier">args</span><span class="special">&lt;</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;&gt;())</span>
+    <span class="comment">// ...</span>
+    <span class="special">.</span><span class="identifier">enable_pickling</span><span class="special">()</span>
+    <span class="comment">// ...</span>
+</pre>
+<p>这会启用 Python 文档所描述的标准 Python pickle 接口. 通过向被包装类的定义中 "注入" 一个 <code class="computeroutput"><span class="identifier">__getinitargs__</span></code> 方法, 我们使所有实例都可以被 pickle:</p>
+<pre class="programlisting"><span class="preprocessor"># import</span> <span class="identifier">the</span> <span class="identifier">wrapped</span> <span class="identifier">world</span> <span class="keyword">class</span>
+<span class="identifier">from</span> <span class="identifier">pickle4_ext</span> <span class="identifier">import</span> <span class="identifier">world</span>
+
+<span class="preprocessor"># definition</span> <span class="identifier">of</span> <span class="identifier">__getinitargs__</span>
+<span class="identifier">def</span> <span class="identifier">world_getinitargs</span><span class="special">(</span><span class="identifier">self</span><span class="special">):</span>
+  <span class="keyword">return</span> <span class="special">(</span><span class="identifier">self</span><span class="special">.</span><span class="identifier">get_country</span><span class="special">(),)</span>
+
+<span class="preprocessor"># now</span> <span class="identifier">inject</span> <span class="identifier">__getinitargs__</span> <span class="special">(</span><span class="identifier">Python</span> <span class="identifier">is</span> <span class="identifier">a</span> <span class="identifier">dynamic</span> <span class="identifier">language</span><span class="special">!)</span>
+<span class="identifier">world</span><span class="special">.</span><span class="identifier">__getinitargs__</span> <span class="special">=</span> <span class="identifier">world_getinitargs</span>
+</pre>
+<p>另请参阅教程中关于从 Python 注入额外方法的一节.</p>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2002-2005, 2015 David Abrahams, Stefan Seefeld<p>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 LICENSE_1_0.txt 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>
+      </p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../topics.html"><img src="../../images/prev.png" alt="上一页"></a><a accesskey="u" href="../topics.html"><img src="../../images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../images/home.png" alt="首页"></a><a accesskey="n" href="indexing_support.html"><img src="../../images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

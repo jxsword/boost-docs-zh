@@ -1,0 +1,767 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>多遍 (multi_pass) 迭代器</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="Spirit 2.59">
+<link rel="up" href="../support.html" title="支撑库">
+<link rel="prev" href="../support.html" title="支撑库">
+<link rel="next" href="line_pos_iterator.html" title="行位置迭代器">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../support.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../support.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="line_pos_iterator.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="spirit.support.multi_pass"></a><a class="link" href="multi_pass.html" title="多遍迭代器">多遍 (multi_pass) 迭代器</a>
+</h3></div></div></div>
+<p> <span class="emphasis"><em>Spirit.Qi</em></span> 中的回溯要求使用以下类型的迭代器: 前向、双向或随机访问. 由于回溯, 不能使用输入迭代器. 因此, 属于输入迭代器类别的标准库类 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">istreambuf_iterator</span></code> 和 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">istream_iterator</span></code> 无法使用. 另一个值得关注的输入迭代器是包装词法分析器 (如 LEX) 的迭代器.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>一般来说, <span class="emphasis"><em>Spirit.Qi</em></span> 生成的递归下降解析器在设计上需要回溯. 因此, 我们需要向 <span class="emphasis"><em>Spirit.Qi</em></span> 的任何 API 函数至少提供前向迭代器. 不过这不是绝对要求. 将来我们会看到更多只需要至多 1 个字符 (记号) 前瞻的确定性解析器. 这类解析器允许我们按原样使用 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">istream_iterator</span></code> 这样的输入迭代器.</p></td></tr>
+</table></div>
+<p>只有当我们被允许保存迭代器位置 (即复制当前迭代器) 时, 才能实现回溯. 遗憾的是, 对于输入迭代器, 无法这样做, 因此输入迭代器无法在 <span class="emphasis"><em>Spirit.Qi</em></span> 中配合回溯使用. 此问题的一种解决方案是把所有待解析数据简单地加载到一个容器 (例如 vector 或 deque) 中, 然后把容器的 begin 和 end 传给 <span class="emphasis"><em>Spirit.Qi</em></span>. 这种方法对某些应用来说内存开销过大, 这就是创建 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 迭代器的原因.</p>
+<h5>
+<a name="spirit.support.multi_pass.h0"></a>
+        <span class="phrase"><a name="spirit.support.multi_pass.using_the_multi_pass"></a></span><a class="link" href="multi_pass.html#spirit.support.multi_pass.using_the_multi_pass">使用 multi_pass</a>
+      </h5>
+<p> <code class="computeroutput"><span class="identifier">multi_pass</span></code> 迭代器会把任何输入迭代器转换为适合与 <span class="emphasis"><em>Spirit.Qi</em></span> 一起使用的前向迭代器. <code class="computeroutput"><span class="identifier">multi_pass</span></code> 会在需要时缓冲数据, 并在其内容不再需要时丢弃缓冲区. 这发生在只有一个迭代器副本或不可能发生回溯的情况下.</p>
+<p>如果使用 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 迭代器, 文法必须谨慎设计. 任何可能需要回溯的 rule (例如含有备选项的 rule) 都会导致数据被缓冲. 最适宜使用的 rule 是重复构造 (如 kleene 和 plus).</p>
+<p>形如 <code class="computeroutput"><span class="identifier">a</span> <span class="special">&gt;&gt;</span> <span class="identifier">b</span></code> 的序列也会缓冲数据. 这与 <a href="../../../../../../libs/spirit/classic/index.html" target="_top"><span class="emphasis"><em>Spirit.Classic</em></span></a> 的行为不同, 但有充分理由. 如果序列的某个组件匹配失败, 序列需要把当前迭代器重置到其初始状态. 为了补偿这种行为, 我们为 <code class="computeroutput"><span class="identifier">expect</span></code> 解析器增加了功能 (即 <code class="computeroutput"><span class="identifier">a</span>
+        <span class="special">&gt;</span> <span class="identifier">b</span></code> 这样的构造). 期望点在文法中引入确定性点, 确保它们匹配时不会发生回溯. 因此, 我们在每个期望点清空所有 multi_pass 迭代器的缓冲区, 即使对于大型文法也能保证最小的缓冲内容.</p>
+<div class="important"><table border="0" summary="Important">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[重要]" src="../../images/important.png"></td>
+<th align="left">重要</th>
+</tr>
+<tr><td align="left" valign="top">
+<p>如果你在 <code class="computeroutput"><span class="identifier">expect</span></code> 解析器中配合使用错误处理器, 同时使用 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 迭代器, 并且打算用错误处理器强制 <code class="computeroutput"><span class="identifier">retry</span></code> 或 <code class="computeroutput"><span class="identifier">fail</span></code> (参见错误处理器的说明 -- <span class="bold"><strong>FIXME</strong></span>: 插入链接), 那么你需要使用 <code class="computeroutput"><span class="identifier">retry</span></code> 或 <code class="computeroutput"><span class="identifier">fail</span></code> 来实例化错误处理器, 例如:</p>
+<pre class="programlisting"><span class="identifier">rule</span> <span class="identifier">r</span><span class="special">&lt;</span><span class="identifier">iterator_type</span><span class="special">&gt;</span> <span class="identifier">r</span><span class="special">;</span>
+<span class="identifier">on_error</span><span class="special">&lt;</span><span class="identifier">retry</span><span class="special">&gt;(</span><span class="identifier">r</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">phoenix</span><span class="special">::</span><span class="identifier">val</span><span class="special">(</span><span class="string">"Error!"</span><span class="special">));</span>
+</pre>
+<p>如果不这样做, 生成的代码将在运行时触发断言语句.</p>
+</td></tr>
+</table></div>
+<p>任何重复的 rule, 例如 kleene_star (<code class="computeroutput"><span class="special">*</span><span class="identifier">a</span></code>) 或正闭包 (<code class="computeroutput"><span class="special">+</span><span class="identifier">a</span></code>), 只会为当前重复缓冲数据.</p>
+<p>在典型文法中, 歧义以及因此产生的前瞻通常是局部的. 实际上, 许多设计良好的语言是完全确定性的, 完全不需要前瞻. 查看输入的第一个字符即可立即确定要走的备选分支. 而且, 即使是高度歧义的文法, 备选项也常常形如 <code class="computeroutput"><span class="special">*(</span><span class="identifier">a</span> <span class="special">|</span> <span class="identifier">b</span>
+        <span class="special">|</span> <span class="identifier">c</span> <span class="special">|</span> <span class="identifier">d</span><span class="special">)</span></code>. 输入迭代器不断前进, 从不会卡在开头. 让我们看一个 Pascal 代码片段:</p>
+<pre class="programlisting"><span class="identifier">program</span> <span class="special">=</span>
+        <span class="identifier">programHeading</span> <span class="special">&gt;&gt;</span> <span class="identifier">block</span> <span class="special">&gt;&gt;</span> <span class="char">'.'</span>
+    <span class="special">;</span>
+
+<span class="identifier">block</span> <span class="special">=</span>
+       <span class="special">*(</span>   <span class="identifier">labelDeclarationPart</span>
+        <span class="special">|</span>   <span class="identifier">constantDefinitionPart</span>
+        <span class="special">|</span>   <span class="identifier">typeDefinitionPart</span>
+        <span class="special">|</span>   <span class="identifier">variableDeclarationPart</span>
+        <span class="special">|</span>   <span class="identifier">procedureAndFunctionDeclarationPart</span>
+        <span class="special">)</span>
+    <span class="special">&gt;&gt;</span>  <span class="identifier">statementPart</span>
+    <span class="special">;</span>
+</pre>
+<p>注意 rule block 中 Kleene 星号内部的备选项. 该 rule 以线性方式吞掉输入, 并在每次迭代时丢弃过去的历史. 由于这是完全确定性的 LL(1) 文法, 每个失败的备选项只需查看 1 个字符 (记号). 消耗超过 1 个字符 (记号) 的备选项肯定是成功者. 之后, Kleene 星号继续下一个.</p>
+<p>在听完使用 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 时需要小心的特性讲解之后, 你可能觉得 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 用起来限制太多. 事实并非如此. 如果你的文法是确定性的, 你可以在文法中使用 <code class="computeroutput"><span class="identifier">flush_multi_pass</span></code> 伪解析器来确保数据不会在不必要的时候被缓冲 (<code class="computeroutput"><span class="identifier">flush_multi_pass</span></code> 可从 <span class="emphasis"><em>Spirit.Qi</em></span> 解析器 <a href="../../../../repository/doc/html/index.html" target="_top">仓库</a> 获得).</p>
+<p>这里我们给出一个展示最小用例的极简示例. <code class="computeroutput"><span class="identifier">multi_pass</span></code> 迭代器是高度可配置的, 但默认策略经过选择, 使其能轻松与 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">istreambuf_iterator</span></code> 这样的输入迭代器一起使用. 此示例的完整源代码请参见 <a href="../../../../example/support/multi_pass.cpp" target="_top">multi_pass.cpp</a>.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">main</span><span class="special">()</span>
+<span class="special">{</span>
+    <span class="keyword">namespace</span> <span class="identifier">spirit</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">;</span>
+    <span class="keyword">using</span> <span class="identifier">spirit</span><span class="special">::</span><span class="identifier">ascii</span><span class="special">::</span><span class="identifier">space</span><span class="special">;</span>
+    <span class="keyword">using</span> <span class="identifier">spirit</span><span class="special">::</span><span class="identifier">ascii</span><span class="special">::</span><span class="identifier">char_</span><span class="special">;</span>
+    <span class="keyword">using</span> <span class="identifier">spirit</span><span class="special">::</span><span class="identifier">qi</span><span class="special">::</span><span class="identifier">double_</span><span class="special">;</span>
+    <span class="keyword">using</span> <span class="identifier">spirit</span><span class="special">::</span><span class="identifier">qi</span><span class="special">::</span><span class="identifier">eol</span><span class="special">;</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">ifstream</span> <span class="identifier">in</span><span class="special">(</span><span class="string">"multi_pass.txt"</span><span class="special">);</span>    <span class="comment">// we get our input from this file</span>
+    <span class="keyword">if</span> <span class="special">(!</span><span class="identifier">in</span><span class="special">.</span><span class="identifier">is_open</span><span class="special">())</span> <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Could not open input file: 'multi_pass.txt'"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+        <span class="keyword">return</span> <span class="special">-</span><span class="number">1</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">istreambuf_iterator</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">&gt;</span> <span class="identifier">base_iterator_type</span><span class="special">;</span>
+    <span class="identifier">spirit</span><span class="special">::</span><span class="identifier">multi_pass</span><span class="special">&lt;</span><span class="identifier">base_iterator_type</span><span class="special">&gt;</span> <span class="identifier">first</span> <span class="special">=</span>
+        <span class="identifier">spirit</span><span class="special">::</span><span class="identifier">make_default_multi_pass</span><span class="special">(</span><span class="identifier">base_iterator_type</span><span class="special">(</span><span class="identifier">in</span><span class="special">));</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">&gt;</span> <span class="identifier">v</span><span class="special">;</span>
+    <span class="keyword">bool</span> <span class="identifier">result</span> <span class="special">=</span> <span class="identifier">spirit</span><span class="special">::</span><span class="identifier">qi</span><span class="special">::</span><span class="identifier">phrase_parse</span><span class="special">(</span><span class="identifier">first</span>
+      <span class="special">,</span> <span class="identifier">spirit</span><span class="special">::</span><span class="identifier">make_default_multi_pass</span><span class="special">(</span><span class="identifier">base_iterator_type</span><span class="special">())</span>
+      <span class="special">,</span> <span class="identifier">double_</span> <span class="special">&gt;&gt;</span> <span class="special">*(</span><span class="char">','</span> <span class="special">&gt;&gt;</span> <span class="identifier">double_</span><span class="special">)</span>              <span class="comment">// recognize list of doubles</span>
+      <span class="special">,</span> <span class="identifier">space</span> <span class="special">|</span> <span class="char">'#'</span> <span class="special">&gt;&gt;</span> <span class="special">*(</span><span class="identifier">char_</span> <span class="special">-</span> <span class="identifier">eol</span><span class="special">)</span> <span class="special">&gt;&gt;</span> <span class="identifier">eol</span>      <span class="comment">// comment skipper</span>
+      <span class="special">,</span> <span class="identifier">v</span><span class="special">);</span>                                       <span class="comment">// data read from file</span>
+
+    <span class="keyword">if</span> <span class="special">(!</span><span class="identifier">result</span><span class="special">)</span> <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Failed parsing input file!"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+        <span class="keyword">return</span> <span class="special">-</span><span class="number">2</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Successfully parsed input file!"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<h5>
+<a name="spirit.support.multi_pass.h1"></a>
+        <span class="phrase"><a name="spirit.support.multi_pass.using_the_flush_multi_pass_parser"></a></span><a class="link" href="multi_pass.html#spirit.support.multi_pass.using_the_flush_multi_pass_parser">使用 flush_multi_pass 解析器</a>
+      </h5>
+<p> <a href="http://boost-spirit.com" target="_top">Spirit</a> <a href="../../../../repository/doc/html/index.html" target="_top">仓库</a> 包含 <code class="computeroutput"><span class="identifier">flush_multi_pass</span></code> 解析器组件. 它可以与 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 迭代器配合使用以最小化缓冲. 它允许在文法中插入显式同步点, 在这些点清除任何已存储的输入是安全的, 因为可以确保此时不会再发生回溯.</p>
+<p>当 <code class="computeroutput"><span class="identifier">flush_multi_pass</span></code> 解析器与 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 一起使用时, 它会调用 <code class="computeroutput"><span class="identifier">multi_pass</span><span class="special">::</span><span class="identifier">clear_queue</span><span class="special">()</span></code>. 这会导致所有缓冲数据被擦除. 这也将使 multi_pass 的所有其他副本失效, 它们不应再被使用. 如果使用, 将抛出 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">illegal_backtracking</span></code> 异常.</p>
+<h5>
+<a name="spirit.support.multi_pass.h2"></a>
+        <span class="phrase"><a name="spirit.support.multi_pass.the_multi_pass_policies"></a></span><a class="link" href="multi_pass.html#spirit.support.multi_pass.the_multi_pass_policies">multi_pass 策略</a>
+      </h5>
+<p> <code class="computeroutput"><span class="identifier">multi_pass</span></code> 迭代器是一个可使用策略配置的模板类. 上面关于 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 的描述是它最初 (在使用策略之前) 的实现方式, 也是现在的默认配置. 但 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 能做的远不止这些. 由于策略的开放性, 你可以编写自己的策略, 使 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 以我们从未想象过的方式工作.</p>
+<p>multi_pass 类有两个模板参数:</p>
+<div class="variablelist">
+<p class="title"><b>multi_pass 模板参数</b></p>
+<dl class="variablelist">
+<dt><span class="term">Input</span></dt>
+<dd><p>multi_pass 获取其输入所用的类型. 这通常是一个输入迭代器或仿函数.</p></dd>
+<dt><span class="term">Policies</span></dt>
+<dd><p>用于创建 multi_pass 迭代器实例的组合策略. 这个组合策略类型在下文描述</p></dd>
+</dl>
+</div>
+<p>可以在单个类中实现组合策略所需的全部功能. 但实践表明, 把它拆分为四组不同的函数, 即四个独立但协调良好的策略, 会更方便. 因此, <code class="computeroutput"><span class="identifier">multi_pass</span></code> 库实现了一个模板 <code class="computeroutput"><span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">default_policy</span></code>, 允许组合多个不同策略, 每个策略实现其中一个功能组:</p>
+<div class="table">
+<a name="spirit.support.multi_pass.policies_needed_for_default_policy_template"></a><p class="title"><b>表 12. default_policy 模板所需的策略</b></p>
+<div class="table-contents"><table class="table" summary="Policies needed for default_policy template">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>模板参数</p>
+              </th>
+<th>
+                <p>说明</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">OwnershipPolicy</span></code>
+                </p>
+              </td>
+<td>
+                <p>该策略决定 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 如何处理其共享组件.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">CheckingPolicy</span></code>
+                </p>
+              </td>
+<td>
+                <p>该策略决定如何检查无效迭代器.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">InputPolicy</span></code>
+                </p>
+              </td>
+<td>
+                <p>定义 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 如何获取其输入的类. <code class="computeroutput"><span class="identifier">InputPolicy</span></code> 由 <code class="computeroutput"><span class="identifier">Input</span></code> (<code class="computeroutput"><span class="identifier">multi_pass</span></code> 的模板参数) 进行参数化.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">StoragePolicy</span></code>
+                </p>
+              </td>
+<td>
+                <p> <code class="computeroutput"><span class="identifier">multi_pass</span></code> 使用的缓冲方案由 StoragePolicy 决定和管理.</p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><p> <code class="computeroutput"><span class="identifier">multi_pass</span></code> 库为上述每种策略类型包含若干预定义策略实现. 我们先描述这些预定义类型, 然后给出一些如何编写自己的策略实现的指导.</p>
+<h5>
+<a name="spirit.support.multi_pass.h3"></a>
+        <span class="phrase"><a name="spirit.support.multi_pass.predefined_policies"></a></span><a class="link" href="multi_pass.html#spirit.support.multi_pass.predefined_policies">预定义策略</a>
+      </h5>
+<p>所有预定义的 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 策略都定义在命名空间 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">iterator_policies</span></code> 中.</p>
+<div class="table">
+<a name="spirit.support.multi_pass.predefined_policy_classes"></a><p class="title"><b>表 13. 预定义策略类</b></p>
+<div class="table-contents"><table class="table" summary="Predefined policy classes">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>类名</p>
+              </th>
+<th>
+                <p>说明</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <span class="bold"><strong>InputPolicy</strong></span> 类</p>
+              </td>
+<td class="auto-generated"> </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">input_iterator</span></code>
+                </p>
+              </td>
+<td>
+                <p>该策略指示 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 从类型为 <code class="computeroutput"><span class="identifier">Input</span></code> 的输入迭代器读取.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">buffering_input_iterator</span></code>
+                </p>
+              </td>
+<td>
+                <p>该策略指示 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 从类型为 <code class="computeroutput"><span class="identifier">Input</span></code> 的输入迭代器读取. 另外它会缓冲从底层迭代器接收的最后一个字符. 这允许包装那些自身不缓冲最后一个字符的迭代器 (例如 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">istreambuf_iterator</span></code>).</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">istream</span></code>
+                </p>
+              </td>
+<td>
+                <p>该策略指示 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 从类型为 <code class="computeroutput"><span class="identifier">Input</span></code> 的输入流读取 (通常是 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">basic_istream</span></code>).</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">lex_input</span></code>
+                </p>
+              </td>
+<td>
+                <p>该策略通过调用 yylex() 获取输入, 该函数通常由 <a href="http://flex.sourceforge.net/" target="_top">Flex</a> 生成的扫描器提供. 如果你使用此策略, 你的代码必须链接一个 <a href="http://flex.sourceforge.net/" target="_top">Flex</a> 生成的扫描器.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">functor_input</span></code>
+                </p>
+              </td>
+<td>
+                <p>该输入策略通过调用类型为 <code class="computeroutput"><span class="identifier">Input</span></code> 的仿函数获取数据. 该仿函数必须满足特定要求. 它必须有一个名为 <code class="computeroutput"><span class="identifier">result_type</span></code> 的 typedef, 应当是 <code class="computeroutput"><span class="keyword">operator</span><span class="special">()</span></code> 返回的类型. 另外, 由于输入策略需要一种确定输入何时结束的方法, 仿函数必须包含一个名为 <code class="computeroutput"><span class="identifier">eof</span></code> 的静态变量, 它可与 <code class="computeroutput"><span class="identifier">result_type</span></code> 类型的变量比较.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">split_functor_input</span></code>
+                </p>
+              </td>
+<td>
+                <p>这与 <code class="computeroutput"><span class="identifier">functor_input</span></code> 策略基本相同, 只是 (用户提供的) 函数对象暴露独立的 <code class="computeroutput"><span class="identifier">unique</span></code> 和 <code class="computeroutput"><span class="identifier">shared</span></code> 子类, 允许把仿函数的 <span class="emphasis"><em>unique</em></span> 数据成员与每个实例持有的 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 数据项集成, 其 <span class="emphasis"><em>shared</em></span> 数据成员将与所有副本共享的 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 成员集成.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <span class="bold"><strong>OwnershipPolicy</strong></span> 类</p>
+              </td>
+<td class="auto-generated"> </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">ref_counted</span></code>
+                </p>
+              </td>
+<td>
+                <p>该类使用引用计数方案. 当计数到达零时, <code class="computeroutput"><span class="identifier">multi_pass</span></code> 会删除其共享组件.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">first_owner</span></code>
+                </p>
+              </td>
+<td>
+                <p>使用该策略时, 创建的第一个 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 将是删除共享数据的那个. 每个副本不获取共享数据的所有权. 这对 <a href="http://boost-spirit.com" target="_top">Spirit</a> 很有效, 因为不对迭代器做动态分配. 所有副本都在栈上创建, 因此原始迭代器寿命最长.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <span class="bold"><strong>CheckingPolicy</strong></span> 类</p>
+              </td>
+<td class="auto-generated"> </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">no_check</span></code>
+                </p>
+              </td>
+<td>
+                <p>该策略完全不进行检查.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">buf_id_check</span></code>
+                </p>
+              </td>
+<td>
+                <p>该策略保存一个缓冲区 id 或缓冲区寿命 (age). 每当在 <code class="computeroutput"><span class="identifier">clear_queue</span><span class="special">()</span></code> 迭代器上调用 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 时, 所有其他迭代器都可能失效. 当调用 <code class="computeroutput"><span class="identifier">clear_queue</span><span class="special">()</span></code> 时, <code class="computeroutput"><span class="identifier">buf_id_check</span></code> 会递增缓冲区 id. 当迭代器被解引用时, 该策略检查该迭代器的缓冲区 id 是否与共享缓冲区 id 匹配. 该策略与 <code class="computeroutput"><span class="identifier">split_std_deque</span></code> StoragePolicy 一起使用时最有效. 它不应与 <code class="computeroutput"><span class="identifier">fixed_size_queue</span></code> StoragePolicy 一起使用, 因为它无法检测超出范围的迭代器解引用.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  full_check
+                </p>
+              </td>
+<td>
+                <p>该策略尚未实现. 实现后将跟踪所有迭代器并确保它们都有效. 这主要用于调试目的, 因为它会产生显著开销.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <span class="bold"><strong>StoragePolicy</strong></span> 类</p>
+              </td>
+<td class="auto-generated"> </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">split_std_deque</span></code>
+                </p>
+              </td>
+<td>
+                <p>尽管名字如此, 该策略把所有缓冲数据保存在 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span></code> 中. 只要存在多于一个迭代器, 所有数据都会保存. 一旦迭代器数量降到一且不再需要队列, 队列就会被清除以释放内存. 也可以通过调用 <code class="computeroutput"><span class="identifier">multi_pass</span><span class="special">::</span><span class="identifier">clear_queue</span><span class="special">()</span></code> 强制清除队列.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">fixed_size_queue</span><span class="special">&lt;</span><span class="identifier">N</span><span class="special">&gt;</span></code>
+                </p>
+              </td>
+<td>
+                <p>该策略维护一个大小为 <code class="computeroutput"><span class="identifier">N</span><span class="special">+</span><span class="number">1</span></code>、保存 <code class="computeroutput"><span class="identifier">N</span></code> 元素的环形缓冲区. <code class="computeroutput"><span class="identifier">fixed_size_queue</span></code> 是一个模板, 带有指定队列大小的 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span></code> 参数. 你有责任确保 <code class="computeroutput"><span class="identifier">N</span></code> 对你的解析器足够大. 每当最前面的迭代器递增时, 缓冲区的最后一个字符会被自动擦除. 目前无法判断某个迭代器是否落后太远而已经失效. 在正常迭代器操作期间, 该策略不做动态分配, 只在初始构造时进行. 这个 <code class="computeroutput"><span class="identifier">StoragePolicy</span></code> 的内存用量固定为 <code class="computeroutput"><span class="identifier">N</span><span class="special">+</span><span class="number">1</span></code> 字节, 而不像 <code class="computeroutput"><span class="identifier">split_std_deque</span></code> 那样无上限.</p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><h5>
+<a name="spirit.support.multi_pass.h4"></a>
+        <span class="phrase"><a name="spirit.support.multi_pass.combinations__how_to_specify_your_own_custom_multi_pass"></a></span><a class="link" href="multi_pass.html#spirit.support.multi_pass.combinations__how_to_specify_your_own_custom_multi_pass">组合: 如何指定你自己的自定义 multi_pass</a>
+      </h5>
+<p>基于策略的设计之美在于, 你可以通过选择想要的策略来混合搭配, 创建自己的自定义迭代器. 下面是一个如何指定自定义 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 的示例, 它包装 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">istream_iterator</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">&gt;</span></code>, 并且比默认的 <code class="computeroutput"><span class="identifier">multi_pass</span></code> (由 <code class="computeroutput"><span class="identifier">make_default_multi_pass</span><span class="special">()</span></code> API 函数生成) 稍微高效, 因为它使用 <code class="computeroutput"><span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">first_owner</span></code> OwnershipPolicy 和 <code class="computeroutput"><span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">no_check</span></code> CheckingPolicy:</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="identifier">multi_pass</span><span class="special">&lt;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">istream_iterator</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">&gt;</span>
+  <span class="special">,</span> <span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">default_policy</span><span class="special">&lt;</span>
+        <span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">first_owner</span>
+      <span class="special">,</span> <span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">no_check</span>
+      <span class="special">,</span> <span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">buffering_input_iterator</span>
+      <span class="special">,</span> <span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">split_std_deque</span>
+    <span class="special">&gt;</span>
+<span class="special">&gt;</span> <span class="identifier">first_owner_multi_pass_type</span><span class="special">;</span>
+</pre>
+<p> <code class="computeroutput"><span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">default_policy</span></code> 的默认模板参数为:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">ref_counted</span></code> OwnershipPolicy
+          </li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">no_check</span></code> CheckingPolicy; 如果定义了 <code class="computeroutput"><span class="identifier">BOOST_SPIRIT_DEBUG</span></code>, 则为 <code class="computeroutput"><span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">buf_id_check</span></code> CheckingPolicy</li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">buffering_input_iterator</span></code> InputPolicy, 以及</li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">split_std_deque</span></code> StoragePolicy.
+          </li>
+</ul></div>
+<p>所以如果你使用 <code class="computeroutput"><span class="identifier">multi_pass</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">istream_iterator</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">&gt;</span>
+        <span class="special">&gt;</span></code>, 在包装 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">istream_iterator</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">&gt;</span></code> 的同时, 你将获得这些预定义行为.</p>
+<h5>
+<a name="spirit.support.multi_pass.h5"></a>
+        <span class="phrase"><a name="spirit.support.multi_pass.dealing_with_constant_look_ahead"></a></span><a class="link" href="multi_pass.html#spirit.support.multi_pass.dealing_with_constant_look_ahead">处理恒定前瞻</a>
+      </h5>
+<p>还有一个预定义类, 名为 <code class="computeroutput"><span class="identifier">look_ahead</span></code>. 类 <code class="computeroutput"><span class="identifier">look_ahead</span></code> 是另一个预定义的 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 迭代器类型. 它有两个模板参数: <code class="computeroutput"><span class="identifier">Input</span></code> (要包装的输入迭代器的类型) 和 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">N</span></code>, 后者为 <code class="computeroutput"><span class="identifier">fixed_size_queue</span></code> 策略指定缓冲区大小. 默认 multi_pass 配置为安全而设计, 而 <code class="computeroutput"><span class="identifier">look_ahead</span></code> 为速度而设计. <code class="computeroutput"><span class="identifier">look_ahead</span></code> 派生自已配置如下策略的 multi_pass: <code class="computeroutput"><span class="identifier">input_iterator</span></code> InputPolicy、<code class="computeroutput"><span class="identifier">first_owner</span></code> OwnershipPolicy、<code class="computeroutput"><span class="identifier">no_check</span></code> CheckingPolicy 和 <code class="computeroutput"><span class="identifier">fixed_size_queue</span><span class="special">&lt;</span><span class="identifier">N</span><span class="special">&gt;</span></code> StoragePolicy.</p>
+<p>该迭代器通过包含以下文件定义:</p>
+<pre class="programlisting"><span class="comment">// forwards to &lt;boost/spirit/home/support/look_ahead.hpp&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">spirit</span><span class="special">/</span><span class="identifier">include</span><span class="special">/</span><span class="identifier">support_look_ahead</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<p>另请参见 <a class="link" href="../structure/include.html" title="包含">包含结构</a>.</p>
+<h5>
+<a name="spirit.support.multi_pass.h6"></a>
+        <span class="phrase"><a name="spirit.support.multi_pass.reading_from_standard_input_streams"></a></span><a class="link" href="multi_pass.html#spirit.support.multi_pass.reading_from_standard_input_streams">从标准输入流读取</a>
+      </h5>
+<p>另一个用于包装标准输入流 (通常是 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">basic_istream</span><span class="special">&lt;&gt;</span></code>) 的预定义迭代器称为 <code class="computeroutput"><span class="identifier">basic_istream_iterator</span><span class="special">&lt;</span><span class="identifier">Char</span><span class="special">,</span> <span class="identifier">Traits</span><span class="special">&gt;</span></code>. 该类可用作 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">istream_iterator</span><span class="special">&lt;</span><span class="identifier">Char</span><span class="special">,</span> <span class="identifier">Traits</span><span class="special">&gt;</span></code> 的直接替代品. 其唯一区别是它是前向迭代器 (而 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">istream_iterator</span></code> 是输入迭代器). <code class="computeroutput"><span class="identifier">basic_istream_iterator</span></code> 派生自已配置如下策略的 multi_pass: <code class="computeroutput"><span class="identifier">istream</span></code> InputPolicy、<code class="computeroutput"><span class="identifier">ref_counted</span></code> OwnershipPolicy、<code class="computeroutput"><span class="identifier">no_check</span></code> CheckingPolicy 和 <code class="computeroutput"><span class="identifier">split_std_deque</span></code> StoragePolicy.</p>
+<p>还有一个附加的预定义 typedef:</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="identifier">basic_istream_iterator</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">char_traits</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">&gt;</span> <span class="special">&gt;</span> <span class="identifier">istream_iterator</span><span class="special">;</span>
+</pre>
+<p>该迭代器通过包含以下文件定义:</p>
+<pre class="programlisting"><span class="comment">// forwards to &lt;boost/spirit/home/support/istream_iterator.hpp&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">spirit</span><span class="special">/</span><span class="identifier">include</span><span class="special">/</span><span class="identifier">support_istream_iterator</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<p>另请参见 <a class="link" href="../structure/include.html" title="包含">包含结构</a>.</p>
+<h5>
+<a name="spirit.support.multi_pass.h7"></a>
+        <span class="phrase"><a name="spirit.support.multi_pass.how_to_write_a_functor_for_use_with_the__code__phrase_role__identifier__functor_input__phrase___code__inputpolicy"></a></span><a class="link" href="multi_pass.html#spirit.support.multi_pass.how_to_write_a_functor_for_use_with_the__code__phrase_role__identifier__functor_input__phrase___code__inputpolicy">如何为 <code class="computeroutput"><span class="identifier">functor_input</span></code> InputPolicy 编写仿函数</a>
+      </h5>
+<p>如果你想使用 <code class="computeroutput"><span class="identifier">functor_input</span></code> InputPolicy, 可以编写自己的函数对象来为 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 提供输入. 函数对象必须满足若干要求. 它必须有一个 typedef <code class="computeroutput"><span class="identifier">result_type</span></code>, 指定其 <code class="computeroutput"><span class="keyword">operator</span><span class="special">()</span></code> 的返回类型. 这是 STL 的标准做法. 另外, 它必须提供一个名为 eof 的静态变量, 通过与之比较来判断输入是否已到末尾. 最后同样重要的是, 函数对象必须可默认构造. 下面是一个示例:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">spirit</span><span class="special">/</span><span class="identifier">home</span><span class="special">/</span><span class="identifier">qi</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">spirit</span><span class="special">/</span><span class="identifier">home</span><span class="special">/</span><span class="identifier">support</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">spirit</span><span class="special">/</span><span class="identifier">home</span><span class="special">/</span><span class="identifier">support</span><span class="special">/</span><span class="identifier">multi_pass</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">spirit</span><span class="special">/</span><span class="identifier">home</span><span class="special">/</span><span class="identifier">support</span><span class="special">/</span><span class="identifier">iterators</span><span class="special">/</span><span class="identifier">detail</span><span class="special">/</span><span class="identifier">functor_input_policy</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="comment">// define the function object</span>
+<span class="keyword">class</span> <span class="identifier">iterate_a2m</span>
+<span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="keyword">typedef</span> <span class="keyword">char</span> <span class="identifier">result_type</span><span class="special">;</span>
+
+    <span class="identifier">iterate_a2m</span><span class="special">()</span> <span class="special">:</span> <span class="identifier">c_</span><span class="special">(</span><span class="char">'A'</span><span class="special">)</span> <span class="special">{}</span>
+    <span class="identifier">iterate_a2m</span><span class="special">(</span><span class="keyword">char</span> <span class="identifier">c</span><span class="special">)</span> <span class="special">:</span> <span class="identifier">c_</span><span class="special">(</span><span class="identifier">c</span><span class="special">)</span> <span class="special">{}</span>
+
+    <span class="identifier">result_type</span> <span class="keyword">operator</span><span class="special">()()</span>
+    <span class="special">{</span>
+        <span class="keyword">if</span> <span class="special">(</span><span class="identifier">c_</span> <span class="special">==</span> <span class="char">'M'</span><span class="special">)</span>
+            <span class="keyword">return</span> <span class="identifier">eof</span><span class="special">;</span>
+        <span class="keyword">return</span> <span class="identifier">c_</span><span class="special">++;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">static</span> <span class="identifier">result_type</span> <span class="identifier">eof</span><span class="special">;</span>
+
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="keyword">char</span> <span class="identifier">c_</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="identifier">iterate_a2m</span><span class="special">::</span><span class="identifier">result_type</span> <span class="identifier">iterate_a2m</span><span class="special">::</span><span class="identifier">eof</span> <span class="special">=</span> <span class="identifier">iterate_a2m</span><span class="special">::</span><span class="identifier">result_type</span><span class="special">(</span><span class="char">'M'</span><span class="special">);</span>
+
+<span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">;</span>
+
+<span class="comment">// create two iterators using the define function object, one of which is </span>
+<span class="comment">// an end iterator</span>
+<span class="keyword">typedef</span> <span class="identifier">multi_pass</span><span class="special">&lt;</span><span class="identifier">iterate_a2m</span>
+  <span class="special">,</span> <span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">first_owner</span>
+  <span class="special">,</span> <span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">no_check</span>
+  <span class="special">,</span> <span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">functor_input</span>
+  <span class="special">,</span> <span class="identifier">iterator_policies</span><span class="special">::</span><span class="identifier">split_std_deque</span><span class="special">&gt;</span>
+<span class="identifier">functor_multi_pass_type</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">()</span>
+<span class="special">{</span>
+    <span class="identifier">functor_multi_pass_type</span> <span class="identifier">first</span> <span class="special">=</span> <span class="identifier">functor_multi_pass_type</span><span class="special">(</span><span class="identifier">iterate_a2m</span><span class="special">());</span>
+    <span class="identifier">functor_multi_pass_type</span> <span class="identifier">last</span><span class="special">;</span>
+
+    <span class="comment">// use the iterators: this will print "ABCDEFGHIJKL"</span>
+    <span class="keyword">while</span> <span class="special">(</span><span class="identifier">first</span> <span class="special">!=</span> <span class="identifier">last</span><span class="special">)</span> <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="special">*</span><span class="identifier">first</span><span class="special">;</span>
+        <span class="special">++</span><span class="identifier">first</span><span class="special">;</span>
+    <span class="special">}</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<h5>
+<a name="spirit.support.multi_pass.h8"></a>
+        <span class="phrase"><a name="spirit.support.multi_pass.how_to_write_policies_for_use_with_multi_pass"></a></span><a class="link" href="multi_pass.html#spirit.support.multi_pass.how_to_write_policies_for_use_with_multi_pass">如何编写与 multi_pass 配合使用的策略</a>
+      </h5>
+<p>所有与 <code class="computeroutput"><span class="identifier">default_policy</span></code> 模板配合使用的策略都需要有两个内嵌类: <code class="computeroutput"><span class="identifier">unique</span></code> 和 <code class="computeroutput"><span class="identifier">shared</span></code>. <code class="computeroutput"><span class="identifier">unique</span></code> 类需要实现特定策略类型所需的全部函数. 此外, 它可以保存 <span class="emphasis"><em>唯一</em></span> 于特定 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 实例的所有成员数据项 (名称由此而来). <code class="computeroutput"><span class="identifier">shared</span></code> 类不暴露任何成员函数 (有时构造函数除外), 但它可以保存要 <span class="emphasis"><em>共享</em></span> 于特定 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 的所有副本之间的成员数据项.</p>
+<h5>
+<a name="spirit.support.multi_pass.h9"></a>
+        <span class="phrase"><a name="spirit.support.multi_pass.inputpolicy"></a></span><a class="link" href="multi_pass.html#spirit.support.multi_pass.inputpolicy">InputPolicy</a>
+      </h5>
+<p> <code class="computeroutput"><span class="identifier">InputPolicy</span></code> 必须具有以下接口:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">input_policy</span>
+<span class="special">{</span>
+    <span class="comment">// Input is the same type used as the first template parameter</span>
+    <span class="comment">// while instantiating the multi_pass</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Input</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">unique</span>
+    <span class="special">{</span>
+        <span class="comment">// these typedef's will be exposed as the multi_pass iterator</span>
+        <span class="comment">// properties</span>
+        <span class="keyword">typedef</span> <span class="identifier">__unspecified_type__</span> <span class="identifier">value_type</span><span class="special">;</span>
+        <span class="keyword">typedef</span> <span class="identifier">__unspecified_type__</span> <span class="identifier">difference_type</span><span class="special">;</span>
+        <span class="keyword">typedef</span> <span class="identifier">__unspecified_type__</span> <span class="identifier">distance_type</span><span class="special">;</span>
+        <span class="keyword">typedef</span> <span class="identifier">__unspecified_type__</span> <span class="identifier">pointer</span><span class="special">;</span>
+        <span class="keyword">typedef</span> <span class="identifier">__unspecified_type__</span> <span class="identifier">reference</span><span class="special">;</span>
+
+        <span class="identifier">unique</span><span class="special">()</span> <span class="special">{}</span>
+        <span class="keyword">explicit</span> <span class="identifier">unique</span><span class="special">(</span><span class="identifier">Input</span><span class="special">)</span> <span class="special">{}</span>
+
+        <span class="comment">// destroy is called whenever the last copy of a multi_pass is</span>
+        <span class="comment">// destructed (ownership_policy::release() returned true)</span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">destroy</span><span class="special">(</span><span class="identifier">MultiPass</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">);</span>
+
+        <span class="comment">// swap is called by multi_pass::swap()</span>
+        <span class="keyword">void</span> <span class="identifier">swap</span><span class="special">(</span><span class="identifier">unique</span><span class="special">&amp;);</span>
+
+        <span class="comment">// get_input is called whenever the next input character/token</span>
+        <span class="comment">// should be fetched. </span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="comment">//</span>
+        <span class="comment">// This method is expected to return a reference to the next </span>
+        <span class="comment">// character/token</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">::</span><span class="identifier">reference</span> <span class="identifier">get_input</span><span class="special">(</span><span class="identifier">MultiPass</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">);</span>
+
+        <span class="comment">// advance_input is called whenever the underlying input stream </span>
+        <span class="comment">// should be advanced so that the next call to get_input will be </span>
+        <span class="comment">// able to return the next input character/token</span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">advance_input</span><span class="special">(</span><span class="identifier">MultiPass</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">);</span>
+
+        <span class="comment">// input_at_eof is called to test whether this instance is a </span>
+        <span class="comment">// end of input iterator.</span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="comment">//</span>
+        <span class="comment">// This method is expected to return true if the end of input is </span>
+        <span class="comment">// reached. It is often used in the implementation of the function</span>
+        <span class="comment">// storage_policy::is_eof.</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">bool</span> <span class="identifier">input_at_eof</span><span class="special">(</span><span class="identifier">MultiPass</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">);</span>
+
+        <span class="comment">// input_is_valid is called to verify if the parameter t represents </span>
+        <span class="comment">// a valid input character/token</span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="comment">//   t:     is the character/token to test for validity</span>
+        <span class="comment">// </span>
+        <span class="comment">// This method is expected to return true if the parameter t </span>
+        <span class="comment">// represents a valid character/token.</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">bool</span> <span class="identifier">input_is_valid</span><span class="special">(</span><span class="identifier">MultiPass</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">,</span> <span class="identifier">value_type</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">t</span><span class="special">);</span>
+    <span class="special">};</span>
+
+    <span class="comment">// Input is the same type used as the first template parameter passed</span>
+    <span class="comment">// while instantiating the multi_pass</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Input</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">shared</span>
+    <span class="special">{</span>
+        <span class="keyword">explicit</span> <span class="identifier">shared</span><span class="special">(</span><span class="identifier">Input</span><span class="special">)</span> <span class="special">{}</span>
+    <span class="special">};</span>
+<span class="special">};</span>
+</pre>
+<p>可以派生出 struct <code class="computeroutput"><span class="identifier">unique</span></code>, 其基类型为 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">default_input_policy</span></code>. 该类型为部分所需函数实现了一个最小充分接口, 简化了编写新输入策略的任务.</p>
+<p>该类可以实现一个函数 <code class="computeroutput"><span class="identifier">destroy</span><span class="special">()</span></code>, 它在 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 的最后一个副本销毁期间被调用. 该函数应当用于释放策略在其 <code class="computeroutput"><span class="identifier">shared</span></code> 部分构造期间可能分配的任何共享数据项. 由于 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 的实现方式, <code class="computeroutput"><span class="identifier">shared</span></code> 中任何已分配的数据成员<span class="underline">不应</span>在 <code class="computeroutput"><span class="identifier">shared</span></code> 的拷贝构造函数中被深拷贝.</p>
+<h5>
+<a name="spirit.support.multi_pass.h10"></a>
+        <span class="phrase"><a name="spirit.support.multi_pass.ownershippolicy"></a></span><a class="link" href="multi_pass.html#spirit.support.multi_pass.ownershippolicy">OwnershipPolicy</a>
+      </h5>
+<p> <code class="computeroutput"><span class="identifier">OwnershipPolicy</span></code> 必须具有以下接口:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">ownership_policy</span>
+<span class="special">{</span>
+    <span class="keyword">struct</span> <span class="identifier">unique</span>
+    <span class="special">{</span>
+        <span class="comment">// destroy is called whenever the last copy of a multi_pass is</span>
+        <span class="comment">// destructed (ownership_policy::release() returned true)</span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">destroy</span><span class="special">(</span><span class="identifier">MultiPass</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">);</span>
+
+        <span class="comment">// swap is called by multi_pass::swap()</span>
+        <span class="keyword">void</span> <span class="identifier">swap</span><span class="special">(</span><span class="identifier">unique</span><span class="special">&amp;);</span>
+
+        <span class="comment">// clone is called whenever a multi_pass is copied</span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">clone</span><span class="special">(</span><span class="identifier">MultiPass</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">);</span>
+
+        <span class="comment">// release is called whenever a multi_pass is destroyed</span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="comment">//</span>
+        <span class="comment">// The method is expected to return true if the destructed </span>
+        <span class="comment">// instance is the last copy of a particular multi_pass. </span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">bool</span> <span class="identifier">release</span><span class="special">(</span><span class="identifier">MultiPass</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">);</span>
+
+        <span class="comment">// is_unique is called to test whether this instance is the only </span>
+        <span class="comment">// existing copy of a particular multi_pass</span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="comment">//</span>
+        <span class="comment">// The method is expected to return true if this instance is unique</span>
+        <span class="comment">// (no other copies of this multi_pass exist).</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">bool</span> <span class="identifier">is_unique</span><span class="special">(</span><span class="identifier">MultiPass</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">);</span>
+    <span class="special">};</span>
+
+    <span class="keyword">struct</span> <span class="identifier">shared</span> <span class="special">{};</span>
+<span class="special">};</span>
+</pre>
+<p>可以派生出 struct <code class="computeroutput"><span class="identifier">unique</span></code>, 其基类型为 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">default_ownership_policy</span></code>. 该类型为部分所需函数实现了一个最小充分接口, 简化了编写新所有权策略的任务.</p>
+<p>该类可以实现一个函数 <code class="computeroutput"><span class="identifier">destroy</span><span class="special">()</span></code>, 它在 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 的最后一个副本销毁期间被调用. 该函数应当用于释放策略在其 <code class="computeroutput"><span class="identifier">shared</span></code> 部分构造期间可能分配的任何共享数据项. 由于 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 的实现方式, <code class="computeroutput"><span class="identifier">shared</span></code> 中任何已分配的数据成员<span class="underline">不应</span>在 <code class="computeroutput"><span class="identifier">shared</span></code> 的拷贝构造函数中被深拷贝.</p>
+<h5>
+<a name="spirit.support.multi_pass.h11"></a>
+        <span class="phrase"><a name="spirit.support.multi_pass.checkingpolicy"></a></span><a class="link" href="multi_pass.html#spirit.support.multi_pass.checkingpolicy">CheckingPolicy</a>
+      </h5>
+<p> <code class="computeroutput"><span class="identifier">CheckingPolicy</span></code> 必须具有以下接口:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">checking_policy</span>
+<span class="special">{</span>
+    <span class="keyword">struct</span> <span class="identifier">unique</span>
+    <span class="special">{</span>
+        <span class="comment">// swap is called by multi_pass::swap()</span>
+        <span class="keyword">void</span> <span class="identifier">swap</span><span class="special">(</span><span class="identifier">unique</span><span class="special">&amp;);</span>
+
+        <span class="comment">// destroy is called whenever the last copy of a multi_pass is</span>
+        <span class="comment">// destructed (ownership_policy::release() returned true)</span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">destroy</span><span class="special">(</span><span class="identifier">MultiPass</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">);</span>
+
+        <span class="comment">// docheck is called before the multi_pass is dereferenced or </span>
+        <span class="comment">// incremented. </span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="comment">//</span>
+        <span class="comment">// This method is expected to make sure the multi_pass instance is</span>
+        <span class="comment">// still valid. If it is invalid an exception should be thrown.</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">docheck</span><span class="special">(</span><span class="identifier">MultiPass</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">);</span>
+
+        <span class="comment">// clear_queue is called whenever the function </span>
+        <span class="comment">// multi_pass::clear_queue is called on this instance</span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">clear_queue</span><span class="special">(</span><span class="identifier">MultiPass</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">);</span>
+    <span class="special">};</span>
+
+    <span class="keyword">struct</span> <span class="identifier">shared</span> <span class="special">{};</span>
+<span class="special">};</span>
+</pre>
+<p>可以派生出 struct <code class="computeroutput"><span class="identifier">unique</span></code>, 其基类型为 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">default_checking_policy</span></code>. 该类型为部分所需函数实现了一个最小充分接口, 简化了编写新检查策略的任务.</p>
+<p>该类可以实现一个函数 <code class="computeroutput"><span class="identifier">destroy</span><span class="special">()</span></code>, 它在 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 的最后一个副本销毁期间被调用. 该函数应当用于释放策略在其 <code class="computeroutput"><span class="identifier">shared</span></code> 部分构造期间可能分配的任何共享数据项. 由于 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 的实现方式, <code class="computeroutput"><span class="identifier">shared</span></code> 中任何已分配的数据成员<span class="underline">不应</span>在 <code class="computeroutput"><span class="identifier">shared</span></code> 的拷贝构造函数中被深拷贝.</p>
+<h5>
+<a name="spirit.support.multi_pass.h12"></a>
+        <span class="phrase"><a name="spirit.support.multi_pass.storagepolicy"></a></span><a class="link" href="multi_pass.html#spirit.support.multi_pass.storagepolicy">StoragePolicy</a>
+      </h5>
+<p> <code class="computeroutput"><span class="identifier">StoragePolicy</span></code> 必须具有以下接口:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">storage_policy</span>
+<span class="special">{</span>
+    <span class="comment">// Value is the same type as typename MultiPass::value_type</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Value</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">unique</span>
+    <span class="special">{</span>
+        <span class="comment">// destroy is called whenever the last copy of a multi_pass is</span>
+        <span class="comment">// destructed (ownership_policy::release() returned true)</span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">destroy</span><span class="special">(</span><span class="identifier">MultiPass</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">);</span>
+
+        <span class="comment">// swap is called by multi_pass::swap()</span>
+        <span class="keyword">void</span> <span class="identifier">swap</span><span class="special">(</span><span class="identifier">unique</span><span class="special">&amp;);</span>
+
+        <span class="comment">// dereference is called whenever multi_pass::operator*() is invoked</span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="comment">//</span>
+        <span class="comment">// This function is expected to return a reference to the current</span>
+        <span class="comment">// character/token.</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">::</span><span class="identifier">reference</span> <span class="identifier">dereference</span><span class="special">(</span><span class="identifier">MultiPass</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">);</span>
+
+        <span class="comment">// increment is called whenever multi_pass::operator++ is invoked</span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">increment</span><span class="special">(</span><span class="identifier">MultiPass</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">);</span>
+
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">clear_queue</span><span class="special">(</span><span class="identifier">MultiPass</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">);</span>
+
+        <span class="comment">// is_eof is called to test whether this instance is a end of input </span>
+        <span class="comment">// iterator.</span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="comment">//</span>
+        <span class="comment">// This method is expected to return true if the end of input is </span>
+        <span class="comment">// reached. </span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">bool</span> <span class="identifier">is_eof</span><span class="special">(</span><span class="identifier">MultiPass</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">);</span>
+
+        <span class="comment">// less_than is called whenever multi_pass::operator==() is invoked</span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="comment">//   rhs:   is the multi_pass reference this instance is compared </span>
+        <span class="comment">//          to</span>
+        <span class="comment">//</span>
+        <span class="comment">// This function is expected to return true if the current instance</span>
+        <span class="comment">// is equal to the right hand side multi_pass instance</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">bool</span> <span class="identifier">equal_to</span><span class="special">(</span><span class="identifier">MultiPass</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">,</span> <span class="identifier">MultiPass</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rhs</span><span class="special">);</span>
+
+        <span class="comment">// less_than is called whenever multi_pass::operator&lt;() is invoked</span>
+        <span class="comment">//</span>
+        <span class="comment">//   mp:    is a reference to the whole multi_pass instance</span>
+        <span class="comment">//   rhs:   is the multi_pass reference this instance is compared </span>
+        <span class="comment">//          to</span>
+        <span class="comment">//</span>
+        <span class="comment">// This function is expected to return true if the current instance</span>
+        <span class="comment">// is less than the right hand side multi_pass instance</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">MultiPass</span><span class="special">&gt;</span>
+        <span class="keyword">static</span> <span class="keyword">bool</span> <span class="identifier">less_than</span><span class="special">(</span><span class="identifier">MultiPass</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">mp</span><span class="special">,</span> <span class="identifier">MultiPass</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rhs</span><span class="special">);</span>
+    <span class="special">};</span>
+
+    <span class="comment">// Value is the same type as typename MultiPass::value_type</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Value</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">shared</span> <span class="special">{};</span>
+<span class="special">};</span>
+</pre>
+<p>可以派生出 struct <code class="computeroutput"><span class="identifier">unique</span></code>, 其基类型为 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">default_storage_policy</span></code>. 该类型为部分所需函数实现了一个最小充分接口, 简化了编写新存储策略的任务.</p>
+<p>该类可以实现一个函数 <code class="computeroutput"><span class="identifier">destroy</span><span class="special">()</span></code>, 它在 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 的最后一个副本销毁期间被调用. 该函数应当用于释放策略在其 <code class="computeroutput"><span class="identifier">shared</span></code> 部分构造期间可能分配的任何共享数据项. 由于 <code class="computeroutput"><span class="identifier">multi_pass</span></code> 的实现方式, <code class="computeroutput"><span class="identifier">shared</span></code> 中任何已分配的数据成员<span class="underline">不应</span>在 <code class="computeroutput"><span class="identifier">shared</span></code> 的拷贝构造函数中被深拷贝.</p>
+<p>一般来说, <code class="computeroutput"><span class="identifier">StoragePolicy</span></code> 是最难实现的策略. 在尝试编写自己的实现之前, 你应当研究并理解现有的 <code class="computeroutput"><span class="identifier">StoragePolicy</span></code> 类.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2001-2011 Joel de Guzman, Hartmut Kaiser<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../support.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../support.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="line_pos_iterator.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

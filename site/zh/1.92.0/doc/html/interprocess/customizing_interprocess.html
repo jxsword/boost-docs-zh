@@ -1,0 +1,334 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>定制 Boost.Interprocess</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../interprocess.html" title="第 15 章 Boost.Interprocess">
+<link rel="prev" href="architecture.html" title="架构与内部机制">
+<link rel="next" href="acknowledgements_notes.html" title="致谢、说明与链接">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="architecture.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../interprocess.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="acknowledgements_notes.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="interprocess.customizing_interprocess"></a><a class="link" href="customizing_interprocess.html" title="定制 Boost.Interprocess">定制 Boost.Interprocess</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="customizing_interprocess.html#interprocess.customizing_interprocess.custom_interprocess_alloc">编写新的共享内存分配算法</a></span></dt>
+<dt><span class="section"><a href="customizing_interprocess.html#interprocess.customizing_interprocess.custom_allocators">为 Boost.Interprocess 构建自定义 STL 兼容分配器</a></span></dt>
+<dt><span class="section"><a href="customizing_interprocess.html#interprocess.customizing_interprocess.custom_indexes">构建自定义索引</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.customizing_interprocess.custom_interprocess_alloc"></a><a class="link" href="customizing_interprocess.html#interprocess.customizing_interprocess.custom_interprocess_alloc" title="编写新的共享内存分配算法">编写新的共享内存分配算法</a>
+</h3></div></div></div>
+<p>如果默认算法不满足用户要求, 很容易提供不同的算法 (如位图或更高级的隔离链表) 来满足需求. 实现该算法的类必须与共享内存兼容, 因此它不应有任何虚函数或虚继承, 也不应有任何带虚函数或虚继承的间接基类.</p>
+<p>需要实现的接口如下:</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">my_algorithm</span>
+<span class="special">{</span>
+   <span class="keyword">public</span><span class="special">:</span>
+
+   <span class="comment">//!The mutex type to be used by the rest of Interprocess framework</span>
+   <span class="keyword">typedef</span> <span class="identifier">implementation_defined</span>   <span class="identifier">mutex_family</span><span class="special">;</span>
+
+   <span class="comment">//!The pointer type to be used by the rest of Interprocess framework</span>
+   <span class="keyword">typedef</span> <span class="identifier">implementation_defined</span>   <span class="identifier">void_pointer</span><span class="special">;</span>
+
+   <span class="comment">//!Constructor. "size" is the total size of the managed memory segment,</span>
+   <span class="comment">//!"extra_hdr_bytes" indicates the extra bytes after the sizeof(my_algorithm)</span>
+   <span class="comment">//!that the allocator should not use at all.</span>
+   <span class="identifier">my_algorithm</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">size</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">extra_hdr_bytes</span><span class="special">);</span>
+
+   <span class="comment">//!Obtains the minimum size needed by the algorithm</span>
+   <span class="keyword">static</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">get_min_size</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">extra_hdr_bytes</span><span class="special">);</span>
+
+   <span class="comment">//!Allocates bytes, returns 0 if there is not more memory</span>
+   <span class="keyword">void</span><span class="special">*</span> <span class="identifier">allocate</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">nbytes</span><span class="special">);</span>
+
+   <span class="comment">//!Deallocates previously allocated bytes</span>
+   <span class="keyword">void</span>  <span class="identifier">deallocate</span> <span class="special">(</span><span class="keyword">void</span> <span class="special">*</span><span class="identifier">adr</span><span class="special">);</span>
+
+   <span class="comment">//!Returns the size of the memory segment</span>
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">get_size</span><span class="special">()</span>  <span class="keyword">const</span><span class="special">;</span>
+
+   <span class="comment">//!Increases managed memory in extra_size bytes more</span>
+   <span class="keyword">void</span> <span class="identifier">grow</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">extra_size</span><span class="special">);</span>
+   <span class="comment">/*...*/</span>
+<span class="special">};</span>
+</pre>
+<p>来看需要定义的公共 typedef:</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="comment">/* . . . */</span> <span class="identifier">void_pointer</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="comment">/* . . . */</span> <span class="identifier">mutex_family</span><span class="special">;</span>
+</pre>
+<p> <code class="computeroutput"><span class="identifier">void_pointer</span></code> typedef 指定使用该算法的 <span class="bold"><strong>Boost.Interprocess</strong></span> 框架将要使用的指针类型. 例如, 如果我们定义</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="keyword">void</span> <span class="special">*</span> <span class="identifier">void_pointer</span><span class="special">;</span>
+</pre>
+<p>所有使用该算法的 <span class="bold"><strong>Boost.Interprocess</strong></span> 框架都将使用原始指针作为成员. 但如果我们定义:</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="identifier">offset_ptr</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span> <span class="identifier">void_pointer</span><span class="special">;</span>
+</pre>
+<p>那么所有 <span class="bold"><strong>Boost.Interprocess</strong></span> 框架都将使用相对指针.</p>
+<p> <code class="computeroutput"><span class="identifier">mutex_family</span></code> 是一个结构, 包含 <span class="bold"><strong>Boost.Interprocess</strong></span> 框架中要使用的各种 interprocess_mutex 类型的 typedef. 例如定义了</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">mutex_family</span>
+<span class="special">{</span>
+   <span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">::</span><span class="identifier">interprocess_mutex</span>             <span class="identifier">mutex_type</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">::</span><span class="identifier">interprocess_recursive_mutex</span>   <span class="identifier">recursive_mutex_type</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>它使所有 interprocess_mutex 类型都使用 boost::interprocess 的 interprocess_mutex 类型. 用户可以指定所需的互斥量家族.</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="identifier">mutex_family</span> <span class="identifier">mutex_family</span><span class="special">;</span>
+</pre>
+<p>新算法 (姑且称之为 <span class="bold"><strong>my_algorithm</strong></span>) 必须实现 boost::interprocess::rbtree_best_fit 类提供的所有函数:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <span class="bold"><strong>my_algorithm</strong></span> 的构造函数必须接受 2 个参数: <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; ">
+<li class="listitem">
+                  <span class="bold"><strong>size</strong></span> 表示托管内存段的总大小, <span class="bold"><strong>my_algorithm</strong></span> 对象将始终在内存段偏移 0 处构造.</li>
+<li class="listitem"> <span class="bold"><strong>extra_hdr_bytes</strong></span> 参数表示从偏移 <code class="computeroutput"><span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">my_algorithm</span><span class="special">)</span></code> 之后、<span class="bold"><strong>my_algorithm</strong></span> 完全不能使用的字节数. 这些额外的字节将用于存储不应被覆盖的附加数据. 因此, <span class="bold"><strong>my_algorithm</strong></span> 将放置在内存段的地址 XXX 处, 并管理段的 <span class="bold"><strong>(XXX + sizeof(my_algorithm) + extra_hdr_bytes, XXX + size)</strong></span> 范围.</li>
+</ul></div>
+          </li>
+<li class="listitem"> <span class="bold"><strong>get_min_size()</strong></span> 函数应返回在传入 <span class="bold"><strong>extra_hdr_bytes</strong></span> 参数的情况下, 算法保持有效所需的最小空间. 该函数将用于检查内存段是否足够大, 能否把算法放在那里.</li>
+<li class="listitem"> <span class="bold"><strong>allocate()</strong></span> 函数在没有更多可用内存时必须返回 0. <span class="bold"><strong>my_algorithm</strong></span> 返回的内存必须按系统上最严格的内存对齐方式对齐. 该函数应使用 <code class="computeroutput"><span class="keyword">typename</span>
+            <span class="identifier">mutex_family</span><span class="special">::</span><span class="identifier">mutex_type</span></code> interprocess_mutex 提供的同步能力执行. 这意味着, 如果我们定义 <code class="computeroutput"><span class="keyword">typedef</span>
+            <span class="identifier">mutex_family</span> <span class="identifier">mutex_family</span><span class="special">;</span></code> , 该函数就应提供与被 interprocess_mutex lock/unlock 包围时相同的同步. 通常这用 <code class="computeroutput"><span class="identifier">mutex_family</span><span class="special">::</span><span class="identifier">mutex_type</span></code> 类型的成员实现, 但也可以用原子指令或无锁算法实现.</li>
+<li class="listitem"> <span class="bold"><strong>deallocate()</strong></span> 函数必须使返回的缓冲区可用于新的分配. 该函数应提供与 <code class="computeroutput"><span class="identifier">allocate</span><span class="special">()</span></code> 相同的同步.</li>
+<li class="listitem"> <span class="bold"><strong>size()</strong></span> 函数将返回构造函数中传入的 <span class="bold"><strong>size</strong></span> 参数. 因此, <span class="bold"><strong>my_algorithm</strong></span> 应在内部存储该大小.</li>
+<li class="listitem"> <span class="bold"><strong>grow()</strong></span> 函数将让 <span class="bold"><strong>my_algorithm</strong></span> 把托管内存扩展 <span class="bold"><strong>extra_size</strong></span> 字节. 因此 <span class="bold"><strong>size()</strong></span> 函数应返回更新后的大小, 新的托管内存范围将是 (若算法构造处的地址为 XXX): <span class="bold"><strong>(XXX + sizeof(my_algorithm) + extra_hdr_bytes, XXX + old_size + extra_size)</strong></span> . 该函数应提供与 <code class="computeroutput"><span class="identifier">allocate</span><span class="special">()</span></code> 相同的同步.</li>
+</ul></div>
+<p>就是这样. 现在我们可以创建使用新算法的新托管共享内存:</p>
+<pre class="programlisting"><span class="comment">//Managed memory segment to allocate named (c-string) objects</span>
+<span class="comment">//using a user-defined memory allocation algorithm</span>
+<span class="identifier">basic_managed_shared_memory</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">,</span>
+                         <span class="special">,</span><span class="identifier">my_algorithm</span>
+                         <span class="special">,</span><span class="identifier">flat_map_index</span><span class="special">&gt;</span>
+   <span class="identifier">my_managed_shared_memory</span><span class="special">;</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.customizing_interprocess.custom_allocators"></a><a class="link" href="customizing_interprocess.html#interprocess.customizing_interprocess.custom_allocators" title="为 Boost.Interprocess 构建自定义 STL 兼容分配器">为 Boost.Interprocess 构建自定义 STL 兼容分配器</a>
+</h3></div></div></div>
+<p>如果提供的类 STL 分配器不满足用户需要, 用户可以利用原始内存分配和命名对象构造函数实现另一个 STL 兼容分配器. 这样, 用户就可以在基本的共享内存分配方案之上实现更合适的分配方案, 就像更复杂的分配器构建在 new/delete 函数之上一样.</p>
+<p>使用托管内存段时, <span class="bold"><strong>get_segment_manager()</strong></span> 函数返回指向段管理器的指针. 通过该指针, 可以直接调用原始内存分配和命名对象构造函数:</p>
+<pre class="programlisting"><span class="comment">//Create the managed shared memory and initialize resources</span>
+<span class="identifier">managed_shared_memory</span> <span class="identifier">segment</span>
+   <span class="special">(</span><span class="identifier">create_only</span>
+   <span class="special">,</span><span class="string">"/MySharedMemory"</span>   <span class="comment">//segment name</span>
+   <span class="special">,</span><span class="number">65536</span><span class="special">);</span>             <span class="comment">//segment size in bytes</span>
+
+<span class="comment">//Obtain the segment manager</span>
+<span class="identifier">managed_shared_memory</span><span class="special">::</span><span class="identifier">segment_manager</span> <span class="special">*</span><span class="identifier">segment_mngr</span>
+   <span class="special">=</span> <span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">();</span>
+
+<span class="comment">//With the segment manager, now we have access to all allocation functions</span>
+<span class="identifier">segment_mngr</span><span class="special">-&gt;</span><span class="identifier">deallocate</span><span class="special">(</span><span class="identifier">segment_mngr</span><span class="special">-&gt;</span><span class="identifier">allocate</span><span class="special">(</span><span class="number">32</span><span class="special">));</span>
+<span class="identifier">segment_mngr</span><span class="special">-&gt;</span><span class="identifier">construct</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;(</span><span class="string">"My_Int"</span><span class="special">)[</span><span class="number">32</span><span class="special">](</span><span class="number">0</span><span class="special">);</span>
+<span class="identifier">segment_mngr</span><span class="special">-&gt;</span><span class="identifier">destroy</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;(</span><span class="string">"My_Int"</span><span class="special">);</span>
+
+<span class="comment">//Initialize the custom, managed memory segment compatible</span>
+<span class="comment">//allocator with the segment manager.</span>
+<span class="comment">//</span>
+<span class="comment">//MySTLAllocator uses segment_mngr-&gt;xxx functions to</span>
+<span class="comment">//implement its allocation scheme</span>
+<span class="identifier">MySTLAllocator</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">stl_alloc</span><span class="special">(</span><span class="identifier">segment_mngr</span><span class="special">);</span>
+
+<span class="comment">//Alias a new vector type that uses the custom STL compatible allocator</span>
+<span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">MySTLAllocator</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="special">&gt;</span> <span class="identifier">MyVect</span><span class="special">;</span>
+
+<span class="comment">//Construct the vector in shared memory with the allocator as constructor parameter</span>
+<span class="identifier">segment</span><span class="special">.</span><span class="identifier">construct</span><span class="special">&lt;</span><span class="identifier">MyVect</span><span class="special">&gt;(</span><span class="string">"MyVect_instance"</span><span class="special">)(</span><span class="identifier">stl_alloc</span><span class="special">);</span>
+</pre>
+<p>用户可以创建新的 STL 兼容分配器, 让它们使用段管理器来访问所有内存管理/对象构造函数. <span class="bold"><strong>Boost.Interprocess</strong></span> 的所有 STL 兼容分配器都基于这种方法. <span class="bold"><strong>请记住</strong></span> , 要与托管内存段兼容, 分配器应把其 <span class="bold"><strong>pointer</strong></span> typedef 定义为与 <code class="computeroutput"><span class="identifier">segment_manager</span><span class="special">::</span><span class="identifier">void_pointer</span></code> typedef 相同的指针家族. 也就是说, 如果 <code class="computeroutput"><span class="identifier">segment_manager</span><span class="special">::</span><span class="identifier">void_pointer</span></code> 是 <code class="computeroutput"><span class="identifier">offset_ptr</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span></code> , <code class="computeroutput"><span class="identifier">MySTLAllocator</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span></code> 就应把 <code class="computeroutput"><span class="identifier">pointer</span></code> 定义为 <code class="computeroutput"><span class="identifier">offset_ptr</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span></code> . 原因在于分配器是容器的成员, 如果我们想把容器放入托管内存段, 分配器也必须为此做好准备.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.customizing_interprocess.custom_indexes"></a><a class="link" href="customizing_interprocess.html#interprocess.customizing_interprocess.custom_indexes" title="构建自定义索引">构建自定义索引</a>
+</h3></div></div></div>
+<p>托管内存段使用名称/对象索引来加速对象搜索和创建. 托管内存段的默认特化 (例如 <code class="computeroutput"><span class="identifier">managed_shared_memory</span></code> ) 使用 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">::</span><span class="identifier">flat_map</span></code> 作为索引.</p>
+<p>不过, 索引类型可以通过模板参数选择, 因此用户可以在需要时定义自己的索引类型. 要构建新的索引类型, 用户必须按照以下准则创建一个类:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">索引的接口必须遵循 std::map 和 std::tr1::unordered_map 的通用公共接口 (包括公共 typedef). 其 <code class="computeroutput"><span class="identifier">value_type</span></code> typedef 的类型可以是:</li></ul></div>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span><span class="special">&lt;</span><span class="identifier">key_type</span><span class="special">,</span> <span class="identifier">mapped_type</span><span class="special">&gt;</span>
+</pre>
+<p>或者</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span><span class="special">&lt;</span><span class="keyword">const</span> <span class="identifier">key_type</span><span class="special">,</span> <span class="identifier">mapped_type</span><span class="special">&gt;</span>
+</pre>
+<p>这样有序数组或 deque 就可以用作索引类型. 一些遵循这一基本接口的已知类有 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">unordered_map</span></code>, <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">::</span><span class="identifier">flat_map</span></code> 和 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">::</span><span class="identifier">map</span></code> .</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">该类必须是一个类模板, 只接受这种类型的 traits 结构:</li></ul></div>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">index_traits</span>
+<span class="special">{</span>
+   <span class="keyword">typedef</span> <span class="comment">/*...*/</span>   <span class="identifier">key_type</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="comment">/*...*/</span>   <span class="identifier">mapped_type</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="comment">/*...*/</span>   <span class="identifier">segment_manager</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">IndexTraits</span><span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">my_index_type</span><span class="special">;</span>
+</pre>
+<p> <code class="computeroutput"><span class="identifier">key_type</span></code> typedef 在传入的 <code class="computeroutput"><span class="identifier">index_traits</span></code> 中时, 将是以下类的特化:</p>
+<pre class="programlisting"><span class="comment">//!The key of the named allocation information index. Stores a to</span>
+<span class="comment">//!a null string and the length of the string to speed up sorting</span>
+<span class="keyword">template</span><span class="special">&lt;...&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">index_key</span>
+<span class="special">{</span>
+   <span class="keyword">typedef</span> <span class="comment">/*...*/</span>                              <span class="identifier">char_type</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="comment">/*...*/</span>                              <span class="identifier">const_char_ptr_t</span><span class="special">;</span>
+
+   <span class="comment">//Pointer to the object's name (null terminated)</span>
+   <span class="identifier">const_char_ptr_t</span>                             <span class="identifier">mp_str</span><span class="special">;</span>
+
+   <span class="comment">//Length of the name buffer (null NOT included)</span>
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span>                                  <span class="identifier">m_len</span><span class="special">;</span>
+
+   <span class="comment">//!Constructor of the key</span>
+   <span class="identifier">index_key</span> <span class="special">(</span><span class="keyword">const</span> <span class="identifier">CharT</span> <span class="special">*</span><span class="identifier">name</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">length</span><span class="special">);</span>
+
+   <span class="comment">//!Less than function for index ordering</span>
+   <span class="keyword">bool</span> <span class="keyword">operator</span> <span class="special">&lt;</span> <span class="special">(</span><span class="keyword">const</span> <span class="identifier">index_key</span> <span class="special">&amp;</span> <span class="identifier">right</span><span class="special">)</span> <span class="keyword">const</span><span class="special">;</span>
+
+   <span class="comment">//!Equal to function for index ordering</span>
+   <span class="keyword">bool</span> <span class="keyword">operator</span> <span class="special">==</span> <span class="special">(</span><span class="keyword">const</span> <span class="identifier">index_key</span> <span class="special">&amp;</span> <span class="identifier">right</span><span class="special">)</span> <span class="keyword">const</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p> <code class="computeroutput"><span class="identifier">mapped_type</span></code> 不会被自定义索引直接修改, 但定义索引类型时需要它. <span class="bold"><strong>segment_manager</strong></span> 将是管理该索引的段管理器的类型. <code class="computeroutput"><span class="identifier">segment_manager</span></code> 会定义一些有用的内部类型, 如 <code class="computeroutput"><span class="identifier">void_pointer</span></code> 或 <code class="computeroutput"><span class="identifier">mutex_family</span></code> .</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">自定义索引类型的构造函数必须接受指向 segment_manager 的指针作为构造函数参数:</li></ul></div>
+<pre class="programlisting"><span class="identifier">constructor</span><span class="special">(</span><span class="identifier">segment_manager</span> <span class="special">*</span><span class="identifier">segment_mngr</span><span class="special">);</span>
+</pre>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">索引必须提供一个内存预留函数, 当用户知道将要插入索引的元素数量时, 可以用它优化索引:</li></ul></div>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">reserve</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">n</span><span class="special">);</span>
+</pre>
+<p>例如, 基于 <code class="computeroutput"><span class="identifier">flat_map_index</span></code> 的索引类型 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">::</span><span class="identifier">flat_map</span></code> 就定义为:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">interprocess</span> <span class="special">{</span>
+
+<span class="preprocessor">#ifndef</span> <span class="identifier">BOOST_INTERPROCESS_DOXYGEN_INVOKED</span>
+
+<span class="comment">//!Helper class to define typedefs from IndexTraits</span>
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">MapConfig</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">flat_map_index_aux</span>
+<span class="special">{</span>
+   <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">MapConfig</span><span class="special">::</span><span class="identifier">key_type</span>            <span class="identifier">key_type</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">MapConfig</span><span class="special">::</span><span class="identifier">mapped_type</span>         <span class="identifier">mapped_type</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">MapConfig</span><span class="special">::</span>
+      <span class="identifier">segment_manager_base</span>                   <span class="identifier">segment_manager_base</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">less</span><span class="special">&lt;</span><span class="identifier">key_type</span><span class="special">&gt;</span>                     <span class="identifier">key_less</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span><span class="special">&lt;</span><span class="identifier">key_type</span><span class="special">,</span> <span class="identifier">mapped_type</span><span class="special">&gt;</span>        <span class="identifier">value_type</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="identifier">allocator</span><span class="special">&lt;</span><span class="identifier">value_type</span>
+                    <span class="special">,</span><span class="identifier">segment_manager_base</span><span class="special">&gt;</span>   <span class="identifier">allocator_type</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">container</span><span class="special">::</span><span class="identifier">flat_map</span><span class="special">&lt;</span><span class="identifier">key_type</span><span class="special">,</span>  <span class="identifier">mapped_type</span><span class="special">,</span>
+                                      <span class="identifier">key_less</span><span class="special">,</span> <span class="identifier">allocator_type</span><span class="special">&gt;</span>      <span class="identifier">index_t</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="preprocessor">#endif</span>   <span class="comment">//#ifndef BOOST_INTERPROCESS_DOXYGEN_INVOKED</span>
+
+<span class="comment">//!Index type based in flat_map. Just derives from flat_map and</span>
+<span class="comment">//!defines the interface needed by managed memory segments.</span>
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">MapConfig</span><span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">flat_map_index</span>
+   <span class="comment">//Derive class from flat_map specialization</span>
+   <span class="special">:</span> <span class="keyword">private</span> <span class="identifier">flat_map_index_aux</span><span class="special">&lt;</span><span class="identifier">MapConfig</span><span class="special">&gt;::</span><span class="identifier">index_t</span>
+<span class="special">{</span>
+   <span class="preprocessor">#if</span> <span class="special">!</span><span class="identifier">defined</span><span class="special">(</span><span class="identifier">BOOST_INTERPROCESS_DOXYGEN_INVOKED</span><span class="special">)</span>
+   <span class="keyword">typedef</span> <span class="identifier">flat_map_index_aux</span><span class="special">&lt;</span><span class="identifier">MapConfig</span><span class="special">&gt;</span>  <span class="identifier">index_aux</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">index_aux</span><span class="special">::</span><span class="identifier">index_t</span>    <span class="identifier">base_type</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">index_aux</span><span class="special">::</span>
+      <span class="identifier">segment_manager_base</span>                   <span class="identifier">segment_manager_base</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">base_type</span><span class="special">::</span><span class="identifier">key_type</span>      <span class="identifier">key_type</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">base_type</span><span class="special">::</span><span class="identifier">mapped_type</span>   <span class="identifier">mapped_type</span><span class="special">;</span>
+   <span class="preprocessor">#endif</span>   <span class="comment">//#ifndef BOOST_INTERPROCESS_DOXYGEN_INVOKED</span>
+
+   <span class="keyword">public</span><span class="special">:</span>
+   <span class="keyword">using</span> <span class="identifier">base_type</span><span class="special">::</span><span class="identifier">begin</span><span class="special">;</span>
+   <span class="keyword">using</span> <span class="identifier">base_type</span><span class="special">::</span><span class="identifier">end</span><span class="special">;</span>
+   <span class="keyword">using</span> <span class="identifier">base_type</span><span class="special">::</span><span class="identifier">size</span><span class="special">;</span>
+   <span class="keyword">using</span> <span class="identifier">base_type</span><span class="special">::</span><span class="identifier">erase</span><span class="special">;</span>
+   <span class="keyword">using</span> <span class="identifier">base_type</span><span class="special">::</span><span class="identifier">shrink_to_fit</span><span class="special">;</span>
+   <span class="keyword">using</span> <span class="identifier">base_type</span><span class="special">::</span><span class="identifier">reserve</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">base_type</span><span class="special">::</span><span class="identifier">iterator</span>         <span class="identifier">iterator</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">base_type</span><span class="special">::</span><span class="identifier">const_iterator</span>   <span class="identifier">const_iterator</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">base_type</span><span class="special">::</span><span class="identifier">value_type</span>       <span class="identifier">value_type</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">MapConfig</span><span class="special">::</span><span class="identifier">compare_key_type</span> <span class="identifier">compare_key_type</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="identifier">iterator</span>                             <span class="identifier">insert_commit_data</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="identifier">iterator</span>                             <span class="identifier">index_data_t</span><span class="special">;</span>
+
+   <span class="comment">//!Constructor. Takes a pointer to the segment manager. Can throw</span>
+   <span class="identifier">flat_map_index</span><span class="special">(</span><span class="identifier">segment_manager_base</span> <span class="special">*</span><span class="identifier">segment_mngr</span><span class="special">)</span>
+      <span class="special">:</span> <span class="identifier">base_type</span><span class="special">(</span><span class="keyword">typename</span> <span class="identifier">index_aux</span><span class="special">::</span><span class="identifier">key_less</span><span class="special">(),</span>
+                  <span class="keyword">typename</span> <span class="identifier">index_aux</span><span class="special">::</span><span class="identifier">allocator_type</span><span class="special">(</span><span class="identifier">segment_mngr</span><span class="special">))</span>
+   <span class="special">{}</span>
+
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span><span class="special">&lt;</span><span class="identifier">iterator</span><span class="special">,</span> <span class="keyword">bool</span><span class="special">&gt;</span> <span class="identifier">insert_check</span>
+      <span class="special">(</span><span class="keyword">const</span> <span class="identifier">compare_key_type</span><span class="special">&amp;</span> <span class="identifier">key</span><span class="special">,</span> <span class="identifier">insert_commit_data</span><span class="special">&amp;)</span>
+   <span class="special">{</span>
+      <span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span><span class="special">&lt;</span><span class="identifier">iterator</span><span class="special">,</span> <span class="keyword">bool</span><span class="special">&gt;</span> <span class="identifier">r</span><span class="special">;</span>
+      <span class="identifier">r</span><span class="special">.</span><span class="identifier">first</span> <span class="special">=</span> <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">base_type</span><span class="special">::</span><span class="identifier">find</span><span class="special">(</span><span class="identifier">key_type</span><span class="special">(</span><span class="identifier">key</span><span class="special">.</span><span class="identifier">str</span><span class="special">(),</span> <span class="identifier">key</span><span class="special">.</span><span class="identifier">len</span><span class="special">()));</span>
+      <span class="identifier">r</span><span class="special">.</span><span class="identifier">second</span> <span class="special">=</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">first</span> <span class="special">==</span> <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">base_type</span><span class="special">::</span><span class="identifier">end</span><span class="special">();</span>
+      <span class="keyword">return</span> <span class="identifier">r</span><span class="special">;</span>
+   <span class="special">}</span>
+
+   <span class="identifier">iterator</span> <span class="identifier">insert_commit</span>
+      <span class="special">(</span><span class="keyword">const</span> <span class="identifier">compare_key_type</span> <span class="special">&amp;</span><span class="identifier">k</span><span class="special">,</span> <span class="keyword">void</span> <span class="special">*</span><span class="identifier">context</span><span class="special">,</span> <span class="identifier">index_data_t</span><span class="special">&amp;,</span> <span class="identifier">insert_commit_data</span><span class="special">&amp;</span> <span class="special">)</span>
+   <span class="special">{</span>
+      <span class="comment">//Now commit the insertion using previous context data</span>
+      <span class="keyword">return</span> <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">base_type</span><span class="special">::</span><span class="identifier">insert</span><span class="special">(</span><span class="identifier">value_type</span><span class="special">(</span><span class="identifier">key_type</span><span class="special">(</span><span class="identifier">k</span><span class="special">.</span><span class="identifier">str</span><span class="special">(),</span> <span class="identifier">k</span><span class="special">.</span><span class="identifier">len</span><span class="special">()),</span> <span class="identifier">mapped_type</span><span class="special">(</span><span class="identifier">context</span><span class="special">))).</span><span class="identifier">first</span><span class="special">;</span>
+   <span class="special">}</span>
+
+   <span class="identifier">iterator</span> <span class="identifier">find</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">compare_key_type</span><span class="special">&amp;</span> <span class="identifier">k</span><span class="special">)</span>
+   <span class="special">{</span>  <span class="keyword">return</span> <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">base_type</span><span class="special">::</span><span class="identifier">find</span><span class="special">(</span><span class="identifier">key_type</span><span class="special">(</span><span class="identifier">k</span><span class="special">.</span><span class="identifier">str</span><span class="special">(),</span> <span class="identifier">k</span><span class="special">.</span><span class="identifier">len</span><span class="special">()));</span>   <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="special">}}</span>   <span class="comment">//namespace boost { namespace interprocess</span>
+</pre>
+<p>如果用户定义基于节点容器的索引 (这种容器在插入或擦除其他元素时迭代器不会失效), <span class="bold"><strong>Boost.Interprocess</strong></span> 可以优化通过指针销毁时的命名对象销毁. <span class="bold"><strong>Boost.Interprocess</strong></span> 可以在对象旁边存储一个迭代器, 擦除索引条目时不使用对象名称, 而是使用该迭代器, 这是更快的操作. 因此, 如果你正在创建新的基于节点容器的索引 (例如树), 应当为 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">::</span><span class="identifier">is_node_index</span><span class="special">&lt;...&gt;</span></code> (定义于 <code class="computeroutput"><span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">detail</span><span class="special">/</span><span class="identifier">utilities</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span></code> ) 定义一个特化:</p>
+<pre class="programlisting"><span class="comment">//!Trait classes to detect if an index is a node</span>
+<span class="comment">//!index. This allows more efficient operations</span>
+<span class="comment">//!when deallocating named objects.</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">MapConfig</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">is_node_index</span>
+   <span class="special">&lt;</span><span class="identifier">my_index</span><span class="special">&lt;</span><span class="identifier">MapConfig</span><span class="special">&gt;</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+   <span class="keyword">static</span> <span class="keyword">const</span> <span class="keyword">bool</span> <span class="identifier">value</span> <span class="special">=</span> <span class="keyword">true</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>Interprocess 还定义了其他索引类型:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <span class="bold"><strong>boost::map_index</strong></span> 使用 <span class="bold"><strong>boost::interprocess::map</strong></span> 作为索引类型.</li>
+<li class="listitem">
+            <span class="bold"><strong>boost::null_index</strong></span> : 使用一个虚拟索引类型, 适用于用户只需要匿名分配并希望节省一些空间和类实例化的情况.</li>
+</ul></div>
+<p>定义一个使用新索引的新托管内存段很容易. 例如, 使用新索引的新托管共享内存:</p>
+<pre class="programlisting"><span class="comment">//!Defines a managed shared memory with a c-strings as</span>
+<span class="comment">//!a keys, the red-black tree best fit algorithm (with process-shared mutexes</span>
+<span class="comment">//!and offset_ptr pointers) as raw shared memory management algorithm</span>
+<span class="comment">//!and a custom index</span>
+<span class="keyword">typedef</span>
+   <span class="identifier">basic_managed_shared_memory</span> <span class="special">&lt;</span>
+                              <span class="keyword">char</span><span class="special">,</span>
+                              <span class="identifier">rbtree_best_fit</span><span class="special">&lt;</span><span class="identifier">mutex_family</span><span class="special">&gt;,</span>
+                              <span class="identifier">my_index_type</span>
+                             <span class="special">&gt;</span>
+   <span class="identifier">my_managed_shared_memory</span><span class="special">;</span>
+</pre>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2005-2024 Ion Gaztanaga<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="architecture.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../interprocess.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="acknowledgements_notes.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

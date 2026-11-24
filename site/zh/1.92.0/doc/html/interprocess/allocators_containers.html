@@ -1,0 +1,701 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>分配器与内存分配算法</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../interprocess.html" title="第 15 章 Boost.Interprocess">
+<link rel="prev" href="managed_heap_memory_external_buffer.html" title="托管堆内存与托管外部缓冲区">
+<link rel="next" href="containers_explained.html" title="托管内存段中的容器">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="managed_heap_memory_external_buffer.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../interprocess.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="containers_explained.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="interprocess.allocators_containers"></a><a class="link" href="allocators_containers.html" title="分配器与内存分配算法">分配器与内存分配算法</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="allocators_containers.html#interprocess.allocators_containers.allocator_introduction">Interprocess 分配器引言</a></span></dt>
+<dt><span class="section"><a href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_segregated_storage">隔离存储节点分配器</a></span></dt>
+<dt><span class="section"><a href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_adaptive">自适应池节点分配器</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.allocators_containers.allocator_introduction"></a><a class="link" href="allocators_containers.html#interprocess.allocators_containers.allocator_introduction" title="Interprocess 分配器引言">Interprocess 分配器引言</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="allocators_containers.html#interprocess.allocators_containers.allocator_introduction.allocator_properties"> <span class="bold"><strong>Boost.Interprocess</strong></span> 分配器的特性</a></span></dt>
+<dt><span class="section"><a href="allocators_containers.html#interprocess.allocators_containers.allocator_introduction.allocator_swapping">交换 Boost.Interprocess 分配器</a></span></dt>
+<dt><span class="section"><a href="allocators_containers.html#interprocess.allocators_containers.allocator_introduction.allocator">allocator: 用于托管内存段的通用分配器</a></span></dt>
+</dl></div>
+<p>如前所述, <span class="bold"><strong>Boost.Interprocess</strong></span> 提供了使用托管内存段 (托管共享内存、托管映射文件等) 的原始内存分配和对象构造, 用户最早的请求之一就是在托管共享内存中使用容器. 为实现这一点, <span class="bold"><strong>Boost.Interprocess</strong></span> 利用托管内存段的内存分配算法构建了多种内存分配方案, 包括通用分配器和节点分配器.</p>
+<p>
+        <span class="bold"><strong>Boost.Interprocess</strong></span> 分配器可通过模板参数配置. 分配器定义其 <code class="computeroutput"><span class="identifier">pointer</span></code> typedef 时, 依据的是作为模板实参传入的段管理器的 <code class="computeroutput"><span class="identifier">void_pointer</span></code> typedef. 当该 <code class="computeroutput"><span class="identifier">segment_manager</span><span class="special">::</span><span class="identifier">void_pointer</span></code> 是相对指针时 (例如 <code class="computeroutput"><span class="identifier">offset_ptr</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span></code>), 用户可以将这些分配器放置在多个进程中以不同基址映射的内存里.</p>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.allocators_containers.allocator_introduction.allocator_properties"></a><a class="link" href="allocators_containers.html#interprocess.allocators_containers.allocator_introduction.allocator_properties" title="Boost.Interprocess 分配器的特性"> <span class="bold"><strong>Boost.Interprocess</strong></span> 分配器的特性</a>
+</h4></div></div></div>
+<p>容器分配器通常可默认构造, 因为它们是无状态的. <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">allocator</span></code> 和 <span class="bold"><strong>Boost.Pool 的</strong></span>
+          <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">pool_allocator</span></code>/<code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fast_pool_allocator</span></code> 就是可默认构造分配器的例子.</p>
+<p>另一方面, <span class="bold"><strong>Boost.Interprocess</strong></span> 分配器需要从具体的内存段分配内存, 而不是从系统级的内存源 (如堆). <span class="bold"><strong>Boost.Interprocess</strong></span> 分配器是 <span class="bold"><strong>有状态的</strong></span> , 这意味着必须对它们进行配置, 告诉它们共享内存或内存映射文件在哪里.</p>
+<p>这一信息在编译期和运行期传递: 分配器通过模板参数接收段管理器的类型, 其构造函数则接收一个指针, 指向用户想要在其中分配值的托管内存段的段管理器.</p>
+<p>
+          <span class="bold"><strong>Boost.Interprocess</strong></span> 分配器 <span class="bold"><strong>没有默认构造函数</strong></span> , 容器必须用一个配置好的分配器显式初始化:</p>
+<pre class="programlisting"><span class="comment">//The allocators must be templatized with the segment manager type</span>
+<span class="keyword">typedef</span> <span class="identifier">any_interprocess_allocator</span>
+   <span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">managed_shared_memory</span><span class="special">::</span><span class="identifier">segment_manager</span><span class="special">,</span> <span class="special">...&gt;</span> <span class="identifier">Allocator</span><span class="special">;</span>
+
+<span class="comment">//The allocator must be constructed with a pointer to the segment manager</span>
+<span class="identifier">Allocator</span> <span class="identifier">alloc_instance</span> <span class="special">(</span><span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">(),</span> <span class="special">...);</span>
+
+<span class="comment">//Containers must be initialized with a configured allocator</span>
+<span class="keyword">typedef</span> <span class="identifier">my_list</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">Allocator</span><span class="special">&gt;</span> <span class="identifier">MyIntList</span><span class="special">;</span>
+<span class="identifier">MyIntList</span> <span class="identifier">mylist</span><span class="special">(</span><span class="identifier">alloc_inst</span><span class="special">);</span>
+
+<span class="comment">//This would lead to a compilation error, because</span>
+<span class="comment">//the allocator has no default constructor</span>
+<span class="comment">//MyIntList mylist;</span>
+</pre>
+<p>
+          <span class="bold"><strong>Boost.Interprocess</strong></span> 分配器还有一个 <code class="computeroutput"><span class="identifier">get_segment_manager</span><span class="special">()</span></code> 函数, 返回它们在构造函数中收到的底层段管理器:</p>
+<pre class="programlisting"><span class="identifier">Allocator</span><span class="special">::</span><span class="identifier">segment_manager</span> <span class="identifier">s</span> <span class="special">=</span> <span class="identifier">alloc_instance</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">();</span>
+<span class="identifier">AnotherType</span> <span class="special">*</span><span class="identifier">a</span> <span class="special">=</span> <span class="identifier">s</span><span class="special">-&gt;</span><span class="identifier">construct</span><span class="special">&lt;</span><span class="identifier">AnotherType</span><span class="special">&gt;(</span><span class="identifier">anonymous_instance</span><span class="special">)(/*</span><span class="identifier">Parameters</span><span class="special">*/);</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.allocators_containers.allocator_introduction.allocator_swapping"></a><a class="link" href="allocators_containers.html#interprocess.allocators_containers.allocator_introduction.allocator_swapping" title="交换 Boost.Interprocess 分配器">交换 Boost.Interprocess 分配器</a>
+</h4></div></div></div>
+<p>交换 STL 容器时, 关于如何处理分配器存在活跃的讨论. 一些 STL 实现, 例如 Visual .NET 2003 的 Dinkumware, 会在分配器不相等时通过一个临时对象对整个容器执行深交换. 关于容器交换的 <a href="http://www.open-std.org/JTC1/SC22/WG21/docs/papers/2004/n1599.html" target="_top">提议决议</a> 是, 分配器应当以不抛异常的方式交换.</p>
+<p>遗憾的是, 这种方法不适用于共享内存. 使用堆分配器时, 如果节点分配器组 1 共享同一个隔离存储, 组 2 共享另一个隔离存储, 那么交换组 1 的一个分配器和组 2 的另一个分配器只需简单的指针交换. 但当用户想交换两个共享内存分配器, 且二者位于不同的共享内存段时, 这就无法做到. 由于共享内存通常在每个进程中映射到不同的地址, 一个段中的指针无法指向另一个共享内存段中的任何对象, 因为在每个进程中, 段之间的距离都不相同. 不过, 如果两个共享内存分配器位于同一个段中, 则可以进行不抛异常的交换, 就像堆分配器一样.</p>
+<p>在最终决议达成之前, <span class="bold"><strong>Boost.Interprocess</strong></span> 分配器实现了一个不抛异常的 swap 函数, 交换内部指针. 如果把位于一个共享内存段中的分配器与位于另一个共享内存段中的分配器交换, 结果是未定义的, 而且几乎肯定会崩溃.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.allocators_containers.allocator_introduction.allocator"></a><a class="link" href="allocators_containers.html#interprocess.allocators_containers.allocator_introduction.allocator" title="allocator: 用于托管内存段的通用分配器">allocator: 用于托管内存段的通用分配器</a>
+</h4></div></div></div>
+<p> <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1allocator.html" title="类模板 allocator">allocator</a></code> 类定义了一个分配器类, 它使用托管内存段的算法来分配和释放内存. 这是通过托管内存段的 <span class="bold"><strong>段管理器</strong></span> 实现的. 该分配器相当于托管内存段版本的标准 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">allocator</span></code> . <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1allocator.html" title="类模板 allocator">allocator</a></code> 以被分配类型和段管理器为模板参数.</p>
+<p>
+          <span class="bold"><strong>相等性:</strong></span>: 用同一个段管理器构造的两个 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1allocator.html" title="类模板 allocator">allocator</a></code> 实例比较相等. 如果一个实例用复制构造函数创建, 该实例与原实例比较相等.</p>
+<p>
+          <span class="bold"><strong>分配线程安全:</strong></span>: 分配与释放实现为对段管理器分配函数的调用, 因此分配器提供与段管理器相同的线程安全性.</p>
+<p>要使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1allocator.html" title="类模板 allocator">allocator</a></code> , 必须包含以下头文件:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">allocator</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<p>
+          <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1allocator.html" title="类模板 allocator">allocator</a></code> 的声明如下:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">interprocess</span> <span class="special">{</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">SegmentManager</span><span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">allocator</span><span class="special">;</span>
+
+<span class="special">}</span>  <span class="comment">//namespace interprocess {</span>
+<span class="special">}</span>  <span class="comment">//namespace boost {</span>
+</pre>
+<p>该分配器只提供所需的 typedef, 并把所有分配和释放请求转发给构造函数中传入的段管理器, 就像 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">allocator</span></code> 把请求转发给 <code class="computeroutput"><span class="keyword">operator</span> <span class="keyword">new</span><span class="special">[]</span></code> 一样.</p>
+<p>使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1allocator.html" title="类模板 allocator">allocator</a></code> 很简单:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">managed_shared_memory</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">allocator</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">cassert</span><span class="special">&gt;</span>
+
+<span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span> <span class="special">()</span>
+<span class="special">{</span>
+   <span class="comment">//Remove shared memory on construction and destruction</span>
+   <span class="keyword">struct</span> <span class="identifier">shm_remove</span>
+   <span class="special">{</span>
+      <span class="identifier">shm_remove</span><span class="special">()</span> <span class="special">{</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+      <span class="special">~</span><span class="identifier">shm_remove</span><span class="special">(){</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+   <span class="special">}</span> <span class="identifier">remover</span><span class="special">;</span>
+
+   <span class="comment">//Create shared memory</span>
+   <span class="identifier">managed_shared_memory</span> <span class="identifier">segment</span><span class="special">(</span><span class="identifier">create_only</span><span class="special">,</span>"MyName"<span class="special">,</span> <span class="number">65536</span><span class="special">);</span>
+
+   <span class="comment">//Create an allocator that allocates ints from the managed segment</span>
+   <span class="identifier">allocator</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">managed_shared_memory</span><span class="special">::</span><span class="identifier">segment_manager</span><span class="special">&gt;</span>
+      <span class="identifier">allocator_instance</span><span class="special">(</span><span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//Copy constructed allocator is equal</span>
+   <span class="identifier">allocator</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">managed_shared_memory</span><span class="special">::</span><span class="identifier">segment_manager</span><span class="special">&gt;</span>
+      <span class="identifier">allocator_instance2</span><span class="special">(</span><span class="identifier">allocator_instance</span><span class="special">);</span>
+   <span class="identifier">assert</span><span class="special">(</span><span class="identifier">allocator_instance2</span> <span class="special">==</span> <span class="identifier">allocator_instance</span><span class="special">);</span>
+
+   <span class="comment">//Allocate and deallocate memory for 100 ints</span>
+   <span class="identifier">allocator_instance2</span><span class="special">.</span><span class="identifier">deallocate</span><span class="special">(</span><span class="identifier">allocator_instance</span><span class="special">.</span><span class="identifier">allocate</span><span class="special">(</span><span class="number">100</span><span class="special">),</span> <span class="number">100</span><span class="special">);</span>
+
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+</div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.allocators_containers.stl_allocators_segregated_storage"></a><a class="link" href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_segregated_storage" title="隔离存储节点分配器">隔离存储节点分配器</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_segregated_storage.segregated_allocators_common">隔离存储节点分配器的附加参数与函数</a></span></dt>
+<dt><span class="section"><a href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_segregated_storage.node_allocator">node_allocator: 进程共享的隔离存储</a></span></dt>
+<dt><span class="section"><a href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_segregated_storage.private_node_allocator">private_node_allocator: 私有隔离存储</a></span></dt>
+<dt><span class="section"><a href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_segregated_storage.cached_node_allocator">cached_node_allocator: 缓存节点以避免开销</a></span></dt>
+</dl></div>
+<p>变长内存算法会为每次分配的管理信息浪费一些空间. 有时 (通常对小对象而言) 这是不可接受的. 在某些分配和释放方案下, 内存算法还会使托管内存段碎片化, 降低其性能. 当分配大量同类型对象时, 简单的隔离存储会成为快速且节省空间的分配器, 如 <a href="http://www.boost.org/libs/pool/" target="_top"><span class="bold"><strong>Boost.Pool</strong></span></a> 库中所述.</p>
+<p>隔离存储节点分配器从一个通用内存分配器分配大内存块, 并将该块划分为多个节点. 节点中不存储任何簿记信息, 从而实现最小的内存浪费: 空闲节点用节点内存中构造的指针链接起来.</p>
+<p>
+        <span class="bold"><strong>Boost.Interprocess</strong></span> 基于这种隔离存储算法提供了 3 种分配器: <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1node__allocator.html" title="类模板 node_allocator">node_allocator</a></code>, <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1private__node__allocator.html" title="类模板 private_node_allocator">private_node_allocator</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__node__allocator.html" title="类模板 cached_node_allocator">cached_node_allocator</a></code>.</p>
+<p>要了解隔离存储池实现的细节, 请参阅 <a class="link" href="architecture.html#interprocess.architecture.allocators_containers.implementation_segregated_storage_pools" title="Boost.Interprocess 隔离存储池的实现"> <span class="bold"><strong>Boost.Interprocess</strong></span> 隔离存储池的实现</a> 一节.</p>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.allocators_containers.stl_allocators_segregated_storage.segregated_allocators_common"></a><a class="link" href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_segregated_storage.segregated_allocators_common" title="隔离存储节点分配器的附加参数与函数">隔离存储节点分配器的附加参数与函数</a>
+</h4></div></div></div>
+<p>
+          <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1node__allocator.html" title="类模板 node_allocator">node_allocator</a></code>, <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1private__node__allocator.html" title="类模板 private_node_allocator">private_node_allocator</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__node__allocator.html" title="类模板 cached_node_allocator">cached_node_allocator</a></code> 实现了标准分配器接口, 以及 <a class="link" href="allocators_containers.html#interprocess.allocators_containers.allocator_introduction.allocator_properties" title="Boost.Interprocess 分配器的特性">Boost.Interprocess 分配器的特性</a> 中说明的函数.</p>
+<p>所有这些分配器都以 3 个参数模板化:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+              <code class="computeroutput"><span class="keyword">class</span> <span class="identifier">T</span></code>: 要分配的类型.</li>
+<li class="listitem">
+              <code class="computeroutput"><span class="keyword">class</span> <span class="identifier">SegmentManager</span></code>: 将在构造函数中传入的段管理器的类型.</li>
+<li class="listitem">
+              <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">NodesPerChunk</span></code>: 每个内存块将包含的节点数. 该值决定了池的节点用尽时向段管理器请求的内存大小. 此参数有默认值.</li>
+</ul></div>
+<p>这些分配器还提供 <code class="computeroutput"><span class="identifier">deallocate_free_chunks</span><span class="special">()</span></code> 函数. 该函数会遍历池的所有内存块, 将空闲内存块归还给托管内存段. 如果不使用该函数, 空闲块要等到池被销毁时才会释放, 因此在销毁池之前把池分配的内存归还给段的唯一办法就是手动调用该函数. 该函数相当耗时, 因为其复杂度是二次的 (O(N^2)).</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.allocators_containers.stl_allocators_segregated_storage.node_allocator"></a><a class="link" href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_segregated_storage.node_allocator" title="node_allocator: 进程共享的隔离存储">node_allocator: 进程共享的隔离存储</a>
+</h4></div></div></div>
+<p>对于堆内存节点分配器 (如 <span class="bold"><strong>Boost.Pool 的</strong></span>
+          <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fast_pool_allocator</span></code> ), 通常每个节点大小使用一个全局的、线程共享的单例池. 如果试图在进程之间共享节点分配器, 这是不可能的. 为实现这种共享, <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1node__allocator.html" title="类模板 node_allocator">node_allocator</a></code> 使用段管理器的唯一类型分配服务 (参见 <a class="link" href="managed_memory_segment_object_construction.html#interprocess.managed_memory_segment_object_construction.unique" title="唯一实例构造">唯一实例构造</a> 一节).</p>
+<p>初始化时, <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1node__allocator.html" title="类模板 node_allocator">node_allocator</a></code> 对象会在段中搜索这个唯一对象. 如果不存在, 就构建一个. 这样, 在一个内存段中构建的所有 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1node__allocator.html" title="类模板 node_allocator">node_allocator</a></code> 对象共享一个唯一的内存池.</p>
+<p>公共隔离存储不仅在同类型的 node_allocator 之间共享, 也在所有分配同大小对象的节点分配器之间共享, 例如 <span class="bold"><strong>node_allocator&lt;uint32&gt;</strong></span> 和 <span class="bold"><strong>node_allocator&lt;float32&gt;</strong></span> . 这节省了大量内存, 但也给每次节点分配带来了同步开销.</p>
+<p>动态创建的公共隔离存储内置引用计数, 使 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1node__allocator.html" title="类模板 node_allocator">node_allocator</a></code> 能知道是否还有其他 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1node__allocator.html" title="类模板 node_allocator">node_allocator</a></code> 也连接到同一个公共隔离存储. 当最后一个连接到池的分配器被销毁时, 池即被销毁.</p>
+<p>
+          <span class="bold"><strong>相等性:</strong></span>: 用同一个段管理器构造的两个 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1node__allocator.html" title="类模板 node_allocator">node_allocator</a></code> 实例比较相等. 如果一个实例用复制构造函数创建, 该实例与原实例比较相等.</p>
+<p>
+          <span class="bold"><strong>分配线程安全:</strong></span>: 分配与释放实现为对共享池的调用. 共享池提供与段管理器相同的同步保证.</p>
+<p>要使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1node__allocator.html" title="类模板 node_allocator">node_allocator</a></code>, 必须包含以下头文件:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">node_allocator</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<p>
+          <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1node__allocator.html" title="类模板 node_allocator">node_allocator</a></code> 的声明如下:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">interprocess</span> <span class="special">{</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">SegmentManager</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">NodesPerChunk</span> <span class="special">=</span> <span class="special">...&gt;</span>
+<span class="keyword">class</span> <span class="identifier">node_allocator</span><span class="special">;</span>
+
+<span class="special">}</span>  <span class="comment">//namespace interprocess {</span>
+<span class="special">}</span>  <span class="comment">//namespace boost {</span>
+</pre>
+<p>一个使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1node__allocator.html" title="类模板 node_allocator">node_allocator</a></code> 的示例:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">managed_shared_memory</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">node_allocator</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">cassert</span><span class="special">&gt;</span>
+
+<span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span> <span class="special">()</span>
+<span class="special">{</span>
+   <span class="comment">//Remove shared memory on construction and destruction</span>
+   <span class="keyword">struct</span> <span class="identifier">shm_remove</span>
+   <span class="special">{</span>
+      <span class="identifier">shm_remove</span><span class="special">()</span> <span class="special">{</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+      <span class="special">~</span><span class="identifier">shm_remove</span><span class="special">(){</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+   <span class="special">}</span> <span class="identifier">remover</span><span class="special">;</span>
+
+   <span class="comment">//Create shared memory</span>
+   <span class="identifier">managed_shared_memory</span> <span class="identifier">segment</span><span class="special">(</span><span class="identifier">create_only</span><span class="special">,</span>
+                                 "MyName"<span class="special">,</span>  <span class="comment">//segment name</span>
+                                 <span class="number">65536</span><span class="special">);</span>
+
+   <span class="comment">//Create a node_allocator that allocates ints from the managed segment</span>
+   <span class="comment">//The number of chunks per segment is the default value</span>
+   <span class="keyword">typedef</span> <span class="identifier">node_allocator</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">managed_shared_memory</span><span class="special">::</span><span class="identifier">segment_manager</span><span class="special">&gt;</span>
+      <span class="identifier">node_allocator_t</span><span class="special">;</span>
+   <span class="identifier">node_allocator_t</span> <span class="identifier">allocator_instance</span><span class="special">(</span><span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//Create another node_allocator. Since the segment manager address</span>
+   <span class="comment">//is the same, this node_allocator will be</span>
+   <span class="comment">//attached to the same pool so "allocator_instance2" can deallocate</span>
+   <span class="comment">//nodes allocated by "allocator_instance"</span>
+   <span class="identifier">node_allocator_t</span> <span class="identifier">allocator_instance2</span><span class="special">(</span><span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//Create another node_allocator using copy-constructor. This</span>
+   <span class="comment">//node_allocator will also be attached to the same pool</span>
+   <span class="identifier">node_allocator_t</span> <span class="identifier">allocator_instance3</span><span class="special">(</span><span class="identifier">allocator_instance2</span><span class="special">);</span>
+
+   <span class="comment">//All allocators are equal</span>
+   <span class="identifier">assert</span><span class="special">(</span><span class="identifier">allocator_instance</span> <span class="special">==</span> <span class="identifier">allocator_instance2</span><span class="special">);</span>
+   <span class="identifier">assert</span><span class="special">(</span><span class="identifier">allocator_instance2</span> <span class="special">==</span> <span class="identifier">allocator_instance3</span><span class="special">);</span>
+
+   <span class="comment">//So memory allocated with one can be deallocated with another</span>
+   <span class="identifier">allocator_instance2</span><span class="special">.</span><span class="identifier">deallocate</span><span class="special">(</span><span class="identifier">allocator_instance</span><span class="special">.</span><span class="identifier">allocate</span><span class="special">(</span><span class="number">1</span><span class="special">),</span> <span class="number">1</span><span class="special">);</span>
+   <span class="identifier">allocator_instance3</span><span class="special">.</span><span class="identifier">deallocate</span><span class="special">(</span><span class="identifier">allocator_instance2</span><span class="special">.</span><span class="identifier">allocate</span><span class="special">(</span><span class="number">1</span><span class="special">),</span> <span class="number">1</span><span class="special">);</span>
+
+   <span class="comment">//The common pool will be destroyed here, since no allocator is</span>
+   <span class="comment">//attached to the pool</span>
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.allocators_containers.stl_allocators_segregated_storage.private_node_allocator"></a><a class="link" href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_segregated_storage.private_node_allocator" title="private_node_allocator: 私有隔离存储">private_node_allocator: 私有隔离存储</a>
+</h4></div></div></div>
+<p>如前所述, node_allocator 在分配同大小对象的节点分配器之间共享公共隔离存储, 这优化了内存使用. 但它需要唯一/命名对象构造特性才能实现这种共享, 并且由于共享, 每次节点分配都有同步开销. 有时唯一对象服务不可用 (例如, 在构建用于实现命名分配服务本身的索引类型时), 或同步开销不可接受. 很多时候, 程序员希望确保池在分配器销毁时一并销毁, 以尽快释放内存.</p>
+<p>因此 <span class="bold"><strong>private_node_allocator</strong></span> 使用与 <code class="computeroutput"><span class="identifier">node_allocator</span></code> 相同的隔离存储, 但每个 <span class="bold"><strong>private_node_allocator</strong></span> 都有自己的隔离存储池. 分配节点时不使用同步, 因此对于分配和释放节点通常只涉及几次指针操作的场景, 开销要小得多.</p>
+<p>
+          <span class="bold"><strong>相等性:</strong></span>: 两个 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1private__node__allocator.html" title="类模板 private_node_allocator">private_node_allocator</a></code> 实例 <span class="bold"><strong>绝不</strong></span> 比较相等. 用一个分配器分配的内存 <span class="bold"><strong>不能</strong></span> 用另一个分配器释放.</p>
+<p>
+          <span class="bold"><strong>分配线程安全:</strong></span>: 分配与释放 <span class="bold"><strong>不是</strong></span> 线程安全的.</p>
+<p>要使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1private__node__allocator.html" title="类模板 private_node_allocator">private_node_allocator</a></code>, 必须包含以下头文件:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">private_node_allocator</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<p>
+          <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1private__node__allocator.html" title="类模板 private_node_allocator">private_node_allocator</a></code> 的声明如下:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">interprocess</span> <span class="special">{</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">SegmentManager</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">NodesPerChunk</span> <span class="special">=</span> <span class="special">...&gt;</span>
+<span class="keyword">class</span> <span class="identifier">private_node_allocator</span><span class="special">;</span>
+
+<span class="special">}</span>  <span class="comment">//namespace interprocess {</span>
+<span class="special">}</span>  <span class="comment">//namespace boost {</span>
+</pre>
+<p>一个使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1private__node__allocator.html" title="类模板 private_node_allocator">private_node_allocator</a></code> 的示例:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">managed_shared_memory</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">private_node_allocator</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">cassert</span><span class="special">&gt;</span>
+
+<span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span> <span class="special">()</span>
+<span class="special">{</span>
+   <span class="comment">//Remove shared memory on construction and destruction</span>
+   <span class="keyword">struct</span> <span class="identifier">shm_remove</span>
+   <span class="special">{</span>
+      <span class="identifier">shm_remove</span><span class="special">()</span> <span class="special">{</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+      <span class="special">~</span><span class="identifier">shm_remove</span><span class="special">(){</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+   <span class="special">}</span>  <span class="identifier">remover</span><span class="special">;</span>
+
+   <span class="comment">//Create shared memory</span>
+   <span class="identifier">managed_shared_memory</span> <span class="identifier">segment</span><span class="special">(</span><span class="identifier">create_only</span><span class="special">,</span>
+                                 "MyName"<span class="special">,</span>  <span class="comment">//segment name</span>
+                                 <span class="number">65536</span><span class="special">);</span>
+
+   <span class="comment">//Create a private_node_allocator that allocates ints from the managed segment</span>
+   <span class="comment">//The number of chunks per segment is the default value</span>
+   <span class="keyword">typedef</span> <span class="identifier">private_node_allocator</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">managed_shared_memory</span><span class="special">::</span><span class="identifier">segment_manager</span><span class="special">&gt;</span>
+      <span class="identifier">private_node_allocator_t</span><span class="special">;</span>
+   <span class="identifier">private_node_allocator_t</span> <span class="identifier">allocator_instance</span><span class="special">(</span><span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//Create another private_node_allocator.</span>
+   <span class="identifier">private_node_allocator_t</span> <span class="identifier">allocator_instance2</span><span class="special">(</span><span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//Although the segment manager address</span>
+   <span class="comment">//is the same, this private_node_allocator will have its own pool so</span>
+   <span class="comment">//"allocator_instance2" CAN'T deallocate nodes allocated by "allocator_instance".</span>
+   <span class="comment">//"allocator_instance2" is NOT equal to "allocator_instance"</span>
+   <span class="identifier">assert</span><span class="special">(</span><span class="identifier">allocator_instance</span> <span class="special">!=</span> <span class="identifier">allocator_instance2</span><span class="special">);</span>
+
+   <span class="comment">//Create another node_allocator using copy-constructor.</span>
+   <span class="identifier">private_node_allocator_t</span> <span class="identifier">allocator_instance3</span><span class="special">(</span><span class="identifier">allocator_instance2</span><span class="special">);</span>
+
+   <span class="comment">//This allocator is also unequal to allocator_instance2</span>
+   <span class="identifier">assert</span><span class="special">(</span><span class="identifier">allocator_instance2</span> <span class="special">!=</span> <span class="identifier">allocator_instance3</span><span class="special">);</span>
+
+   <span class="comment">//Pools are destroyed with the allocators</span>
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.allocators_containers.stl_allocators_segregated_storage.cached_node_allocator"></a><a class="link" href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_segregated_storage.cached_node_allocator" title="cached_node_allocator: 缓存节点以避免开销">cached_node_allocator: 缓存节点以避免开销</a>
+</h4></div></div></div>
+<p> <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1node__allocator.html" title="类模板 node_allocator">node_allocator</a></code> 的完全节点共享可能给某些应用带来很高的开销, 而 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1private__node__allocator.html" title="类模板 private_node_allocator">private_node_allocator</a></code> 的最小同步开销又可能给另一些应用带来不可接受的内存浪费.</p>
+<p>为解决这一问题, <span class="bold"><strong>Boost.Interprocess</strong></span> 提供了一个分配器 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__node__allocator.html" title="类模板 cached_node_allocator">cached_node_allocator</a></code> , 它从公共池分配节点, 但私有地缓存其中一部分, 使后续分配没有同步开销. 当缓存满时, 分配器将一些缓存的节点归还给公共池, 这些节点即可供其他分配器使用.</p>
+<p>
+          <span class="bold"><strong>相等性:</strong></span>: 用同一个段管理器构造的两个 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__node__allocator.html" title="类模板 cached_node_allocator">cached_node_allocator</a></code> 实例比较相等. 如果一个实例用复制构造函数创建, 该实例与原实例比较相等.</p>
+<p>
+          <span class="bold"><strong>分配线程安全:</strong></span>: 分配与释放 <span class="bold"><strong>不是</strong></span> 线程安全的.</p>
+<p>要使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__node__allocator.html" title="类模板 cached_node_allocator">cached_node_allocator</a></code>, 必须包含以下头文件:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">cached_node_allocator</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<p>
+          <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__node__allocator.html" title="类模板 cached_node_allocator">cached_node_allocator</a></code> 的声明如下:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">interprocess</span> <span class="special">{</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">SegmentManager</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">NodesPerChunk</span> <span class="special">=</span> <span class="special">...&gt;</span>
+<span class="keyword">class</span> <span class="identifier">cached_node_allocator</span><span class="special">;</span>
+
+<span class="special">}</span>  <span class="comment">//namespace interprocess {</span>
+<span class="special">}</span>  <span class="comment">//namespace boost {</span>
+</pre>
+<p>一个 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__node__allocator.html" title="类模板 cached_node_allocator">cached_node_allocator</a></code> 实例与一个 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1node__allocator.html" title="类模板 node_allocator">node_allocator</a></code> 实例, 如果二者接收相同的模板参数, 就共享同一个池. 这意味着其中一个归还给共享池的节点可以被另一个复用. 请注意, 这并不意味着两个分配器比较相等, 这只是给希望最大化池的使用的程序员提供的信息.</p>
+<p>
+          <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__node__allocator.html" title="类模板 cached_node_allocator">cached_node_allocator</a></code>, 还提供了一些额外的函数来控制缓存 (缓存可以按实例控制):</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+              <code class="computeroutput"><span class="keyword">void</span> <span class="identifier">set_max_cached_nodes</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span>
+              <span class="identifier">n</span><span class="special">)</span></code>: 设置最大缓存节点数限制. 如果缓存节点达到限制, 一部分将被归还给共享池.</li>
+<li class="listitem">
+              <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">get_max_cached_nodes</span><span class="special">()</span> <span class="keyword">const</span></code>: 返回最大缓存节点数限制.</li>
+<li class="listitem">
+              <code class="computeroutput"><span class="keyword">void</span> <span class="identifier">deallocate_cache</span><span class="special">()</span></code>: 将缓存的节点归还给共享池.</li>
+</ul></div>
+<p>一个使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__node__allocator.html" title="类模板 cached_node_allocator">cached_node_allocator</a></code> 的示例:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">managed_shared_memory</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">cached_node_allocator</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">cassert</span><span class="special">&gt;</span>
+
+<span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span> <span class="special">()</span>
+<span class="special">{</span>
+   <span class="comment">//Remove shared memory on construction and destruction</span>
+   <span class="keyword">struct</span> <span class="identifier">shm_remove</span>
+   <span class="special">{</span>
+      <span class="identifier">shm_remove</span><span class="special">()</span> <span class="special">{</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+      <span class="special">~</span><span class="identifier">shm_remove</span><span class="special">(){</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+   <span class="special">}</span> <span class="identifier">remover</span><span class="special">;</span>
+
+   <span class="comment">//Create shared memory</span>
+   <span class="identifier">managed_shared_memory</span> <span class="identifier">segment</span><span class="special">(</span><span class="identifier">create_only</span><span class="special">,</span> "MyName"<span class="special">,</span> <span class="number">65536</span><span class="special">);</span>
+
+   <span class="comment">//Create a cached_node_allocator that allocates ints from the managed segment</span>
+   <span class="comment">//The number of chunks per segment is the default value</span>
+   <span class="keyword">typedef</span> <span class="identifier">cached_node_allocator</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">managed_shared_memory</span><span class="special">::</span><span class="identifier">segment_manager</span><span class="special">&gt;</span>
+      <span class="identifier">cached_node_allocator_t</span><span class="special">;</span>
+   <span class="identifier">cached_node_allocator_t</span> <span class="identifier">allocator_instance</span><span class="special">(</span><span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//The max cached nodes are configurable per instance</span>
+   <span class="identifier">allocator_instance</span><span class="special">.</span><span class="identifier">set_max_cached_nodes</span><span class="special">(</span><span class="number">3</span><span class="special">);</span>
+
+   <span class="comment">//Create another cached_node_allocator. Since the segment manager address</span>
+   <span class="comment">//is the same, this cached_node_allocator will be</span>
+   <span class="comment">//attached to the same pool so "allocator_instance2" can deallocate</span>
+   <span class="comment">//nodes allocated by "allocator_instance"</span>
+   <span class="identifier">cached_node_allocator_t</span> <span class="identifier">allocator_instance2</span><span class="special">(</span><span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//The max cached nodes are configurable per instance</span>
+   <span class="identifier">allocator_instance2</span><span class="special">.</span><span class="identifier">set_max_cached_nodes</span><span class="special">(</span><span class="number">5</span><span class="special">);</span>
+
+   <span class="comment">//Create another cached_node_allocator using copy-constructor. This</span>
+   <span class="comment">//cached_node_allocator will also be attached to the same pool</span>
+   <span class="identifier">cached_node_allocator_t</span> <span class="identifier">allocator_instance3</span><span class="special">(</span><span class="identifier">allocator_instance2</span><span class="special">);</span>
+
+   <span class="comment">//We can clear the cache</span>
+   <span class="identifier">allocator_instance3</span><span class="special">.</span><span class="identifier">deallocate_cache</span><span class="special">();</span>
+
+   <span class="comment">//All allocators are equal</span>
+   <span class="identifier">assert</span><span class="special">(</span><span class="identifier">allocator_instance</span> <span class="special">==</span> <span class="identifier">allocator_instance2</span><span class="special">);</span>
+   <span class="identifier">assert</span><span class="special">(</span><span class="identifier">allocator_instance2</span> <span class="special">==</span> <span class="identifier">allocator_instance3</span><span class="special">);</span>
+
+   <span class="comment">//So memory allocated with one can be deallocated with another</span>
+   <span class="identifier">allocator_instance2</span><span class="special">.</span><span class="identifier">deallocate</span><span class="special">(</span><span class="identifier">allocator_instance</span><span class="special">.</span><span class="identifier">allocate</span><span class="special">(</span><span class="number">1</span><span class="special">),</span> <span class="number">1</span><span class="special">);</span>
+   <span class="identifier">allocator_instance3</span><span class="special">.</span><span class="identifier">deallocate</span><span class="special">(</span><span class="identifier">allocator_instance2</span><span class="special">.</span><span class="identifier">allocate</span><span class="special">(</span><span class="number">1</span><span class="special">),</span> <span class="number">1</span><span class="special">);</span>
+
+   <span class="comment">//The common pool will be destroyed here, since no allocator is</span>
+   <span class="comment">//attached to the pool</span>
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+</div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.allocators_containers.stl_allocators_adaptive"></a><a class="link" href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_adaptive" title="自适应池节点分配器">自适应池节点分配器</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_adaptive.adaptive_allocators_common">自适应池节点分配器的附加参数与函数</a></span></dt>
+<dt><span class="section"><a href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_adaptive.adaptive_pool">adaptive_pool: 进程共享的自适应池</a></span></dt>
+<dt><span class="section"><a href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_adaptive.private_adaptive_pool">private_adaptive_pool: 私有自适应池</a></span></dt>
+<dt><span class="section"><a href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_adaptive.cached_adaptive_pool">cached_adaptive_pool: 避免同步开销</a></span></dt>
+</dl></div>
+<p>基于简单隔离存储算法的节点分配器既省空间又快速, 但它们有一个问题: 只能增长. 每个分配的节点都不带任何用于存储附加数据的负载, 这导致如下限制: 节点被释放时, 它被存入节点空闲链表, 但内存不会归还给段管理器, 因此被释放的节点只能被使用同一节点池的其他容器复用.</p>
+<p>如果多个容器使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1node__allocator.html" title="类模板 node_allocator">boost::interprocess::node_allocator</a></code> 临时分配大量对象, 但最终只存储其中一小部分, 这种行为可能有问题: 节点池将充满无法复用的节点, 浪费段中的内存.</p>
+<p>基于自适应池的分配器用一些空间 (开销可低至 1%) 和性能 (对许多应用而言可以接受) 换取将节点的空闲块归还给内存段的能力, 使它们可以被任何其他容器或托管对象构造使用. 要了解"自适应池"实现的细节, 请参阅 <a class="link" href="architecture.html#interprocess.architecture.allocators_containers.implementation_adaptive_pools" title="Boost.Interprocess 自适应池的实现"> <span class="bold"><strong>Boost.Intrusive</strong></span> 自适应池的实现</a> 一节.</p>
+<p>与基于隔离存储的节点分配器一样, Boost.Interprocess 提供了 3 种新分配器: <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1adaptive__pool.html" title="类模板 adaptive_pool">adaptive_pool</a></code>, <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1private__adaptive__pool.html" title="类模板 private_adaptive_pool">private_adaptive_pool</a></code>, <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__adaptive__pool.html" title="类模板 cached_adaptive_pool">cached_adaptive_pool</a></code>.</p>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.allocators_containers.stl_allocators_adaptive.adaptive_allocators_common"></a><a class="link" href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_adaptive.adaptive_allocators_common" title="自适应池节点分配器的附加参数与函数">自适应池节点分配器的附加参数与函数</a>
+</h4></div></div></div>
+<p>
+          <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1adaptive__pool.html" title="类模板 adaptive_pool">adaptive_pool</a></code>, <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1private__adaptive__pool.html" title="类模板 private_adaptive_pool">private_adaptive_pool</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__adaptive__pool.html" title="类模板 cached_adaptive_pool">cached_adaptive_pool</a></code> 实现了标准分配器接口, 以及 <a class="link" href="allocators_containers.html#interprocess.allocators_containers.allocator_introduction.allocator_properties" title="Boost.Interprocess 分配器的特性">Boost.Interprocess 分配器的特性</a> 中说明的函数.</p>
+<p>所有这些分配器都以 4 个参数模板化:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+              <code class="computeroutput"><span class="keyword">class</span> <span class="identifier">T</span></code>: 要分配的类型.</li>
+<li class="listitem">
+              <code class="computeroutput"><span class="keyword">class</span> <span class="identifier">SegmentManager</span></code>: 将在构造函数中传入的段管理器的类型.</li>
+<li class="listitem">
+              <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">NodesPerChunk</span></code>: 每个内存块将包含的节点数. 该值决定了池的节点用尽时向段管理器请求的内存大小. 此参数有默认值.</li>
+<li class="listitem">
+              <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">MaxFreeChunks</span></code>: 池将持有的最大空闲块数. 如果达到该限制, 池将把块归还给段管理器. 此参数有默认值.</li>
+</ul></div>
+<p>这些分配器还提供 <code class="computeroutput"><span class="identifier">deallocate_free_chunks</span><span class="special">()</span></code> 函数. 该函数会遍历池的所有内存块, 将空闲内存块归还给托管内存段. 该函数比隔离存储分配器的同名函数快得多, 因为自适应池算法对空闲块提供常数时间的访问.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.allocators_containers.stl_allocators_adaptive.adaptive_pool"></a><a class="link" href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_adaptive.adaptive_pool" title="adaptive_pool: 进程共享的自适应池">adaptive_pool: 进程共享的自适应池</a>
+</h4></div></div></div>
+<p>与 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1node__allocator.html" title="类模板 node_allocator">node_allocator</a></code> 一样, 每个节点大小使用一个全局的、进程线程共享的池. 初始化时, <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1adaptive__pool.html" title="类模板 adaptive_pool">adaptive_pool</a></code> 在段中搜索该池. 如果不存在, 就构建一个. 自适应池用唯一名称创建. 自适应池也在所有分配同大小对象的节点分配器之间共享, 例如 <span class="bold"><strong>adaptive_pool&lt;uint32&gt;</strong></span> 和 <span class="bold"><strong>adaptive_pool&lt;float32&gt;</strong></span>.</p>
+<p>当所有连接到池的分配器都被销毁时, 公共自适应池即被销毁.</p>
+<p>
+          <span class="bold"><strong>相等性:</strong></span>: 用同一个段管理器构造的两个 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1adaptive__pool.html" title="类模板 adaptive_pool">adaptive_pool</a></code> 实例比较相等. 如果一个实例用复制构造函数创建, 该实例与原实例比较相等.</p>
+<p>
+          <span class="bold"><strong>分配线程安全:</strong></span>: 分配与释放实现为对共享池的调用. 共享池提供与段管理器相同的同步保证.</p>
+<p>要使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1adaptive__pool.html" title="类模板 adaptive_pool">adaptive_pool</a></code>, 必须包含以下头文件:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">adaptive_pool</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<p>
+          <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1adaptive__pool.html" title="类模板 adaptive_pool">adaptive_pool</a></code> 的声明如下:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">interprocess</span> <span class="special">{</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">SegmentManager</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">NodesPerChunk</span> <span class="special">=</span> <span class="special">...,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">MaxFreeChunks</span> <span class="special">=</span> <span class="special">...&gt;</span>
+<span class="keyword">class</span> <span class="identifier">adaptive_pool</span><span class="special">;</span>
+
+<span class="special">}</span>  <span class="comment">//namespace interprocess {</span>
+<span class="special">}</span>  <span class="comment">//namespace boost {</span>
+</pre>
+<p>一个使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1adaptive__pool.html" title="类模板 adaptive_pool">adaptive_pool</a></code> 的示例:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">managed_shared_memory</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">adaptive_pool</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">cassert</span><span class="special">&gt;</span>
+
+<span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span> <span class="special">()</span>
+<span class="special">{</span>
+   <span class="comment">//Remove shared memory on construction and destruction</span>
+   <span class="keyword">struct</span> <span class="identifier">shm_remove</span>
+   <span class="special">{</span>
+      <span class="identifier">shm_remove</span><span class="special">()</span> <span class="special">{</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+      <span class="special">~</span><span class="identifier">shm_remove</span><span class="special">(){</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+   <span class="special">}</span> <span class="identifier">remover</span><span class="special">;</span>
+
+   <span class="comment">//Create shared memory</span>
+   <span class="identifier">managed_shared_memory</span> <span class="identifier">segment</span><span class="special">(</span><span class="identifier">create_only</span><span class="special">,</span>"MyName"<span class="special">,</span> <span class="number">65536</span><span class="special">);</span>
+
+   <span class="comment">//Create a adaptive_pool that allocates ints from the managed segment</span>
+   <span class="comment">//The number of chunks per segment is the default value</span>
+   <span class="keyword">typedef</span> <span class="identifier">adaptive_pool</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">managed_shared_memory</span><span class="special">::</span><span class="identifier">segment_manager</span><span class="special">&gt;</span>
+      <span class="identifier">adaptive_pool_t</span><span class="special">;</span>
+   <span class="identifier">adaptive_pool_t</span> <span class="identifier">allocator_instance</span><span class="special">(</span><span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//Create another adaptive_pool. Since the segment manager address</span>
+   <span class="comment">//is the same, this adaptive_pool will be</span>
+   <span class="comment">//attached to the same pool so "allocator_instance2" can deallocate</span>
+   <span class="comment">//nodes allocated by "allocator_instance"</span>
+   <span class="identifier">adaptive_pool_t</span> <span class="identifier">allocator_instance2</span><span class="special">(</span><span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//Create another adaptive_pool using copy-constructor. This</span>
+   <span class="comment">//adaptive_pool will also be attached to the same pool</span>
+   <span class="identifier">adaptive_pool_t</span> <span class="identifier">allocator_instance3</span><span class="special">(</span><span class="identifier">allocator_instance2</span><span class="special">);</span>
+
+   <span class="comment">//All allocators are equal</span>
+   <span class="identifier">assert</span><span class="special">(</span><span class="identifier">allocator_instance</span> <span class="special">==</span> <span class="identifier">allocator_instance2</span><span class="special">);</span>
+   <span class="identifier">assert</span><span class="special">(</span><span class="identifier">allocator_instance2</span> <span class="special">==</span> <span class="identifier">allocator_instance3</span><span class="special">);</span>
+
+   <span class="comment">//So memory allocated with one can be deallocated with another</span>
+   <span class="identifier">allocator_instance2</span><span class="special">.</span><span class="identifier">deallocate</span><span class="special">(</span><span class="identifier">allocator_instance</span><span class="special">.</span><span class="identifier">allocate</span><span class="special">(</span><span class="number">1</span><span class="special">),</span> <span class="number">1</span><span class="special">);</span>
+   <span class="identifier">allocator_instance3</span><span class="special">.</span><span class="identifier">deallocate</span><span class="special">(</span><span class="identifier">allocator_instance2</span><span class="special">.</span><span class="identifier">allocate</span><span class="special">(</span><span class="number">1</span><span class="special">),</span> <span class="number">1</span><span class="special">);</span>
+
+   <span class="comment">//The common pool will be destroyed here, since no allocator is</span>
+   <span class="comment">//attached to the pool</span>
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.allocators_containers.stl_allocators_adaptive.private_adaptive_pool"></a><a class="link" href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_adaptive.private_adaptive_pool" title="private_adaptive_pool: 私有自适应池">private_adaptive_pool: 私有自适应池</a>
+</h4></div></div></div>
+<p>正如 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1private__node__allocator.html" title="类模板 private_node_allocator">private_node_allocator</a></code> 拥有私有的隔离存储池, <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1private__adaptive__pool.html" title="类模板 private_adaptive_pool">private_adaptive_pool</a></code> 拥有自己的自适应池. 如果用户想避免容器中过多的节点分配同步开销, <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1private__adaptive__pool.html" title="类模板 private_adaptive_pool">private_adaptive_pool</a></code> 是一个不错的选择.</p>
+<p>
+          <span class="bold"><strong>相等性:</strong></span>: 两个 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1private__adaptive__pool.html" title="类模板 private_adaptive_pool">private_adaptive_pool</a></code> 实例 <span class="bold"><strong>绝不</strong></span> 比较相等. 用一个分配器分配的内存 <span class="bold"><strong>不能</strong></span> 用另一个分配器释放.</p>
+<p>
+          <span class="bold"><strong>分配线程安全:</strong></span>: 分配与释放 <span class="bold"><strong>不是</strong></span> 线程安全的.</p>
+<p>要使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1private__adaptive__pool.html" title="类模板 private_adaptive_pool">private_adaptive_pool</a></code>, 必须包含以下头文件:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">private_adaptive_pool</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<p>
+          <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1private__adaptive__pool.html" title="类模板 private_adaptive_pool">private_adaptive_pool</a></code> 的声明如下:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">interprocess</span> <span class="special">{</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">SegmentManager</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">NodesPerChunk</span> <span class="special">=</span> <span class="special">...,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">MaxFreeChunks</span> <span class="special">=</span> <span class="special">...&gt;</span>
+<span class="keyword">class</span> <span class="identifier">private_adaptive_pool</span><span class="special">;</span>
+
+<span class="special">}</span>  <span class="comment">//namespace interprocess {</span>
+<span class="special">}</span>  <span class="comment">//namespace boost {</span>
+</pre>
+<p>一个使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1private__adaptive__pool.html" title="类模板 private_adaptive_pool">private_adaptive_pool</a></code> 的示例:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">managed_shared_memory</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">private_adaptive_pool</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">cassert</span><span class="special">&gt;</span>
+
+<span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span> <span class="special">()</span>
+<span class="special">{</span>
+   <span class="comment">//Remove shared memory on construction and destruction</span>
+   <span class="keyword">struct</span> <span class="identifier">shm_remove</span>
+   <span class="special">{</span>
+      <span class="identifier">shm_remove</span><span class="special">()</span> <span class="special">{</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+      <span class="special">~</span><span class="identifier">shm_remove</span><span class="special">(){</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+   <span class="special">}</span> <span class="identifier">remover</span><span class="special">;</span>
+
+   <span class="comment">//Create shared memory</span>
+   <span class="identifier">managed_shared_memory</span> <span class="identifier">segment</span><span class="special">(</span><span class="identifier">create_only</span><span class="special">,</span>
+                                 "MyName"<span class="special">,</span>  <span class="comment">//segment name</span>
+                                 <span class="number">65536</span><span class="special">);</span>
+
+   <span class="comment">//Create a private_adaptive_pool that allocates ints from the managed segment</span>
+   <span class="comment">//The number of chunks per segment is the default value</span>
+   <span class="keyword">typedef</span> <span class="identifier">private_adaptive_pool</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">managed_shared_memory</span><span class="special">::</span><span class="identifier">segment_manager</span><span class="special">&gt;</span>
+         <span class="identifier">private_adaptive_pool_t</span><span class="special">;</span>
+   <span class="identifier">private_adaptive_pool_t</span> <span class="identifier">allocator_instance</span><span class="special">(</span><span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//Create another private_adaptive_pool.</span>
+   <span class="identifier">private_adaptive_pool_t</span> <span class="identifier">allocator_instance2</span><span class="special">(</span><span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//Although the segment manager address</span>
+   <span class="comment">//is the same, this private_adaptive_pool will have its own pool so</span>
+   <span class="comment">//"allocator_instance2" CAN'T deallocate nodes allocated by "allocator_instance".</span>
+   <span class="comment">//"allocator_instance2" is NOT equal to "allocator_instance"</span>
+   <span class="identifier">assert</span><span class="special">(</span><span class="identifier">allocator_instance</span> <span class="special">!=</span> <span class="identifier">allocator_instance2</span><span class="special">);</span>
+
+   <span class="comment">//Create another adaptive_pool using copy-constructor.</span>
+   <span class="identifier">private_adaptive_pool_t</span> <span class="identifier">allocator_instance3</span><span class="special">(</span><span class="identifier">allocator_instance2</span><span class="special">);</span>
+
+   <span class="comment">//This allocator is also unequal to allocator_instance2</span>
+   <span class="identifier">assert</span><span class="special">(</span><span class="identifier">allocator_instance2</span> <span class="special">!=</span> <span class="identifier">allocator_instance3</span><span class="special">);</span>
+
+   <span class="comment">//Pools are destroyed with the allocators</span>
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="interprocess.allocators_containers.stl_allocators_adaptive.cached_adaptive_pool"></a><a class="link" href="allocators_containers.html#interprocess.allocators_containers.stl_allocators_adaptive.cached_adaptive_pool" title="cached_adaptive_pool: 避免同步开销">cached_adaptive_pool: 避免同步开销</a>
+</h4></div></div></div>
+<p>自适应池也有缓存版本. 在这个分配器中, 分配器缓存一些节点, 以避免共享自适应池的同步与簿记开销. <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__adaptive__pool.html" title="类模板 cached_adaptive_pool">cached_adaptive_pool</a></code> 从公共自适应池分配节点, 但私有地缓存其中一部分, 使后续分配没有同步开销. 当缓存满时, 分配器将一些缓存的节点归还给公共池, 这些节点即可供同一托管段的其他 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__adaptive__pool.html" title="类模板 cached_adaptive_pool">cached_adaptive_pools</a></code> 或 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1adaptive__pool.html" title="类模板 adaptive_pool">adaptive_pools</a></code> 使用.</p>
+<p>
+          <span class="bold"><strong>相等性:</strong></span>: 用同一个段管理器构造的两个 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__adaptive__pool.html" title="类模板 cached_adaptive_pool">cached_adaptive_pool</a></code> 实例比较相等. 如果一个实例用复制构造函数创建, 该实例与原实例比较相等.</p>
+<p>
+          <span class="bold"><strong>分配线程安全:</strong></span>: 分配与释放 <span class="bold"><strong>不是</strong></span> 线程安全的.</p>
+<p>要使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__adaptive__pool.html" title="类模板 cached_adaptive_pool">cached_adaptive_pool</a></code>, 必须包含以下头文件:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">cached_adaptive_pool</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<p>
+          <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__adaptive__pool.html" title="类模板 cached_adaptive_pool">cached_adaptive_pool</a></code> 的声明如下:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">interprocess</span> <span class="special">{</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">SegmentManager</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">NodesPerChunk</span> <span class="special">=</span> <span class="special">...,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">MaxFreeNodes</span> <span class="special">=</span> <span class="special">...&gt;</span>
+<span class="keyword">class</span> <span class="identifier">cached_adaptive_pool</span><span class="special">;</span>
+
+<span class="special">}</span>  <span class="comment">//namespace interprocess {</span>
+<span class="special">}</span>  <span class="comment">//namespace boost {</span>
+</pre>
+<p>一个 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__adaptive__pool.html" title="类模板 cached_adaptive_pool">cached_adaptive_pool</a></code> 实例与一个 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1adaptive__pool.html" title="类模板 adaptive_pool">adaptive_pool</a></code> 实例, 如果二者接收相同的模板参数, 就共享同一个池. 这意味着其中一个归还给共享池的节点可以被另一个复用. 请注意, 这并不意味着两个分配器比较相等, 这只是给希望最大化池的使用的程序员提供的信息.</p>
+<p>
+          <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__adaptive__pool.html" title="类模板 cached_adaptive_pool">cached_adaptive_pool</a></code>, 还提供了一些额外的函数来控制缓存 (缓存可以按实例控制):</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+              <code class="computeroutput"><span class="keyword">void</span> <span class="identifier">set_max_cached_nodes</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span>
+              <span class="identifier">n</span><span class="special">)</span></code>: 设置最大缓存节点数限制. 如果缓存节点达到限制, 一部分将被归还给共享池.</li>
+<li class="listitem">
+              <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">get_max_cached_nodes</span><span class="special">()</span> <span class="keyword">const</span></code>: 返回最大缓存节点数限制.</li>
+<li class="listitem">
+              <code class="computeroutput"><span class="keyword">void</span> <span class="identifier">deallocate_cache</span><span class="special">()</span></code>: 将缓存的节点归还给共享池.</li>
+</ul></div>
+<p>一个使用 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1cached__adaptive__pool.html" title="类模板 cached_adaptive_pool">cached_adaptive_pool</a></code> 的示例:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">managed_shared_memory</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">cached_adaptive_pool</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">cassert</span><span class="special">&gt;</span>
+
+<span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span> <span class="special">()</span>
+<span class="special">{</span>
+   <span class="comment">//Remove shared memory on construction and destruction</span>
+   <span class="keyword">struct</span> <span class="identifier">shm_remove</span>
+   <span class="special">{</span>
+      <span class="identifier">shm_remove</span><span class="special">()</span> <span class="special">{</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+      <span class="special">~</span><span class="identifier">shm_remove</span><span class="special">(){</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+   <span class="special">}</span> <span class="identifier">remover</span><span class="special">;</span>
+
+   <span class="comment">//Create shared memory</span>
+   <span class="identifier">managed_shared_memory</span> <span class="identifier">segment</span><span class="special">(</span><span class="identifier">create_only</span><span class="special">,</span>"MyName"<span class="special">,</span> <span class="number">65536</span><span class="special">);</span>
+
+   <span class="comment">//Create a cached_adaptive_pool that allocates ints from the managed segment</span>
+   <span class="comment">//The number of chunks per segment is the default value</span>
+   <span class="keyword">typedef</span> <span class="identifier">cached_adaptive_pool</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">managed_shared_memory</span><span class="special">::</span><span class="identifier">segment_manager</span><span class="special">&gt;</span>
+      <span class="identifier">cached_adaptive_pool_t</span><span class="special">;</span>
+   <span class="identifier">cached_adaptive_pool_t</span> <span class="identifier">allocator_instance</span><span class="special">(</span><span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//The max cached nodes are configurable per instance</span>
+   <span class="identifier">allocator_instance</span><span class="special">.</span><span class="identifier">set_max_cached_nodes</span><span class="special">(</span><span class="number">3</span><span class="special">);</span>
+
+   <span class="comment">//Create another cached_adaptive_pool. Since the segment manager address</span>
+   <span class="comment">//is the same, this cached_adaptive_pool will be</span>
+   <span class="comment">//attached to the same pool so "allocator_instance2" can deallocate</span>
+   <span class="comment">//nodes allocated by "allocator_instance"</span>
+   <span class="identifier">cached_adaptive_pool_t</span> <span class="identifier">allocator_instance2</span><span class="special">(</span><span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//The max cached nodes are configurable per instance</span>
+   <span class="identifier">allocator_instance2</span><span class="special">.</span><span class="identifier">set_max_cached_nodes</span><span class="special">(</span><span class="number">5</span><span class="special">);</span>
+
+   <span class="comment">//Create another cached_adaptive_pool using copy-constructor. This</span>
+   <span class="comment">//cached_adaptive_pool will also be attached to the same pool</span>
+   <span class="identifier">cached_adaptive_pool_t</span> <span class="identifier">allocator_instance3</span><span class="special">(</span><span class="identifier">allocator_instance2</span><span class="special">);</span>
+
+   <span class="comment">//We can clear the cache</span>
+   <span class="identifier">allocator_instance3</span><span class="special">.</span><span class="identifier">deallocate_cache</span><span class="special">();</span>
+
+   <span class="comment">//All allocators are equal</span>
+   <span class="identifier">assert</span><span class="special">(</span><span class="identifier">allocator_instance</span> <span class="special">==</span> <span class="identifier">allocator_instance2</span><span class="special">);</span>
+   <span class="identifier">assert</span><span class="special">(</span><span class="identifier">allocator_instance2</span> <span class="special">==</span> <span class="identifier">allocator_instance3</span><span class="special">);</span>
+
+   <span class="comment">//So memory allocated with one can be deallocated with another</span>
+   <span class="identifier">allocator_instance2</span><span class="special">.</span><span class="identifier">deallocate</span><span class="special">(</span><span class="identifier">allocator_instance</span><span class="special">.</span><span class="identifier">allocate</span><span class="special">(</span><span class="number">1</span><span class="special">),</span> <span class="number">1</span><span class="special">);</span>
+   <span class="identifier">allocator_instance3</span><span class="special">.</span><span class="identifier">deallocate</span><span class="special">(</span><span class="identifier">allocator_instance2</span><span class="special">.</span><span class="identifier">allocate</span><span class="special">(</span><span class="number">1</span><span class="special">),</span> <span class="number">1</span><span class="special">);</span>
+
+   <span class="comment">//The common pool will be destroyed here, since no allocator is</span>
+   <span class="comment">//attached to the pool</span>
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+</div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2005-2024 Ion Gaztanaga<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="managed_heap_memory_external_buffer.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../interprocess.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="containers_explained.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

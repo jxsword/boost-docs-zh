@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.3.0: http://docutils.sourceforge.net/" />
+<title>Boost.Python 内部机制 Boost</title>
+<link rel="stylesheet" href="../../../rst.css" type="text/css" />
+</head>
+<body>
+<div class="document" id="boost-python-internals-logo">
+<h1 class="title"><a class="reference" href="index.html">Boost.Python</a> 内部机制 <a class="reference" href="../../../index.htm"><img alt="Boost" src="../../../boost.png" /></a></h1>
+<div class="section" id="a-conversation-between-brett-calcott-and-david-abrahams">
+<h1><a name="a-conversation-between-brett-calcott-and-david-abrahams">Brett Calcott 与 David Abrahams 的对话</a></h1>
+<table class="field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field"><th class="field-name">copyright:</th><td class="field-body">版权所有 David Abrahams 与 Brett Calcott 2003. 使用条款见随附的<a class="reference" href="../../../LICENSE_1_0.txt">许可</a>.</td>
+</tr>
+</tbody>
+</table>
+<p>在这两种情况下, 我读代码都没问题——但浏览源代码得不到的东西是对架构的感觉, 无论是结构上还是时间上 (呃, 我是指事情发生的顺序).</p>
+<ol class="arabic">
+<li><p class="first">当你执行以下操作时会发生什么:</p>
+<pre class="literal-block">
+struct boring {};
+...etc...
+class_&lt;boring&gt;(&quot;boring&quot;)
+    ;
+</pre>
+</li>
+</ol>
+<p>看起来有不少事情在进行.</p>
+<blockquote>
+<ul class="simple">
+<li>Python 需要注册一个新的 ClassType.</li>
+<li>我们需要构造一个能容纳我们那个乏味结构体 (boring) 的新类型.</li>
+<li>需要为该类型注册向内和向外转换器.</li>
+</ul>
+</blockquote>
+<p>你能大致指点一下这些事情都在哪里完成吗?</p>
+<blockquote>
+<p>我现在只有时间给出一个 "凭印象" 的回答; 我建议你读完之后用调试器单步执行代码, 看看它如何工作, 补充细节, 并确认我没有漏掉什么.</p>
+<blockquote>
+<p>通过调用元类型 Boost.Python.class, 创建 Boost.Python.Instance 的一个新 (Python) 子类 (见 libs/python/src/object/class.cpp):</p>
+<pre class="literal-block">
+&gt;&gt;&gt; boring = Boost.Python.class(
+...     'boring'
+...   , bases_tuple       # in this case, just ()
+...   , { 
+...         '__module__' : module_name
+...       , '__doc__' : doc_string # optional
+...     }
+... )
+</pre>
+<p>该对象的句柄被塞入与 <tt class="literal"><span class="pre">typeid(boring)</span></tt> 相关联的注册项的 m_class_object 字段中. 注册表会永远让该对象存活, 即使你抹掉扩展模块的 'boring' 属性 (这可能不是件好事).</p>
+<p>因为你没有指定 <tt class="literal"><span class="pre">class&lt;boring,</span> <span class="pre">non_copyable,</span>
+<span class="pre">...&gt;</span></tt>, 为 boring 注册了一个到 Python 转换器, 它把其参数复制到由 Python boring 对象持有的 value_holder 中.</p>
+<p>因为你没有指定 <tt class="literal"><span class="pre">class&lt;boring</span> <span class="pre">...&gt;(no_init)</span></tt>, 一个 <tt class="literal"><span class="pre">__init__</span></tt> 函数对象被加入类字典, 它在由 Python boring 对象持有的 value_holder (因为你没有指定某个智能指针或派生包装器类作为持有器) 中默认构造一个 boring.</p>
+<p><tt class="literal"><span class="pre">register_class_from_python</span></tt> 用于为 <tt class="literal"><span class="pre">shared_ptr&lt;boring&gt;</span></tt> 注册一个从 Python 转换器. <tt class="literal"><span class="pre">boost::shared_ptr</span></tt> 在智能指针中很特别, 因为它们的 Deleter 参数可以被用来管理整个 Python 对象, 而不仅仅是它包含的 C++ 对象, 无论 C++ 对象是如何被持有的.</p>
+<p>如果有 <tt class="literal"><span class="pre">bases&lt;&gt;</span></tt>, 我们还会在上/下转型图 (<tt class="literal"><span class="pre">inheritance.[hpp/cpp]</span></tt>) 中注册这些基类与 boring 之间的关系.</p>
+<p>在代码的早期版本中, 我们会在这里为该类注册左值从 Python 转换器, 但现在, 如果源 Python 对象的元类是 Boost.Python 元类, 被包装类的从 Python 转换会在查询注册表之前作为特殊情况处理.</p>
+<p>嗯, 那个从 Python 转换器也许应当按类转换器的方式处理, 不注册任何显式转换.</p>
+</blockquote>
+</blockquote>
+<ol class="arabic" start="2">
+<li><p class="first">你能简要概述一下注册表中存在的数据结构吗</p>
+<blockquote>
+<p>注册表很简单: 它只是从 typeid 到 registration 的映射 (见 boost/python/converter/registrations.hpp). <tt class="literal"><span class="pre">lvalue_chain</span></tt> 和 <tt class="literal"><span class="pre">rvalue_chain</span></tt> 是简单的内生链表.</p>
+<p>如果你想了解更多, 尽管问.</p>
+<p>如果你想知道转型图, 请在单独的消息中问我一些具体问题.</p>
+</blockquote>
+<p>以及一个类型从 C++ 到 Python 再回来时所经历过程的概述.</p>
+</li>
+</ol>
+<blockquote>
+<p>大题目. 我建议读一些背景材料: 在 LLNL 进度报告及其链接的消息中查找相关信息. 另外,</p>
+<blockquote>
+<p><a class="reference" href="http://mail.python.org/pipermail/c++-sig/2002-May/001023.html">http://mail.python.org/pipermail/c++-sig/2002-May/001023.html</a></p>
+<p><a class="reference" href="http://mail.python.org/pipermail/c++-sig/2002-December/003115.html">http://mail.python.org/pipermail/c++-sig/2002-December/003115.html</a></p>
+<p><a class="reference" href="http://aspn.activestate.com/ASPN/Mail/Message/1280898">http://aspn.activestate.com/ASPN/Mail/Message/1280898</a></p>
+<p><a class="reference" href="http://mail.python.org/pipermail/c++-sig/2002-July/001755.html">http://mail.python.org/pipermail/c++-sig/2002-July/001755.html</a></p>
+</blockquote>
+<p>从 C++ 到 Python:</p>
+<blockquote>
+<p>这取决于类型以及所用的调用策略, 或者对 <tt class="literal"><span class="pre">call&lt;&gt;(...)</span></tt>、<tt class="literal"><span class="pre">call_method&lt;&gt;(...)</span></tt> 或 <tt class="literal"><span class="pre">object(...)</span></tt> 而言, 取决于是否使用了 <tt class="literal"><span class="pre">ref</span></tt> 或 <tt class="literal"><span class="pre">ptr</span></tt>. 到 Python 转换还有两个基本类别: "返回值" 转换 (用于 Python-&gt;C++ 调用) 和 "参数" 转换 (用于 C++-&gt;Python 调用和显式 <tt class="literal"><span class="pre">object()</span></tt> 转换). 这两个类别的行为在多个方面有微妙差别, 细节我一时想不起来. 你或许能在上面的参考文献中找到答案, 在代码中肯定能找到.</p>
+<p>"默认" 情形是按值 (复制) 转换, 它使用 to_python_value 作为到 Python 转换器.</p>
+<blockquote>
+<p>既然合理地讲任何类型到 Python 只能有一种转换方式 (暂时不考虑作用域化注册表的想法), 到 Python 转换可以通过特化模板来处理就在情理之中. 如果该类型是内建转换 (builtin_converters.hpp) 所处理的类型之一, 就会使用 to_python_value 的相应模板特化.</p>
+<p>否则, to_python_value 使用该 C++ 类型注册项中的 <tt class="literal"><span class="pre">m_to_python</span></tt> 函数.</p>
+</blockquote>
+<p>其他转换, 如按引用转换, 仅对被包装类可用, 并且通过使用 <tt class="literal"><span class="pre">ref(...)</span></tt>、<tt class="literal"><span class="pre">ptr(...)</span></tt> 或为调用指定不同的 CallPolicies 来显式请求, 后者可能导致使用不同的到 Python 转换器. 这些转换从不在任何地方注册, 但它们确实需要使用注册项来查找被引用 C++ 类型对应的 Python 类. 它们只是构建一个新的 Python 实例, 并把适当的 Holder 实例塞进去.</p>
+</blockquote>
+<p>从 Python 到 C++:</p>
+<blockquote>
+<p>我再次认为 "返回值" 转换与 "参数" 转换之间有区别, 而我忘了区别究竟是什么.</p>
+<p>发生什么取决于是否需要左值转换 (见 <a class="reference" href="http://mail.python.org/pipermail/c++-sig/2002-May/001023.html">http://mail.python.org/pipermail/c++-sig/2002-May/001023.html</a>). 所有左值转换也注册在类型的右值转换链中, 因为当右值可以奏效时, 左值肯定也足够好.</p>
+<p>左值转换可以一步完成 (只要给我指向对象的指针——如果无法转换, 它可以是 <tt class="literal"><span class="pre">NULL</span></tt>), 而右值转换需要两步, 以支持被包装函数重载和给定 C++ 目标类型的多个转换器: 第一步告诉我转换是否可能, 然后第二步构造转换后的对象.</p>
+</blockquote>
+</blockquote>
+</div>
+</div>
+<hr class="footer"/>
+<div class="footer">
+<a class="reference" href="internals.rst">查看文档源码</a>. 生成时间: 2003-09-12 14:51 UTC. 由 <a class="reference" href="http://docutils.sourceforge.net/">Docutils</a> 从 <a class="reference" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> 源生成.</div>
+</body>
+</html>

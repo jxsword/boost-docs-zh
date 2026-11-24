@@ -1,0 +1,55 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>如何在库中使用 Boost.Log?</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Boost.Log v2">
+<link rel="up" href="../rationale.html" title="设计理由与常见问题 (FAQ)">
+<link rel="prev" href="msvc_link_fails_lnk1123.html" title="为什么 MSVC 2010 链接该库时报错 LNK1123: failure during conversion to COFF: file invalid or corrupt?">
+<link rel="next" href="../reference.html" title="参考">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr><td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td></tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="msvc_link_fails_lnk1123.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../rationale.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="../reference.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="log.rationale.how_to_use_in_libraries"></a><a class="link" href="how_to_use_in_libraries.html" title="如何在库中使用 Boost.Log?">如何在库中使用 Boost.Log?</a>
+</h3></div></div></div>
+<p>在库中使用 Boost.Log 时, 有几条建议需要遵循. 首先, 如 <a class="link" href="../installation/config.html" title="库的配置与构建">库配置</a> 一节所述, 在多个模块 (包括库和应用程序本身) 中使用该库要求将 Boost.Log 构建为共享库. 这是因为 Boost.Log 维护了若干进程级单例, 如果这些单例被复制, 库可能无法正确工作. 如果不希望将 Boost.Log 构建为共享库, 可以将它封装到用户的单个共享库中, 并让其余模块与该库链接. 在这种情况下, Boost.Log 可以构建为共享库并链接到用户的共享库中. 该共享库的 API 和其他模块不得使用 Boost.Log 组件, 包括:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">日志核心</li>
+<li class="listitem">接收器</li>
+<li class="listitem">日志器</li>
+<li class="listitem">属性, 包括命名作用域标记</li>
+<li class="listitem">库配置辅助工具, 包括过滤器、格式化器和设置解析器</li>
+</ul></div>
+<p>不过, 用户的共享库可以提供自己的 API 来实现类似功能, 并在内部使用相关的 Boost.Log 设施.</p>
+<p>其次, 必须确保日志配置在所有模块之间协调一致. 例如, 如果需要文件日志, 无论有多少个库在使用日志, 都只能添加一个文件接收器. 实现这一点的首选方式是只在主应用程序中进行日志配置, 原因如下:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">日志配置应在应用程序实现的 <code class="computeroutput"><span class="identifier">main</span></code> 函数中尽早执行. 在库中使用全局构造函数可能有问题, 因为全局初始化顺序未定义, 且库可能被动态加载和卸载.</li>
+<li class="listitem">库通常是"服务于"主应用程序的需求的, 从概念上讲, 应由应用程序决定库如何暴露其诊断信息 (如日志). 一个应用程序可能希望将日志输出到控制台, 另一个可能希望存储到文件, 第三个可能希望完全抑制任何日志. 表现良好的库应透明地支持任何此类用例, 而 Boost.Log 正好可以做到这一点.</li>
+</ul></div>
+<p>需要指出, 由应用程序配置日志意味着应用程序是用 C++ 编写且可以使用 Boost.Log 的. 如果并非如此, 库仍应为这种设计留出余地, 并提供代表应用程序配置日志的 API. 或者, 可以使用一个专门用 C++ 编写的库, 仅用于配置日志. 这样, 日志安装决策仍然由应用程序通过库 API 间接做出.</p>
+<p>为实现这种设计, 以下是给库编写者的建议:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">库应避免添加或配置接收器、过滤器或格式化器, 包括使用库配置辅助工具. 例外是前文所述代表应用程序配置日志的 API, 但这种配置不应默认执行.</li>
+<li class="listitem">库应谨慎地在日志核心中添加或移除全局属性和线程专属属性 —— 任何此类操作都必须清楚地在文档中说明.</li>
+<li class="listitem">库可以自由创建日志器、修改其属性并发出日志记录.</li>
+<li class="listitem">库可以使用命名作用域标记, 即使它们自己不注册 <a class="link" href="../detailed/attributes.html#log.detailed.attributes.named_scope" title="命名作用域"><code class="computeroutput"><span class="identifier">named_scope</span></code></a> 属性. 应用程序可以添加并配置该属性, 从而在输出中启用此信息.</li>
+<li class="listitem">库应记录它所使用的属性, 包括名称和值类型, 以便应用程序能相应地配置过滤器和格式化器. 这包括消息文本属性 —— 特别是, 重要的是知道属性值的类型 (例如 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span></code> 还是 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">wstring</span></code>) 及其使用的字符编码. 如果可能, 请在公共头文件中为库使用的所有属性声明 <a class="link" href="../detailed/expressions.html#log.detailed.expressions.attr_keywords" title="定义属性关键字">属性关键字</a>.</li>
+<li class="listitem">建议库用一个属性标记它们发出的所有日志记录. 例如, 所有日志记录都可以在特定的 <a class="link" href="../detailed/sources.html#log.detailed.sources.channel_logger" title="支持通道的日志器">通道</a> 中产生. 这样, 应用程序就能够专门为该库配置日志 (例如, 将库的日志记录提取到单独的文件, 或应用不同的严重级别阈值).</li>
+</ul></div>
+</div>
+<div class="copyright-footer">版权所有 © 2007-2024 Andrey Semashev<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>) .</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="msvc_link_fails_lnk1123.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../rationale.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="../reference.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

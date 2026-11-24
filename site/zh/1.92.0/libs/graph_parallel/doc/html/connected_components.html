@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.6: http://docutils.sourceforge.net/" />
+<title>Parallel BGL 连通分量</title>
+<link rel="stylesheet" href="../../../../rst.css" type="text/css" />
+</head>
+<body>
+<div class="document" id="logo-connected-components">
+<h1 class="title"><a class="reference external" href="http://www.osl.iu.edu/research/pbgl"><img align="middle" alt="Parallel BGL" class="align-middle" src="pbgl-logo.png" /></a> 连通分量</h1>
+
+<!-- Copyright (C) 2004-2008 The Trustees of Indiana University.
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt) -->
+<pre class="literal-block">
+namespace graph {
+  // Default constructed ParentMap
+  template&lt;typename Graph, typename ComponentMap, typename ParentMap&gt;
+  typename property_traits&lt;ComponentMap&gt;::value_type
+  connected_components( const Graph&amp; g, ComponentMap c);
+
+  // User supplied ParentMap
+  template&lt;typename Graph, typename ComponentMap, typename ParentMap&gt;
+  typename property_traits&lt;ComponentMap&gt;::value_type
+  connected_components( const Graph&amp; g, ComponentMap c, ParentMap p);
+}
+</pre>
+<p> <tt class="docutils literal"><span class="pre">connected_components()</span></tt> 函数计算无向图的连通分量. 分布式连通分量算法使用连通分量算法的顺序版本计算本地子图的连通分量, 然后执行算法的并行阶段. 连通分量算法的并行部分大致基于 Goddard、Kumar 与 Prins 的工作. 其接口是 BGL <a class="reference external" href="http://www.boost.org/libs/graph/doc/connected_components.html">顺序连通分量</a> 算法接口的超集.</p>
+<p>在执行算法的顺序阶段之前, 每个进程标识其本地分量的根. 然后在每个分量的根顶点处构造一个由所有与该分量成员相邻的顶点组成的邻接表.</p>
+<p>分布式连通分量算法的并行阶段由一系列超步组成. 在每个超步中, 每个根都尝试通过把其父指针赋给邻接表中的某个成员来挂接 (hook) 到该成员. 挂接仅限于在逻辑上小于当前顶点的顶点, 以防止形成环. 挂接成功的顶点从根列表中移除, 并放入另一个已完成顶点的列表. 随后所有已完成顶点执行指针跳转 (pointer jumping) 步骤, 直到每个已完成顶点的父指针都指向某个分量的根. 通过加入 Johnson 与 Metaxas 提出的环归约 (Cycle Reduction, CR) 规则, 该指针跳转步骤还可以进一步优化, 不过目前的性能评估表明这对算法整体性能的影响可以忽略. 这些 CR 规则把指针跳转步骤的次数从 <em>O(n)</em> 降到 <em>O(log n)</em>. 在该指针跳转步骤之后, 本阶段中已挂接的根会把其邻接表传送给新的父顶点. 剩余的根接收这些边, 并对其邻接表执行剪枝步骤, 以移除现在已成为其分量成员的顶点. 当没有任何根成功挂接时, 算法的并行阶段即告完成. 并行阶段完成后, 对所有顶点执行最后一次指针跳转步骤, 把初始本地子图分量的叶顶点的父指针赋为其最终父顶点 (此时已确定).</p>
+<p>分布式连通分量算法最大的性能瓶颈是糟糕的顶点分布对算法的影响. 对于只有一个大分量的稀疏图, 许多根可能挂接到同一分量, 导致拥有该分量的进程出现严重的负载不均衡. 已经实现了多种修改挂接策略以避免这种行为的方法, 但迄今为止尚无一成功.</p>
+<div class="contents topic" id="contents">
+<p class="topic-title first">目录</p>
+<ul class="simple">
+<li><a class="reference internal" href="#where-defined" id="id1">定义位置</a></li>
+<li><a class="reference internal" href="#parameters" id="id2">参数</a></li>
+<li><a class="reference internal" href="#complexity" id="id3">复杂度</a></li>
+<li><a class="reference internal" href="#performance" id="id4">性能</a></li>
+</ul>
+</div>
+<div class="section" id="where-defined">
+<h1><a class="toc-backref" href="#id1">定义位置</a></h1>
+<p>&lt;<tt class="docutils literal"><span class="pre">boost/graph/connected_components.hpp</span></tt>&gt;</p>
+</div>
+<div class="section" id="parameters">
+<h1><a class="toc-backref" href="#id2">参数</a></h1>
+<dl class="docutils">
+<dt>IN:  <tt class="docutils literal"><span class="pre">Graph&amp;</span> <span class="pre">g</span></tt></dt>
+<dd>图类型必须是 <a class="reference external" href="DistributedGraph.html">分布图</a> 的模型.</dd>
+<dt>OUT:  <tt class="docutils literal"><span class="pre">ComponentMap</span> <span class="pre">c</span></tt></dt>
+<dd>该算法计算图中有多少个连通分量, 并为每个分量分配一个整数标签. 然后通过在分量属性映射中记录分量编号, 记录图中每个顶点属于哪个分量. <tt class="docutils literal"><span class="pre">ComponentMap</span></tt> 类型必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a>. 其值类型必须是图的 <tt class="docutils literal"><span class="pre">vertices_size_type</span></tt>, 键类型必须是图的顶点描述符类型. 如果不希望计算分量编号, 可传入 <tt class="docutils literal"><span class="pre">dummy_property_map</span></tt> 作为分量映射, 此时父信息将通过父映射提供.</dd>
+<dt>UTIL:  <tt class="docutils literal"><span class="pre">ParentMap</span> <span class="pre">p</span></tt></dt>
+<dd>可向算法提供一个父映射; 若未提供, 父映射将被自动构造. <tt class="docutils literal"><span class="pre">ParentMap</span></tt> 类型必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a>. 其值类型与键类型必须是图的顶点描述符类型.</dd>
+<dt>OUT:  <tt class="docutils literal"><span class="pre">property_traits&lt;ComponentMap&gt;::value_type</span></tt></dt>
+<dd>找到的分量数量将作为分量映射的值类型返回.</dd>
+</dl>
+</div>
+<div class="section" id="complexity">
+<h1><a class="toc-backref" href="#id3">复杂度</a></h1>
+<p>算法的本地阶段为 <em>O(V + E)</em>. 算法的并行阶段最多需要 <em>O(d)</em> 个超步, 其中 <em>d</em> 是初始根的数量. <em>d</em> 至多为 <em>O(V)</em>, 但随着 <em>E</em> 的增加会显著变小. 每个超步内的指针跳转阶段在每个已完成的根上最多需要 <em>O(c)</em> 步, 其中 <em>c</em> 是最长环的长度. 应用 CR 规则可将其降至 <em>O(log c)</em>.</p>
+</div>
+<div class="section" id="performance">
+<h1><a class="toc-backref" href="#id4">性能</a></h1>
+<p>以下图表展示了 Parallel BGL 连通分量算法的性能. 它在非常稀疏和非常稠密的图上表现良好. 然而, 对于图具有中等密度且存在巨型连通分量的情形, 该算法的表现会很差. 这是该算法的一个已知问题, 并且据我们所知, 所有已实现的算法都有这种退化行为.</p>
+<img align="left" alt="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_9.png" class="align-left" src="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_9.png" />
+<img alt="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_9_speedup_1.png" src="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_9_speedup_1.png" />
+<img align="left" alt="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_9.png" class="align-left" src="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_9.png" />
+<img alt="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_9_speedup_1.png" src="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_9_speedup_1.png" />
+<hr class="docutils" />
+<p>版权所有 (C) 2004 The Trustees of Indiana University.</p>
+<p>作者: Nick Edmonds, Douglas Gregor 和 Andrew Lumsdaine</p>
+</div>
+</div>
+<div class="footer">
+<hr class="footer" /> 生成时间: 2009-05-31 00:22 UTC. 由 <a class="reference external" href="http://docutils.sourceforge.net/">Docutils</a> 依据 <a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> 源生成.</div>
+</body>
+</html>

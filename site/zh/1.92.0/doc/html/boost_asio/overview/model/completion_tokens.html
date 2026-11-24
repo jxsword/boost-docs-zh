@@ -1,0 +1,229 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>完成标记</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../../boost_asio.html" title="Boost.Asio">
+<link rel="up" href="../model.html" title="异步模型">
+<link rel="prev" href="cancellation.html" title="取消">
+<link rel="next" href="library_elements.html" title="支撑性库要素">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="cancellation.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../model.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="library_elements.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_asio.overview.model.completion_tokens"></a><a class="link" href="completion_tokens.html" title="完成标记">完成标记</a>
+</h4></div></div></div>
+<p>
+          <span class="inlinemediaobject"><img src="../../completion_token_model.png" width="436"></span>
+        </p>
+<p>Boost.Asio 异步模型的一个关键目标是支持多种组合机制. 这是通过 <span class="emphasis"><em>完成标记</em></span> 实现的: 用户把完成标记传递给异步操作的发起函数, 以定制库的 API 表面. 按照约定, 完成标记是异步操作发起函数的最后一个参数.</p>
+<p>例如, 如果用户传递一个 lambda (或其他函数对象) 作为完成标记, 异步操作的行为如前所述: 操作开始, 当操作完成时结果被传递给该 lambda.</p>
+<pre class="programlisting"><span class="identifier">socket</span><span class="special">.</span><span class="identifier">async_read_some</span><span class="special">(</span><span class="identifier">buffer</span><span class="special">,</span>
+    <span class="special">[](</span><span class="identifier">error_code</span> <span class="identifier">e</span><span class="special">,</span> <span class="identifier">size_t</span><span class="special">)</span>
+    <span class="special">{</span>
+      <span class="comment">// ...</span>
+    <span class="special">}</span>
+  <span class="special">);</span>
+</pre>
+<p>当用户传递 <a class="link" href="../../reference/use_future.html" title="use_future">use_future</a> 完成标记时, 操作表现得如同以 <code class="computeroutput"><span class="identifier">promise</span></code> 和 <code class="computeroutput"><span class="identifier">future</span></code> 对来实现. 发起函数不仅启动操作, 还返回一个可用于等待结果的 future.</p>
+<pre class="programlisting"><span class="identifier">future</span><span class="special">&lt;</span><span class="identifier">size_t</span><span class="special">&gt;</span> <span class="identifier">f</span> <span class="special">=</span>
+  <span class="identifier">socket</span><span class="special">.</span><span class="identifier">async_read_some</span><span class="special">(</span>
+      <span class="identifier">buffer</span><span class="special">,</span> <span class="identifier">use_future</span>
+    <span class="special">);</span>
+<span class="comment">// ...</span>
+<span class="identifier">size_t</span> <span class="identifier">n</span> <span class="special">=</span> <span class="identifier">f</span><span class="special">.</span><span class="identifier">get</span><span class="special">();</span>
+</pre>
+<p>类似地, 当用户传递 <a class="link" href="../../reference/use_awaitable.html" title="use_awaitable">use_awaitable</a> 完成标记时, 发起函数表现得如同一个基于 <code class="computeroutput"><span class="identifier">awaitable</span></code> 的协程 <a href="#ftn.boost_asio.overview.model.completion_tokens.f0" class="footnote" name="boost_asio.overview.model.completion_tokens.f0"><sup class="footnote">[6]</sup></a>. 然而在这种情况下, 发起函数并不直接启动异步操作. 它只返回 <code class="computeroutput"><span class="identifier">awaitable</span></code>, 后者在被 co_await 时才启动操作.</p>
+<pre class="programlisting"><span class="identifier">awaitable</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span> <span class="identifier">foo</span><span class="special">()</span>
+<span class="special">{</span>
+  <span class="identifier">size_t</span> <span class="identifier">n</span> <span class="special">=</span>
+    <span class="identifier">co_await</span> <span class="identifier">socket</span><span class="special">.</span><span class="identifier">async_read_some</span><span class="special">(</span>
+        <span class="identifier">buffer</span><span class="special">,</span> <span class="identifier">use_awaitable</span>
+      <span class="special">);</span>
+
+  <span class="comment">// ...</span>
+<span class="special">}</span>
+</pre>
+<p>最后, <a class="link" href="../../reference/yield_context.html" title="yield_context">yield_context</a> 完成标记使发起函数在有栈协程的上下文中表现为同步操作. 它不仅启动异步操作, 还会阻塞该有栈协程直至操作完成. 从有栈协程的角度看, 它就是同步操作.</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">foo</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">yield_context</span> <span class="identifier">yield</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="identifier">size_t</span> <span class="identifier">n</span> <span class="special">=</span> <span class="identifier">socket</span><span class="special">.</span><span class="identifier">async_read_some</span><span class="special">(</span><span class="identifier">buffer</span><span class="special">,</span> <span class="identifier">yield</span><span class="special">);</span>
+
+  <span class="comment">// ...</span>
+<span class="special">}</span>
+</pre>
+<p>所有这些用法都由 <code class="computeroutput"><span class="identifier">async_read_some</span></code> 发起函数的单一实现所支持.</p>
+<p>为做到这一点, 异步操作必须先指定一个 <span class="emphasis"><em>完成签名</em></span> (或可能的多个签名) , 描述将传递给其完成处理器的参数.</p>
+<p>然后, 操作的发起函数取得完成签名、完成标记及其内部实现, 并把它们传给 <span class="emphasis"><em>async_result</em></span> 特征. <code class="computeroutput"><span class="identifier">async_result</span></code> 特征是一个定制点, 它把这些内容组合起来, 先产生一个具体的完成处理器, 然后启动操作.</p>
+<p>
+          <span class="inlinemediaobject"><img src="../../completion_token_transform.png" width="856"></span>
+        </p>
+<p>为了在实践中看到这一点, 让我们用一个分离的线程把同步操作适配成异步操作: <a href="#ftn.boost_asio.overview.model.completion_tokens.f1" class="footnote" name="boost_asio.overview.model.completion_tokens.f1"><sup class="footnote">[7]</sup></a>
+        </p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span>
+    <span class="identifier">completion_token_for</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">(</span><span class="identifier">error_code</span><span class="special">,</span> <span class="identifier">size_t</span><span class="special">)&gt;</span> <a class="co" name="boost_asio.overview.model.completion_tokens.c0" href="completion_tokens.html#boost_asio.overview.model.completion_tokens.c1"><img src="../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a>
+      <span class="identifier">CompletionToken</span><span class="special">&gt;</span>
+<span class="keyword">auto</span> <span class="identifier">async_read_some</span><span class="special">(</span>
+    <span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span><span class="special">&amp;</span> <span class="identifier">s</span><span class="special">,</span>
+    <span class="keyword">const</span> <span class="identifier">mutable_buffer</span><span class="special">&amp;</span> <span class="identifier">b</span><span class="special">,</span>
+    <span class="identifier">CompletionToken</span><span class="special">&amp;&amp;</span> <span class="identifier">token</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="keyword">auto</span> <span class="identifier">init</span> <span class="special">=</span> <span class="special">[](</span> <a class="co" name="boost_asio.overview.model.completion_tokens.c2" href="completion_tokens.html#boost_asio.overview.model.completion_tokens.c3"><img src="../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a>
+      <span class="keyword">auto</span> <span class="identifier">completion_handler</span><span class="special">,</span>
+      <span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span><span class="special">*</span> <span class="identifier">s</span><span class="special">,</span>
+      <span class="keyword">const</span> <span class="identifier">mutable_buffer</span><span class="special">&amp;</span> <span class="identifier">b</span><span class="special">)</span>
+  <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">thread</span><span class="special">(</span> <a class="co" name="boost_asio.overview.model.completion_tokens.c4" href="completion_tokens.html#boost_asio.overview.model.completion_tokens.c5"><img src="../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a>
+        <span class="special">[](</span>
+            <span class="keyword">auto</span> <span class="identifier">completion_handler</span><span class="special">,</span>
+            <span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span><span class="special">*</span> <span class="identifier">s</span><span class="special">,</span>
+            <span class="keyword">const</span> <span class="identifier">mutable_buffer</span><span class="special">&amp;</span> <span class="identifier">b</span>
+          <span class="special">)</span>
+        <span class="special">{</span>
+          <span class="identifier">error_code</span> <span class="identifier">ec</span><span class="special">;</span>
+          <span class="identifier">size_t</span> <span class="identifier">n</span> <span class="special">=</span> <span class="identifier">s</span><span class="special">-&gt;</span><span class="identifier">read_some</span><span class="special">(</span><span class="identifier">b</span><span class="special">,</span> <span class="identifier">ec</span><span class="special">);</span>
+          <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">completion_handler</span><span class="special">)(</span><span class="identifier">ec</span><span class="special">,</span> <span class="identifier">n</span><span class="special">);</span> <a class="co" name="boost_asio.overview.model.completion_tokens.c6" href="completion_tokens.html#boost_asio.overview.model.completion_tokens.c7"><img src="../../../../../doc/src/images/callouts/4.png" alt="4" border="0"></a>
+        <span class="special">},</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">completion_handler</span><span class="special">),</span>
+        <span class="identifier">s</span><span class="special">,</span>
+        <span class="identifier">b</span>
+      <span class="special">).</span><span class="identifier">detach</span><span class="special">();</span>
+  <span class="special">};</span>
+
+  <span class="keyword">return</span> <span class="identifier">async_result</span><span class="special">&lt;</span> <a class="co" name="boost_asio.overview.model.completion_tokens.c8" href="completion_tokens.html#boost_asio.overview.model.completion_tokens.c9"><img src="../../../../../doc/src/images/callouts/5.png" alt="5" border="0"></a>
+      <span class="identifier">decay_t</span><span class="special">&lt;</span><span class="identifier">CompletionToken</span><span class="special">&gt;,</span>
+      <span class="keyword">void</span><span class="special">(</span><span class="identifier">error_code</span><span class="special">,</span> <span class="identifier">size_t</span><span class="special">)</span>
+    <span class="special">&gt;::</span><span class="identifier">initiate</span><span class="special">(</span>
+        <span class="identifier">init</span><span class="special">,</span> <a class="co" name="boost_asio.overview.model.completion_tokens.c10" href="completion_tokens.html#boost_asio.overview.model.completion_tokens.c11"><img src="../../../../../doc/src/images/callouts/6.png" alt="6" border="0"></a>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">forward</span><span class="special">&lt;</span><span class="identifier">CompletionToken</span><span class="special">&gt;(</span><span class="identifier">token</span><span class="special">),</span> <a class="co" name="boost_asio.overview.model.completion_tokens.c12" href="completion_tokens.html#boost_asio.overview.model.completion_tokens.c13"><img src="../../../../../doc/src/images/callouts/7.png" alt="7" border="0"></a>
+        <span class="special">&amp;</span><span class="identifier">s</span><span class="special">,</span> <a class="co" name="boost_asio.overview.model.completion_tokens.c14" href="completion_tokens.html#boost_asio.overview.model.completion_tokens.c15"><img src="../../../../../doc/src/images/callouts/8.png" alt="8" border="0"></a>
+        <span class="identifier">b</span>
+      <span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<div class="calloutlist"><table border="0" summary="Callout list">
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="boost_asio.overview.model.completion_tokens.c1"></a><a href="#boost_asio.overview.model.completion_tokens.c0"><img src="../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a> </p></td>
+<td valign="top" align="left"><p> <code class="computeroutput"><span class="identifier">completion_token_for</span></code> concept 检查用户提供的完成标记是否将满足指定的完成签名. 对于较旧版本的 C++, 这里只需改用 <code class="computeroutput"><span class="keyword">typename</span></code>.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="boost_asio.overview.model.completion_tokens.c3"></a><a href="#boost_asio.overview.model.completion_tokens.c2"><img src="../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a> </p></td>
+<td valign="top" align="left"><p>定义一个函数对象, 其中包含启动异步操作的代码. 它接收具体的完成处理器, 随后是通过 <code class="computeroutput"><span class="identifier">async_result</span></code> 特征传入的任何附加参数.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="boost_asio.overview.model.completion_tokens.c5"></a><a href="#boost_asio.overview.model.completion_tokens.c4"><img src="../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a> </p></td>
+<td valign="top" align="left"><p>函数对象的函数体派生一个新线程来执行该操作.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="boost_asio.overview.model.completion_tokens.c7"></a><a href="#boost_asio.overview.model.completion_tokens.c6"><img src="../../../../../doc/src/images/callouts/4.png" alt="4" border="0"></a> </p></td>
+<td valign="top" align="left"><p>一旦操作完成, 完成处理器会收到结果.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="boost_asio.overview.model.completion_tokens.c9"></a><a href="#boost_asio.overview.model.completion_tokens.c8"><img src="../../../../../doc/src/images/callouts/5.png" alt="5" border="0"></a> </p></td>
+<td valign="top" align="left"><p> <code class="computeroutput"><span class="identifier">async_result</span></code> 特征被传入 (衰减后的) 完成标记类型, 以及异步操作的完成签名.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="boost_asio.overview.model.completion_tokens.c11"></a><a href="#boost_asio.overview.model.completion_tokens.c10"><img src="../../../../../doc/src/images/callouts/6.png" alt="6" border="0"></a> </p></td>
+<td valign="top" align="left"><p>调用该特征的 <code class="computeroutput"><span class="identifier">initiate</span></code> 成员函数, 首先传入启动操作的函数对象.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="boost_asio.overview.model.completion_tokens.c13"></a><a href="#boost_asio.overview.model.completion_tokens.c12"><img src="../../../../../doc/src/images/callouts/7.png" alt="7" border="0"></a> </p></td>
+<td valign="top" align="left"><p>接下来是转发的完成标记. 特征实现会把它转换成具体的完成处理器.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="boost_asio.overview.model.completion_tokens.c15"></a><a href="#boost_asio.overview.model.completion_tokens.c14"><img src="../../../../../doc/src/images/callouts/8.png" alt="8" border="0"></a> </p></td>
+<td valign="top" align="left"><p>最后, 传入函数对象的任何附加参数. 假定这些参数可能被特征实现衰减拷贝并移动.</p></td>
+</tr>
+</table></div>
+<p>在实践中, 我们应当调用 <a class="link" href="../../reference/async_initiate.html" title="async_initiate">async_initiate</a> 辅助函数, 而不是直接使用 <code class="computeroutput"><span class="identifier">async_result</span></code> 特征. <code class="computeroutput"><span class="identifier">async_initiate</span></code> 函数会自动完成对完成标记的必要衰减和转发, 同时提供对旧式完成标记实现的向后兼容.</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span>
+    <span class="identifier">completion_token_for</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">(</span><span class="identifier">error_code</span><span class="special">,</span> <span class="identifier">size_t</span><span class="special">)&gt;</span>
+      <span class="identifier">CompletionToken</span><span class="special">&gt;</span>
+<span class="keyword">auto</span> <span class="identifier">async_read_some</span><span class="special">(</span>
+    <span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span><span class="special">&amp;</span> <span class="identifier">s</span><span class="special">,</span>
+    <span class="keyword">const</span> <span class="identifier">mutable_buffer</span><span class="special">&amp;</span> <span class="identifier">b</span><span class="special">,</span>
+    <span class="identifier">CompletionToken</span><span class="special">&amp;&amp;</span> <span class="identifier">token</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="keyword">auto</span> <span class="identifier">init</span> <span class="special">=</span> <span class="comment">/* ... as above ... */</span><span class="special">;</span>
+
+  <span class="keyword">return</span> <span class="identifier">async_initiate</span><span class="special">&lt;</span>
+      <span class="identifier">CompletionToken</span><span class="special">,</span>
+      <span class="keyword">void</span><span class="special">(</span><span class="identifier">error_code</span><span class="special">,</span> <span class="identifier">size_t</span><span class="special">)</span>
+    <span class="special">&gt;(</span><span class="identifier">init</span><span class="special">,</span> <span class="identifier">token</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">s</span><span class="special">,</span> <span class="identifier">b</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>我们可以把完成标记看作一种原型完成处理器. 当我们传递一个函数对象 (如 lambda) 作为完成标记时, 它已经满足完成处理器要求. async_result 主模板通过简单地透传参数来处理这种情况:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">CompletionToken</span><span class="special">,</span> <span class="identifier">completion_signature</span><span class="special">...</span> <span class="identifier">Signatures</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">async_result</span>
+<span class="special">{</span>
+  <span class="keyword">template</span> <span class="special">&lt;</span>
+      <span class="keyword">class</span> <span class="identifier">Initiation</span><span class="special">,</span>
+      <span class="identifier">completion_handler_for</span><span class="special">&lt;</span><span class="identifier">Signatures</span><span class="special">...&gt;</span> <span class="identifier">CompletionHandler</span><span class="special">,</span>
+      <span class="keyword">class</span><span class="special">...</span> <span class="identifier">Args</span><span class="special">&gt;</span>
+  <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">initiate</span><span class="special">(</span>
+      <span class="identifier">Initiation</span><span class="special">&amp;&amp;</span> <span class="identifier">initiation</span><span class="special">,</span>
+      <span class="identifier">CompletionHandler</span><span class="special">&amp;&amp;</span> <span class="identifier">completion_handler</span><span class="special">,</span>
+      <span class="identifier">Args</span><span class="special">&amp;&amp;...</span> <span class="identifier">args</span><span class="special">)</span>
+  <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">forward</span><span class="special">&lt;</span><span class="identifier">Initiation</span><span class="special">&gt;(</span><span class="identifier">initiation</span><span class="special">)(</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">forward</span><span class="special">&lt;</span><span class="identifier">CompletionHandler</span><span class="special">&gt;(</span><span class="identifier">completion_handler</span><span class="special">),</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">forward</span><span class="special">&lt;</span><span class="identifier">Args</span><span class="special">&gt;(</span><span class="identifier">args</span><span class="special">)...);</span>
+  <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>我们可以看到, 这个默认实现避免了所有参数的拷贝, 从而确保急切发起尽可能高效.</p>
+<p>另一方面, 懒惰的完成标记 (例如上文中的 <code class="computeroutput"><span class="identifier">use_awaitable</span></code>) 可以捕获这些参数, 以便延迟启动操作. 例如, 针对平凡的 <a class="link" href="../../reference/deferred.html" title="deferred">deferred</a> 标记 (它只是把操作打包以备后用) 的一个特化可能看起来像这样:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="identifier">completion_signature</span><span class="special">...</span> <span class="identifier">Signatures</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">async_result</span><span class="special">&lt;</span><span class="identifier">deferred_t</span><span class="special">,</span> <span class="identifier">Signatures</span><span class="special">...&gt;</span>
+<span class="special">{</span>
+  <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Initiation</span><span class="special">,</span> <span class="keyword">class</span><span class="special">...</span> <span class="identifier">Args</span><span class="special">&gt;</span>
+  <span class="keyword">static</span> <span class="keyword">auto</span> <span class="identifier">initiate</span><span class="special">(</span><span class="identifier">Initiation</span> <span class="identifier">initiation</span><span class="special">,</span> <span class="identifier">deferred_t</span><span class="special">,</span> <span class="identifier">Args</span><span class="special">...</span> <span class="identifier">args</span><span class="special">)</span>
+  <span class="special">{</span>
+    <span class="keyword">return</span> <span class="special">[</span>
+        <span class="identifier">initiation</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">initiation</span><span class="special">),</span>
+        <span class="identifier">arg_pack</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">make_tuple</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">args</span><span class="special">)...)</span>
+      <span class="special">](</span><span class="keyword">auto</span><span class="special">&amp;&amp;</span> <span class="identifier">token</span><span class="special">)</span> <span class="keyword">mutable</span>
+    <span class="special">{</span>
+      <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">apply</span><span class="special">(</span>
+          <span class="special">[&amp;](</span><span class="keyword">auto</span><span class="special">&amp;&amp;...</span> <span class="identifier">args</span><span class="special">)</span>
+          <span class="special">{</span>
+            <span class="keyword">return</span> <span class="identifier">async_result</span><span class="special">&lt;</span><span class="identifier">decay_t</span><span class="special">&lt;</span><span class="keyword">decltype</span><span class="special">(</span><span class="identifier">token</span><span class="special">)&gt;,</span> <span class="identifier">Signatures</span><span class="special">...&gt;::</span><span class="identifier">initiate</span><span class="special">(</span>
+                <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">initiation</span><span class="special">),</span>
+                <span class="identifier">std</span><span class="special">::</span><span class="identifier">forward</span><span class="special">&lt;</span><span class="keyword">decltype</span><span class="special">(</span><span class="identifier">token</span><span class="special">)&gt;(</span><span class="identifier">token</span><span class="special">),</span>
+                <span class="identifier">std</span><span class="special">::</span><span class="identifier">forward</span><span class="special">&lt;</span><span class="keyword">decltype</span><span class="special">(</span><span class="identifier">args</span><span class="special">)&gt;(</span><span class="identifier">args</span><span class="special">)...</span>
+              <span class="special">);</span>
+          <span class="special">},</span>
+          <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">arg_pack</span><span class="special">)</span>
+        <span class="special">);</span>
+    <span class="special">};</span>
+  <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<div class="footnotes">
+<br><hr style="width:100; text-align:left;margin-left: 0">
+<div id="ftn.boost_asio.overview.model.completion_tokens.f0" class="footnote"><p><a href="#boost_asio.overview.model.completion_tokens.f0" class="para"><sup class="para">[6] </sup></a> <a class="link" href="../../reference/awaitable.html" title="awaitable">awaitable</a> 类模板随 Boost.Asio 库一起提供, 作为 C++20 协程的返回类型. 这些协程可以轻易地以其他基于 <code class="computeroutput"><span class="identifier">awaitable</span></code> 的协程来实现.</p></div>
+<div id="ftn.boost_asio.overview.model.completion_tokens.f1" class="footnote"><p><a href="#boost_asio.overview.model.completion_tokens.f1" class="para"><sup class="para">[7] </sup></a> 仅为说明之用. 不建议在真实场景中使用!</p></div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2003-2026 Christopher M. Kohlhoff<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="cancellation.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../model.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="library_elements.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

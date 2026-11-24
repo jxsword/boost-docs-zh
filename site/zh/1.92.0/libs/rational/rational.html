@@ -1,0 +1,273 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<title>有理数库</title>
+</head>
+<body>
+<h1><img src="../../boost.png" alt="boost.png (6897 字节)"
+     align="middle" width="277" height="86">有理数</h1>
+
+<h2><a name="Contents">目录</a></h2>
+
+<ol>
+    <li><a href="#Class%20rational%20synopsis">rational 类概要</a></li>
+    <li><a href="#Rationale">设计理由</a></li>
+    <li><a href="#Background">背景</a></li>
+    <li><a href="#Integer%20Type%20Requirements">整数类型要求</a></li>
+    <li><a href="#Interface">接口</a>
+    <ul>
+	<li><a href="#Utility%20functions">实用函数</a></li>
+	<li><a href="#Constructors">构造函数</a></li>
+	<li><a href="#Arithmetic%20operations">算术运算</a></li>
+	<li><a href="#Input%20and%20Output">输入与输出</a></li>
+	<li><a href="#In-place%20assignment">就地赋值</a></li>
+	<li><a href="#Conversions">转换</a></li>
+	<li><a href="#Numerator%20and%20Denominator">分子与分母</a></li>
+    </ul></li>
+    <li><a href="#Performance">性能</a></li>
+    <li><a href="#Exceptions"> 异常 </a></li>
+    <li><a href="#Internal%20representation">内部表示</a></li>
+    <li><a href="#Design%20notes">设计说明</a>
+    <ul>
+	<li><a href="#Minimal%20Implementation">最小实现</a></li>
+	<li><a href="#Limited-range%20integer%20types">有限范围整数类型</a></li>
+	<li><a href="#Conversion%20from%20floating%20point">从浮点数转换</a></li>
+	<li><a href="#Absolute%20Value">绝对值</a></li>
+    </ul></li>
+    <li><a href="#References">参考文献</a></li>
+    <li><a href="#History%20and%20Acknowledgements">历史与致谢</a></li>
+</ol>
+
+<h2><a name="Class rational synopsis">rational 类概要</a></h2>
+<pre>
+#include &lt;boost/rational.hpp&gt;
+
+namespace boost {
+
+class bad_rational;
+
+template&lt;typename I&gt; class rational {
+    typedef <em>implementation-defined</em> bool_type;
+
+public:
+    typedef I int_type;
+
+    // Constructors
+    rational();          // Zero;               constexpr since C++11
+    rational(I n);       // Equal to n/1;       constexpr since C++11
+    rational(I n, I d);  // General case (n/d); constexpr since C++14
+    template&lt;typename J&gt;
+    explicit rational(const rational&lt;J&gt; &amp;r);  // Cross-instantiation; constexpr since C++11
+
+    // Normal copy constructors and assignment operators
+
+    // Assignment from I
+    rational&amp; operator=(I n); // constexpr since C++14
+
+    // Assign in place
+    rational&amp; assign(I n, I d); // constexpr since C++14
+
+    // Representation
+    I numerator() const;   // constexpr since C++11
+    I denominator() const; // constexpr since C++11
+
+    // In addition to the following operators, all of the "obvious" derived
+    // operators are available - see <a href="../utility/operators.htm">operators.hpp</a>
+
+    // Arithmetic operators
+    rational&amp; operator+= (const rational&amp; r); // constexpr since C++14
+    rational&amp; operator-= (const rational&amp; r); // constexpr since C++14
+    rational&amp; operator*= (const rational&amp; r); // constexpr since C++14
+    rational&amp; operator/= (const rational&amp; r); // constexpr since C++14
+
+    // Arithmetic with integers
+    rational&amp; operator+= (I i); // constexpr since C++14
+    rational&amp; operator-= (I i); // constexpr since C++14
+    rational&amp; operator*= (I i); // constexpr since C++14
+    rational&amp; operator/= (I i); // constexpr since C++14
+
+    // Increment and decrement
+    const rational&amp; operator++(); // constexpr since C++14
+    const rational&amp; operator--(); // constexpr since C++14
+
+    // Operator not
+    bool operator!() const; // constexpr since C++11
+
+    // Boolean conversion
+    operator bool_type() const; // constexpr since C++11
+
+    // Comparison operators
+    bool operator&lt; (const rational&amp; r) const;  // constexpr since C++14
+    bool operator== (const rational&amp; r) const; // constexpr since C++11
+
+    // Comparison with integers
+    bool operator&lt; (I i) const;  // constexpr since C++14
+    bool operator&gt; (I i) const;  // constexpr since C++14
+    bool operator== (I i) const; // constexpr since C++11
+};
+
+// Unary operators
+template &lt;typename I&gt; rational&lt;I&gt; operator+ (const rational&lt;I&gt;&amp; r); // constexpr since C++11
+template &lt;typename I&gt; rational&lt;I&gt; operator- (const rational&lt;I&gt;&amp; r); // constexpr since C++14
+
+// Reversed order operators for - and / between (types convertible to) I and rational
+template &lt;typename I, typename II&gt; inline rational&lt;I&gt; operator- (II i, const rational&lt;I&gt;&amp; r); // constexpr since C++14
+template &lt;typename I, typename II&gt; inline rational&lt;I&gt; operator/ (II i, const rational&lt;I&gt;&amp; r); // constexpr since C++14
+
+// Absolute value
+template &lt;typename I&gt; rational&lt;I&gt; abs (const rational&lt;I&gt;&amp; r); // constexpr since C++14
+
+// Input and output
+template &lt;typename I&gt; std::istream&amp; operator&gt;&gt; (std::istream&amp; is, rational&lt;I&gt;&amp; r);
+template &lt;typename I&gt; std::ostream&amp; operator&lt;&lt; (std::ostream&amp; os, const rational&lt;I&gt;&amp; r);
+
+// Type conversion
+template &lt;typename T, typename I&gt; T rational_cast (const rational&lt;I&gt;&amp; r); // constexpr since C++11
+</pre>
+
+<h2><a name="Rationale">设计理由</a></h2> 数有多种不同的形式. 最基本的形式是自然数 (非负的 "整数")、整数与实数. 这些类型由 C++ 内建类型 <b>unsigned int</b>、<b>int</b> 与 <b>float</b> (以及各种不同大小的等价类型) 近似. <p>C++ 标准库通过提供 <b>complex</b> 类型扩展了可用数值类型的范围.<p>本库提供了又一个数值类型: <b>rational</b> (有理数).<p> <b>rational</b> 类实际上实现为一个模板, 方式与标准 <b>complex</b> 类类似.<h2><a name="Background">背景</a></h2> 有理数的数学概念是人们通常所想的分数 - 即可以表示为两个整数之比的数. 这一概念不同于实数, 实数可取的值多得多 (例如 2 的平方根, 它不能表示为分数). <p>计算机无法精确表示数学概念 - 总要做出妥协. 机器整数的取值范围有限 (通常 32 位), 机器对实数的近似精度有限. 这些妥协各有动机 - 机器整数支持精确计算但范围有限, 而机器实数范围大得多, 却牺牲了精确性.<p>有理数类提供了另一种妥协. 有理数计算是精确的, 但可用范围有限. 确切地说, 只要分子与分母 (始终以无公因子的规范化形式保存) 在底层整数类型的范围之内, 有理数就是精确的. 当值超出这些界限时, 会发生溢出, 结果未定义.<p>有理数类是一个模板, 让程序员能在一定程度上控制溢出行为. 如果有无限精度整数类型可用, 基于它的有理数将永不溢出 (资源限制除外), 并在任何情况下提供精确计算.<h2><a name="Integer Type Requirements">整数类型要求</a></h2>
+
+<p>rational 类型接受单个模板类型参数 I. 它是 rational 类型的 <em>底层整数类型</em>. C++ 实现提供的任何内建整数类型都可作为 I 的值. 用户自定义类型也可使用, 但用户应注意 rational 类的性能特征高度依赖底层整数类型的性能特征 (往往以复杂的方式 - 具体说明参见下文 <a href="#Performance">性能</a> 一节). 注: 如果 boost 库将来支持无限精度整数类型, 该类型将作为 rational 类的底层整数类型获得完整支持.</p>
+
+<p>要用作 rational 类型底层整数类型的用户自定义整数类型, 必须是以下概念的模型.</p>
+
+<ul>
+<li>Assignable
+<li>Default Constructible
+<li>Equality Comparable
+<li>LessThan Comparable
+</ul>
+
+<p>此外, I 必须是 <em>类整数</em> 类型, 即以下表达式对 I 类型的任意两个值 n 和 m 必须有效, 且具有 "预期" 语义.<ul>
+<li><code>n + m</code>
+<li><code>n - m</code>
+<li><code>n * m</code>
+<li><code>n / m</code> (必须截断; 若 <var>n</var> 与 <var>m</var> 为正则必须非负)<li><code>n % m</code> (若 <var>n</var> 与 <var>m</var> 为正则必须非负)<li>以上各表达式的赋值版本<li><code>+n</code>, <code>-n</code>
+<li><code>!n</code> (必须为 <code>true</code>, 当且仅当 <var>n</var> 为零)</ul>
+
+<p>I 必须有可用的 <em>零值</em> 与 <em>一值</em>. 应当能够分别以 <tt>I(0)</tt> 与 <tt>I(1)</tt> 生成它们. <em>注:</em> 这并不意味着 I 需要能从整数隐式转换 - 一个 <tt>explicit</tt> 构造函数即可.<p>I 为无符号类型是合法的. 此时, 派生的 rational 类也将是无符号的. 这种情况下, 当减法结果本应为负时的下溢行为不可预测.<ul>
+<li>rational_cast&lt;T&gt;(rational&lt;I&gt;) 的实现依赖于从类型 I 到类型 T 的 static_cast 能力, 以及表达式 x/y 对 T 类型的任意两个值有效.<li>输入与输出运算符依赖于类型 I 存在对应的输入与输出运算符.</ul>
+
+<p> <code>std::numeric_limits&lt;I&gt;</code> 特化必须存在 (且在需要指定 <code>boost::rational&lt;I&gt;</code> 之前必须可见). 其 <code>is_specialized</code> 静态数据成员的值必须为 <var>true</var>, 且其 <code>is_signed</code> 静态数据成员的值必须准确.<h2><a name="Interface">接口</a></h2>
+
+<h3><a name="Utility functions">实用函数</a></h3>
+
+<p>可提供两个实用函数模板, 它们应能配合 <a
+href="#Integer%20Type%20Requirements">任何可用于</a> <code>boost::rational&lt;&gt;</code> 类模板的类型工作.</p>
+
+<table summary="Common-factor utility functions">
+<tr>
+<td width=5%></td>
+<td><tt>gcd(n, m)</tt></td>
+<td width=5%></td>
+<td>n 与 m 的最大公约数</td>
+</tr>
+<tr>
+<td width=5%></td>
+<td><tt>lcm(n, m)</tt></td>
+<td width=5%></td>
+<td>n 与 m 的最小公倍数</td>
+</tr>
+</table>
+
+<p>这些函数模板现在把调用转发给 <a
+href="../integer/">Boost.Integer 库</a> 中的对应函数. 其存在与否可在编译期用 <code>BOOST_CONTROL_RATIONAL_HAS_GCD</code> 预处理器常量控制.<h3><a name="Constructors">构造函数</a></h3>
+<p>有理数可由零个、一个或两个整数实参构造; 分别表示: 默认构造为零, 由作为分子的整数转换 (隐含分母为一), 或按该顺序给出的一对分子与分母. 整数实参应为 rational 的整数类型, 或可隐式转换为该类型. (对于双实参构造函数, 所需的转换当然是各自独立求值的.) 各分量以规范化形式存储.<p>有理数也可由另一个有理数构造. 当源与目标的底层整数类型一致时, 使用自动定义的拷贝或移动构造函数. 否则, 使用转换构造函数模板. 该构造函数对分子与分母逐成员初始化. 标记为 <code>explicit</code> 的分量级转换没有问题. 当转换最终保值时, 结果已是规范化的; 但仍会执行规范化检查, 以防保值性被破坏.<p>这些意味着以下语句是有效的: <pre>
+    I n, d;
+    rational&lt;I&gt; zero;
+    rational&lt;I&gt; r1(n);
+    rational&lt;I&gt; r2(n, d);
+    rational&lt;J&gt; r3(r2);  // assuming J(n) and J(d) are well-formed
+</pre>
+
+<p>在 C++11 中, 无实参构造函数、单实参构造函数与跨版本构造函数模板均标记为 <code>constexpr</code>, 使得当初始化器 (如有) 也是常量表达式 (且底层整数类型所需的运算支持 <code>constexpr</code>) 时, 它们可用于常量表达式. 自 C++14 起, 所有构造函数均支持 <code>constexpr</code>.<p>单实参构造函数 <em>并未</em> 声明为 explicit, 因此存在从底层整数类型到 rational 类型的隐式转换. 双实参构造函数可视为 C++11 统一初始化语法下的隐式转换, 因为它同样未声明为 explicit. 跨版本构造函数模板声明为 explicit, 因此两个 rational 实例化之间的转换方向必须显式指定.<h3><a name="Arithmetic operations">算术运算</a></h3> 标准数值运算符都为 <b>rational</b> 类作了定义. 包括: <br>
+
+<pre>
+    +    +=
+    -    -=
+    *    *=
+    /    /=
+    ++   --    (both prefix and postfix)
+    ==   !=
+    &lt;    &gt;
+    &lt;=   &gt;=
+
+    Unary: + - !
+</pre>
+
+<p>自 C++14 起, 所有这些运算均已启用 <code>constexpr</code>. 在 C++11 中, 仅 <code>operator==</code>、<code>operator!=</code>、一元 <code>operator+</code> 与 <code>operator!</code> 如此.<h3><a name="Input and Output">输入与输出</a></h3> 输入与输出运算符 <tt>&lt;&lt;</tt> 和 <tt>&gt;&gt;</tt> 均已提供. 有理数的外部表示是两个整数, 以斜线 (<tt>/</tt>) 分隔. 输入时, 格式必须恰好是一个整数, 后随无空白间隔的斜线, 再后随 (同样无空白间隔) 第二个整数. 整数的外部表示由底层整数类型定义. <h3><a name="In-place assignment">就地赋值</a></h3> 对任意 <tt>rational&lt;I&gt; r</tt>, <tt>r.assign(n, m)</tt> 提供了 <tt>r = rational&lt;I&gt;(n, m);</tt> 的替代方案, 无需用户指定的临时对象构造. 虽然这对基于机器整数类型的有理数来说可能并无必要, 但对基于无限精度整数的有理数等情形可以节省开销. <p>若给定的分量无法组成有效的有理数, 该函数将抛出异常. 否则, 只有当分量级的移动赋值 (C++11; 更早的 C++ 版本为拷贝赋值) 可能抛出时它才可能抛出. 若抛出发生在第一部分, 则保持强保证; 但若在分量赋值期间抛出异常, 则强保证与基本保证都可能无法保持.<h3><a name="Conversions">转换</a></h3>
+<p>存在一个到未指定布尔类型 (很可能是成员指针) 的转换运算符. 该运算符在有理数表示零时将其转换为 <code>false</code>, 否则转换为 <code>true</code>. 该转换允许有理数用作运算符 <code>?:</code> 的第一个实参; 用作运算符 <code>&amp;&amp;</code> 或 <code>||</code> 的任一实参而不丧失短路求值; 用作 <code>do</code>、<code>if</code>、<code>while</code> 或 <code>for</code> 语句的条件; 以及用作 <code>if</code>、<code>while</code> 或 <code>for</code> 语句的条件声明. 所用类型的性质, 以及该性质的任何名称都保持私有, 应能防止不当的非布尔使用, 如数值或指针运算, 或用作 <code>switch</code> 条件.<p>存在 <em>再无其他</em> 从 rational 类型的隐式转换. 除显式跨版本构造函数模板外, 还有一个显式类型转换函数 <tt>rational_cast&lt;T&gt;(r)</tt>. 其用法如下: <pre>
+    rational&lt;int&gt; r(22,7);
+    double nearly_pi = boost::rational_cast&lt;double&gt;(r);
+</pre>
+
+<p>若源有理数的分子或分母无法安全地转换为适当的浮点类型, 或分子与分母的除法 (在目标浮点类型下) 求值不正确, <tt>rational_cast&lt;T&gt;</tt> 函数的行为未定义. 此外, 由于该函数具有自定义名称, 它不能像跨版本构造函数那样在泛型代码中调用, 以在同一类模板的两个实例化之间进行交换.<p>本质上, 所有必需的转换都应保值, 且所有运算的行为都应 "合理". 若无法满足这些约束, 单独的用户自定义转换将更为合适.<p>布尔转换与 <tt>rational_cast</tt> 均已启用 <code>constexpr</code>.<p><em>实现说明:</em>
+
+<p>rational_cast 函数的实现曾如下<pre>
+    template &lt;typename Float, typename Int&gt;
+    Float rational_cast(const rational&lt;Int&gt;&amp; src)
+    {
+        return static_cast&lt;Float&gt;(src.numerator()) / src.denominator();
+    }
+</pre> 但是, 程序不应依赖于该实现, 尤其是该实现现已过时. (它要求类型 <var>Float</var> 与 <var>Int</var> 之间的混合模式除法, 这与 <a
+href="#Integer%20Type%20Requirements">整数类型要求</a> 相悖.)<h3><a name="Numerator and Denominator">分子与分母</a></h3> 最后, 通过两个成员函数 <tt>numerator()</tt> 与 <tt>denominator()</tt> 提供对有理数内部表示的访问. 这些函数已启用 <code>constexpr</code>. <p>这些函数允许用户代码实现任何额外所需的功能. 特别应注意, 在某些情况下上述 rational_cast 运算可能不合适 - 尤其当 rational 类型基于无限精度整数类型时. 此时, 专门编写的用户自定义到浮点数的转换将更为合适.<h2><a name="Performance">性能</a></h2> rational 类的设计隐含假定底层整数类型的行为 "类似" 内建整数类型. 该假设的行为方面已在上文 <a href="#Integer%20Type%20Requirements">整数类型要求</a> 一节中明确描述. 但除行为假定外, 还有隐含的性能假定. <p>不会尝试为 rational 类的可用运算提供详细的性能保证. 尽管可以提供此类保证 (以类似于许多标准库类的性能规范的方式), 但此类保证对 rational 类的用户是否有重大价值并不明确. 本节转而对 rational 类的性能特征作一般性讨论.<p>下面列出 <a href="../../boost/rational.hpp"> &lt;boost/rational.hpp&gt;</a> 头文件中定义的基本运算, 并对其性能特征作非正式描述. 注意: 这些描述基于当前实现, 因此应视为可能变更.<ul>
+<li>有理数的构造本质上就是底层整数类型的两次构造, 外加一次规范化.<li>自增与自减运算本质上与底层整数类型上的加法和减法一样廉价.<li>(不) 相等比较本质上与底层整数类型上的两次相等运算一样廉价.<li>I/O 运算并不廉价, 但其性能基本上由 I/O 时间本身主导.<li>(隐式) GCD 例程调用本质上是一次反复的取模运算. 其他的重要运算包括 IntType 值的构造、赋值与和零的比较. 假定这些运算与取模运算相比可以忽略.<li>(隐式) LCM 运算本质上是一次 GCD 外加一次乘法、除法与比较.<li>加法与减法运算比较复杂. 它们大约需要底层整数类型上的两次 gcd 运算、3 次除法、3 次乘法和一次加法.<li>乘法与除法运算需要两次 gcd 运算、两次乘法和四次除法.<li>与整数比较的运算执行一次整数除法与取模对、至多一次额外的整数加法与自减, 以及至多三次整数比较.<li>与有理数比较的运算在最坏情况下执行两次双倍大小的 GCD 运算、两次额外的加法与自减, 以及三次比较. (GCD 运算之所以是双倍大小, 是因为它们分段进行, 且中间商数被保留并比较, 而直接的 GCD 函数只保留并比较余数.)<li>最后一项基本运算是规范化有理数. 每当构造有理数 (以及就地赋值) 时都会执行该运算. 所有其他运算都注意使有理数保持规范化状态. 规范化的代价相当于一次 gcd 加两次除法.</ul>
+
+<p>注意: 这里隐含假定 IntType 上的运算具有 "常规" 性能特征 - 具体而言, 昂贵的运算是乘法、除法与取模, 而加法与减法则显著更廉价. 假定构造 (从整数字面量 0 与 1 构造, 以及拷贝构造) 与赋值相对廉价, 尽管实现中也尽力减少不必要的构造与拷贝. 还假定比较 (尤其是与零的比较) 是廉价的.<p>不符合这些假定的整数类型作为 rational 类的底层整数类型不会特别有效. 具体而言, 性能很可能严重欠佳.<h2><a name="Exceptions"> 异常 </a></h2> 有理数的分母永不为零. (本库不支持无穷大或 NaN 的表示). 若有理数运算结果产生了零分母, 或在规范化期间失败, 则抛出异常 <tt>boost::bad_rational</tt> (<tt>std::domain_error</tt> 的子类). 这只应在用户试图显式构造分母为零的有理数、用零值除以有理数、或产生过大而无法规范化的负分母时发生. 在跨实例化转换期间, 当至少一个分量最终未保值且新组合不被视为规范化时, 也可能抛出该异常. <p>此外, 如果底层整数类型上的运算可能产生异常, 这些异常会从 rational 类的运算中传播出来. 不应作任何特定假定 - 唯一安全的假定是: 整数类可能抛出的任何异常, 都可能由任何 rational 运算抛出. 特别是, rational 构造函数可能因规范化步骤而从底层整数类型抛出异常. 该规则的唯一例外是: rational 析构函数只会抛出底层整数类型析构函数可能抛出的异常 (通常没有).<p>如果分量级赋值运算符可能抛出, 那么当第二个分量的赋值期间发生异常时, rational 对象的不变式可能被破坏. (<code>assign</code> 成员函数也属此列.) 这同时违反强保证与基本保证.<h2><a name="Internal representation">内部表示</a></h2>
+<em>注:</em> 此信息仅供参考. 程序不应编写为依赖这些实现细节. <p>在内部, 有理数存储为整数对 (分子, 分母) (其类型指定为 rational 类型的模板参数). 有理数始终以完全规范化形式存储 (即 gcd(numerator,denominator) = 1, 且分母恒为正).<h2><a name="Design notes">设计说明</a></h2>
+<h3><a name="Minimal Implementation">最小实现</a></h3> 有理数类的设计恪守基础. 它提供了数值类所需的最小运算集, 以及以 numerator() 和 denominator() 成员函数形式访问底层表示的能力. 有了这些构件, 就可以实现所需的任何附加功能. <p>这一最小化考量有所放宽的地方是提供输入/输出运算符以及 rational_cast. 前者通常没有争议. 然而, 在不少情况下, rational_cast 并不是把有理数转换为浮点值的最佳方法 (尤其是涉及用户自定义类型时). 在这些情况下, 可以且应当实现用户自定义转换. 这类运算无需命名为 rational_cast, 因此 rational_cast 函数 <em>并不</em> 提供允许特化/重载的必要基础设施.<h3><a name="Limited-range integer types">有限范围整数类型</a></h3> 有理数类设计为与无限精度整数类配合使用. 有了这样的类, 有理数总是精确的, 不会出现精度损失、上溢或下溢问题. <p>遗憾的是, C++ 标准并未提供这样的类 <s>(boost 目前的版本也没有)</s>. 因此, 有理数类在很多情况下很可能与有限精度整数类型一起使用, 例如内建的 <tt>int</tt> 类型.<p>当与有限精度整数类型一起使用时, rational 类会遇到许多导致浮点类型困难的精度问题. 虽然精度问题很可能不会影响 rational 类的简单用法, 用户仍应意识到此类问题的存在.<p>作为与有限精度整数相关问题的简单说明, 考虑 C++ <tt>int</tt> 类型为 32 位有符号表示的情形. 此时, 最小的正 rational&lt;int&gt; 是 <tt>1/0x7FFFFFFF</tt>. 换言之, rational&lt;int&gt; 表示在零附近的 "粒度" 约为 4.66e-10. 在可表示范围的另一端, 可表示的最大 rational&lt;int&gt; 是 <tt>0x7FFFFFFF/1</tt>, 而次小的可表示 rational&lt;int&gt; 是 <tt>0x7FFFFFFE/1</tt>. 因此, 在可表示范围的这一端, 粒度为 1. 这种依赖于数量级的粒度是浮点表示的典型特征. 然而, 在使用有理数类时它并不会让人感觉 "自然".<p>有限精度整数类型可能在其允许的负值与正值范围大小方面引发问题. 若负值范围更大, 则极端负数在正范围内将没有加法逆元, 使它们无法用作分母值, 因为它们无法规范化为正值 (除非用户碰上好运, 输入分量在规范化前恰好不互素).<p>基于有限精度整数类型的 rational 类型的使用者应自行了解并预先在代码中考虑此类问题.<h3><a name="Conversion from floating point">从浮点数转换</a></h3> 本库不提供从浮点数到有理数的转换函数. 曾收到许多对此类转换的请求, 但 boost 邮件列表上的广泛讨论得出的结论是: 该问题不存在 "最佳方案". 由于库用户没有理由不能自行编写满足其特定需求的转换函数, 因此决定不选取任何算法作为 "标准". <p>任何从浮点值转换的转换函数, 关键问题都在于如何处理浮点运算涉及的精度损失. 举一个具体例子, 考虑以下代码: <pre>
+    // These two values could in practice be obtained from user input,
+    // or from some form of measuring instrument.
+    double x = 1.0;
+    double y = 3.0;
+
+    double z = x/y;
+
+    rational&lt;I&gt; r = rational_from_double(z);
+</pre>
+
+<p>根本问题是: r 究竟应为何值? 一个天真的答案是 r 应等于 1/3. 然而, 这忽略了大量问题.<p>首先, z 并不精确等于 1/3. 由于浮点表示的限制, 1/3 无法在任何常见的 double 类型表示中精确表示. 那么, r 是否因此不应包含 z 所表示的实际值的 (精确) 表示? 但用户会对 r 取值 33333333333333331/100000000000000000 感到满意吗?<p>在考虑上述问题之前, 我们还必须考虑原始值 x 和 y 的准确性. 例如, 若它们来自模拟测量仪器, 则无论如何都不可能无限精确. 在这种情况下, 上述那样的有理数表示所承诺的精度远超任何合理的依据.<p>凡此种种都表明, 我们应当寻找某种 "最近简单分数". 确实存在确定此类数值的算法. 然而, 并非所有应用都希望这样工作. 在其他情况下, 转换为有理数的全部意义在于获得精确表示, 以防止一系列计算过程中的精度损失. 此时需要的是完全精确的表示, 无论分数看起来多么 "不自然".<p>鉴于这些相互冲突的要求, 显然不存在能让所有用户都满意的单一方案. 此外, 相关算法相对复杂且专用, 最好在对应用需求有充分理解的前提下实现. 所有这些因素使得此类函数不适合像本库这样的通用库.<h3><a name="Absolute Value">绝对值</a></h3> 首先, 用 abs(IntType) 实现 abs(rational&lt;IntType&gt;) 似乎合乎逻辑. 然而, 这样做会引发许多问题. <p>第一个问题是, 当 IntType 是用户命名空间中的用户自定义类型时, 要找到 abs(IntType) 的适当实现就需要 Koenig 查找. 目前并非所有编译器都支持对函数的 Koenig 查找. 对于这类编译器, 需要笨拙的变通方案 (需要 rational 类用户配合) 才能使其工作.<p>第二个 (也可能更严重的) 问题是, 对于非标准的内建整数类型 (例如 <em>long long</em> 或 <em>__int64</em> 这样的 64 位整数类型), 无法保证厂商为这些类型提供了内建的 abs() 函数. 这是实现质量问题, 但实际上, 厂商对 <em>long long</em> 等类型的支持仍然很不完整.<p>由于这些问题, 用 abs(IntType) 实现 abs(rational&lt;IntType&gt;) 似乎并不值得. 于是改用带有内联 abs() 实现的简单实现: <pre>
+    template &lt;typename IntType&gt;
+    inline rational&lt;IntType&gt; abs(const rational&lt;IntType&gt;&amp; r)
+    {
+        if (r.numerator() &gt;= IntType(0))
+            return r;
+
+            return rational&lt;IntType&gt;(-r.numerator(), r.denominator());
+    }
+</pre>
+
+<p>同样的理由意味着, 在其他需要 IntType 绝对值的地方, 计算以内联方式进行.<h2><a name="References">参考文献</a></h2>
+<ul>
+<li>有理数头文件本身: <a href="../../boost/rational.hpp">rational.hpp</a>
+<li>一些示例代码: <a href="test/rational_example.cpp">rational_example.cpp</a>
+<li>回归测试: <a href="test/rational_test.cpp">rational_test.cpp</a>
+</ul>
+
+<h2><a name="History and Acknowledgements">历史与致谢</a></h2>
+
+   <p>1999 年 12 月, 我实现了有理数类的初始版本, 并提交到 <A HREF="http://www.boost.org/">boost.org</A> 邮件列表. 邮件列表上对该实现进行了一些讨论. 特别是 Andrew D. Jewell 指出了把溢出风险降至最低的重要性, 并为大多数基本运算提供了无溢出实现. rational_cast 这个名字由 Kevlin Henney 建议. Ed Brey 提供了宝贵的意见 - 尤其是指出了原始代码中一些相当愚蠢的键入错误!</p>
+
+   <p>David Abrahams 对文档提供了有益的反馈.</p>
+
+   <p>2000 年 11 月, boost 邮件列表上就提供从浮点数到有理数转换的利弊进行了长时间讨论. 主要贡献者包括 Reggie Seagraves、Lutz Kettner 与 Daniel Frey (尽管 boost 邮件列表上的大多数人似乎都在某个时刻参与了讨论!). 尽管最终决定 <em>不</em> 实现任何内容, 这场讨论对理解相关问题非常宝贵.</p>
+
+   <p>Stephen Silver 贡献了在有理数类中使用用户自定义整数类型的实用经验.</p>
+
+   <p>Nickolay Mladenov 提供了 operator+= 与 operator-= 的当前实现.</p>
+   <p>2001 年 1 月, boost 邮件列表上讨论了 Koenig 查找与 std::swap 的相关问题.</p>
+   <p>Daryle Walker 于 2005 年 12 月提供了布尔转换运算符, 使有理数可以像内建数值类型一样用于相同的布尔语境. 他于 2013 年 8 月添加了跨实例化构造函数模板.</p>
+   <p>2014 年 7 月: 更新 numerator/denominator 访问器以按常量引用返回值: 在与多精度 (类) 类型一起使用时带来性能提升.</p>
+   <p>2014 年 7 月: 全面更新为统一使用 BOOST_THROW_EXCEPTION.</p>
+   <p>2014 年 7 月: 添加对 C++11 constexpr 构造函数的支持, 以及相应测试.</p>
+   <p>2014 年 11 月: 添加对有理数的 gcd 与 lcm 的支持.</p>
+   <p>2016 年 12 月: 重构构造函数与运算符以禁止收窄的隐式转换, 尤其是来自浮点类型的意外转换.</p>
+   <p>2018 年 10/11 月: 增加更多 constexpr.</p>
+
+<p>最后修订于 2017 年 7 月 14 日</p>
+
+<p>© 版权所有 Paul Moore 1999-2001; © Daryle Walker 2005, 2013. 在所有副本中保留本版权声明的前提下, 授予复制、使用、修改、出售与分发本文档的许可. 本文档按 "原样" 提供, 不附带任何明示或默示的保证, 亦不对其适用于任何用途作任何声明.</p>
+<!-- boostinspect:nolicense (can't find Paul Moore to change license) -->
+</body>
+</html>

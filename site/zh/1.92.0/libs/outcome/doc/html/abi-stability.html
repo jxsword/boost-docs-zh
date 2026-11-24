@@ -1,0 +1,92 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>未来的 ABI 稳定性保证 - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="./css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="./images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="./motivation/narrow_contract.html"><img src="./images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="./index.html"><img src="./images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="./index.html"><img src="./images/home.png" alt="首页"></a><a accesskey="n" href="./tutorial.html"><img src="./images/next.png" alt="下一页"></a></div><div id="content">
+
+  <div class="titlepage"><div><div><h1 style="clear: both">未来的 ABI 稳定性保证</h1></div></div></div>
+
+
+<p>2021 年 12 月底, <a href="./history.html">正如开发之初所预告的那样</a>, 独立版 Outcome v2.2.3 锁定了其 ABI, 使得以本 Outcome 版本构建的任何代码都可以在不重新编译的情况下, 与以任何未来 Outcome 版本构建的代码链接. 这意味着从今以后, 如果你的库从公共 API 返回 <code>outcome::</code><a href="./reference/aliases/result.html" class="api-reference"><code>result&lt;T, E = varies, NoValuePolicy = policy::default_policy&lt;T, E, void&gt;&gt;</code></a> 或 <code>outcome::</code><a href="./reference/aliases/outcome.html" class="api-reference"><code>outcome&lt;T, EC = varies, EP = varies, NoValuePolicy = policy::default_policy&lt;T, EC, EP&gt;&gt;</code></a>, 可以保证使用任何未来版本 Outcome 的消费方代码与未重新编译的库二进制 100% 兼容.</p>
+
+<p>这对工业界许多大规模生产场景而言是关键用例, 而且据我所知, 在写作本文时, 尚无其他类似 Outcome 的替代方案实现这一保证<sup class="footnote-ref" id="fnref:1"><a href="#fn:1">1</a></sup>. 另请注意, Boost.Outcome 本身不提供 ABI 保证, 因为 Boost 中 Boost.Outcome 所依赖的那些库并不具备稳定的 ABI 保证.</p>
+
+<p>为确保今后持续兑现这一保证, 已加入一项每次提交都会运行的 CI 步骤, 使用以下工具对 Outcome 针对 v2.2.3 ABI 进行测试:</p>
+
+<ul>
+<li><a href="https://lvc.github.io/abi-compliance-checker/">The ABI compliance checker</a> (使用其 <code>abi-dumper</code> 模式, 而非其翻译单元解析模式, 后者过于脆弱).</li>
+<li><a href="https://sourceware.org/libabigail/manual/libabigail-tools.html">Sourceware&rsquo;s libabigail tooling</a>.</li>
+</ul>
+
+<p>这两个工具彼此独立, 虽然它们使用相同的机制进行测试 (即从未经优化的共享库对象中提取的 DWARF 调试信息), 但它们的实现各不相同.</p>
+
+<h4 id="abi-testing-implementation-notes">ABI 测试实现说明</h4>
+
+<p>Outcome 是一个仅头文件库, 因此为了把 Outcome 变成适合作为这些工具输入的共享库, 我们编译了一个导出若干使用 Outcome 的 API 的占位共享库. 因此, 实际接受 ABI 测试的是该占位共享库对 Outcome 的覆盖范围, 而非 Outcome 本身. 这个占位库为其锁定 ABI 的内容包括:</p>
+
+<ul>
+<li><code>basic_result&lt;trivial type, std::error_code, all policies&gt;</code> (即 union 存储布局)</li>
+<li><code>basic_outcome&lt;trivial type, std::error_code, trivial type, all policies&gt;</code></li>
+<li><code>basic_result&lt;non-trivial type, std::error_code, all policies&gt;</code> (即 struct 存储布局)</li>
+<li><code>basic_outcome&lt;non-trivial type, std::error_code, std::exception_ptr, all policies&gt;</code></li>
+<li><code>bad_result_access_with&lt;std::error_code&gt;</code></li>
+<li><code>bad_outcome_access</code></li>
+<li><code>atomic_eager&lt;int&gt;</code></li>
+<li><code>atomic_eager&lt;basic_result&lt;trivial type, std::error_code, all policies&gt;&gt;</code></li>
+<li><code>atomic_eager&lt;basic_result&lt;non-trivial type, std::error_code, all policies&gt;&gt;</code></li>
+<li><code>atomic_lazy&lt;int&gt;</code></li>
+<li><code>atomic_lazy&lt;basic_result&lt;trivial type, std::error_code, all policies&gt;&gt;</code></li>
+<li><code>atomic_lazy&lt;basic_result&lt;non-trivial type, std::error_code, all policies&gt;&gt;</code></li>
+<li><code>eager&lt;int&gt;</code></li>
+<li><code>eager&lt;basic_result&lt;trivial type, std::error_code, all policies&gt;&gt;</code></li>
+<li><code>eager&lt;basic_result&lt;non-trivial type, std::error_code, all policies&gt;&gt;</code></li>
+<li><code>lazy&lt;int&gt;</code></li>
+<li><code>lazy&lt;basic_result&lt;trivial type, std::error_code, all policies&gt;&gt;</code></li>
+<li><code>lazy&lt;basic_result&lt;non-trivial type, std::error_code, all policies&gt;&gt;</code></li>
+</ul>
+
+<p>显然, 这些类型在实现中触及的任何内容也会被一并锁定 ABI, 其范围以 ABI 工具能推导出的依赖类型为限. 如果你查看这个占位共享库的源代码, 会看到我们特意在模板参数中编码了依赖类型的显式列表, 以确保 ABI 工具一定能发现所有内容.</p>
+
+<div class="notices note" style="background: url('images/note.png') top left no-repeat padding-box padding-box;">
+<div class="notices heading">注释</div>
+<div class="notices message"><p>Outcome.Experimental 不提供 ABI 保证, 因为 WG21 LEWG 在其接近 C++ 标准的过程中仍在积极修改其设计.</p>
+</div>
+</div>
+
+
+<p>以下构建目标针对 ABI 稳定性进行了测试:</p>
+
+<ol>
+<li><p>GCC 7.5 与 libstdc++, 配置为 C++ 14 标准和 x64 架构.</p></li>
+
+<li><p>GCC 9.3 与 libstdc++, 配置为 C++ 17 标准和 x64 架构.</p></li>
+</ol>
+
+<p>截至写作本文时, 尚无任何 POSIX 实现保证其 C++ 20 标准库 ABI 的稳定性, 因此我们不对此进行测试.</p>
+
+<p>目前尚无针对 MSVC ABI 稳定性的 CI 覆盖. ABI compliance checker 可以测试 MSVC 二进制文件的 ABI 稳定性, 但在 Github Actions 的 Windows 测试运行器上搭建 ABI compliance checker 是相当大的工作量. 欢迎捐赠足够的测试脚本. 注意, 由于 Windows 与 POSIX 的实现几乎相同, POSIX 上的 ABI 稳定性将对 MSVC ABI 稳定性有很强的影响, 即 MSVC ABI 不太可能被破坏, 尽管没有 CI 测试就无法给出保证.</p>
+<div class="footnotes">
+
+<hr />
+
+<ol>
+<li id="fn:1">libstdc++ 实现了强 ABI 稳定性保证, 因此它提供的任何未来 <code>std::expected&lt;T, E&gt;</code> 实现都将是 ABI 稳定的. 然而 Expected 仅提供 <code>outcome::result&lt;T, E&gt;</code> 所具功能的一小部分. <a class="footnote-return" href="#fnref:1"><sup>[return]</sup></a></li>
+</ol>
+</div>
+
+
+
+        </div><p><small>最后修订: December 15, 2021 at 11:47:12 UTC</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="./motivation/narrow_contract.html"><img src="./images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="./index.html"><img src="./images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="./index.html"><img src="./images/home.png" alt="首页"></a><a accesskey="n" href="./tutorial.html"><img src="./images/next.png" alt="下一页"></a></div></body>
+</html>

@@ -1,0 +1,133 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+"http://www.w3.org/TR/html4/loose.dtd">
+
+<html>
+<head>
+  <meta http-equiv="Content-Language" content="en-us">
+  <meta http-equiv="Content-Type" content="text/html; charset=us-ascii">
+  <link rel="stylesheet" type="text/css" href="../../../../boost.css">
+
+  <title>测试与示例</title>
+</head>
+
+<body lang="en">
+  <h1>测试与示例</h1>
+
+  <h2>第一个示例</h2>
+
+  <p>本示例展示如何设计一个函数: 它接受一个多项式和一个值, 返回该多项式在该点的符号. 该函数是一个过滤器: 若答案无法保证, 函数会如实说明. 使用过滤器而不是简单求值函数的原因是: 浮点数计算会引入近似误差, 而这足以改变多项式的符号. 因此, 为了验证结果, 函数将使用区间算术.</p>
+
+  <p>第一步是包含相应的头文件. 由于函数要处理浮点边界, 最简单的方案是:</p>
+  <pre>
+#include &lt;boost/numeric/interval.hpp&gt;
+</pre>
+
+  <p>现在开始写函数. 多项式由其系数数组和数组大小 (严格大于多项式次数) 给出. 为简化代码, 引入库的两个命名空间.</p>
+  <pre>
+int sign_polynomial(double x, double P[], int sz) {
+  using namespace boost::numeric;
+  using namespace interval_lib;
+</pre>
+
+  <p>然后可以定义区间类型. 由于不需要特殊行为, 默认策略就足够了:</p>
+  <pre>
+  typedef interval&lt;double&gt; I;
+</pre>
+
+  <p>求值时, 直接使用结合区间算术的 Horner 方案. 库重载了所有算术运算符并提供混合运算, 因此使用与不使用区间算术的代码之间唯一的差别在于迭代值的类型 <code>y</code>:</p>
+  <pre>
+  I y = P[sz - 1];
+  for(int i = sz - 2; i &gt;= 0; i--)
+    y = y * x + P[i];
+</pre>
+
+  <p>最后一步是计算 <code>y</code> 的符号. 做法是选择一种合适的比较方案, 然后用通常的运算符进行比较:</p>
+  <pre>
+  using namespace compare::certain;
+  if (y &gt; 0.) return 1;
+  if (y &lt; 0.) return -1;
+  return 0;
+}
+</pre>
+
+  <p>答案 <code>0</code> 并不表示多项式在该点为零. 它只表示答案未知, 因为 <code>y</code> 包含零, 因而没有确定的符号.</p>
+
+  <p>现在我们得到了预期的函数. 然而, 由于大多数处理器的浮点舍入实现不佳, 声明优化代码可能是有益的; 或者说, 让库来优化它. 该优化的主要条件是: 区间代码不应与浮点代码混在一起. 在本例中正好满足这一条件, 因为函数中进行的所有运算都涉及本库. 于是代码可以改写为:</p>
+  <pre>
+int sign_polynomial(double x, double P[], int sz) {
+  using namespace boost::numeric;
+  using namespace interval_lib;
+  typedef interval&lt;double&gt; I_aux;
+
+  I_aux::traits_type::rounding rnd;
+  typedef unprotect&lt;I_aux&gt;::type I;
+
+  I y = P[sz - 1];
+  for(int i = sz - 2; i &gt;= 0; i--) 
+    y = y * x + P[i];
+
+  using namespace compare::certain;
+  if (y &gt; 0.) return 1;
+  if (y &lt; 0.) return -1;
+  return 0;
+}
+</pre>
+
+  <p>这段代码与前一版的区别在于使用了另一种区间类型. 新类型 <code>I</code> 告诉库: 所有计算都可以在不关心舍入模式的情况下完成. 正因如此, 关心舍入就成了函数自己的责任: 只要使用这种优化类型, 就必须让一个舍入对象保持存活.</p>
+
+  <h2>其他测试与示例</h2>
+
+  <p>在 <code>libs/numeric/interval/test/</code> 和 <code>libs/numeric/interval/examples/</code> 中有一些测试和示例程序. 这些示例展示了区间的一些用法. 关于本库的一般性描述、使用注意事项以及一些潜在的应用领域, 请阅读这份 <a href=
+  "guide.htm">mini-guide</a>.</p>
+
+  <h3>测试</h3>
+
+  <p>测试程序如下. 请注意: 它们需要使用 Boost.test 库, 并且可以用 <code>bjam</code> 自动测试 (interval_test.cpp 除外).</p>
+
+  <p><b>add.cpp</b> 测试加法和减法运算符以及相应的 _std 和 _opp 舍入函数是否被正确实现. 测试通过以符号表达式作为基础类型来完成.</p>
+
+  <p><b>cmp.cpp</b>, <b>cmp_lex.cpp</b>, <b>cmp_set.cpp</b> 和 <b>cmp_tribool.cpp</b> 测试运算符 <code>&lt;</code>
+  <code>&gt;</code> <code>&lt;=</code> <code>&gt;=</code> <code>==</code>
+  <code>!=</code> 在默认比较、字典序比较、集合比较和三态比较下行为是否正确. <b>cmp_exp.cpp</b> 测试显式比较函数 <code>cer..</code> 和 <code>pos..</code> 行为是否正确. <b>cmp_exn.cpp</b> 测试各种策略能否正确检测异常情形. 所有这些测试都使用一些简单区间 ([1,2] 与 [3,4]、[1,3] 与 [2,4]、[1,2] 与 [2,3] 等).</p>
+
+  <p><b>det.cpp</b> 测试 <code>_std</code> 和 <code>_opp</code> 版本在保护模式与非保护模式下对不稳定矩阵使用高斯消元时 (以锻炼舍入) 是否产生相同结果. 测试针对 <code>interval&lt;float&gt;</code> 和 <code>interval&lt;double&gt;</code> 进行.</p>
+
+  <p><b>fmod.cpp</b> 定义了一个最小化的 <code>interval&lt;int&gt;</code> 版本, 并用它针对一些特定区间值测试 <code>fmod</code>.</p>
+
+  <p><b>mul.cpp</b> 用一些能得到精确结果的整数区间来演练乘法、有限除法、平方和平方根.</p>
+
+  <p><b>pi.cpp</b> 测试 π 的区间值 (针对 <code>int</code>, <code>float</code> 和 <code>double</code> 基础类型) 是否包含数 π (以 21 位十进制数字定义), 以及它是否为 [π±1ulp] 的子集 (以确保一定的精度).</p>
+
+  <p><b>pow.cpp</b> 测试 <code>pow</code> 函数在一些简单测试用例上行为是否正确.</p>
+
+  <p><b>test_float.cpp</b> 针对浮点基础类型演练库的算术运算.</p>
+
+  <p><b>interval_test.cpp</b> 通过对 <code>double</code> 和 <code>interval&lt;double&gt;</code> 计算一些函数和运算, 测试区间库是否遵守区间算术的包含性质.</p>
+
+  <h2>示例</h2>
+
+  <p><b>filter.cpp</b> 包含能够求出行列式符号的计算几何过滤器. 本示例的灵感来自 Brönnimann、Burnikel 和 Pion 于 2001 年发表的文章 <em>Interval arithmetic yields efficient dynamic filters for computational geometry</em> 一文.</p>
+
+  <p><b>findroot_demo.cpp</b> 使用二分法求某些函数的零点, 并为其中一个函数生成 gnuplot 数据. 处理器必须能正确处理初等函数, 本示例才能正常工作.</p>
+
+  <p><b>horner.cpp</b> 是一个对整个函数解除区间运算保护 (unprotecting) 的非常基础的示例 (该函数用 Horner 方案计算多项式的值).</p>
+
+  <p><b>io.cpp</b> 展示了区间的一些流输入输出运算符. 可能性过于多样, 这正解释了为什么本库不实现 i/o 运算符, 而是把它留给用户.</p>
+
+  <p><b>newton-raphson.cpp</b> 实现了 Newton-Raphson 算法的一个专门版本, 用于在已知导数的情况下求函数的零点. 它演练了解除保护、完全除法、一些集合运算和空区间.</p>
+
+  <p><b>transc.cpp</b> 通过使用一个外部库 (此处为 GMP 的 MPFR 子集), 为 <code>double</code> 实现了舍入策略的超越函数部分.</p>
+  <hr>
+
+  <p><a href="http://validator.w3.org/check?uri=referer"><img border="0" src=
+  "../../../../doc/images/valid-html401.png" alt="Valid HTML 4.01 Transitional"
+  height="31" width="88"></a></p>
+
+  <p>最后修订于 <!--webbot bot="Timestamp" s-type="EDITED" s-format="%Y-%m-%d" startspan -->2006-12-24<!--webbot bot="Timestamp" endspan i-checksum="12172" --></p>
+
+  <p><i>版权所有 © 2002 Guillaume Melquiond, Sylvain Pion, Hervé Brönnimann, Polytechnic University<br> 版权所有 © 2003 Guillaume Melquiond</i></p>
+
+  <p><i>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <a href="../../../../LICENSE_1_0.txt">LICENSE_1_0.txt</a> 或复制于 <a href=
+  "http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</a>)</i></p>
+</body>
+</html>

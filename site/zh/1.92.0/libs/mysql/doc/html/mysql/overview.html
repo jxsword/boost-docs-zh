@@ -1,0 +1,417 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>概述</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="up" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="prev" href="tutorial_error_handling.html" title="教程 7: 错误处理">
+<link rel="next" href="connection_establishment.html" title="建立与终止连接">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="tutorial_error_handling.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="connection_establishment.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="mysql.overview"></a><a class="link" href="overview.html" title="概述">概述</a>
+</h2></div></div></div>
+<p>本节简要介绍库的主要类和函数, 以及如何使用它们.</p>
+<p>Boost.MySQL 提供实现涉及 I/O 功能的同步和异步函数. 如 <a class="link" href="tutorial_async.html" title="教程 2: 使用 C++20 协程进行异步操作">第二个教程</a>中所述, 建议尽可能使用异步函数, 因为它们更灵活.</p>
+<p>Boost.MySQL 支持 Boost.Asio 的通用异步模型. 这意味着库可以使用多种异步编程范式, 包括回调、有栈协程和 C++20 协程. 本文档全程使用 C++20 协程, 因为它们易于使用.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>还没有使用 C++20? 不用担心, 即使在 C++11 中也可以使用 <a class="link" href="examples/coroutines_cpp11.html" title="有栈协程 (C++11 中的异步函数)">有栈协程</a> 和 <a class="link" href="examples/callbacks.html" title="回调 (C++11 中的异步函数)">回调</a>.</p></td></tr>
+</table></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mysql.overview.connection_establishment"></a><a class="link" href="overview.html#mysql.overview.connection_establishment" title="建立连接">建立连接</a>
+</h3></div></div></div>
+<p>
+        <a class="link" href="ref/boost__mysql__any_connection.html" title="any_connection"><code class="literal">any_connection</code></a> 是库中最基础的 I/O 对象. 它可以建立和关闭连接、运行查询并管理预处理语句. 与大多数 I/O 对象一样, <code class="computeroutput"><span class="identifier">any_connection</span></code> 可以由执行上下文构造:</p>
+<pre class="programlisting"><span class="comment">// The execution context, required to run I/O operations.</span>
+<span class="identifier">asio</span><span class="special">::</span><span class="identifier">io_context</span> <span class="identifier">ctx</span><span class="special">;</span>
+
+<span class="comment">// Represents a connection to the MySQL server.</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">any_connection</span> <span class="identifier">conn</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">);</span>
+</pre>
+<p>
+        <code class="computeroutput"><span class="identifier">any_connection</span></code> 的命名源于历史原因: 在它之前曾有一个模板化的连接类. 我们目前建议新代码使用 <code class="computeroutput"><span class="identifier">any_connection</span></code>, 因为它更简单也更强大.</p>
+<p>MySQL 客户端/服务器协议是面向会话的. 首先, 必须通过调用 <a class="link" href="ref/boost__mysql__any_connection/async_connect.html" title="any_connection::async_connect"><code class="literal">any_connection::async_connect</code></a> 建立会话:</p>
+<pre class="programlisting"><span class="comment">// The hostname, username, password and database to use.</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">connect_params</span> <span class="identifier">params</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">server_address</span><span class="special">.</span><span class="identifier">emplace_host_and_port</span><span class="special">(</span><span class="identifier">server_hostname</span><span class="special">);</span>  <span class="comment">// hostname</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">username</span> <span class="special">=</span> <span class="identifier">mysql_username</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">password</span> <span class="special">=</span> <span class="identifier">mysql_password</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">database</span> <span class="special">=</span> <span class="string">"boost_mysql_examples"</span><span class="special">;</span>
+
+<span class="comment">// Connect to the server</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_connect</span><span class="special">(</span><span class="identifier">params</span><span class="special">);</span>
+</pre>
+<p>
+        <a class="link" href="ref/boost__mysql__any_connection/async_connect.html" title="any_connection::async_connect"><code class="literal">async_connect</code></a> 会执行主机名解析、TCP 会话建立、TLS 握手和 MySQL 握手. 默认情况下, 若服务器支持则使用 TLS.</p>
+<p>这里可以配置许多参数, 包括要使用的数据库、TLS 选项和缓冲区大小. 更多信息见 <a class="link" href="connection_establishment.html" title="建立与终止连接">本节</a>.</p>
+<p>Boost.MySQL 还支持 <a class="link" href="connection_establishment.html#mysql.connection_establishment.unix" title="UNIX 套接字">使用 UNIX 域套接字</a>.</p>
+<p>要干净地终止连接, 请使用 <a class="link" href="ref/boost__mysql__any_connection/async_close.html" title="any_connection::async_close"><code class="literal">async_close</code></a>. 这会发送一个通知即将关闭的数据包并关闭 TLS. 连接的析构函数也会关闭套接字, 因此不会发生泄漏.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mysql.overview.running_queries"></a><a class="link" href="overview.html#mysql.overview.running_queries" title="执行查询">执行查询</a>
+</h3></div></div></div>
+<p>运行 SQL 查询最简单的方式是使用 <a class="link" href="ref/boost__mysql__any_connection/async_execute.html" title="any_connection::async_execute"><code class="literal">any_connection::async_execute</code></a>. 可以通过将字符串作为第一个参数来执行查询:</p>
+<pre class="programlisting"><span class="comment">// Executes 'SELECT 1' and reads the resulting rows into memory</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="string">"SELECT 1"</span><span class="special">,</span> <span class="identifier">result</span><span class="special">);</span>
+</pre>
+<p>大多数查询包含用户提供的输入. <span class="bold"><strong>切勿使用原始字符串拼接</strong></span>来构建查询, 因为这容易受到 SQL 注入攻击. Boost.MySQL 提供两种带参数运行查询的接口:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>特性</p>
+              </th>
+<th>
+                <p>代码</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <a class="link" href="text_queries.html" title="文本查询与客户端 SQL 格式化">客户端 SQL 格式化</a>:</p>
+                <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">在客户端安全地展开查询.</li>
+<li class="listitem">基于文本的协议.</li>
+<li class="listitem">适合一般用途.</li>
+</ul></div>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="comment">// If employee_id is 42, executes 'SELECT first_name FROM employee WHERE id = 42'</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"SELECT first_name FROM employee WHERE id = {}"</span><span class="special">,</span> <span class="identifier">employee_id</span><span class="special">),</span>
+    <span class="identifier">result</span>
+<span class="special">);</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <a class="link" href="prepared_statements.html" title="预处理语句">预处理语句</a>:</p>
+                <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">在两个不同的操作中解析和执行.</li>
+<li class="listitem">二进制协议.</li>
+<li class="listitem">适合多次运行同一查询或检索大量数值数据的场景.</li>
+</ul></div>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="comment">// First prepare the statement. Parsing happens server-side.</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">statement</span> <span class="identifier">stmt</span> <span class="special">=</span> <span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_prepare_statement</span><span class="special">(</span>
+    <span class="string">"SELECT first_name FROM employee WHERE company_id = ?"</span>
+<span class="special">);</span>
+
+<span class="comment">// Now execute it. Parameter substitution happens server-side.</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="identifier">stmt</span><span class="special">.</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">employee_id</span><span class="special">),</span> <span class="identifier">result</span><span class="special">);</span>
+</pre>
+              </td>
+</tr>
+</tbody>
+</table></div>
+<p>默认情况下, 我们建议使用 <a class="link" href="ref/boost__mysql__with_params.html" title="with_params"><code class="literal">with_params</code></a>, 因为它更简单, 且与服务器往返的次数更少. 更多信息见 <a class="link" href="text_queries.html#mysql.text_queries.comparison" title="预处理语句与客户端 SQL 格式化的对比">对比一节</a>.</p>
+<p>客户端 SQL 格式化还可以用于 <a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.expand" title="只格式化查询而不执行">展开查询</a>, 而无需将查询发送到服务器.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mysql.overview.the_dynamic_and_the_static_inter"></a><a class="link" href="overview.html#mysql.overview.the_dynamic_and_the_static_inter" title="动态接口与静态接口">动态接口与静态接口</a>
+</h3></div></div></div>
+<p>在 MySQL 中, <span class="emphasis"><em>结果集</em></span>指一条 SQL 查询生成的结果. 结果集由行、<a class="link" href="meta.html" title="元数据">元数据</a>以及额外信息 (如 last insert ID) 组成.</p>
+<p>有两种不同的接口用于访问结果集. 可以使用 <a class="link" href="ref/boost__mysql__results.html" title="results"><code class="literal">results</code></a> 类通过动态类型接口访问行, 使用类 variant 对象表示从服务器检索到的值. 另一方面, <a class="link" href="ref/boost__mysql__static_results.html" title="static_results"><code class="literal">static_results</code></a> 是静态类型的. 你在编译期指定行的形状, 库会将检索到的值解析为你提供的类型.</p>
+<p>本库的几乎所有功能 (包括文本查询和预处理语句) 都可以在两种接口中使用.</p>
+<p>例如, 给定以下表:</p>
+<pre class="programlisting">CREATE TABLE employee(
+    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    ... -- other fields not relevant for us
+);
+</pre>
+<p>使用任一接口访问其内容的方式如下:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>接口</p>
+              </th>
+<th>
+                <p>说明</p>
+              </th>
+<th>
+                <p>示例</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>动态接口: <a class="link" href="ref/boost__mysql__results.html" title="results"><code class="literal">results</code></a>
+                </p>
+              </td>
+<td>
+                <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">基于 variant</li>
+<li class="listitem">C++11 可用</li>
+<li class="listitem">
+                      <a class="link" href="dynamic_interface.html" title="动态接口">了解更多</a>
+                    </li>
+</ul></div>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="comment">// Passing a results to async_execute selects the dynamic interface</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="string">"SELECT id, first_name, last_name FROM employee"</span><span class="special">,</span> <span class="identifier">result</span><span class="special">);</span>
+
+<span class="comment">// Every employee is a collection of fields, which are variant-like objects</span>
+<span class="comment">// that represent data. We use as_string() to cast them to the appropriate type</span>
+<span class="keyword">for</span> <span class="special">(</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">row_view</span> <span class="identifier">emp</span> <span class="special">:</span> <span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"First name: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">1</span><span class="special">).</span><span class="identifier">as_string</span><span class="special">()</span> <span class="special">&lt;&lt;</span> <span class="string">", last name: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">2</span><span class="special">).</span><span class="identifier">as_string</span><span class="special">()</span>
+              <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>静态接口: <a class="link" href="ref/boost__mysql__static_results.html" title="static_results"><code class="literal">static_results</code></a>
+                </p>
+              </td>
+<td>
+                <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">将行解析为你自己的类型</li>
+<li class="listitem">使用 Boost.Pfr 时要求 C++20, 使用 Boost.Describe 时要求 C++14</li>
+<li class="listitem">
+                      <a class="link" href="static_interface.html" title="静态接口">了解更多</a>
+                    </li>
+</ul></div>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="comment">// This must be placed at namespace scope.</span>
+<span class="comment">// Should contain a member for each field of interest present in our query.</span>
+<span class="comment">// Declaration order doesn't need to match field order in the query.</span>
+<span class="comment">// Field names should match the ones in our query</span>
+<span class="keyword">struct</span> <span class="identifier">employee</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">int64_t</span> <span class="identifier">id</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">first_name</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">last_name</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+                <p>
+                  <br>
+                </p>
+<pre class="table-programlisting"><span class="comment">//</span>
+<span class="comment">// This must be placed inside your function or method:</span>
+<span class="comment">//</span>
+
+<span class="comment">// Passing a static_results to async_execute selects the static interface</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">static_results</span><span class="special">&lt;</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pfr_by_name</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;&gt;</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="string">"SELECT id, first_name, last_name FROM employee"</span><span class="special">,</span> <span class="identifier">result</span><span class="special">);</span>
+
+<span class="comment">// Query results are parsed directly into your own type</span>
+<span class="keyword">for</span> <span class="special">(</span><span class="keyword">const</span> <span class="identifier">employee</span><span class="special">&amp;</span> <span class="identifier">emp</span> <span class="special">:</span> <span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"First name: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">first_name</span> <span class="special">&lt;&lt;</span> <span class="string">", last name: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">last_name</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+              </td>
+</tr>
+</tbody>
+</table></div>
+<p>尽可能优先使用静态接口.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mysql.overview.running_insert_update_and_delete"></a><a class="link" href="overview.html#mysql.overview.running_insert_update_and_delete" title="执行 INSERT、UPDATE 和 DELETE 语句">执行 INSERT、UPDATE 和 DELETE 语句</a>
+</h3></div></div></div>
+<p>上面介绍的相同 API 也可用于不检索数据的 SQL 语句:</p>
+<pre class="programlisting"><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"UPDATE employee SET first_name = {} WHERE id = {}"</span><span class="special">,</span> <span class="identifier">new_name</span><span class="special">,</span> <span class="identifier">employee_id</span><span class="special">),</span>
+    <span class="identifier">result</span>
+<span class="special">);</span>
+</pre>
+<p>执行 INSERT 时, 你可能会发现 <a class="link" href="ref/boost__mysql__results/last_insert_id.html" title="results::last_insert_id"><code class="literal">results::last_insert_id</code></a> 很有用, 它会检索所执行语句生成的最后一个 AUTO INCREMENT ID.</p>
+<p>更多信息见 <a class="link" href="tutorial_updates_transactions.html" title="教程 5: UPDATE、事务与分号分隔的查询">我们关于 UPDATE 与事务的教程</a>.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mysql.overview.async"></a><a class="link" href="overview.html#mysql.overview.async" title="每个连接只允许一个未完成的异步操作">每个连接只允许一个未完成的异步操作</a>
+</h3></div></div></div>
+<p>在任一时刻, 一个 <code class="computeroutput"><span class="identifier">any_connection</span></code> 只能有一个未完成的异步操作. 换句话说, 连接不实现任何异步锁定或排队, 这使代码保持简单高效. 如果需要并行执行多个操作, 可以打开更多连接或使用 <a class="link" href="ref/boost__mysql__connection_pool.html" title="connection_pool"><code class="literal">connection_pool</code></a>.</p>
+<p>尝试在单个连接上并发运行操作会在运行期被检测到, 并产生 <code class="computeroutput"><span class="identifier">client_errc</span><span class="special">::</span><span class="identifier">operation_in_progress</span></code> 错误:</p>
+<pre class="programlisting"><span class="comment">// This is an error: a single connection can't run two operations</span>
+<span class="comment">// in parallel. Create more connections or use connection_pool, instead.</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result1</span><span class="special">,</span> <span class="identifier">result2</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">asio</span><span class="special">::</span><span class="identifier">experimental</span><span class="special">::</span><span class="identifier">make_parallel_group</span><span class="special">(</span>
+    <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="string">"SELECT 1"</span><span class="special">,</span> <span class="identifier">result1</span><span class="special">,</span> <span class="identifier">asio</span><span class="special">::</span><span class="identifier">deferred</span><span class="special">),</span>
+    <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="string">"SELECT 2"</span><span class="special">,</span> <span class="identifier">result2</span><span class="special">,</span> <span class="identifier">asio</span><span class="special">::</span><span class="identifier">deferred</span><span class="special">)</span>
+<span class="special">)</span>
+    <span class="special">.</span><span class="identifier">async_wait</span><span class="special">(</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">experimental</span><span class="special">::</span><span class="identifier">wait_for_all</span><span class="special">(),</span> <span class="identifier">asio</span><span class="special">::</span><span class="identifier">deferred</span><span class="special">);</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mysql.overview.errors"></a><a class="link" href="overview.html#mysql.overview.errors" title="错误处理">错误处理</a>
+</h3></div></div></div>
+<p>如果发生网络错误、遇到协议违规或服务器报告错误, 操作就会失败. 例如, SQL 语法错误会使 <code class="computeroutput"><span class="identifier">async_execute</span></code> 失败.</p>
+<p>当服务器报告错误时, 它会提供一个描述发生了什么的诊断字符串. <a class="link" href="ref/boost__mysql__diagnostics.html" title="diagnostics"><code class="literal">diagnostics</code></a> 类封装了该消息. 某些库函数也会生成诊断字符串.</p>
+<p> <a class="link" href="tutorial_sync.html" title="教程 1: hello world!">第一个教程</a>中的同步函数和本文展示的协程在失败时都会抛出异常. 异常类型为 <a class="link" href="ref/boost__mysql__error_with_diagnostics.html" title="error_with_diagnostics"><code class="literal">error_with_diagnostics</code></a>, 它继承自 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">system_error</span></code> 并增加了一个 <a class="link" href="ref/boost__mysql__diagnostics.html" title="diagnostics"><code class="literal">diagnostics</code></a> 对象. 异步函数使用 <a class="link" href="ref/boost__mysql__with_diagnostics.html" title="with_diagnostics"><code class="literal">with_diagnostics</code></a> 这一完成标记适配器, 将诊断信息透明地包含在异常中.</p>
+<p>在协程中使用 <code class="computeroutput"><span class="identifier">asio</span><span class="special">::</span><span class="identifier">redirect_error</span></code> 可以避免异常:</p>
+<pre class="programlisting"><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">error_code</span> <span class="identifier">ec</span><span class="special">;</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">diagnostics</span> <span class="identifier">diag</span><span class="special">;</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+
+<span class="comment">// The provided SQL is invalid. The server will return an error.</span>
+<span class="comment">// ec will be set to a non-zero value, and diag will be populated</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="string">"this is not SQL!"</span><span class="special">,</span> <span class="identifier">result</span><span class="special">,</span> <span class="identifier">diag</span><span class="special">,</span> <span class="identifier">asio</span><span class="special">::</span><span class="identifier">redirect_error</span><span class="special">(</span><span class="identifier">ec</span><span class="special">));</span>
+<span class="keyword">if</span> <span class="special">(</span><span class="identifier">ec</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="comment">// The error code will likely report a syntax error</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Operation failed with error code: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">ec</span> <span class="special">&lt;&lt;</span> <span class="char">'\n'</span><span class="special">;</span>
+
+    <span class="comment">// diag.server_message() will contain the classic phrase</span>
+    <span class="comment">// "You have an error in your SQL syntax; check the manual..."</span>
+    <span class="comment">// Bear in mind that server_message() may contain user input, so treat it with caution</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Server diagnostics: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">diag</span><span class="special">.</span><span class="identifier">server_message</span><span class="special">()</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+        <a class="link" href="ref/boost__mysql__error_code.html" title="error_code"><code class="literal">mysql::error_code</code></a> 是 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span></code> 的别名.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mysql.overview.multi_function_operations"></a><a class="link" href="overview.html#mysql.overview.multi_function_operations" title="多函数操作">多函数操作</a>
+</h3></div></div></div>
+<p>到目前为止, 我们一直使用 <a class="link" href="ref/boost__mysql__any_connection/async_execute.html" title="any_connection::async_execute"><code class="literal">async_execute</code></a>, 它执行一些 SQL 并将所有生成的数据读入一个内存对象.</p>
+<p>某些用例可能不适合这种简单模式. 例如:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">读取非常大的结果集时, 将其完全加载到内存中可能效率不高 (甚至不可能). 分批读取行可能更合适.</li>
+<li class="listitem">如果行中包含很长的 <code class="computeroutput"><span class="identifier">TEXT</span></code> 或 <code class="computeroutput"><span class="identifier">BLOB</span></code> 字段, 将这些值从网络缓冲区复制到 <code class="computeroutput"><span class="identifier">results</span></code> 对象中可能并不合适. 基于视图的方式可能更好.</li>
+</ul></div>
+<p>对于这些情况, 我们可以使用 <span class="emphasis"><em>多函数操作</em></span> (该术语由本库创造) 将执行操作拆分为多个步骤. 本示例分批读取整个表, 这可能是 ETL 流程中的情形:</p>
+<pre class="programlisting"><span class="comment">// execution_state stores state about our operation, and must be passed to all functions</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">execution_state</span> <span class="identifier">st</span><span class="special">;</span>
+
+<span class="comment">// Writes the query request and reads the server response, but not the rows</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_start_execution</span><span class="special">(</span><span class="string">"SELECT first_name, last_name FROM employee"</span><span class="special">,</span> <span class="identifier">st</span><span class="special">);</span>
+
+<span class="comment">// Reads all the returned rows, in batches.</span>
+<span class="comment">// st.should_read_rows() returns false once there are no more rows to read</span>
+<span class="keyword">while</span> <span class="special">(</span><span class="identifier">st</span><span class="special">.</span><span class="identifier">should_read_rows</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="comment">// row_batch will be valid until conn performs the next network operation</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">rows_view</span> <span class="identifier">row_batch</span> <span class="special">=</span> <span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_read_some_rows</span><span class="special">(</span><span class="identifier">st</span><span class="special">);</span>
+
+    <span class="keyword">for</span> <span class="special">(</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">row_view</span> <span class="identifier">emp</span> <span class="special">:</span> <span class="identifier">row_batch</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="comment">// Process the employee as required</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Name:"</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="string">" "</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">1</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+</pre>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>一旦使用 <a class="link" href="ref/boost__mysql__any_connection/async_start_execution.html" title="any_connection::async_start_execution"><code class="literal">async_start_execution</code></a> 启动多函数操作, 服务器会立即将所有行发送到客户端. <span class="bold"><strong>你必须读取所有行</strong></span>, 然后才能进行后续操作. 如果在读取所有行之前尝试发起无关操作, 将得到 <code class="computeroutput"><span class="identifier">client_errc</span><span class="special">::</span><span class="identifier">engaged_in_multi_function</span></code> 错误.</p></td></tr>
+</table></div>
+<p>多函数操作强大但复杂. 只有在确有充分理由时才使用它们. 多函数操作也可用于静态接口. 关于这些操作的更多信息, 请参见 <a class="link" href="multi_function.html" title="多函数操作">本节</a>.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mysql.overview.connection_pools"></a><a class="link" href="overview.html#mysql.overview.connection_pools" title="连接池">连接池</a>
+</h3></div></div></div>
+<p>连接池是一种将多个长生命周期连接复用于独立逻辑操作的技术. 与建立单独连接相比, 它有以下好处:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">它提供更好的性能. 更多信息请查阅 <a class="link" href="connection_pool.html#mysql.connection_pool.benchmarks">我们的基准测试</a>.</li>
+<li class="listitem">它简化了连接管理. 连接池开箱即用地提供建立会话、执行重试和应用超时等功能.</li>
+</ul></div>
+<p>下面是创建连接池的方法:</p>
+<pre class="programlisting"><span class="comment">// pool_params contains configuration for the pool.</span>
+<span class="comment">// You must specify enough information to establish a connection,</span>
+<span class="comment">// including the server address and credentials.</span>
+<span class="comment">// You can configure a lot of other things, like pool limits</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pool_params</span> <span class="identifier">params</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">server_address</span><span class="special">.</span><span class="identifier">emplace_host_and_port</span><span class="special">(</span><span class="identifier">server_hostname</span><span class="special">);</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">username</span> <span class="special">=</span> <span class="identifier">mysql_username</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">password</span> <span class="special">=</span> <span class="identifier">mysql_password</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">database</span> <span class="special">=</span> <span class="string">"boost_mysql_examples"</span><span class="special">;</span>
+
+<span class="comment">// The I/O context, required by all I/O operations</span>
+<span class="identifier">asio</span><span class="special">::</span><span class="identifier">io_context</span> <span class="identifier">ctx</span><span class="special">;</span>
+
+<span class="comment">// Construct a pool of connections. The context will be used internally</span>
+<span class="comment">// to create the connections and other I/O objects</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">connection_pool</span> <span class="identifier">pool</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">params</span><span class="special">));</span>
+
+<span class="comment">// You need to call async_run on the pool before doing anything useful with it.</span>
+<span class="comment">// async_run creates connections and keeps them healthy. It must be called</span>
+<span class="comment">// only once per pool.</span>
+<span class="comment">// The detached completion token means that we don't want to be notified when</span>
+<span class="comment">// the operation ends. It's similar to a no-op callback.</span>
+<span class="identifier">pool</span><span class="special">.</span><span class="identifier">async_run</span><span class="special">(</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">detached</span><span class="special">);</span>
+</pre>
+<p>每个池必须恰好调用一次 <a class="link" href="ref/boost__mysql__connection_pool/async_run.html" title="connection_pool::async_run"><code class="literal">connection_pool::async_run</code></a>. 该函数负责实际保持连接的健康状态.</p>
+<p>要获取连接, 请使用 <a class="link" href="ref/boost__mysql__connection_pool/async_get_connection.html" title="connection_pool::async_get_connection"><code class="literal">connection_pool::async_get_connection</code></a>:</p>
+<pre class="programlisting"><span class="comment">// Use connection pools for functions that will be called</span>
+<span class="comment">// repeatedly during the application lifetime.</span>
+<span class="comment">// An HTTP server handler function is a good candidate.</span>
+<span class="identifier">asio</span><span class="special">::</span><span class="identifier">awaitable</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">int64_t</span><span class="special">&gt;</span> <span class="identifier">get_num_employees</span><span class="special">(</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">connection_pool</span><span class="special">&amp;</span> <span class="identifier">pool</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="comment">// Get a fresh connection from the pool.</span>
+    <span class="comment">// pooled_connection is a proxy to an any_connection object.</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pooled_connection</span> <span class="identifier">conn</span> <span class="special">=</span> <span class="identifier">co_await</span> <span class="identifier">pool</span><span class="special">.</span><span class="identifier">async_get_connection</span><span class="special">();</span>
+
+    <span class="comment">// Use pooled_connection::operator-&gt; to access the underlying any_connection.</span>
+    <span class="comment">// Let's use the connection</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+    <span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">-&gt;</span><span class="identifier">async_execute</span><span class="special">(</span><span class="string">"SELECT COUNT(*) FROM employee"</span><span class="special">,</span> <span class="identifier">result</span><span class="special">);</span>
+    <span class="identifier">co_return</span> <span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">).</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">).</span><span class="identifier">as_int64</span><span class="special">();</span>
+
+    <span class="comment">// When conn is destroyed, the connection is returned to the pool</span>
+<span class="special">}</span>
+</pre>
+<p>更多信息见 <a class="link" href="connection_pool.html" title="连接池">本节</a>.</p>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2019-2024 Ruben Perez<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="tutorial_error_handling.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="connection_establishment.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

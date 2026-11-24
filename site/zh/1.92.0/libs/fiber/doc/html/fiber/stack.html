@@ -1,0 +1,518 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>Stack allocation</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Fiber">
+<link rel="up" href="../index.html" title="第 1 章 Fiber">
+<link rel="prev" href="scheduling.html" title="调度">
+<link rel="next" href="stack/valgrind.html" title="Support for valgrind">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="scheduling.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="stack/valgrind.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="fiber.stack"></a><a name="stack"></a><a class="link" href="stack.html" title="Stack allocation">Stack allocation</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="stack/valgrind.html">Support for valgrind</a></span></dt>
+<dt><span class="section"><a href="stack/sanitizers.html">Support for sanitizers</a></span></dt>
+</dl></div>
+<p> <a class="link" href="fiber_mgmt/fiber.html#class_fiber"><code class="computeroutput">fiber</code></a> 内部使用一个 __econtext__ 来管理一组寄存器和一个栈. 栈所用内存的分配/释放通过 <span class="emphasis"><em>stack_allocator</em></span> 完成, 该分配器必须满足 <a class="link" href="stack.html#stack_allocator_concept"><span class="emphasis"><em>栈分配器概念</em></span></a>.</p>
+<p> <span class="emphasis"><em>stack_allocator</em></span> 可以传递给 <a class="link" href="fiber_mgmt/fiber.html#fiber_fiber"><code class="computeroutput"><span class="identifier">fiber</span><span class="special">::</span><span class="identifier">fiber</span><span class="special">()</span></code></a> 或 <a class="link" href="synchronization/futures/future.html#fibers_async"><code class="computeroutput">fibers::async()</code></a>.</p>
+<a name="stack_allocator_concept"></a><h4>
+<a name="fiber.stack.h0"></a>
+      <span class="phrase"><a name="fiber.stack.stack_allocator_concept"></a></span><a class="link" href="stack.html#fiber.stack.stack_allocator_concept">栈分配器概念</a>
+    </h4>
+<p> <span class="emphasis"><em>stack_allocator</em></span> 必须满足下表所示的 <span class="emphasis"><em>栈分配器概念</em></span> 要求, 其中 <code class="computeroutput"><span class="identifier">a</span></code> 是 <span class="emphasis"><em>stack_allocator</em></span> 类型的对象, <code class="computeroutput"><span class="identifier">sctx</span></code> 是一个 <a href="http://www.boost.org/doc/libs/release/libs/context/doc/html/context/stack/stack_context.html" target="_top"><code class="computeroutput"><span class="identifier">stack_context</span></code></a>, 而 <code class="computeroutput"><span class="identifier">size</span></code> 是 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span></code>:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+              <p>表达式</p>
+            </th>
+<th>
+              <p>返回类型</p>
+            </th>
+<th>
+              <p>
+                notes
+              </p>
+            </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">a</span><span class="special">(</span><span class="identifier">size</span><span class="special">)</span></code>
+              </p>
+            </td>
+<td>
+            </td>
+<td>
+              <p>
+                creates a stack allocator
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">a</span><span class="special">.</span><span class="identifier">allocate</span><span class="special">()</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <a href="http://www.boost.org/doc/libs/release/libs/context/doc/html/context/stack/stack_context.html" target="_top"><code class="computeroutput"><span class="identifier">stack_context</span></code></a>
+              </p>
+            </td>
+<td>
+              <p>
+                creates a stack
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">a</span><span class="special">.</span><span class="identifier">deallocate</span><span class="special">(</span>
+                <span class="identifier">sctx</span><span class="special">)</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="keyword">void</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                deallocates the stack created by <code class="computeroutput"><span class="identifier">a</span><span class="special">.</span><span class="identifier">allocate</span><span class="special">()</span></code>
+              </p>
+            </td>
+</tr>
+</tbody>
+</table></div>
+<div class="important"><table border="0" summary="Important">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[重要]" src="../../../../../doc/src/images/important.png"></td>
+<th align="left">重要</th>
+</tr>
+<tr><td align="left" valign="top"><p>
+        The implementation of <code class="computeroutput"><span class="identifier">allocate</span><span class="special">()</span></code> might include logic to protect against
+        exceeding the context's available stack size rather than leaving it as undefined
+        behaviour.
+      </p></td></tr>
+</table></div>
+<div class="important"><table border="0" summary="Important">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[重要]" src="../../../../../doc/src/images/important.png"></td>
+<th align="left">重要</th>
+</tr>
+<tr><td align="left" valign="top"><p>调用 <code class="computeroutput"><span class="identifier">deallocate</span><span class="special">()</span></code> 时, 若传入的 <a href="http://www.boost.org/doc/libs/release/libs/context/doc/html/context/stack/stack_context.html" target="_top"><code class="computeroutput"><span class="identifier">stack_context</span></code></a> 并非由 <code class="computeroutput"><span class="identifier">allocate</span><span class="special">()</span></code> 获得, 则会导致未定义行为.</p></td></tr>
+</table></div>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>栈内存并不要求对齐; 对齐在 __econtext__ 内部进行.</p></td></tr>
+</table></div>
+<p>另见 <a href="http://www.boost.org/doc/libs/release/libs/context/doc/html/context/stack.html" target="_top">Boost.Context 栈分配</a>. 特别是, <code class="computeroutput"><span class="identifier">traits_type</span></code> 的各方法与 <a href="http://www.boost.org/doc/libs/release/libs/context/doc/html/context/stack/stack_traits.html" target="_top"><code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">context</span><span class="special">::</span><span class="identifier">stack_traits</span></code></a> 中所述一致.</p>
+<p>
+      </p>
+<h5>
+<a name="class_protected_fixedsize_stack_bridgehead"></a>
+  <span class="phrase"><a name="class_protected_fixedsize_stack"></a></span>
+  <a class="link" href="stack.html#class_protected_fixedsize_stack"> <code class="computeroutput">protected_fixedsize_stack</code></a> 类</h5>
+<p>
+    </p>
+<p>
+      <span class="bold"><strong>Boost.Fiber</strong></span> 提供了类 <a class="link" href="stack.html#class_protected_fixedsize_stack"><code class="computeroutput">protected_fixedsize_stack</code></a>, 它满足 <a class="link" href="stack.html#stack_allocator_concept"><span class="emphasis"><em>栈分配器概念</em></span></a>. 它在每个栈的末尾追加一个保护页, 以防止栈越界. 若保护页被访问 (读或写操作), 操作系统将产生段错误/访问违例.</p>
+<div class="important"><table border="0" summary="Important">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[重要]" src="../../../../../doc/src/images/important.png"></td>
+<th align="left">重要</th>
+</tr>
+<tr><td align="left" valign="top"><p>使用 <a class="link" href="stack.html#class_protected_fixedsize_stack"><code class="computeroutput">protected_fixedsize_stack</code></a> 代价高昂. 以这种类型的栈启动新纤程需要付出设置内存保护的额外开销; 一旦分配完成, 该栈的使用效率与 <a class="link" href="stack.html#class_fixedsize_stack"><code class="computeroutput">fixedsize_stack</code></a> 一样高.</p></td></tr>
+</table></div>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>
+        The appended <code class="computeroutput"><span class="identifier">guard</span> <span class="identifier">page</span></code>
+        is <span class="bold"><strong>not</strong></span> mapped to physical memory, only virtual
+        addresses are used.
+      </p></td></tr>
+</table></div>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">fiber</span><span class="special">/</span><span class="identifier">protected_fixedsize</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">fibers</span> <span class="special">{</span>
+
+<span class="keyword">struct</span> <span class="identifier">protected_fixedsize</span> <span class="special">{</span>
+    <span class="identifier">protected_fixesize</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">size</span> <span class="special">=</span> <span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">default_size</span><span class="special">());</span>
+
+    <span class="identifier">stack_context</span> <span class="identifier">allocate</span><span class="special">();</span>
+
+    <span class="keyword">void</span> <span class="identifier">deallocate</span><span class="special">(</span> <span class="identifier">stack_context</span> <span class="special">&amp;);</span>
+<span class="special">}</span>
+
+<span class="special">}}</span>
+</pre>
+<p>
+      </p>
+<h5>
+<a name="protected_fixedsize_allocate_bridgehead"></a>
+  <span class="phrase"><a name="protected_fixedsize_allocate"></a></span>
+  <a class="link" href="stack.html#protected_fixedsize_allocate">Member
+      function <code class="computeroutput">allocate</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="identifier">stack_context</span> <span class="identifier">allocate</span><span class="special">();</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">minimum_size</span><span class="special">()</span>
+            <span class="special">&lt;=</span> <span class="identifier">size</span></code> 和 <code class="computeroutput"><span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">is_unbounded</span><span class="special">()</span>
+            <span class="special">||</span> <span class="special">(</span>
+            <span class="identifier">size</span> <span class="special">&lt;=</span>
+            <span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">maximum_size</span><span class="special">()</span>
+            <span class="special">)</span></code>.</p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd><p>分配至少 <code class="computeroutput"><span class="identifier">size</span></code> 字节的内存, 并把指向栈的指针及其实际大小存入 <code class="computeroutput"><span class="identifier">sctx</span></code>. 视体系结构而定 (栈向下/向上增长), 存储的地址是栈的最高/最低地址.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="protected_fixesize_deallocate_bridgehead"></a>
+  <span class="phrase"><a name="protected_fixesize_deallocate"></a></span>
+  <a class="link" href="stack.html#protected_fixesize_deallocate">Member
+      function <code class="computeroutput">deallocate</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">deallocate</span><span class="special">(</span> <span class="identifier">stack_context</span> <span class="special">&amp;</span> <span class="identifier">sctx</span><span class="special">);</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="identifier">sctx</span><span class="special">.</span><span class="identifier">sp</span></code> 有效, <code class="computeroutput"><span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">minimum_size</span><span class="special">()</span> <span class="special">&lt;=</span> <span class="identifier">sctx</span><span class="special">.</span><span class="identifier">size</span></code> 和 <code class="computeroutput"><span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">is_unbounded</span><span class="special">()</span> <span class="special">||</span> <span class="special">(</span> <span class="identifier">sctx</span><span class="special">.</span><span class="identifier">size</span> <span class="special">&lt;=</span> <span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">maximum_size</span><span class="special">()</span> <span class="special">)</span></code>.</p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd><p>
+            Deallocates the stack space.
+          </p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="class_pooled_fixedsize_stack_bridgehead"></a>
+  <span class="phrase"><a name="class_pooled_fixedsize_stack"></a></span>
+  <a class="link" href="stack.html#class_pooled_fixedsize_stack"> <code class="computeroutput">pooled_fixedsize_stack</code></a> 类</h5>
+<p>
+    </p>
+<p>
+      <span class="bold"><strong>Boost.Fiber</strong></span> 提供了类 <a class="link" href="stack.html#class_pooled_fixedsize_stack"><code class="computeroutput">pooled_fixedsize_stack</code></a>, 它满足 <a class="link" href="stack.html#stack_allocator_concept"><span class="emphasis"><em>栈分配器概念</em></span></a>. 与 <a class="link" href="stack.html#class_protected_fixedsize_stack"><code class="computeroutput">protected_fixedsize_stack</code></a> 不同, 它不在每个栈的末尾追加保护页. 内存由 <a href="http://www.boost.org/doc/libs/release/libs/pool/doc/html/boost/pool.html" target="_top"><code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">pool</span><span class="special">&lt;&gt;</span></code></a> 内部管理.</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">fiber</span><span class="special">/</span><span class="identifier">pooled_fixedsize_stack</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">fibers</span> <span class="special">{</span>
+
+<span class="keyword">struct</span> <span class="identifier">pooled_fixedsize_stack</span> <span class="special">{</span>
+    <span class="identifier">pooled_fixedsize_stack</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">stack_size</span> <span class="special">=</span> <span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">default_size</span><span class="special">(),</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">next_size</span> <span class="special">=</span> <span class="number">32</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">max_size</span> <span class="special">=</span> <span class="number">0</span><span class="special">);</span>
+
+    <span class="identifier">stack_context</span> <span class="identifier">allocate</span><span class="special">();</span>
+
+    <span class="keyword">void</span> <span class="identifier">deallocate</span><span class="special">(</span> <span class="identifier">stack_context</span> <span class="special">&amp;);</span>
+<span class="special">}</span>
+
+<span class="special">}}</span>
+</pre>
+<p>
+      </p>
+<h5>
+<a name="pooled_fixedsize_bridgehead"></a>
+  <span class="phrase"><a name="pooled_fixedsize"></a></span>
+  <a class="link" href="stack.html#pooled_fixedsize">Constructor</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="identifier">pooled_fixedsize_stack</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">stack_size</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">next_size</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">max_size</span><span class="special">);</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">is_unbounded</span><span class="special">()</span>
+            <span class="special">||</span> <span class="special">(</span>
+            <span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">maximum_size</span><span class="special">()</span>
+            <span class="special">&gt;=</span> <span class="identifier">stack_size</span><span class="special">)</span></code> 和 <code class="computeroutput"><span class="number">0</span>
+            <span class="special">&lt;</span> <span class="identifier">next_size</span></code>.</p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd><p>分配至少 <code class="computeroutput"><span class="identifier">stack_size</span></code> 字节的内存, 并将指向栈及其实际大小的指针存入 <code class="computeroutput"><span class="identifier">sctx</span></code>. 存储的地址是栈的最高/最低地址, 取决于架构 (栈向下/向上增长). 参数 <code class="computeroutput"><span class="identifier">next_size</span></code> 决定 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 第一次需要分配系统内存时向系统请求的栈数量. 第三个参数 <code class="computeroutput"><span class="identifier">max_size</span></code> 控制可为栈分配多少内存——值为零表示没有上限.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="pooled_fixedsize_allocate_bridgehead"></a>
+  <span class="phrase"><a name="pooled_fixedsize_allocate"></a></span>
+  <a class="link" href="stack.html#pooled_fixedsize_allocate">Member
+      function <code class="computeroutput">allocate</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="identifier">stack_context</span> <span class="identifier">allocate</span><span class="special">();</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">is_unbounded</span><span class="special">()</span>
+            <span class="special">||</span> <span class="special">(</span>
+            <span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">maximum_size</span><span class="special">()</span>
+            <span class="special">&gt;=</span> <span class="identifier">stack_size</span><span class="special">)</span></code>.
+          </p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd><p>分配至少 <code class="computeroutput"><span class="identifier">stack_size</span></code> 字节的内存, 并把指向栈的指针及其实际大小存入 <code class="computeroutput"><span class="identifier">sctx</span></code>. 视体系结构而定 (栈向下/向上增长), 存储的地址是栈的最高/最低地址.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="pooled_fixesize_deallocate_bridgehead"></a>
+  <span class="phrase"><a name="pooled_fixesize_deallocate"></a></span>
+  <a class="link" href="stack.html#pooled_fixesize_deallocate">Member
+      function <code class="computeroutput">deallocate</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">deallocate</span><span class="special">(</span> <span class="identifier">stack_context</span> <span class="special">&amp;</span> <span class="identifier">sctx</span><span class="special">);</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="identifier">sctx</span><span class="special">.</span><span class="identifier">sp</span></code> 有效, <code class="computeroutput"><span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">is_unbounded</span><span class="special">()</span> <span class="special">||</span> <span class="special">(</span> <span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">maximum_size</span><span class="special">()</span> <span class="special">&gt;=</span> <span class="identifier">sctx</span><span class="special">.</span><span class="identifier">size</span><span class="special">)</span></code>.</p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd><p>
+            Deallocates the stack space.
+          </p></dd>
+</dl>
+</div>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>该栈分配器不是线程安全的.</p></td></tr>
+</table></div>
+<p>
+      </p>
+<h5>
+<a name="class_fixedsize_stack_bridgehead"></a>
+  <span class="phrase"><a name="class_fixedsize_stack"></a></span>
+  <a class="link" href="stack.html#class_fixedsize_stack"> <code class="computeroutput">fixedsize_stack</code></a> 类</h5>
+<p>
+    </p>
+<p>
+      <span class="bold"><strong>Boost.Fiber</strong></span> 提供了类 <a class="link" href="stack.html#class_fixedsize_stack"><code class="computeroutput">fixedsize_stack</code></a>, 它满足 <a class="link" href="stack.html#stack_allocator_concept"><span class="emphasis"><em>栈分配器概念</em></span></a>. 与 <a class="link" href="stack.html#class_protected_fixedsize_stack"><code class="computeroutput">protected_fixedsize_stack</code></a> 不同, 它不在每个栈的末尾追加保护页. 内存仅由 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">malloc</span><span class="special">()</span></code> 和 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">free</span><span class="special">()</span></code> 管理.</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">context</span><span class="special">/</span><span class="identifier">fixedsize_stack</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">fibers</span> <span class="special">{</span>
+
+<span class="keyword">struct</span> <span class="identifier">fixedsize_stack</span> <span class="special">{</span>
+    <span class="identifier">fixedsize_stack</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">size</span> <span class="special">=</span> <span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">default_size</span><span class="special">());</span>
+
+    <span class="identifier">stack_context</span> <span class="identifier">allocate</span><span class="special">();</span>
+
+    <span class="keyword">void</span> <span class="identifier">deallocate</span><span class="special">(</span> <span class="identifier">stack_context</span> <span class="special">&amp;);</span>
+<span class="special">}</span>
+
+<span class="special">}}</span>
+</pre>
+<p>
+      </p>
+<h5>
+<a name="fixedsize_allocate_bridgehead"></a>
+  <span class="phrase"><a name="fixedsize_allocate"></a></span>
+  <a class="link" href="stack.html#fixedsize_allocate">Member function
+      <code class="computeroutput">allocate</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="identifier">stack_context</span> <span class="identifier">allocate</span><span class="special">();</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">minimum_size</span><span class="special">()</span>
+            <span class="special">&lt;=</span> <span class="identifier">size</span></code> 和 <code class="computeroutput"><span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">is_unbounded</span><span class="special">()</span>
+            <span class="special">||</span> <span class="special">(</span>
+            <span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">maximum_size</span><span class="special">()</span>
+            <span class="special">&gt;=</span> <span class="identifier">size</span><span class="special">)</span></code>.</p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd><p>分配至少 <code class="computeroutput"><span class="identifier">size</span></code> 字节的内存, 并把指向栈的指针及其实际大小存入 <code class="computeroutput"><span class="identifier">sctx</span></code>. 视体系结构而定 (栈向下/向上增长), 存储的地址是栈的最高/最低地址.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="fixesize_deallocate_bridgehead"></a>
+  <span class="phrase"><a name="fixesize_deallocate"></a></span>
+  <a class="link" href="stack.html#fixesize_deallocate">Member
+      function <code class="computeroutput">deallocate</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">deallocate</span><span class="special">(</span> <span class="identifier">stack_context</span> <span class="special">&amp;</span> <span class="identifier">sctx</span><span class="special">);</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="identifier">sctx</span><span class="special">.</span><span class="identifier">sp</span></code> 有效, <code class="computeroutput"><span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">minimum_size</span><span class="special">()</span> <span class="special">&lt;=</span> <span class="identifier">sctx</span><span class="special">.</span><span class="identifier">size</span></code> 和 <code class="computeroutput"><span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">is_unbounded</span><span class="special">()</span> <span class="special">||</span> <span class="special">(</span> <span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">maximum_size</span><span class="special">()</span> <span class="special">&gt;=</span> <span class="identifier">sctx</span><span class="special">.</span><span class="identifier">size</span><span class="special">)</span></code>.</p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd><p>
+            Deallocates the stack space.
+          </p></dd>
+</dl>
+</div>
+<p>
+      <a name="segmented"></a></p>
+<h5>
+<a name="class_segmented_stack_bridgehead"></a>
+  <span class="phrase"><a name="class_segmented_stack"></a></span>
+  <a class="link" href="stack.html#class_segmented_stack"> <code class="computeroutput">segmented_stack</code></a> 类</h5>
+<p>
+    </p>
+<p>
+      <span class="bold"><strong>Boost.Fiber</strong></span> 支持使用 <a class="link" href="stack.html#class_segmented_stack"><code class="computeroutput">segmented_stack</code></a>, 即栈按需增长. 纤程创建时具有最小栈大小, 并会按需增加. 类 <a class="link" href="stack.html#class_segmented_stack"><code class="computeroutput">segmented_stack</code></a> 满足 <a class="link" href="stack.html#stack_allocator_concept"><span class="emphasis"><em>栈分配器概念</em></span></a>. 与 <a class="link" href="stack.html#class_protected_fixedsize_stack"><code class="computeroutput">protected_fixedsize_stack</code></a> 和 <a class="link" href="stack.html#class_fixedsize_stack"><code class="computeroutput">fixedsize_stack</code></a> 不同, 它创建的栈按需增长.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>分段栈目前仅受 <span class="bold"><strong>gcc</strong></span> (自版本 <span class="bold"><strong>4.7</strong></span> 起) 和 <span class="bold"><strong>clang</strong></span> (自版本 <span class="bold"><strong>3.4</strong></span> 起) 支持. 要使用 <a class="link" href="stack.html#class_segmented_stack"><code class="computeroutput">segmented_stack</code></a>, <span class="bold"><strong>Boost.Fiber</strong></span> 必须以属性 <code class="computeroutput"><span class="identifier">segmented</span><span class="special">-</span><span class="identifier">stacks</span></code> 构建, 例如 <span class="bold"><strong>toolset=gcc segmented-stacks=on</strong></span>, 并在 b2/bjam 命令行上应用 BOOST_USE_SEGMENTED_STACKS.</p></td></tr>
+</table></div>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>分段栈只能与使用属性 <code class="computeroutput"><span class="identifier">context</span><span class="special">-</span><span class="identifier">impl</span><span class="special">=</span><span class="identifier">ucontext</span></code> 的 callcc() 一起使用.</p></td></tr>
+</table></div>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">fiber</span><span class="special">/</span><span class="identifier">segmented_stack</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">fibers</span> <span class="special">{</span>
+
+<span class="keyword">struct</span> <span class="identifier">segmented_stack</span> <span class="special">{</span>
+    <span class="identifier">segmented_stack</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">stack_size</span> <span class="special">=</span> <span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">default_size</span><span class="special">());</span>
+
+    <span class="identifier">stack_context</span> <span class="identifier">allocate</span><span class="special">();</span>
+
+    <span class="keyword">void</span> <span class="identifier">deallocate</span><span class="special">(</span> <span class="identifier">stack_context</span> <span class="special">&amp;);</span>
+<span class="special">}</span>
+
+<span class="special">}}</span>
+</pre>
+<p>
+      </p>
+<h5>
+<a name="segmented_allocate_bridgehead"></a>
+  <span class="phrase"><a name="segmented_allocate"></a></span>
+  <a class="link" href="stack.html#segmented_allocate">Member function
+      <code class="computeroutput">allocate</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="identifier">stack_context</span> <span class="identifier">allocate</span><span class="special">();</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">minimum_size</span><span class="special">()</span>
+            <span class="special">&lt;=</span> <span class="identifier">size</span></code> 和 <code class="computeroutput"><span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">is_unbounded</span><span class="special">()</span>
+            <span class="special">||</span> <span class="special">(</span>
+            <span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">maximum_size</span><span class="special">()</span>
+            <span class="special">&gt;=</span> <span class="identifier">size</span><span class="special">)</span></code>.</p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd><p>分配至少 <code class="computeroutput"><span class="identifier">size</span></code> 字节的内存, 并把指向栈的指针及其实际大小存入 <code class="computeroutput"><span class="identifier">sctx</span></code>. 视体系结构而定 (栈向下/向上增长), 存储的地址是栈的最高/最低地址.</p></dd>
+</dl>
+</div>
+<p>
+      </p>
+<h5>
+<a name="segmented_deallocate_bridgehead"></a>
+  <span class="phrase"><a name="segmented_deallocate"></a></span>
+  <a class="link" href="stack.html#segmented_deallocate">Member
+      function <code class="computeroutput">deallocate</code>()</a>
+</h5>
+<p>
+    </p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">deallocate</span><span class="special">(</span> <span class="identifier">stack_context</span> <span class="special">&amp;</span> <span class="identifier">sctx</span><span class="special">);</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+            <code class="computeroutput"><span class="identifier">sctx</span><span class="special">.</span><span class="identifier">sp</span></code> 有效, <code class="computeroutput"><span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">minimum_size</span><span class="special">()</span> <span class="special">&lt;=</span> <span class="identifier">sctx</span><span class="special">.</span><span class="identifier">size</span></code> 和 <code class="computeroutput"><span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">is_unbounded</span><span class="special">()</span> <span class="special">||</span> <span class="special">(</span> <span class="identifier">traits_type</span><span class="special">::</span><span class="identifier">maximum_size</span><span class="special">()</span> <span class="special">&gt;=</span> <span class="identifier">sctx</span><span class="special">.</span><span class="identifier">size</span><span class="special">)</span></code>.</p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd><p>
+            Deallocates the stack space.
+          </p></dd>
+</dl>
+</div>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>若该库以分段栈方式编译, 则 <a class="link" href="stack.html#class_segmented_stack"><code class="computeroutput">segmented_stack</code></a> 是唯一可用的栈分配器.</p></td></tr>
+</table></div>
+</div>
+<div class="copyright-footer">版权所有 © 2013 Oliver Kowalke<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="scheduling.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="stack/valgrind.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

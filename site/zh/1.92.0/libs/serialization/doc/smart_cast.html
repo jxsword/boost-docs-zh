@@ -1,0 +1,114 @@
+<!doctype HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!--
+(C) Copyright 2002-4 Robert Ramey - http://www.rrsd.com . 
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt)
+-->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<link rel="stylesheet" type="text/css" href="../../../boost.css">
+<link rel="stylesheet" type="text/css" href="style.css">
+<title>Serialization - BOOST_STATIC_WARNING</title>
+</head>
+<body link="#0000ff" vlink="#800080">
+<table border="0" cellpadding="7" cellspacing="0" width="100%" summary="header">
+  <tr> 
+    <td valign="top" width="300"> 
+      <h3><a href="../../../index.htm"><img height="86" width="277" alt="C++ Boost" src="../../../boost.png" border="0"></a></h3>
+    </td>
+    <td valign="top"> 
+      <h1 align="center">序列化</h1>
+      <h2 align="center"><code>smart_cast</code></h2>
+    </td>
+  </tr>
+</table>
+<hr>
+<h3>动机</h3> 要把一种类型转换为另一种相关类型, C++ 提供以下运算符: <dl>
+  <dt><code>static_cast&lt;T *&gt;(U *)<br>static_cast&lt;T &amp;&gt;(U &amp;)</code></dt>
+  <dd>
+    <ul>
+      <li>当 T 和 U 都不是多态时需要<li>在其他情况下允许.<li>无法在运行期检测多态指针/引用的错误转换.<li>不允许"交叉转换"<li>内联函数调用可以在编译期被优化掉.</ul>
+  </dd>
+  <p>
+  <dt><code>dynamic_cast&lt;T *&gt;(U *)<br>dynamic_cast&lt;T &amp;&gt;(U &amp;)</code></dt>
+  <dd>
+    <ul>
+      <li>当 T 或 U 是多态时允许<li>在其他情况下禁止.<li>在运行期检测到多态指针/引用的错误转换时抛出异常.<li>允许"交叉转换"<li>无法在编译期优化内联虚函数.</ul>
+  </dd>
+</dl> 这些规则会使在函数模板实参中使用转换变得困难. 考虑以下示例: <pre><code>
+#include &lt;boost/serialization/smart_cast.hpp&gt;
+
+struct top {
+};
+
+struct base1 : public top {
+    bool is_storable() const {
+        return true;
+    }
+    virtual ~base1();
+};
+
+struct base2 {
+    virtual ~base2();
+};
+
+struct derived1 :
+    public base1
+{
+    derived1();
+};
+
+struct derived2 :
+    public base1, 
+    public base2
+{
+    derived2();
+};
+
+template&lt;class T&gt;
+bool is_storable(T &amp;t){
+    // what type of cast to use here?
+
+    // this fails at compile time when T == base2
+    // return static_cast&lt;base1 &amp;&gt;(t).is_storable();
+
+    // this fails at compile time when T == top
+    // otherwise it works but cannot optimize inline function call
+    // return dynamic_cast&lt;base1 &amp;&gt;(t).is_storable();
+
+    // this always works - and is guaranteed to generate the fastest code !
+    return (boost::smart_cast_reference&lt;base1 &amp;&gt;(t)).is_storable();
+}
+
+int main(){
+    derived1 d1;
+    top &amp; t1 = d1;
+    derived2 d2;
+    base2 &amp; b2 = d2;
+
+    bool result;
+    result = is_storable(d1);   
+    result = is_storable(d2);   
+    result = is_storable(b2);
+    result = is_storable(b2);
+    result = is_storable(t1);
+    return 0;
+}
+</code></pre> 序列化库混合使用了静态多态 (<strong> CRTP </strong>) 和通过虚函数实现的动态多态的类. <code style="white-space: normal">smart_cast</code> 就是为了解决上面示例所示情形中较为棘手的表现而编写的. <h3>用法</h3> 支持以下语法: <pre><code>
+smart_cast&lt;Target *, Source *&gt;(Source * s);
+smart_cast&lt;Target *&gt;(Source * s);
+smart_cast&lt;Target &amp;, Source &amp;&gt;(Source &amp; s);
+</code></pre> 注意, 上面的语法不包含 <pre><code>
+smart_cast&lt;Target &amp; &gt;(Source &amp; s)
+</code></pre>, 但同样的功能由以下特殊语法支持 <pre><code>
+smart_cast_reference&lt;Target &amp;&gt;(Source &amp; s)
+</code></pre>
+
+<h3>要求</h3>
+<code style="white-space: normal">smart_cast</code> 只能用于支持模板偏特化的编译器, 或用于已应用宏 <code style="white-space: normal">
+BOOST_BROKEN_COMPILER_TYPE_TRAITS_SPECIALIZATION(&lt;type&gt;)</code> 的类型. <hr>
+<p><i> 版权所有 © <a href="http://www.rrsd.com"> Robert Ramey </a> 2002-2004. 按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt) </i></p>
+</body>
+</html>

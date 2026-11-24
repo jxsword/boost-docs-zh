@@ -1,0 +1,520 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>并行 - Fork-Join -- 实验性</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../thread.html" title="第 36 章 Thread 4.8.0">
+<link rel="prev" href="sds.html" title="同步数据结构">
+<link rel="next" href="time.html" title="时间要求">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="sds.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../thread.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="time.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="thread.parallel"></a><a class="link" href="parallel.html" title="并行 - Fork-Join -- 实验性">并行 - Fork-Join -- 实验性</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="parallel.html#thread.parallel.fork_join">Fork-Join</a></span></dt>
+<dt><span class="section"><a href="parallel.html#thread.parallel.ref">参考 -- 实验性</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="thread.parallel.fork_join"></a><a class="link" href="parallel.html#thread.parallel.fork_join" title="Fork-Join">Fork-Join</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="parallel.html#thread.parallel.fork_join.introduction">引言</a></span></dt>
+<dt><span class="section"><a href="parallel.html#thread.parallel.fork_join.tutorial">教程</a></span></dt>
+<dt><span class="section"><a href="parallel.html#thread.parallel.fork_join.examples">示例</a></span></dt>
+<dt><span class="section"><a href="parallel.html#thread.parallel.fork_join.rationale">设计理由</a></span></dt>
+</dl></div>
+<div class="warning"><table border="0" summary="Warning">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[警告]" src="../../../doc/src/images/warning.png"></td>
+<th align="left">警告</th>
+</tr>
+<tr><td align="left" valign="top"><p>这些特性是实验性的, 未来版本中可能变更. 目前测试尚不充分, 因此你可能发现一些小缺陷 :(</p></td></tr>
+</table></div>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>这些特性基于 P. Halpern、A. Robison、A. Laksberg、H. Sutter 等人的 C++1y 提案 <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n4088.pdf" target="_top"><span class="bold"><strong>n4088 - Task Region R3</strong></span></a>. 以下文字改编自该论文, 以展示差异.</p></td></tr>
+</table></div>
+<p>与标准提案相比的主要差异是, 我们可以为多个任务区域使用同一个执行器.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>到目前为止, Boost.Thread 尚未实现 <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n4105.pdf" target="_top"><span class="bold"><strong>n4105 - Information technology – Programming languages, their environments and system software interfaces – Technical Specification for C++ Extensions for Parallelism</strong></span></a> 中定义的并行算法.</p></td></tr>
+</table></div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="thread.parallel.fork_join.introduction"></a><a class="link" href="parallel.html#thread.parallel.fork_join.introduction" title="引言">引言</a>
+</h4></div></div></div>
+<p>本模块引入了 C++11/C++14 库函数模板 <code class="computeroutput"><span class="identifier">task_region</span></code> 和库类 <code class="computeroutput"><span class="identifier">task_region_handle</span></code>, 其成员函数 <code class="computeroutput"><span class="identifier">run</span></code> 和 <code class="computeroutput"><span class="identifier">wait</span></code> 共同使开发者能够编写表达力强且可移植的 fork-join 并行代码.</p>
+<p>并行技术规范 (Parallelism TS) 工作草案 <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n4105.pdf" target="_top"><span class="bold"><strong>N4105</strong></span></a> 通过加入并行执行策略来扩展 STL 算法. 程序员可以以此为基础编写额外的高层算法, 这些算法可以基于所提供的并行算法实现. 然而, n4105 的范围并不包括表达任意 fork-join 并行性的更低层机制</p>
+<p>本库提供的 <code class="computeroutput"><span class="identifier">task_region</span></code>、<code class="computeroutput"><span class="identifier">run</span></code> 与 <code class="computeroutput"><span class="identifier">wait</span></code> 函数基于 <code class="computeroutput"><span class="identifier">task_group</span></code> 概念, 该概念是 PPL 和 TBB 库共同子集的一部分.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="thread.parallel.fork_join.tutorial"></a><a class="link" href="parallel.html#thread.parallel.fork_join.tutorial" title="Tutorial">Tutorial</a>
+</h4></div></div></div>
+<p>考虑一个并行遍历树的例子: 用户提供的函数 compute 应用于树的每个节点, 返回结果之和:</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Func</span><span class="special">&gt;</span>
+<span class="keyword">int</span> <span class="identifier">traverse</span><span class="special">(</span><span class="identifier">node</span> <span class="special">*</span><span class="identifier">n</span><span class="special">,</span> <span class="identifier">Func</span><span class="special">&amp;&amp;</span> <span class="identifier">compute</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="keyword">int</span> <span class="identifier">left</span> <span class="special">=</span> <span class="number">0</span><span class="special">,</span> <span class="identifier">right</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+  <span class="identifier">task_region</span><span class="special">([&amp;](</span><span class="identifier">task_region_handle</span><span class="special">&amp;</span> <span class="identifier">tr</span><span class="special">)</span> <span class="special">{</span>
+    <span class="keyword">if</span> <span class="special">(</span><span class="identifier">n</span><span class="special">-&gt;</span><span class="identifier">left</span><span class="special">)</span>
+      <span class="identifier">tr</span><span class="special">.</span><span class="identifier">run</span><span class="special">([&amp;]</span> <span class="special">{</span> <span class="identifier">left</span> <span class="special">=</span> <span class="identifier">traverse</span><span class="special">(</span><span class="identifier">n</span><span class="special">-&gt;</span><span class="identifier">left</span><span class="special">,</span> <span class="identifier">compute</span><span class="special">);</span> <span class="special">});</span>
+    <span class="keyword">if</span> <span class="special">(</span><span class="identifier">n</span><span class="special">-&gt;</span><span class="identifier">right</span><span class="special">)</span>
+      <span class="identifier">tr</span><span class="special">.</span><span class="identifier">run</span><span class="special">([&amp;]</span> <span class="special">{</span> <span class="identifier">right</span> <span class="special">=</span> <span class="identifier">traverse</span><span class="special">(</span><span class="identifier">n</span><span class="special">-&gt;</span><span class="identifier">right</span><span class="special">,</span> <span class="identifier">compute</span><span class="special">);</span> <span class="special">});</span>
+  <span class="special">});</span>
+  <span class="keyword">return</span> <span class="identifier">compute</span><span class="special">(</span><span class="identifier">n</span><span class="special">)</span> <span class="special">+</span> <span class="identifier">left</span> <span class="special">+</span> <span class="identifier">right</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>上面的例子演示了本文提出的两个函数的用法: <code class="computeroutput"><span class="identifier">task_region</span></code> 与 <code class="computeroutput"><span class="identifier">task_region_handle</span><span class="special">::</span><span class="identifier">run</span></code>. <code class="computeroutput"><span class="identifier">task_region</span></code> 函数在程序代码中划定一个区域, 该区域可能包含任务调用, 任务由 <code class="computeroutput"><span class="identifier">run</span></code> 成员函数派生, 而该成员函数属于 <code class="computeroutput"><span class="identifier">task_region_handle</span></code> 类.</p>
+<p>run 函数派生一个任务——一个允许相对于调用者并行执行的工作单元. <code class="computeroutput"><span class="identifier">run</span></code> 在 <code class="computeroutput"><span class="identifier">task_region</span></code> 中派生的所有并行任务, 都会在 <code class="computeroutput"><span class="identifier">task_region</span></code> 结束时汇合回单个执行线程.</p>
+<p>
+          <code class="computeroutput"><span class="identifier">run</span></code> 接受用户提供的函数对象 <code class="computeroutput"><span class="identifier">f</span></code> 并异步启动它——即它可能在 <code class="computeroutput"><span class="identifier">f</span></code> 执行完成之前返回. 实现的调度器可以选择立即运行 <code class="computeroutput"><span class="identifier">f</span></code>, 或推迟运行 <code class="computeroutput"><span class="identifier">f</span></code>, 直到计算资源可用.</p>
+<p>一个 <code class="computeroutput"><span class="identifier">task_region_handle</span></code> 只能由 <code class="computeroutput"><span class="identifier">task_region</span></code> 构造, 因为它没有公开的构造函数. 因此, <code class="computeroutput"><span class="identifier">run</span></code> 只能 (直接或间接) 从传递给 <code class="computeroutput"><span class="identifier">task_region</span></code> 的用户提供的函数中调用:</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">g</span><span class="special">();</span>
+<span class="keyword">void</span> <span class="identifier">f</span><span class="special">(</span><span class="identifier">task_region_handle</span><span class="special">&amp;</span> <span class="identifier">tr</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="identifier">tr</span><span class="special">.</span><span class="identifier">run</span><span class="special">(</span><span class="identifier">g</span><span class="special">);</span> <span class="comment">// OK, invoked from within task_region in h</span>
+<span class="special">}</span>
+<span class="keyword">void</span> <span class="identifier">h</span><span class="special">()</span>
+<span class="special">{</span>
+  <span class="identifier">task_region</span><span class="special">(</span><span class="identifier">f</span><span class="special">);</span>
+<span class="special">}</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">()</span>
+<span class="special">{</span>
+  <span class="identifier">task_region_handle</span> <span class="identifier">tr</span><span class="special">;</span> <span class="comment">// Error: no public constructor</span>
+  <span class="identifier">tr</span><span class="special">.</span><span class="identifier">run</span><span class="special">(</span><span class="identifier">g</span><span class="special">);</span> <span class="comment">// No way to call run outside of a task_region</span>
+  <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="thread.parallel.fork_join.examples"></a><a class="link" href="parallel.html#thread.parallel.fork_join.examples" title="示例">示例</a>
+</h4></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="parallel.html#thread.parallel.fork_join.examples.fib">并行 Fibonacci</a></span></dt>
+<dt><span class="section"><a href="parallel.html#thread.parallel.fork_join.examples.fibex">并行 Fibonacci - 特定执行器</a></span></dt>
+<dt><span class="section"><a href="parallel.html#thread.parallel.fork_join.examples.quick_sort">并行 Accumulate</a></span></dt>
+<dt><span class="section"><a href="parallel.html#thread.parallel.fork_join.examples.quick_sort0">并行 Quick Sort</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="thread.parallel.fork_join.examples.fib"></a><a class="link" href="parallel.html#thread.parallel.fork_join.examples.fib" title="并行 Fibonacci">并行 Fibonacci</a>
+</h5></div></div></div>
+<p>这无疑是 Fibonacci 函数最差的实现. 不过还是放在这里, 因为它简单并能清楚地展示 fork-join 结构. <code class="computeroutput"><span class="identifier">Fibonacci</span><span class="special">(</span><span class="identifier">n</span><span class="special">)</span> <span class="special">=</span> <span class="identifier">Fibonacci</span><span class="special">(</span><span class="identifier">n</span><span class="special">-</span><span class="number">1</span><span class="special">)</span>
+            <span class="special">+</span> <span class="identifier">Fibonacci</span><span class="special">(</span><span class="identifier">n</span><span class="special">-</span><span class="number">2</span><span class="special">)</span></code>, 因此任务分解非常简单.</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">fib_task_region</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">n</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="keyword">using</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">experimental</span><span class="special">::</span><span class="identifier">parallel</span><span class="special">::</span><span class="identifier">task_region</span><span class="special">;</span>
+  <span class="keyword">using</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">experimental</span><span class="special">::</span><span class="identifier">parallel</span><span class="special">::</span><span class="identifier">task_region_handle</span><span class="special">;</span>
+
+  <span class="keyword">if</span> <span class="special">(</span><span class="identifier">n</span> <span class="special">==</span> <span class="number">0</span><span class="special">)</span> <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+  <span class="keyword">if</span> <span class="special">(</span><span class="identifier">n</span> <span class="special">==</span> <span class="number">1</span><span class="special">)</span> <span class="keyword">return</span> <span class="number">1</span><span class="special">;</span>
+
+  <span class="keyword">int</span> <span class="identifier">n1</span><span class="special">;</span>
+  <span class="keyword">int</span> <span class="identifier">n2</span><span class="special">;</span>
+
+  <span class="identifier">task_region</span><span class="special">([&amp;](</span><span class="identifier">task_region_handle</span><span class="special">&amp;</span> <span class="identifier">trh</span><span class="special">)</span>
+      <span class="special">{</span>
+        <span class="identifier">trh</span><span class="special">.</span><span class="identifier">run</span><span class="special">([&amp;]</span>
+            <span class="special">{</span>
+              <span class="identifier">n1</span> <span class="special">=</span> <span class="identifier">fib_task_region</span><span class="special">(</span><span class="identifier">n</span> <span class="special">-</span> <span class="number">1</span><span class="special">);</span>
+            <span class="special">});</span>
+
+        <span class="identifier">n2</span> <span class="special">=</span> <span class="identifier">fib_task_region</span><span class="special">(</span><span class="identifier">n</span> <span class="special">-</span> <span class="number">2</span><span class="special">);</span>
+      <span class="special">});</span>
+
+  <span class="keyword">return</span> <span class="identifier">n1</span> <span class="special">+</span> <span class="identifier">n2</span><span class="special">;</span>
+<span class="special">}</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">()</span>
+<span class="special">{</span>
+  <span class="keyword">for</span> <span class="special">(</span><span class="keyword">int</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span><span class="special">&lt;</span><span class="number">10</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">fib_task_region</span><span class="special">(</span><span class="identifier">i</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="string">" "</span><span class="special">;</span>
+  <span class="special">}</span>
+  <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="thread.parallel.fork_join.examples.fibex"></a><a class="link" href="parallel.html#thread.parallel.fork_join.examples.fibex" title="并行 Fibonacci - 特定执行器">并行 Fibonacci - 特定执行器</a>
+</h5></div></div></div>
+<p>上一个例子使用实现定义的方式来派生任务. 用户通常希望掌控任务必须如何派生. 有一个 <code class="computeroutput"><span class="identifier">task_region</span></code> 的重载接受额外的 <code class="computeroutput"><span class="identifier">Executor</span></code> 参数, 还有一个以 <code class="computeroutput"><span class="identifier">task_region_handle_gen</span><span class="special">&lt;</span><span class="identifier">Executor</span><span class="special">&gt;</span></code> 为参数的函数. <code class="computeroutput"><span class="identifier">task_region_handle_gen</span><span class="special">&lt;</span><span class="identifier">Executor</span><span class="special">&gt;</span></code> run 使用该执行器来派生任务.</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Ex</span><span class="special">&gt;</span>
+<span class="keyword">int</span> <span class="identifier">fib_task_region_gen</span><span class="special">(</span> <span class="identifier">Ex</span><span class="special">&amp;</span> <span class="identifier">ex</span><span class="special">,</span> <span class="keyword">int</span> <span class="identifier">n</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="keyword">using</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">experimental</span><span class="special">::</span><span class="identifier">parallel</span><span class="special">::</span><span class="identifier">task_region</span><span class="special">;</span>
+  <span class="keyword">using</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">experimental</span><span class="special">::</span><span class="identifier">parallel</span><span class="special">::</span><span class="identifier">task_region_handle_gen</span><span class="special">;</span>
+
+  <span class="keyword">if</span> <span class="special">(</span><span class="identifier">n</span> <span class="special">==</span> <span class="number">0</span><span class="special">)</span> <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+  <span class="keyword">if</span> <span class="special">(</span><span class="identifier">n</span> <span class="special">==</span> <span class="number">1</span><span class="special">)</span> <span class="keyword">return</span> <span class="number">1</span><span class="special">;</span>
+
+  <span class="keyword">int</span> <span class="identifier">n1</span><span class="special">;</span>
+  <span class="keyword">int</span> <span class="identifier">n2</span><span class="special">;</span>
+
+  <span class="identifier">task_region</span><span class="special">(</span><span class="identifier">ex</span><span class="special">,</span> <span class="special">[&amp;](</span><span class="identifier">task_region_handle_gen</span><span class="special">&lt;</span><span class="identifier">Ex</span><span class="special">&gt;&amp;</span> <span class="identifier">trh</span><span class="special">)</span> <span class="comment">// (2)</span>
+      <span class="special">{</span>
+        <span class="identifier">trh</span><span class="special">.</span><span class="identifier">run</span><span class="special">([&amp;]</span>
+            <span class="special">{</span>
+              <span class="identifier">n1</span> <span class="special">=</span> <span class="identifier">fib_task_region</span><span class="special">(</span><span class="identifier">n</span> <span class="special">-</span> <span class="number">1</span><span class="special">);</span>
+            <span class="special">});</span>
+
+        <span class="identifier">n2</span> <span class="special">=</span> <span class="identifier">fib_task_region</span><span class="special">(</span><span class="identifier">n</span> <span class="special">-</span> <span class="number">2</span><span class="special">);</span>
+      <span class="special">});</span>
+
+  <span class="keyword">return</span> <span class="identifier">n1</span> <span class="special">+</span> <span class="identifier">n2</span><span class="special">;</span>
+<span class="special">}</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">()</span>
+<span class="special">{</span>
+  <span class="identifier">boost</span><span class="special">::</span><span class="identifier">basic_thread_pool</span> <span class="identifier">tp</span><span class="special">;</span> <span class="comment">// (1)</span>
+  <span class="keyword">for</span> <span class="special">(</span><span class="keyword">int</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span><span class="special">&lt;</span><span class="number">10</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">fib_task_region_gen</span><span class="special">(</span><span class="identifier">tp</span><span class="special">,</span><span class="identifier">i</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="string">" "</span><span class="special">;</span>
+  <span class="special">}</span>
+  <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+  <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>特定执行器在第 (1) 行声明, 并在第 (2) 行使用.</p>
+</div>
+<div class="section"><div class="titlepage"><div><div><h5 class="title">
+<a name="thread.parallel.fork_join.examples.quick_sort"></a><a class="link" href="parallel.html#thread.parallel.fork_join.examples.quick_sort" title="并行 Accumulate">并行 Accumulate</a>
+</h5></div></div></div></div>
+<div class="section"><div class="titlepage"><div><div><h5 class="title">
+<a name="thread.parallel.fork_join.examples.quick_sort0"></a><a class="link" href="parallel.html#thread.parallel.fork_join.examples.quick_sort0" title="并行 Quick Sort">并行 Quick Sort</a>
+</h5></div></div></div></div>
+</div>
+<div class="section"><div class="titlepage"><div><div><h4 class="title">
+<a name="thread.parallel.fork_join.rationale"></a><a class="link" href="parallel.html#thread.parallel.fork_join.rationale" title="设计理由">设计理由</a>
+</h4></div></div></div></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="thread.parallel.ref"></a><a class="link" href="parallel.html#thread.parallel.ref" title="参考 -- 实验性">参考 -- 实验性</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="parallel.html#thread.parallel.ref.v1">并行 V1</a></span></dt>
+<dt><span class="section"><a href="parallel.html#thread.parallel.ref.v2">并行 V2</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="thread.parallel.ref.v1"></a><a class="link" href="parallel.html#thread.parallel.ref.v1" title="并行 V1">并行 V1</a>
+</h4></div></div></div>
+<div class="toc"><dl class="toc"><dt><span class="section"><a href="parallel.html#thread.parallel.ref.v1.exception_list">头文件 <code class="computeroutput"><span class="special">&lt;</span><span class="identifier">experimental</span><span class="special">/</span><span class="identifier">exception_list</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span></code></a></span></dt></dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="thread.parallel.ref.v1.exception_list"></a><a class="link" href="parallel.html#thread.parallel.ref.v1.exception_list" title="头文件 &lt;experimental/exception_list.hpp&gt;">头文件 <code class="computeroutput"><span class="special">&lt;</span><span class="identifier">experimental</span><span class="special">/</span><span class="identifier">exception_list</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span></code></a>
+</h5></div></div></div>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">experimental</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">parallel</span>
+<span class="special">{</span>
+<span class="keyword">inline</span> <span class="keyword">namespace</span> <span class="identifier">v1</span>
+<span class="special">{</span>
+
+  <span class="keyword">class</span> <span class="identifier">exception_list</span><span class="special">;</span>
+
+<span class="special">}</span> <span class="comment">// v1</span>
+<span class="special">}</span> <span class="comment">// parallel</span>
+<span class="special">}</span> <span class="comment">// experimental</span>
+<span class="special">}</span> <span class="comment">// boost</span>
+</pre>
+<div class="section">
+<div class="titlepage"><div><div><h6 class="title">
+<a name="thread.parallel.ref.v1.exception_list.exception_list"></a><a class="link" href="parallel.html#thread.parallel.ref.v1.exception_list.exception_list" title="类 exception_list">类 <code class="computeroutput"><span class="identifier">exception_list</span></code></a>
+</h6></div></div></div>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">experimental</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">parallel</span>
+<span class="special">{</span>
+<span class="keyword">inline</span> <span class="keyword">namespace</span> <span class="identifier">v1</span>
+<span class="special">{</span>
+
+  <span class="keyword">class</span> <span class="identifier">exception_list</span><span class="special">:</span> <span class="keyword">public</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">exception</span>
+  <span class="special">{</span>
+  <span class="keyword">public</span><span class="special">:</span>
+    <span class="keyword">typedef</span> <span class="char">'implementation defined'</span> <span class="identifier">const_iterator</span><span class="special">;</span>
+
+    <span class="special">~</span><span class="identifier">exception_list</span><span class="special">()</span> <span class="keyword">noexcept</span> <span class="special">{}</span>
+
+    <span class="keyword">void</span> <span class="identifier">add</span><span class="special">(</span><span class="identifier">exception_ptr</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">e</span><span class="special">);</span>
+    <span class="identifier">size_t</span> <span class="identifier">size</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+    <span class="identifier">const_iterator</span> <span class="identifier">begin</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+    <span class="identifier">const_iterator</span> <span class="identifier">end</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+    <span class="keyword">const</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">what</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+  <span class="special">};</span>
+
+<span class="special">}</span> <span class="comment">// v1</span>
+<span class="special">}</span> <span class="comment">// parallel</span>
+<span class="special">}</span> <span class="comment">// experimental</span>
+<span class="special">}</span> <span class="comment">// boost</span>
+</pre>
+</div>
+</div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="thread.parallel.ref.v2"></a><a class="link" href="parallel.html#thread.parallel.ref.v2" title="并行 V2">并行 V2</a>
+</h4></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="parallel.html#thread.parallel.ref.v2.concepts">概念</a></span></dt>
+<dt><span class="section"><a href="parallel.html#thread.parallel.ref.v2.task_region">头文件 <code class="computeroutput"><span class="special">&lt;</span><span class="identifier">experimental</span><span class="special">/</span><span class="identifier">task_region</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span></code></a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="thread.parallel.ref.v2.concepts"></a><a class="link" href="parallel.html#thread.parallel.ref.v2.concepts" title="概念">概念</a>
+</h5></div></div></div>
+<div class="section"><div class="titlepage"><div><div><h6 class="title">
+<a name="thread.parallel.ref.v2.concepts.regionCallable"></a><a class="link" href="parallel.html#thread.parallel.ref.v2.concepts.regionCallable" title="概念 Region_Callable">概念 <code class="computeroutput"><span class="identifier">Region_Callable</span></code></a>
+</h6></div></div></div></div>
+<div class="section"><div class="titlepage"><div><div><h6 class="title">
+<a name="thread.parallel.ref.v2.concepts.taskCallable"></a><a class="link" href="parallel.html#thread.parallel.ref.v2.concepts.taskCallable" title="概念 Task_Callable">概念 <code class="computeroutput"><span class="identifier">Task_Callable</span></code></a>
+</h6></div></div></div></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="thread.parallel.ref.v2.task_region"></a><a class="link" href="parallel.html#thread.parallel.ref.v2.task_region" title="头文件 &lt;experimental/task_region.hpp&gt;">头文件 <code class="computeroutput"><span class="special">&lt;</span><span class="identifier">experimental</span><span class="special">/</span><span class="identifier">task_region</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span></code></a>
+</h5></div></div></div>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">experimental</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">parallel</span>
+<span class="special">{</span>
+<span class="keyword">inline</span> <span class="keyword">namespace</span> <span class="identifier">v2</span>
+<span class="special">{</span>
+
+  <span class="keyword">class</span> <span class="identifier">task_canceled_exception</span><span class="special">;</span>
+
+  <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Executor</span><span class="special">&gt;</span>
+  <span class="keyword">class</span> <span class="identifier">task_region_handle_gen</span><span class="special">;</span>
+
+  <span class="keyword">using</span> <span class="identifier">default_executor</span> <span class="special">=</span> <span class="char">'implementation defined'</span><span class="special">;</span>
+
+  <span class="keyword">class</span> <span class="identifier">task_region_handle</span><span class="special">;</span>
+
+  <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Executor</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">F</span><span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="identifier">task_region_final</span><span class="special">(</span><span class="identifier">Executor</span><span class="special">&amp;</span> <span class="identifier">ex</span><span class="special">,</span> <span class="identifier">F</span><span class="special">&amp;&amp;</span> <span class="identifier">f</span><span class="special">);</span>
+  <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">F</span><span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="identifier">task_region_final</span><span class="special">(</span><span class="identifier">F</span><span class="special">&amp;&amp;</span> <span class="identifier">f</span><span class="special">);</span>
+
+  <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Executor</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">F</span><span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="identifier">task_region</span><span class="special">(</span><span class="identifier">Executor</span><span class="special">&amp;</span> <span class="identifier">ex</span><span class="special">,</span> <span class="identifier">F</span><span class="special">&amp;&amp;</span> <span class="identifier">f</span><span class="special">);</span>
+  <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">F</span><span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="identifier">task_region</span><span class="special">(</span><span class="identifier">F</span><span class="special">&amp;&amp;</span> <span class="identifier">f</span><span class="special">);</span>
+
+<span class="special">}</span> <span class="comment">// v2</span>
+<span class="special">}</span> <span class="comment">// parallel</span>
+<span class="special">}</span> <span class="comment">// experimental</span>
+<span class="special">}</span> <span class="comment">// boost</span>
+</pre>
+<div class="section">
+<div class="titlepage"><div><div><h6 class="title">
+<a name="thread.parallel.ref.v2.task_region.task_canceled_exception"></a><a class="link" href="parallel.html#thread.parallel.ref.v2.task_region.task_canceled_exception" title="类 task_canceled_exception">类 <code class="computeroutput"><span class="identifier">task_canceled_exception</span> </code></a>
+</h6></div></div></div>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">experimental</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">parallel</span>
+<span class="special">{</span>
+<span class="keyword">inline</span> <span class="keyword">namespace</span> <span class="identifier">v2</span>
+<span class="special">{</span>
+
+  <span class="keyword">class</span> <span class="identifier">task_canceled_exception</span><span class="special">:</span> <span class="keyword">public</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">exception</span>
+  <span class="special">{</span>
+  <span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">task_canceled_exception</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+    <span class="identifier">task_canceled_exception</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">task_canceled_exception</span><span class="special">&amp;)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+    <span class="identifier">task_canceled_exception</span><span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">=(</span><span class="keyword">const</span> <span class="identifier">task_canceled_exception</span><span class="special">&amp;)</span> <span class="keyword">noexcept</span><span class="special">;</span>
+    <span class="keyword">virtual</span> <span class="keyword">const</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">what</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span><span class="special">;</span>
+  <span class="special">};</span>
+
+<span class="special">}</span> <span class="comment">// v2</span>
+<span class="special">}</span> <span class="comment">// parallel</span>
+<span class="special">}</span> <span class="comment">// experimental</span>
+<span class="special">}</span> <span class="comment">// boost</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h6 class="title">
+<a name="thread.parallel.ref.v2.task_region.task_region_handle_gen"></a><a class="link" href="parallel.html#thread.parallel.ref.v2.task_region.task_region_handle_gen" title="类模板 task_region_handle_gen&lt;&gt;">类模板 <code class="computeroutput"><span class="identifier">task_region_handle_gen</span><span class="special">&lt;&gt;</span></code></a>
+</h6></div></div></div>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">experimental</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">parallel</span>
+<span class="special">{</span>
+<span class="keyword">inline</span> <span class="keyword">namespace</span> <span class="identifier">v2</span>
+<span class="special">{</span>
+
+  <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Executor</span><span class="special">&gt;</span>
+  <span class="keyword">class</span> <span class="identifier">task_region_handle_gen</span>
+  <span class="special">{</span>
+  <span class="keyword">protected</span><span class="special">:</span>
+    <span class="identifier">task_region_handle_gen</span><span class="special">(</span><span class="identifier">Executor</span><span class="special">&amp;</span> <span class="identifier">ex</span><span class="special">);</span>
+
+    <span class="special">~</span><span class="identifier">task_region_handle_gen</span><span class="special">();</span>
+
+  <span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">task_region_handle_gen</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">task_region_handle_gen</span><span class="special">&amp;)</span> <span class="special">=</span> <span class="keyword">delete</span><span class="special">;</span>
+    <span class="identifier">task_region_handle_gen</span><span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">=(</span><span class="keyword">const</span> <span class="identifier">task_region_handle_gen</span><span class="special">&amp;)</span> <span class="special">=</span> <span class="keyword">delete</span><span class="special">;</span>
+    <span class="identifier">task_region_handle_gen</span><span class="special">*</span> <span class="keyword">operator</span><span class="special">&amp;()</span> <span class="keyword">const</span> <span class="special">=</span> <span class="keyword">delete</span><span class="special">;</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">F</span><span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="identifier">run</span><span class="special">(</span><span class="identifier">F</span><span class="special">&amp;&amp;</span> <span class="identifier">f</span><span class="special">);</span>
+
+    <span class="keyword">void</span> <span class="identifier">wait</span><span class="special">();</span>
+  <span class="special">};</span>
+
+<span class="special">}</span> <span class="comment">// v2</span>
+<span class="special">}</span> <span class="comment">// parallel</span>
+<span class="special">}</span> <span class="comment">// experimental</span>
+<span class="special">}</span> <span class="comment">// boost</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h6 class="title">
+<a name="thread.parallel.ref.v2.task_region.default_executor"></a><a class="link" href="parallel.html#thread.parallel.ref.v2.task_region.default_executor" title="类 default_executor">类 <code class="computeroutput"><span class="identifier">default_executor</span> </code></a>
+</h6></div></div></div>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">experimental</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">parallel</span>
+<span class="special">{</span>
+<span class="keyword">inline</span> <span class="keyword">namespace</span> <span class="identifier">v2</span>
+<span class="special">{</span>
+
+  <span class="keyword">using</span> <span class="identifier">default_executor</span> <span class="special">=</span> <span class="char">'implementation defined'</span><span class="special">;</span>
+
+<span class="special">}</span> <span class="comment">// v2</span>
+<span class="special">}</span> <span class="comment">// parallel</span>
+<span class="special">}</span> <span class="comment">// experimental</span>
+<span class="special">}</span> <span class="comment">// boost</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h6 class="title">
+<a name="thread.parallel.ref.v2.task_region.task_region_handle"></a><a class="link" href="parallel.html#thread.parallel.ref.v2.task_region.task_region_handle" title="类 task_region_handle">类 <code class="computeroutput"><span class="identifier">task_region_handle</span> </code></a>
+</h6></div></div></div>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">experimental</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">parallel</span>
+<span class="special">{</span>
+<span class="keyword">inline</span> <span class="keyword">namespace</span> <span class="identifier">v2</span>
+<span class="special">{</span>
+
+  <span class="keyword">class</span> <span class="identifier">task_region_handle</span> <span class="special">:</span>
+    <span class="keyword">public</span> <span class="identifier">task_region_handle_gen</span><span class="special">&lt;</span><span class="identifier">default_executor</span><span class="special">&gt;</span>
+  <span class="special">{</span>
+  <span class="keyword">protected</span><span class="special">:</span>
+    <span class="identifier">task_region_handle</span><span class="special">();</span>
+    <span class="identifier">task_region_handle</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">task_region_handle</span><span class="special">&amp;)</span> <span class="special">=</span> <span class="keyword">delete</span><span class="special">;</span>
+    <span class="identifier">task_region_handle</span><span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">=(</span><span class="keyword">const</span> <span class="identifier">task_region_handle</span><span class="special">&amp;)</span> <span class="special">=</span> <span class="keyword">delete</span><span class="special">;</span>
+    <span class="identifier">task_region_handle</span><span class="special">*</span> <span class="keyword">operator</span><span class="special">&amp;()</span> <span class="keyword">const</span> <span class="special">=</span> <span class="keyword">delete</span><span class="special">;</span>
+
+  <span class="special">};</span>
+
+<span class="special">}</span> <span class="comment">// v2</span>
+<span class="special">}</span> <span class="comment">// parallel</span>
+<span class="special">}</span> <span class="comment">// experimental</span>
+<span class="special">}</span> <span class="comment">// boost</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h6 class="title">
+<a name="thread.parallel.ref.v2.task_region.task_region_final"></a><a class="link" href="parallel.html#thread.parallel.ref.v2.task_region.task_region_final" title="函数模板 task_region_final">函数模板 <code class="computeroutput"><span class="identifier">task_region_final</span>
+            </code></a>
+</h6></div></div></div>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">experimental</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">parallel</span>
+<span class="special">{</span>
+<span class="keyword">inline</span> <span class="keyword">namespace</span> <span class="identifier">v2</span>
+<span class="special">{</span>
+
+  <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Executor</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">F</span><span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="identifier">task_region_final</span><span class="special">(</span><span class="identifier">Executor</span><span class="special">&amp;</span> <span class="identifier">ex</span><span class="special">,</span> <span class="identifier">F</span><span class="special">&amp;&amp;</span> <span class="identifier">f</span><span class="special">);</span>
+  <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">F</span><span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="identifier">task_region_final</span><span class="special">(</span><span class="identifier">F</span><span class="special">&amp;&amp;</span> <span class="identifier">f</span><span class="special">);</span>
+
+<span class="special">}</span> <span class="comment">// v2</span>
+<span class="special">}</span> <span class="comment">// parallel</span>
+<span class="special">}</span> <span class="comment">// experimental</span>
+<span class="special">}</span> <span class="comment">// boost</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h6 class="title">
+<a name="thread.parallel.ref.v2.task_region.task_region"></a><a class="link" href="parallel.html#thread.parallel.ref.v2.task_region.task_region" title="函数模板 task_region">函数模板 <code class="computeroutput"><span class="identifier">task_region</span> </code></a>
+</h6></div></div></div>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">experimental</span>
+<span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">parallel</span>
+<span class="special">{</span>
+<span class="keyword">inline</span> <span class="keyword">namespace</span> <span class="identifier">v2</span>
+<span class="special">{</span>
+
+  <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Executor</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">F</span><span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="identifier">task_region</span><span class="special">(</span><span class="identifier">Executor</span><span class="special">&amp;</span> <span class="identifier">ex</span><span class="special">,</span> <span class="identifier">F</span><span class="special">&amp;&amp;</span> <span class="identifier">f</span><span class="special">);</span>
+  <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">F</span><span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="identifier">task_region</span><span class="special">(</span><span class="identifier">F</span><span class="special">&amp;&amp;</span> <span class="identifier">f</span><span class="special">);</span>
+
+<span class="special">}</span> <span class="comment">// v2</span>
+<span class="special">}</span> <span class="comment">// parallel</span>
+<span class="special">}</span> <span class="comment">// experimental</span>
+<span class="special">}</span> <span class="comment">// boost</span>
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2007 -11 Anthony Williams<br>版权所有 © 2011 -17 Vicente J. Botet Escriba<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="sds.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../thread.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="time.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

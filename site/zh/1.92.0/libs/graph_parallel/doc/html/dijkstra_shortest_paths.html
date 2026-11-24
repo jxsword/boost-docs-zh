@@ -1,0 +1,296 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.6: http://docutils.sourceforge.net/" />
+<title>Parallel BGL Dijkstra 单源最短路径</title>
+<link rel="stylesheet" href="../../../../rst.css" type="text/css" />
+</head>
+<body>
+<div class="document" id="logo-dijkstra-s-single-source-shortest-paths">
+<h1 class="title"><a class="reference external" href="http://www.osl.iu.edu/research/pbgl"><img align="middle" alt="Parallel BGL" class="align-middle" src="pbgl-logo.png" /></a> Dijkstra 单源最短路径</h1>
+
+<!-- Copyright (C) 2004-2008 The Trustees of Indiana University.
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt) -->
+<pre class="literal-block">
+// named parameter version
+template &lt;typename Graph, typename P, typename T, typename R&gt;
+void
+dijkstra_shortest_paths(Graph&amp; g,
+  typename graph_traits&lt;Graph&gt;::vertex_descriptor s,
+  const bgl_named_params&lt;P, T, R&gt;&amp; params);
+
+// non-named parameter version
+template &lt;typename Graph, typename DijkstraVisitor,
+          typename PredecessorMap, typename DistanceMap,
+          typename WeightMap, typename VertexIndexMap, typename CompareFunction, typename CombineFunction,
+          typename DistInf, typename DistZero&gt;
+void dijkstra_shortest_paths
+  (const Graph&amp; g,
+   typename graph_traits&lt;Graph&gt;::vertex_descriptor s,
+   PredecessorMap predecessor, DistanceMap distance, WeightMap weight,
+   VertexIndexMap index_map,
+   CompareFunction compare, CombineFunction combine, DistInf inf, DistZero zero,
+   DijkstraVisitor vis);
+</pre>
+<p> <tt class="docutils literal"><span class="pre">dijkstra_shortest_paths()</span></tt> 函数求解带权无向或有向分布图上的单源最短路径问题. 分布式 Dijkstra 算法有两种实现, 它们提供不同的性能权衡. 两者都可以通过 <tt class="docutils literal"><span class="pre">dijkstra_shortest_paths()</span></tt> 函数访问 (以与顺序 BGL 程序保持兼容). 分布式 Dijkstra 算法与其顺序版本非常相似. 此处仅强调差异; 更多细节请参阅 <a class="reference external" href="http://www.boost.org/libs/graph/doc/dijkstra_shortest_paths.html">顺序 Dijkstra 实现</a>. 对大多数情况而言, 性能最好的实现是 <a class="reference internal" href="#delta-stepping-algorithm">Delta-Stepping 算法</a>; 不过也可以采用更保守的 <a class="reference internal" href="#crauser-et-al-s-algorithm">Crauser 等人的算法</a> 或简单的 <a class="reference internal" href="#eager-dijkstra-s-algorithm">Eager Dijkstra 算法</a>.</p>
+<div class="contents topic" id="contents">
+<p class="topic-title first">目录</p>
+<ul class="simple">
+<li><a class="reference internal" href="#where-defined" id="id10">定义位置</a></li>
+<li><a class="reference internal" href="#parameters" id="id11">参数</a></li>
+<li><a class="reference internal" href="#visitor-event-points" id="id12">访问器事件点</a></li>
+<li><a class="reference internal" href="#crauser-et-al-s-algorithm" id="id13">Crauser 等人的算法</a><ul>
+<li><a class="reference internal" href="#id2" id="id14">定义位置</a></li>
+<li><a class="reference internal" href="#complexity" id="id15">复杂度</a></li>
+<li><a class="reference internal" href="#performance" id="id16">性能</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#eager-dijkstra-s-algorithm" id="id17">Eager Dijkstra 算法</a><ul>
+<li><a class="reference internal" href="#id5" id="id18">定义位置</a></li>
+<li><a class="reference internal" href="#id6" id="id19">复杂度</a></li>
+<li><a class="reference internal" href="#id7" id="id20">性能</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#delta-stepping-algorithm" id="id21">Delta-Stepping 算法</a><ul>
+<li><a class="reference internal" href="#id9" id="id22">定义位置</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#example" id="id23"> 示例 </a></li>
+<li><a class="reference internal" href="#bibliography" id="id24">参考文献</a></li>
+</ul>
+</div>
+<div class="section" id="where-defined">
+<h1><a class="toc-backref" href="#id10">定义位置</a></h1>
+<p>&lt;<tt class="docutils literal"><span class="pre">boost/graph/dijkstra_shortest_paths.hpp</span></tt>&gt;</p>
+</div>
+<div class="section" id="parameters">
+<h1><a class="toc-backref" href="#id11">参数</a></h1>
+<p> <a class="reference external" href="http://www.boost.org/libs/graph/doc/dijkstra_shortest_paths.html">顺序 Dijkstra 实现</a> 的所有参数都受支持, 且含义基本相同. 分布式 Dijkstra 实现引入了一个新参数, 用于选择 <a class="reference internal" href="#eager-dijkstra-s-algorithm">Eager Dijkstra 算法</a> 并控制其执行的工作量. 此处仅记录差异与新参数.</p>
+<dl class="docutils">
+<dt>IN: <tt class="docutils literal"><span class="pre">Graph&amp;</span> <span class="pre">g</span></tt></dt>
+<dd>图类型必须是 <a class="reference external" href="DistributedGraph.html">分布图</a> 的模型.</dd>
+<dt>IN: <tt class="docutils literal"><span class="pre">vertex_descriptor</span> <span class="pre">s</span></tt></dt>
+<dd>起始顶点在每个进程中必须相同.</dd>
+<dt>OUT: <tt class="docutils literal"><span class="pre">predecessor_map(PredecessorMap</span> <span class="pre">p_map)</span></tt></dt>
+<dd><p class="first">前驱映射必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a> 或 <tt class="docutils literal"><span class="pre">dummy_property_map</span></tt>, 尽管只有映射的本地部分会被写入.</p>
+<p class="last"><strong>默认:</strong> <tt class="docutils literal"><span class="pre">dummy_property_map</span></tt></p>
+</dd>
+<dt>UTIL/OUT: <tt class="docutils literal"><span class="pre">distance_map(DistanceMap</span> <span class="pre">d_map)</span></tt></dt>
+<dd>距离映射必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a> 或 <tt class="docutils literal"><span class="pre">dummy_property_map</span></tt>. 它将被赋予 <tt class="docutils literal"><span class="pre">vertex_distance</span></tt> 角色.</dd>
+<dt>IN: <tt class="docutils literal"><span class="pre">visitor(DijkstraVisitor</span> <span class="pre">vis)</span></tt></dt>
+<dd>访问器必须是分布式 Dijkstra 访问器. 顺序与分布式 Dijkstra 访问器之间的细微差别在 <a class="reference internal" href="#visitor-event-points">访问器事件点</a> 一节中讨论.</dd>
+<dt>UTIL/OUT: <tt class="docutils literal"><span class="pre">color_map(ColorMap</span> <span class="pre">color)</span></tt></dt>
+<dd>颜色映射必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a>, 其进程组与图 <tt class="docutils literal"><span class="pre">g</span></tt> 相同, 且其颜色必须单调加深 (white -&gt; gray -&gt; black). 默认值是由 <tt class="docutils literal"><span class="pre">default_color_type</span></tt> 的 <tt class="docutils literal"><span class="pre">std::vector</span></tt> 创建的分布式 <tt class="docutils literal"><span class="pre">iterator_property_map</span></tt>.</dd>
+</dl>
+<p>IN: <tt class="docutils literal"><span class="pre">lookahead(distance_type</span> <span class="pre">look)</span></tt></p>
+<blockquote>
+<p>当提供该参数时, 实现将使用具有给定前瞻 (lookahead) 值的 <a class="reference internal" href="#eager-dijkstra-s-algorithm">Eager Dijkstra 算法</a>. 前瞻允许分布式 Dijkstra 算法投机性地处理其到源点的最短距离可能尚未确定的顶点. 当所得距离即为最短距离时, 并行性得到提升, 算法可能更早终止. 然而, 若该距离不是最短距离, 该顶点稍后需要重新处理, 从而产生更多工作量.</p>
+<p>类型 <tt class="docutils literal"><span class="pre">distance_type</span></tt> 是 <tt class="docutils literal"><span class="pre">DistanceMap</span></tt> 属性映射的值类型. 它是一个非负值, 指定 Dijkstra 算法可以超前处理多远.</p>
+<p><strong>默认:</strong> 无值 (不使用前瞻; 使用 <a class="reference internal" href="#crauser-et-al-s-algorithm">Crauser 等人的算法</a>).</p>
+</blockquote>
+</div>
+<div class="section" id="visitor-event-points">
+<h1><a class="toc-backref" href="#id12">访问器事件点</a></h1>
+<p> <a class="reference external" href="http://www.boost.org/libs/graph/doc/DijkstraVisitor.html">Dijkstra 访问器</a> 概念定义了 7 个事件点, 它们将由 <a class="reference external" href="http://www.boost.org/libs/graph/doc/dijkstra_shortest_paths.html">顺序 Dijkstra 实现</a> 触发. 分布式 Dijkstra 保留这些事件点, 但所触发事件的序列以及每个事件发生的进程会随图的分布、前瞻与边权重而变化.</p>
+<dl class="docutils">
+<dt><tt class="docutils literal"><span class="pre">initialize_vertex(s,</span> <span class="pre">g)</span></tt></dt>
+<dd>每个进程都会为其每个本地顶点调用此事件.</dd>
+<dt><tt class="docutils literal"><span class="pre">discover_vertex(u,</span> <span class="pre">g)</span></tt></dt>
+<dd>每当一个进程发现新顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 时都会调用此事件. 由于分布式属性映射中的信息不完整, 同一顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 可能多次触发此事件.</dd>
+<dt><tt class="docutils literal"><span class="pre">examine_vertex(u,</span> <span class="pre">g)</span></tt></dt>
+<dd>此事件由拥有顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 的进程调用. 当图包含负权边或使用前瞻时, 同一顶点可能多次触发此事件.</dd>
+<dt><tt class="docutils literal"><span class="pre">examine_edge(e,</span> <span class="pre">g)</span></tt></dt>
+<dd>此事件由拥有 <tt class="docutils literal"><span class="pre">e</span></tt> 的源顶点的进程调用. 与 <tt class="docutils literal"><span class="pre">examine_vertex</span></tt> 一样, 同一条边可能多次触发此事件.</dd>
+<dt><tt class="docutils literal"><span class="pre">edge_relaxed(e,</span> <span class="pre">g)</span></tt></dt>
+<dd>与 <tt class="docutils literal"><span class="pre">examine_edge</span></tt> 类似, 此事件由拥有源顶点的进程调用, 并且可能多次调用 (即使没有前瞻或负权边).</dd>
+<dt><tt class="docutils literal"><span class="pre">edge_not_relaxed(e,</span> <span class="pre">g)</span></tt></dt>
+<dd>与 <tt class="docutils literal"><span class="pre">edge_relaxed</span></tt> 类似. 顺序 Dijkstra 会触发的某些 <tt class="docutils literal"><span class="pre">edge_not_relaxed</span></tt> 事件在分布式 Dijkstra 算法中会变为 <tt class="docutils literal"><span class="pre">edge_relaxed</span></tt> 事件.</dd>
+<dt><tt class="docutils literal"><span class="pre">finish_vertex(e,</span> <span class="pre">g)</span></tt></dt>
+<dd>参见 <tt class="docutils literal"><span class="pre">examine_vertex</span></tt> 的文档. 注意, 如果允许前瞻或图中存在负权边, 一个 "已完成" 的顶点未必真正完成.</dd>
+</dl>
+</div>
+<div class="section" id="crauser-et-al-s-algorithm">
+<h1><a class="toc-backref" href="#id13">Crauser 等人的算法</a></h1>
+<pre class="literal-block">
+namespace graph {
+  template&lt;typename DistributedGraph, typename DijkstraVisitor,
+           typename PredecessorMap, typename DistanceMap, typename WeightMap,
+           typename IndexMap, typename ColorMap, typename Compare,
+           typename Combine, typename DistInf, typename DistZero&gt;
+  void
+  crauser_et_al_shortest_paths
+    (const DistributedGraph&amp; g,
+     typename graph_traits&lt;DistributedGraph&gt;::vertex_descriptor s,
+     PredecessorMap predecessor, DistanceMap distance, WeightMap weight,
+     IndexMap index_map, ColorMap color_map,
+     Compare compare, Combine combine, DistInf inf, DistZero zero,
+     DijkstraVisitor vis);
+
+  template&lt;typename DistributedGraph, typename DijkstraVisitor,
+           typename PredecessorMap, typename DistanceMap, typename WeightMap&gt;
+  void
+  crauser_et_al_shortest_paths
+    (const DistributedGraph&amp; g,
+     typename graph_traits&lt;DistributedGraph&gt;::vertex_descriptor s,
+     PredecessorMap predecessor, DistanceMap distance, WeightMap weight);
+
+  template&lt;typename DistributedGraph, typename DijkstraVisitor,
+           typename PredecessorMap, typename DistanceMap&gt;
+  void
+  crauser_et_al_shortest_paths
+    (const DistributedGraph&amp; g,
+     typename graph_traits&lt;DistributedGraph&gt;::vertex_descriptor s,
+     PredecessorMap predecessor, DistanceMap distance);
+}
+</pre>
+<p>Crauser、Mehlhorn、Meyer 与 Sanders 提出的 Dijkstra 算法表述 <a class="citation-reference" href="#cmms98a" id="id1">[CMMS98a]</a> 通过增加给定超步中可处理的顶点数量, 提高了并行 Dijkstra 算法的可扩展性. 该算法能很好地适应各种图类型, 且使用简单, 无需额外的用户输入即可获得合理的性能. 其缺点在于实现需要管理三个优先队列, 这会在每个节点上产生大量工作.</p>
+<p>分布式 <tt class="docutils literal"><span class="pre">dijkstra_shortest_paths()</span></tt> 默认使用该算法.</p>
+<div class="section" id="id2">
+<h2><a class="toc-backref" href="#id14">定义位置</a></h2>
+<p>&lt;<tt class="docutils literal"><span class="pre">boost/graph/distributed/crauser_et_al_shortest_paths.hpp</span></tt>&gt;</p>
+</div>
+<div class="section" id="complexity">
+<h2><a class="toc-backref" href="#id15">复杂度</a></h2>
+<p>该算法在 <em>d + 1</em> 个 BSP 超步中执行 <em>O(V log V)</em> 的工作量, 其中 <em>d</em> 至多为 <em>O(V)</em>, 但通常要小得多. 对于边权重取自 [0, 1) 的有向 Erdos-Renyi 图, 超步的期望数量 <em>d</em> 以高概率为 <em>O(n^(1/3))</em>.</p>
+</div>
+<div class="section" id="performance">
+<h2><a class="toc-backref" href="#id16">性能</a></h2>
+<p>以下图表展示了 Crauser 等人算法的 Parallel BGL 实现在边权重均匀取自 <em>[0, 1)</em> 范围的图上的性能.</p>
+<img align="left" alt="chart_php_cluster_Odin_generator_ER_SF_SW_dataset_TimeSparse_columns_4.png" class="align-left" src="chart_php_cluster_Odin_generator_ER_SF_SW_dataset_TimeSparse_columns_4.png" />
+<img alt="chart_php_cluster_Odin_generator_ER_SF_SW_dataset_TimeSparse_columns_4_speedup_1.png" src="chart_php_cluster_Odin_generator_ER_SF_SW_dataset_TimeSparse_columns_4_speedup_1.png" />
+<img align="left" alt="chart_php_cluster_Odin_generator_ER_SF_SW_dataset_TimeDense_columns_4.png" class="align-left" src="chart_php_cluster_Odin_generator_ER_SF_SW_dataset_TimeDense_columns_4.png" />
+<img alt="chart_php_cluster_Odin_generator_ER_SF_SW_dataset_TimeDense_columns_4_speedup_1.png" src="chart_php_cluster_Odin_generator_ER_SF_SW_dataset_TimeDense_columns_4_speedup_1.png" />
+</div>
+</div>
+<div class="section" id="eager-dijkstra-s-algorithm">
+<h1><a class="toc-backref" href="#id17">Eager Dijkstra 算法</a></h1>
+<pre class="literal-block">
+namespace graph {
+  template&lt;typename DistributedGraph, typename DijkstraVisitor,
+           typename PredecessorMap, typename DistanceMap, typename WeightMap,
+           typename IndexMap, typename ColorMap, typename Compare,
+           typename Combine, typename DistInf, typename DistZero&gt;
+  void
+  eager_dijkstra_shortest_paths
+    (const DistributedGraph&amp; g,
+     typename graph_traits&lt;DistributedGraph&gt;::vertex_descriptor s,
+     PredecessorMap predecessor, DistanceMap distance,
+     typename property_traits&lt;DistanceMap&gt;::value_type lookahead,
+     WeightMap weight, IndexMap index_map, ColorMap color_map,
+     Compare compare, Combine combine, DistInf inf, DistZero zero,
+     DijkstraVisitor vis);
+
+  template&lt;typename DistributedGraph, typename DijkstraVisitor,
+           typename PredecessorMap, typename DistanceMap, typename WeightMap&gt;
+  void
+  eager_dijkstra_shortest_paths
+    (const DistributedGraph&amp; g,
+     typename graph_traits&lt;DistributedGraph&gt;::vertex_descriptor s,
+     PredecessorMap predecessor, DistanceMap distance,
+     typename property_traits&lt;DistanceMap&gt;::value_type lookahead,
+     WeightMap weight);
+
+  template&lt;typename DistributedGraph, typename DijkstraVisitor,
+           typename PredecessorMap, typename DistanceMap&gt;
+  void
+  eager_dijkstra_shortest_paths
+    (const DistributedGraph&amp; g,
+     typename graph_traits&lt;DistributedGraph&gt;::vertex_descriptor s,
+     PredecessorMap predecessor, DistanceMap distance,
+     typename property_traits&lt;DistanceMap&gt;::value_type lookahead);
+}
+</pre>
+<p>在每个超步中, 并行 Dijkstra 算法通常只处理距离等于全局最小距离的节点, 因为这些距离可保证是正确的. 该算法的这一变体允许算法处理其距离与最小距离相差某个常数以内的所有顶点. 该值称为 "前瞻" (lookahead) 值, 由用户作为函数的第五个参数提供. 较小的前瞻值可能导致并行化机会有限, 而较大的值会暴露更多并行性, 但可能引入 (非无限的) 循环并导致额外工作. 前瞻参数的最优值取决于输入图; 参见 <a class="citation-reference" href="#cmms98b" id="id3">[CMMS98b]</a> 与 <a class="citation-reference" href="#ms98" id="id4">[MS98]</a>.</p>
+<p>当向 <tt class="docutils literal"><span class="pre">dijkstra_shortest_paths()</span></tt> 提供前瞻值时, 将使用该算法.</p>
+<div class="section" id="id5">
+<h2><a class="toc-backref" href="#id18">定义位置</a></h2>
+<p>&lt;<tt class="docutils literal"><span class="pre">boost/graph/distributed/eager_dijkstra_shortest_paths.hpp</span></tt>&gt;</p>
+</div>
+<div class="section" id="id6">
+<h2><a class="toc-backref" href="#id19">复杂度</a></h2>
+<p>该算法在 <em>d + 1</em> 个 BSP 超步中执行 <em>O(V log V)</em> 的工作量, 其中 <em>d</em> 至多为 <em>O(V)</em>, 但取决于前瞻值可能更小. 当提供较大的前瞻值时, 算法可能执行更多工作, 因为顶点会被重新处理.</p>
+</div>
+<div class="section" id="id7">
+<h2><a class="toc-backref" href="#id20">性能</a></h2>
+<p>Eager Dijkstra 算法的性能在很大程度上取决于前瞻值. 以下图表展示了 Parallel BGL 在边权重均匀取自 <em>[0, 1)</em> 范围、前瞻值恒为 0.1 的图上的性能.</p>
+<img align="left" alt="chart_php_cluster_Odin_generator_ER_SF_SW_dataset_TimeSparse_columns_5.png" class="align-left" src="chart_php_cluster_Odin_generator_ER_SF_SW_dataset_TimeSparse_columns_5.png" />
+<img alt="chart_php_cluster_Odin_generator_ER_SF_SW_dataset_TimeSparse_columns_5_speedup_1.png" src="chart_php_cluster_Odin_generator_ER_SF_SW_dataset_TimeSparse_columns_5_speedup_1.png" />
+<img align="left" alt="chart_php_cluster_Odin_generator_ER_SF_SW_dataset_TimeDense_columns_5.png" class="align-left" src="chart_php_cluster_Odin_generator_ER_SF_SW_dataset_TimeDense_columns_5.png" />
+<img alt="chart_php_cluster_Odin_generator_ER_SF_SW_dataset_TimeDense_columns_5_speedup_1.png" src="chart_php_cluster_Odin_generator_ER_SF_SW_dataset_TimeDense_columns_5_speedup_1.png" />
+</div>
+</div>
+<div class="section" id="delta-stepping-algorithm">
+<h1><a class="toc-backref" href="#id21">Delta-Stepping 算法</a></h1>
+<pre class="literal-block">
+namespace boost { namespace graph { namespace distributed {
+
+  template &lt;typename Graph, typename PredecessorMap,
+            typename DistanceMap, typename WeightMap&gt;
+  void delta_stepping_shortest_paths
+    (const Graph&amp; g,
+     typename graph_traits&lt;Graph&gt;::vertex_descriptor s,
+     PredecessorMap predecessor, DistanceMap distance, WeightMap weight,
+     typename property_traits&lt;WeightMap&gt;::value_type delta)
+
+
+  template &lt;typename Graph, typename PredecessorMap,
+            typename DistanceMap, typename WeightMap&gt;
+  void delta_stepping_shortest_paths
+    (const Graph&amp; g,
+     typename graph_traits&lt;Graph&gt;::vertex_descriptor s,
+     PredecessorMap predecessor, DistanceMap distance, WeightMap weight)
+  }
+
+} } }
+</pre>
+<p>delta-stepping 算法 <a class="citation-reference" href="#ms98" id="id8">[MS98]</a> 是并行 Dijkstra 算法的另一个变体. 与 Eager Dijkstra 算法一样, 它使用一个前瞻 (<tt class="docutils literal"><span class="pre">delta</span></tt>) 值, 允许处理器在尚未保证找到最小距离之前处理顶点, 从而实现比保守策略更多的并行性. delta-stepping 还引入了一种多级桶数据结构, 与其他 Dijkstra 变体采用的优先队列相比, 它提供了更宽松的排序约束, 降低了向中央数据结构插入、松弛与删除的复杂度. delta-stepping 算法是各 Dijkstra 变体中性能最好的.</p>
+<p>前瞻值 <tt class="docutils literal"><span class="pre">delta</span></tt> 决定 delta-stepping 队列中每个 "桶" 的大小: 第 i 个桶包含试探距离位于 <tt class="docutils literal"><span class="pre">delta``*i</span>
+<span class="pre">与</span> <span class="pre">``delta``*(i+1).</span> <span class="pre">``delta</span></tt> 必须为正值. 若省略, <tt class="docutils literal"><span class="pre">delta</span></tt> 将被设为最大边权除以最大度.</p>
+<div class="section" id="id9">
+<h2><a class="toc-backref" href="#id22">定义位置</a></h2>
+<p>&lt;<tt class="docutils literal"><span class="pre">boost/graph/distributed/delta_stepping_shortest_paths.hpp</span></tt>&gt;</p>
+</div>
+</div>
+<div class="section" id="example">
+<h1><a class="toc-backref" href="#id23"> 示例 </a></h1>
+<p>参见单独的 <a class="reference external" href="dijkstra_example.html">Dijkstra 示例</a>.</p>
+</div>
+<div class="section" id="bibliography">
+<h1><a class="toc-backref" href="#id24">参考文献</a></h1>
+<table class="docutils citation" frame="void" id="cmms98a" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[CMMS98a]</a></td><td>Andreas Crauser, Kurt Mehlhorn, Ulrich Meyer, and Peter Sanders. A
+Parallelization of Dijkstra's Shortest Path Algorithm. In
+<em>Mathematical Foundations of Computer Science (MFCS)</em>, volume 1450 of
+Lecture Notes in Computer Science, pages 722--731, 1998. Springer.</td></tr>
+</tbody>
+</table>
+<table class="docutils citation" frame="void" id="cmms98b" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id3">[CMMS98b]</a></td><td>Andreas Crauser, Kurt Mehlhorn, Ulrich Meyer, and Peter
+Sanders. Parallelizing Dijkstra's shortest path algorithm. Technical
+report, MPI-Informatik, 1998.</td></tr>
+</tbody>
+</table>
+<table class="docutils citation" frame="void" id="ms98" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label">[MS98]</td><td><em>(<a class="fn-backref" href="#id4">1</a>, <a class="fn-backref" href="#id8">2</a>)</em> Ulrich Meyer and Peter Sanders. Delta-stepping: A parallel
+shortest path algorithm. In <em>6th ESA</em>, LNCS. Springer, 1998.</td></tr>
+</tbody>
+</table>
+<hr class="docutils" />
+<p>版权所有 (C) 2004, 2005, 2006, 2007, 2008 The Trustees of Indiana University.</p>
+<p>作者: Douglas Gregor 和 Andrew Lumsdaine</p>
+</div>
+</div>
+<div class="footer">
+<hr class="footer" /> 生成时间: 2009-05-31 00:21 UTC. 由 <a class="reference external" href="http://docutils.sourceforge.net/">Docutils</a> 依据 <a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> 源生成.</div>
+</body>
+</html>

@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.6: http://docutils.sourceforge.net/" />
+<title>Parallel BGL 深度优先访问</title>
+<link rel="stylesheet" href="../../../../rst.css" type="text/css" />
+</head>
+<body>
+<div class="document" id="logo-depth-first-visit">
+<h1 class="title"><a class="reference external" href="http://www.osl.iu.edu/research/pbgl"><img align="middle" alt="Parallel BGL" class="align-middle" src="pbgl-logo.png" /></a> 深度优先访问</h1>
+
+<!-- Copyright (C) 2004-2008 The Trustees of Indiana University.
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt) -->
+<pre class="literal-block">
+template&lt;typename DistributedGraph, typename DFSVisitor&gt;
+void
+depth_first_visit(const DistributedGraph&amp; g,
+                  typename graph_traits&lt;DistributedGraph&gt;::vertex_descriptor s,
+                  DFSVisitor vis);
+
+namespace graph {
+  template&lt;typename DistributedGraph, typename DFSVisitor,
+         typename VertexIndexMap&gt;
+  void
+  tsin_depth_first_visit(const DistributedGraph&amp; g,
+                         typename graph_traits&lt;DistributedGraph&gt;::vertex_descriptor s,
+                         DFSVisitor vis);
+
+  template&lt;typename DistributedGraph, typename DFSVisitor,
+           typename VertexIndexMap&gt;
+  void
+  tsin_depth_first_visit(const DistributedGraph&amp; g,
+                         typename graph_traits&lt;DistributedGraph&gt;::vertex_descriptor s,
+                         DFSVisitor vis, VertexIndexMap index_map);
+
+  template&lt;typename DistributedGraph, typename ColorMap, typename ParentMap,
+           typename ExploreMap, typename NextOutEdgeMap, typename DFSVisitor&gt;
+  void
+  tsin_depth_first_visit(const DistributedGraph&amp; g,
+                         typename graph_traits&lt;DistributedGraph&gt;::vertex_descriptor s,
+                         DFSVisitor vis, ColorMap color, ParentMap parent, ExploreMap explore,
+                         NextOutEdgeMap next_out_edge);
+}
+</pre>
+<p> <tt class="docutils literal"><span class="pre">depth_first_visit()</span></tt> 函数使用 Tsin 对 Cidon 算法 <a class="citation-reference" href="#tsin02" id="id1">[Cidon88]</a> 的修正 <a class="citation-reference" href="#cidon88" id="id2">[Tsin02]</a>, 对无向图执行分布式深度优先遍历. 分布式 DFS 在语法上与其 <a class="reference external" href="http://www.boost.org/libs/graph/doc/depth_first_visit.html">顺序版本</a> 相似, 后者提供了更多背景与讨论. 本文重点说明语义上的差异, 其余细节请读者参阅 <a class="reference external" href="http://www.boost.org/libs/graph/doc/depth_first_visit.html">顺序深度优先搜索</a> 的文档. 传给深度优先搜索的访问器需要考虑顶点在各进程间的分布, 因为事件会在某些进程上触发而在其他进程上不触发. 详细信息参见 <a class="reference internal" href="#visitor-event-points">访问器事件点</a> 一节.</p>
+<div class="section" id="where-defined">
+<h1>定义位置</h1>
+<p>&lt;<tt class="docutils literal"><span class="pre">boost/graph/distributed/depth_first_search.hpp</span></tt>&gt;</p>
+<p>亦可在</p>
+<p>&lt;<tt class="docutils literal"><span class="pre">boost/graph/depth_first_search.hpp</span></tt>&gt;</p>
+</div>
+<div class="section" id="parameters">
+<h1>参数</h1>
+<dl class="docutils">
+<dt>IN: <tt class="docutils literal"><span class="pre">const</span> <span class="pre">Graph&amp;</span> <span class="pre">g</span></tt></dt>
+<dd>图类型必须是 <a class="reference external" href="DistributedGraph.html">分布图</a> 的模型. 图必须是无向图.</dd>
+<dt>IN: <tt class="docutils literal"><span class="pre">vertex_descriptor</span> <span class="pre">s</span></tt></dt>
+<dd>起始顶点在每个进程中必须相同.</dd>
+<dt>IN: <tt class="docutils literal"><span class="pre">DFSVisitor</span> <span class="pre">vis</span></tt></dt>
+<dd>访问器必须是分布式 DFS 访问器. 顺序与分布式 DFS 访问器之间的细微差别在 <a class="reference internal" href="#visitor-event-points">访问器事件点</a> 一节中讨论.</dd>
+<dt>IN: <tt class="docutils literal"><span class="pre">VertexIndexMap</span> <span class="pre">map</span></tt></dt>
+<dd><p class="first">一个 <a class="reference external" href="http://www.boost.org/libs/property_map/ReadablePropertyMap.html">可读属性映射</a> 模型, 其键类型为图 <tt class="docutils literal"><span class="pre">g</span></tt> 的顶点描述符类型, 值类型为整数类型. 该属性映射应把顶点映射到其 (本地) 索引, 索引范围为 <em>[0, num_vertices(g))</em>.</p>
+<p class="last"><strong>默认</strong>: <tt class="docutils literal"><span class="pre">get(vertex_index,</span> <span class="pre">g)</span></tt></p>
+</dd>
+<dt>UTIL/OUT: <tt class="docutils literal"><span class="pre">ColorMap</span> <span class="pre">color</span></tt></dt>
+<dd><p class="first">颜色映射必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a>, 其进程组与图 <tt class="docutils literal"><span class="pre">g</span></tt> 相同, 且其颜色必须单调加深 (white -&gt; gray -&gt; black).</p>
+<p class="last"><strong>默认</strong>: 由 <tt class="docutils literal"><span class="pre">default_color_type</span></tt> 的 <tt class="docutils literal"><span class="pre">std::vector</span></tt> 创建的分布式 <tt class="docutils literal"><span class="pre">iterator_property_map</span></tt>.</p>
+</dd>
+<dt>UTIL/OUT: <tt class="docutils literal"><span class="pre">ParentMap</span> <span class="pre">parent</span></tt></dt>
+<dd><p class="first">父映射必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a>, 其进程组与图 <tt class="docutils literal"><span class="pre">g</span></tt> 相同, 其键类型与值类型与图 <tt class="docutils literal"><span class="pre">g</span></tt> 的顶点描述符类型相同. 此属性映射保存深度优先搜索树中每个顶点的父顶点.</p>
+<p class="last"><strong>默认</strong>: 由图的顶点描述符类型的 <tt class="docutils literal"><span class="pre">std::vector</span></tt> 创建的分布式 <tt class="docutils literal"><span class="pre">iterator_property_map</span></tt>.</p>
+</dd>
+<dt>UTIL: <tt class="docutils literal"><span class="pre">ExploreMap</span> <span class="pre">explore</span></tt></dt>
+<dd><p class="first">探索映射必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a>, 其进程组与图 <tt class="docutils literal"><span class="pre">g</span></tt> 相同, 其键类型与值类型与图 <tt class="docutils literal"><span class="pre">g</span></tt> 的顶点描述符类型相同.</p>
+<p class="last"><strong>默认</strong>: 由图的顶点描述符类型的 <tt class="docutils literal"><span class="pre">std::vector</span></tt> 创建的分布式 <tt class="docutils literal"><span class="pre">iterator_property_map</span></tt>.</p>
+</dd>
+<dt>UTIL: <tt class="docutils literal"><span class="pre">NextOutEdgeMap</span> <span class="pre">next_out_edge</span></tt></dt>
+<dd><p class="first">下一条出边映射必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a>, 其进程组与图 <tt class="docutils literal"><span class="pre">g</span></tt> 相同, 其键类型为图 <tt class="docutils literal"><span class="pre">g</span></tt> 的顶点描述符, 值类型为图的 <tt class="docutils literal"><span class="pre">out_edge_iterator</span></tt> 类型. 它在内部用于记录从每个顶点应遍历的下一条边.</p>
+<p class="last"><strong>默认</strong>: 由图的 <tt class="docutils literal"><span class="pre">out_edge_iterator</span></tt> 类型的 <tt class="docutils literal"><span class="pre">std::vector</span></tt> 创建的分布式 <tt class="docutils literal"><span class="pre">iterator_property_map</span></tt>.</p>
+</dd>
+</dl>
+</div>
+<div class="section" id="complexity">
+<h1>复杂度</h1>
+<p>深度优先搜索本质上是顺序的, 因此并行加速非常有限. 无论处理器数量多少, 该算法都不会快于 <em>O(V)</em>; 更多细节参见 <a class="citation-reference" href="#tsin02" id="id3">[Tsin02]</a>.</p>
+</div>
+<div class="section" id="visitor-event-points">
+<h1>访问器事件点</h1>
+<p> <a class="reference external" href="http://www.boost.org/libs/graph/doc/DFSVisitor.html">DFS 访问器</a> 概念定义了 8 个事件点, 它们将由 <a class="reference external" href="http://www.boost.org/libs/graph/doc/depth_first_visit.html">顺序深度优先搜索</a> 触发. 分布式 DFS 保留这些事件点, 但所触发事件的序列以及每个事件发生的进程会随图的分布而变化.</p>
+<dl class="docutils">
+<dt><tt class="docutils literal"><span class="pre">initialize_vertex(s,</span> <span class="pre">g)</span></tt></dt>
+<dd>每个进程都会为其每个本地顶点调用此事件.</dd>
+<dt><tt class="docutils literal"><span class="pre">discover_vertex(u,</span> <span class="pre">g)</span></tt></dt>
+<dd>每当一个进程发现新顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 时都会调用此事件.</dd>
+<dt><tt class="docutils literal"><span class="pre">examine_vertex(u,</span> <span class="pre">g)</span></tt></dt>
+<dd>此事件由拥有顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 的进程调用.</dd>
+<dt><tt class="docutils literal"><span class="pre">examine_edge(e,</span> <span class="pre">g)</span></tt></dt>
+<dd>此事件由拥有 <tt class="docutils literal"><span class="pre">e</span></tt> 的源顶点的进程调用.</dd>
+<dt><tt class="docutils literal"><span class="pre">tree_edge(e,</span> <span class="pre">g)</span></tt></dt>
+<dd>与 <tt class="docutils literal"><span class="pre">examine_edge</span></tt> 类似, 此事件由拥有源顶点的进程调用, 并且可能只调用一次.</dd>
+<dt><tt class="docutils literal"><span class="pre">back_edge(e,</span> <span class="pre">g)</span></tt></dt>
+<dd>顺序 DFS 中的某些前向边或横向边在分布式 DFS 中可能被检测为后向边, 因此可能收到额外的 <tt class="docutils literal"><span class="pre">back_edge</span></tt> 事件.</dd>
+<dt><tt class="docutils literal"><span class="pre">forward_or_cross_edge(e,</span> <span class="pre">g)</span></tt></dt>
+<dd>顺序 DFS 中的某些前向边或横向边在分布式 DFS 中可能被检测为后向边, 因此分布式算法中收到的 <tt class="docutils literal"><span class="pre">forward_or_cross_edge</span></tt> 事件可能少于顺序情形.</dd>
+<dt><tt class="docutils literal"><span class="pre">finish_vertex(e,</span> <span class="pre">g)</span></tt></dt>
+<dd>参见 <tt class="docutils literal"><span class="pre">examine_vertex</span></tt> 的文档.</dd>
+</dl>
+<div class="section" id="making-visitors-safe-for-distributed-dfs">
+<h2>使访问器对分布式 DFS 安全</h2>
+<p>为分布式 DFS 更新既有 DFS 访问器或编写新的分布式 DFS 访问器时, 要记住的三件最重要的事情是:</p>
+<ol class="arabic simple">
+<li>确保所有状态要么完全是本地的, 要么位于与图使用相同进程组的分布式数据结构 (很可能是属性映射!) 中.</li>
+<li>确保访问器不要求分布式 DFS 无法保证的精确事件序列, 例如要求 <tt class="docutils literal"><span class="pre">back_edge</span></tt> 与 <tt class="docutils literal"><span class="pre">forward_or_cross_edge</span></tt> 事件完全区分开.</li>
+<li>确保访问器能够在信息不完整的情况下运作. 这通常包括在 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a> 中使用恰当的归并 (reduction) 操作, 并验证写入的结果比先前写入的结果 "更好".</li>
+</ol>
+</div>
+</div>
+<div class="section" id="bibliography">
+<h1>参考文献</h1>
+<table class="docutils citation" frame="void" id="cidon88" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id2">[Cidon88]</a></td><td>Isreal Cidon. 又一种分布式深度优先搜索算法. Information Processing Letters, 26(6):301--305, 1988.</td></tr>
+</tbody>
+</table>
+<table class="docutils citation" frame="void" id="tsin02" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label">[Tsin02]</td><td><em>(<a class="fn-backref" href="#id1">1</a>, <a class="fn-backref" href="#id3">2</a>)</em> Y. H. Tsin. Some remarks on distributed depth-first
+search. Information Processing Letters, 82(4):173--178, 2002.</td></tr>
+</tbody>
+</table>
+<hr class="docutils" />
+<p>版权所有 (C) 2005 The Trustees of Indiana University.</p>
+<p>作者: Douglas Gregor 和 Andrew Lumsdaine</p>
+</div>
+</div>
+<div class="footer">
+<hr class="footer" /> 生成时间: 2009-05-31 00:21 UTC. 由 <a class="reference external" href="http://docutils.sourceforge.net/">Docutils</a> 依据 <a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> 源生成.</div>
+</body>
+</html>

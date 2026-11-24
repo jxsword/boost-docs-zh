@@ -1,0 +1,280 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>就地工厂 (In-place Factory)</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1. Boost.Utility 章">
+<link rel="up" href="../utilities.html" title="工具">
+<link rel="prev" href="../../doxygen/compressed_pair/reference/classboost_1_1compressed__pair_3_01T_00_01T_01_4.html" title="类模板 compressed_pair&lt;T, T&gt;">
+<link rel="next" href="../../doxygen/in_place_factory/reference/classboost_1_1in__place__factory__base.html" title="类 in_place_factory_base">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../../doxygen/compressed_pair/reference/classboost_1_1compressed__pair_3_01T_00_01T_01_4.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../utilities.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="../../doxygen/in_place_factory/reference/classboost_1_1in__place__factory__base.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="utility.utilities.in_place_factory"></a><a class="link" href="in_place_factory.html" title="就地工厂 (In-place Factory)">就地工厂 (In-place Factory)</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="in_place_factory.html#utility.utilities.in_place_factory.introduction">引言</a></span></dt>
+<dt><span class="section"><a href="in_place_factory.html#utility.utilities.in_place_factory.framework">框架</a></span></dt>
+<dt><span class="section"><a href="in_place_factory.html#utility.utilities.in_place_factory.specification">规格说明</a></span></dt>
+<dt><span class="section"><a href="in_place_factory.html#utility.utilities.in_place_factory.container_side_usage">容器侧用法</a></span></dt>
+<dt><span class="section"><a href="in_place_factory.html#utility.utilities.in_place_factory.user_side_usage">用户侧用法</a></span></dt>
+<dt><span class="section"><a href="in_place_factory.html#in_place_factory.reference">参考</a></span></dt>
+<dt><span class="section"><a href="in_place_factory.html#utility.utilities.in_place_factory.acknowledgments">致谢</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="utility.utilities.in_place_factory.introduction"></a><a class="link" href="in_place_factory.html#utility.utilities.in_place_factory.introduction" title="引言">引言</a>
+</h4></div></div></div>
+<p>假设我们有一个类</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">X</span>
+<span class="special">{</span>
+  <span class="identifier">X</span> <span class="special">(</span> <span class="keyword">int</span><span class="special">,</span> <a href="https://en.cppreference.com/w/cpp/string/basic_string" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span></code></a> <span class="special">)</span> <span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>以及一个支持空状态的容器. 也就是说, 一个可以包含零个对象的容器:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">C</span>
+<span class="special">{</span>
+   <span class="identifier">C</span><span class="special">()</span> <span class="special">:</span> <span class="identifier">contained_</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">{}</span>
+  <span class="special">~</span><span class="identifier">C</span><span class="special">()</span> <span class="special">{</span> <span class="keyword">delete</span> <span class="identifier">contained_</span> <span class="special">;</span> <span class="special">}</span>
+  <span class="identifier">X</span><span class="special">*</span> <span class="identifier">contained_</span> <span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>设计为支持空状态的容器通常不要求所包含类型是 <a href="https://en.cppreference.com/w/cpp/named_req/DefaultConstructible" target="_top"><span class="emphasis"><em>可默认构造</em></span></a> 的, 但通常要求它是 <a href="https://en.cppreference.com/w/cpp/named_req/CopyConstructible" target="_top"><span class="emphasis"><em>可拷贝构造</em></span></a> 的, 以此作为初始化要存储对象的机制:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">C</span>
+<span class="special">{</span>
+   <span class="identifier">C</span><span class="special">()</span> <span class="special">:</span> <span class="identifier">contained_</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">{}</span>
+   <span class="identifier">C</span> <span class="special">(</span> <span class="identifier">X</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">v</span> <span class="special">)</span> <span class="special">:</span> <span class="identifier">contained_</span> <span class="special">(</span> <span class="keyword">new</span> <span class="identifier">X</span><span class="special">(</span><span class="identifier">v</span><span class="special">)</span> <span class="special">)</span> <span class="special">{}</span>
+  <span class="special">~</span><span class="identifier">C</span><span class="special">()</span> <span class="special">{</span> <span class="keyword">delete</span> <span class="identifier">contained_</span> <span class="special">;</span> <span class="special">}</span>
+  <span class="identifier">X</span><span class="special">*</span> <span class="identifier">contained_</span> <span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>这有一个微妙的问题: 由于用于初始化所存对象的机制是拷贝构造, 因此必须存在一个先前构造好的源对象供拷贝. 该对象很可能是临时的, 除了作为源之外别无用途:</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">foo</span><span class="special">()</span>
+<span class="special">{</span>
+  <span class="comment">// Temporary object created.</span>
+  <span class="identifier">C</span> <span class="identifier">c</span><span class="special">(</span> <span class="identifier">X</span><span class="special">(</span><span class="number">123</span><span class="special">,</span><span class="string">"hello"</span><span class="special">)</span> <span class="special">)</span> <span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>该问题的一种解决办法是支持直接在容器的存储中构造所包含的对象.</p>
+<p>在这一方案中, 用户把 <code class="computeroutput"><span class="identifier">X</span></code> 构造函数的实参直接提供给容器:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">C</span>
+<span class="special">{</span>
+   <span class="identifier">C</span><span class="special">()</span> <span class="special">:</span> <span class="identifier">contained_</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">{}</span>
+   <span class="identifier">C</span> <span class="special">(</span> <span class="identifier">X</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">v</span> <span class="special">)</span> <span class="special">:</span> <span class="identifier">contained_</span> <span class="special">(</span> <span class="keyword">new</span> <span class="identifier">X</span><span class="special">(</span><span class="identifier">v</span><span class="special">)</span> <span class="special">)</span> <span class="special">{}</span>
+   <span class="identifier">C</span> <span class="special">(</span> <span class="keyword">int</span> <span class="identifier">a0</span><span class="special">,</span> <a href="https://en.cppreference.com/w/cpp/string/basic_string" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span></code></a> <span class="identifier">a1</span> <span class="special">)</span> <span class="special">:</span> <span class="identifier">contained_</span> <span class="special">(</span> <span class="keyword">new</span> <span class="identifier">X</span><span class="special">(</span><span class="identifier">a0</span><span class="special">,</span><span class="identifier">a1</span><span class="special">)</span> <span class="special">)</span> <span class="special">{}</span>
+  <span class="special">~</span><span class="identifier">C</span><span class="special">()</span> <span class="special">{</span> <span class="keyword">delete</span> <span class="identifier">contained_</span> <span class="special">;</span> <span class="special">}</span>
+  <span class="identifier">X</span><span class="special">*</span> <span class="identifier">contained_</span> <span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">foo</span><span class="special">()</span>
+<span class="special">{</span>
+  <span class="comment">// Wrapped object constructed in-place</span>
+  <span class="comment">// No temporary created.</span>
+  <span class="identifier">C</span> <span class="identifier">c</span><span class="special">(</span><span class="number">123</span><span class="special">,</span><span class="string">"hello"</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>显然, 这一方案的扩展性不佳, 因为容器必须复制所包含类型的所有构造函数重载, 或至少复制所有要在容器中直接支持的重载.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="utility.utilities.in_place_factory.framework"></a><a class="link" href="in_place_factory.html#utility.utilities.in_place_factory.framework" title="框架">框架</a>
+</h4></div></div></div>
+<p>本库提出一个框架, 允许某些容器直接就地构造所包含的对象, 而无需来自所包含类型的整套构造函数重载. 它还允许容器移除对所包含类型的 <a href="https://en.cppreference.com/w/cpp/named_req/CopyConstructible" target="_top"><span class="emphasis"><em>可拷贝构造</em></span></a> 要求, 因为对象可以直接就地构造而无需拷贝.</p>
+<p>对容器的唯一要求是它必须提供合适的存储. 也就是说, 容器应当正确对齐且大小正确. 自然, 容器通常会支持未初始化的存储, 以避免就地构造覆盖一个已完整构造的对象, 因为那将使就地构造失去意义.</p>
+<p>为此, 该框架提供了两个概念: InPlaceFactories 与 TypedInPlaceFactories. 用于声明这些类的辅助工具声明在 <a href="../../../../../../boost/utility/in_place_factory.hpp" target="_top"><code class="computeroutput"><span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">utility</span><span class="special">/</span><span class="identifier">in_place_factory</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span></code></a> 与 <a href="../../../../../../boost/utility/typed_in_place_factory.hpp" target="_top"><code class="computeroutput"><span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">utility</span><span class="special">/</span><span class="identifier">typed_in_place_factory</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span></code></a> 中.</p>
+<p>本质上, 这些类持有一系列实际参数以及一个使用这些参数就地构造对象的方法. 该家族的每个成员仅在参数列表的数量和类型上有所不同. 第一个家族在为此目的提供的方法中直接给出要构造对象的类型, 而第二个家族则把该类型并入工厂类本身. 从容器的角度看, 使用该框架相当于调用工厂的方法来就地构造对象. 从用户的角度看, 这相当于创建合适的工厂对象来持有参数并将其传递给容器.</p>
+<p>下面这个简化示例展示了基本思想. 框架的正式规格说明之后附有一个完整示例:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">C</span>
+<span class="special">{</span>
+   <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">InPlaceFactory</span><span class="special">&gt;</span>
+   <span class="identifier">C</span> <span class="special">(</span> <span class="identifier">InPlaceFactory</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">aFactory</span> <span class="special">)</span>
+    <span class="special">:</span>
+    <span class="identifier">contained_</span> <span class="special">(</span> <span class="identifier">uninitialized_storage</span><span class="special">()</span> <span class="special">)</span>
+   <span class="special">{</span>
+     <span class="identifier">aFactory</span><span class="special">.</span><span class="keyword">template</span> <span class="identifier">apply</span><span class="special">&lt;</span><span class="identifier">X</span><span class="special">&gt;(</span><span class="identifier">contained_</span><span class="special">);</span>
+   <span class="special">}</span>
+
+  <span class="special">~</span><span class="identifier">C</span><span class="special">()</span>
+  <span class="special">{</span>
+    <span class="identifier">contained_</span> <span class="special">-&gt;</span> <span class="identifier">X</span><span class="special">::~</span><span class="identifier">X</span><span class="special">();</span>
+    <span class="keyword">delete</span><span class="special">[]</span> <span class="identifier">contained_</span> <span class="special">;</span>
+  <span class="special">}</span>
+
+  <span class="keyword">char</span><span class="special">*</span> <span class="identifier">uninitialized_storage</span><span class="special">()</span> <span class="special">{</span> <span class="keyword">return</span> <span class="keyword">new</span> <span class="keyword">char</span><span class="special">[</span><span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">X</span><span class="special">)]</span> <span class="special">;</span> <span class="special">}</span>
+
+  <span class="keyword">char</span><span class="special">*</span> <span class="identifier">contained_</span> <span class="special">;</span>
+<span class="special">};</span>
+
+<span class="keyword">void</span> <span class="identifier">foo</span><span class="special">()</span>
+<span class="special">{</span>
+  <span class="identifier">C</span> <span class="identifier">c</span><span class="special">(</span> <span class="identifier">in_place</span><span class="special">(</span><span class="number">123</span><span class="special">,</span><span class="string">"hello"</span><span class="special">)</span> <span class="special">)</span> <span class="special">;</span>
+<span class="special">}</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="utility.utilities.in_place_factory.specification"></a><a class="link" href="in_place_factory.html#utility.utilities.in_place_factory.specification" title="规范">规格说明</a>
+</h4></div></div></div>
+<p>下面是 <code class="computeroutput"><span class="identifier">InPlaceFactory</span></code> 类家族的第一个成员及其对应的辅助模板函数. 该家族其余成员仅在模板参数与构造函数参数的数量和类型上有所不同.</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+
+<span class="keyword">struct</span> <code class="computeroutput"><a class="link" href="../../doxygen/in_place_factory/reference/classboost_1_1in__place__factory__base.html" title="类 in_place_factory_base">in_place_factory_base</a></code> <span class="special">{};</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">A0</span><span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">in_place_factory</span> <span class="special">:</span> <span class="keyword">public</span> <code class="computeroutput"><a class="link" href="../../doxygen/in_place_factory/reference/classboost_1_1in__place__factory__base.html" title="类 in_place_factory_base">in_place_factory_base</a></code>
+<span class="special">{</span>
+  <span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">in_place_factory</span> <span class="special">(</span> <span class="identifier">A0</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a0</span> <span class="special">)</span> <span class="special">:</span> <span class="identifier">m_a0</span><span class="special">(</span><span class="identifier">a0</span><span class="special">)</span> <span class="special">{}</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">class</span> <span class="identifier">T</span> <span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="identifier">apply</span> <span class="special">(</span> <span class="keyword">void</span><span class="special">*</span> <span class="identifier">address</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+      <span class="keyword">new</span> <span class="special">(</span><span class="identifier">address</span><span class="special">)</span> <span class="identifier">T</span><span class="special">(</span><span class="identifier">m_a0</span><span class="special">);</span>
+    <span class="special">}</span>
+
+  <span class="keyword">private</span><span class="special">:</span>
+      <span class="identifier">A0</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">m_a0</span> <span class="special">;</span>
+<span class="special">};</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">A0</span><span class="special">&gt;</span>
+<span class="identifier">in_place_factory</span><span class="special">&lt;</span><span class="identifier">A0</span><span class="special">&gt;</span> <span class="identifier">in_place</span> <span class="special">(</span> <span class="identifier">A0</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a0</span> <span class="special">)</span>
+<span class="special">{</span>
+  <span class="keyword">return</span> <span class="identifier">in_place_factory</span><span class="special">&lt;</span><span class="identifier">A0</span><span class="special">&gt;(</span><span class="identifier">a0</span><span class="special">);</span>
+<span class="special">}</span>
+
+<span class="special">}</span>
+</pre>
+<p>类似地, 下面是 <code class="computeroutput"><span class="identifier">typed_in_place_factory</span></code> 类家族的第一个成员及其对应的辅助模板函数. 该家族其余成员仅在模板参数与构造函数参数的数量和类型上有所不同.</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+
+<span class="keyword">struct</span> <code class="computeroutput"><a class="link" href="../../doxygen/in_place_factory/reference/classboost_1_1typed__in__place__factory__base.html" title="类 typed_in_place_factory_base">typed_in_place_factory_base</a></code> <span class="special">{};</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">A0</span><span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">typed_in_place_factory</span> <span class="special">:</span> <span class="keyword">public</span> <code class="computeroutput"><a class="link" href="../../doxygen/in_place_factory/reference/classboost_1_1typed__in__place__factory__base.html" title="类 typed_in_place_factory_base">typed_in_place_factory_base</a></code>
+<span class="special">{</span>
+  <span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">typed_in_place_factory</span> <span class="special">(</span> <span class="identifier">A0</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a0</span> <span class="special">)</span> <span class="special">:</span> <span class="identifier">m_a0</span><span class="special">(</span><span class="identifier">a0</span><span class="special">)</span> <span class="special">{}</span>
+
+    <span class="keyword">void</span> <span class="identifier">apply</span> <span class="special">(</span> <span class="keyword">void</span><span class="special">*</span> <span class="identifier">address</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+      <span class="keyword">new</span> <span class="special">(</span><span class="identifier">address</span><span class="special">)</span> <span class="identifier">T</span><span class="special">(</span><span class="identifier">m_a0</span><span class="special">);</span>
+    <span class="special">}</span>
+
+  <span class="keyword">private</span><span class="special">:</span>
+    <span class="identifier">A0</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">m_a0</span> <span class="special">;</span>
+<span class="special">};</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">A0</span><span class="special">&gt;</span>
+<span class="identifier">typed_in_place_factory</span><span class="special">&lt;</span><span class="identifier">A0</span><span class="special">&gt;</span> <span class="identifier">in_place</span> <span class="special">(</span> <span class="identifier">A0</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a0</span> <span class="special">)</span>
+<span class="special">{</span>
+  <span class="keyword">return</span> <span class="identifier">typed_in_place_factory</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">,</span><span class="identifier">A0</span><span class="special">&gt;(</span><span class="identifier">a0</span><span class="special">);</span>
+<span class="special">}</span>
+<span class="special">}</span>
+</pre>
+<p>可以看到, <code class="computeroutput"><span class="identifier">in_place_factory</span></code> 与 <code class="computeroutput"><span class="identifier">typed_in_place_factory</span></code> 模板类仅在指定目标类型的方式上有所不同: 第一个家族中, 类型作为模板实参提供给 apply 成员函数; 第二个家族中, 类型直接作为工厂类的一部分给出.</p>
+<p>当容器持有唯一的非多态类型时 (例如 <a href="../../../../../../libs/optional/index.html" target="_top">Boost.Optional</a> 的情况), 它知道所包含对象的确切动态类型, 并可以将其传递给非类型化工厂的 <code class="computeroutput"><span class="identifier">apply</span><span class="special">()</span></code> 方法. 在这种情况下, 最终用户可以使用 <code class="computeroutput"><span class="identifier">in_place_factory</span></code> 实例, 该实例可以在不知道要构造对象类型的情况下构造.</p>
+<p>但是, 如果容器持有异构或多态对象 (例如 <a href="../../../../../../libs/variant/index.html" target="_top">Boost.Variant</a> 的情况), 则工厂必须知道要构造对象的动态类型. 在这种情况下, 最终用户必须改用 <code class="computeroutput"><span class="identifier">typed_in_place_factory</span></code>.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="utility.utilities.in_place_factory.container_side_usage"></a><a class="link" href="in_place_factory.html#utility.utilities.in_place_factory.container_side_usage" title="容器侧用法">容器侧用法</a>
+</h4></div></div></div>
+<p>如开头的简化示例所示, 容器类必须包含接受这些工厂实例并把对象存储传递给工厂 apply 方法的方法.</p>
+<p>但是, 工厂类的类型不能在容器类中完全指定, 因为那将使工厂失去其全部意义, 即允许容器为其所包含对象的构造函数接受可变实参列表.</p>
+<p>正确的函数重载必须基于每个家族中所有类唯一而共同的特性: 基类.</p>
+<p>根据容器类, 你可以使用 <code class="computeroutput"><span class="identifier">enable_if</span></code> 生成正确的重载, 或者使用 <a href="../../../../../../libs/optional/index.html" target="_top">Boost.Optional</a> 类中所用的以下分派技术:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">C</span>
+<span class="special">{</span>
+   <span class="identifier">C</span><span class="special">()</span> <span class="special">:</span> <span class="identifier">contained_</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">{}</span>
+   <span class="identifier">C</span> <span class="special">(</span> <span class="identifier">X</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">v</span> <span class="special">)</span> <span class="special">:</span> <span class="identifier">contained_</span> <span class="special">(</span> <span class="keyword">new</span> <span class="identifier">X</span><span class="special">(</span><span class="identifier">v</span><span class="special">)</span> <span class="special">)</span> <span class="special">{}</span>
+
+   <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Expr</span><span class="special">&gt;</span>
+   <span class="identifier">C</span> <span class="special">(</span> <span class="identifier">Expr</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">expr</span> <span class="special">)</span>
+    <span class="special">:</span>
+    <span class="identifier">contained_</span> <span class="special">(</span> <span class="identifier">uninitialized_storage</span><span class="special">()</span> <span class="special">)</span>
+   <span class="special">{</span>
+    <span class="identifier">construct</span><span class="special">(</span><span class="identifier">expr</span><span class="special">,&amp;</span><span class="identifier">expr</span><span class="special">);</span>
+   <span class="special">}</span>
+
+  <span class="special">~</span><span class="identifier">C</span><span class="special">()</span> <span class="special">{</span> <span class="keyword">delete</span> <span class="identifier">contained_</span> <span class="special">;</span> <span class="special">}</span>
+
+  <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">InPlaceFactory</span><span class="special">&gt;</span>
+  <span class="keyword">void</span> <span class="identifier">construct</span> <span class="special">(</span> <span class="identifier">InPlaceFactory</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">aFactory</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">boost</span><span class="special">::</span><code class="computeroutput"><a class="link" href="../../doxygen/in_place_factory/reference/classboost_1_1in__place__factory__base.html" title="类 in_place_factory_base">in_place_factory_base</a></code><span class="special">*</span> <span class="special">)</span>
+  <span class="special">{</span>
+    <span class="identifier">aFactory</span><span class="special">.</span><span class="keyword">template</span> <span class="identifier">apply</span><span class="special">&lt;</span><span class="identifier">X</span><span class="special">&gt;(</span><span class="identifier">contained_</span><span class="special">);</span>
+  <span class="special">}</span>
+
+  <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">TypedInPlaceFactory</span><span class="special">&gt;</span>
+  <span class="keyword">void</span> <span class="identifier">construct</span> <span class="special">(</span> <span class="identifier">TypedInPlaceFactory</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">aFactory</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">boost</span><span class="special">::</span><code class="computeroutput"><a class="link" href="../../doxygen/in_place_factory/reference/classboost_1_1typed__in__place__factory__base.html" title="类 typed_in_place_factory_base">typed_in_place_factory_base</a></code><span class="special">*</span> <span class="special">)</span>
+  <span class="special">{</span>
+    <span class="identifier">aFactory</span><span class="special">.</span><span class="identifier">apply</span><span class="special">(</span><span class="identifier">contained_</span><span class="special">);</span>
+  <span class="special">}</span>
+
+  <span class="identifier">X</span><span class="special">*</span> <span class="identifier">uninitialized_storage</span><span class="special">()</span> <span class="special">{</span> <span class="keyword">return</span> <span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">X</span><span class="special">*&gt;(</span><span class="keyword">new</span> <span class="keyword">char</span><span class="special">[</span><span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">X</span><span class="special">)])</span> <span class="special">;</span> <span class="special">}</span>
+
+  <span class="identifier">X</span><span class="special">*</span> <span class="identifier">contained_</span> <span class="special">;</span>
+<span class="special">};</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="utility.utilities.in_place_factory.user_side_usage"></a><a class="link" href="in_place_factory.html#utility.utilities.in_place_factory.user_side_usage" title="用户侧用法">用户侧用法</a>
+</h4></div></div></div>
+<p>最终用户向容器传递一个工厂对象实例, 其中持有直接在容器内构造所包含对象所需的实际参数. 为此, 要使用辅助模板函数 <code class="computeroutput"><span class="identifier">in_place</span></code>.</p>
+<p>调用 <code class="computeroutput"><span class="identifier">in_place</span><span class="special">(</span><span class="identifier">a0</span><span class="special">,</span><span class="identifier">a1</span><span class="special">,</span><span class="identifier">a2</span><span class="special">,...,</span><span class="identifier">an</span><span class="special">)</span></code> 会用给定的实参列表构造一个 (非类型化的) <code class="computeroutput"><span class="identifier">in_place_factory</span></code> 实例.</p>
+<p>调用 <code class="computeroutput"><span class="identifier">in_place</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;(</span><span class="identifier">a0</span><span class="special">,</span><span class="identifier">a1</span><span class="special">,</span><span class="identifier">a2</span><span class="special">,...,</span><span class="identifier">an</span><span class="special">)</span></code> 会用给定的实参列表构造一个 <code class="computeroutput"><span class="identifier">typed_in_place_factory</span></code> 实例, 其目标类型为 <code class="computeroutput"><span class="identifier">T</span></code>.</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">foo</span><span class="special">()</span>
+<span class="special">{</span>
+  <span class="identifier">C</span> <span class="identifier">a</span><span class="special">(</span> <span class="identifier">in_place</span><span class="special">(</span><span class="number">123</span><span class="special">,</span> <span class="string">"hello"</span><span class="special">)</span> <span class="special">)</span> <span class="special">;</span>    <span class="comment">// in_place_factory passed</span>
+  <span class="identifier">C</span> <span class="identifier">b</span><span class="special">(</span> <span class="identifier">in_place</span><span class="special">&lt;</span><span class="identifier">X</span><span class="special">&gt;(</span><span class="number">456</span><span class="special">,</span> <span class="string">"world"</span><span class="special">)</span> <span class="special">)</span> <span class="special">;</span> <span class="comment">// typed_in_place_factory passed</span>
+<span class="special">}</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="in_place_factory.reference"></a>参考</h4></div></div></div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="doxygen.in_place_factory.reference.in__place__factory_8hpp"></a>头文件 &lt;<a href="../../../../../../boost/utility/in_place_factory.hpp" target="_top">boost/utility/in_place_factory.hpp</a>&gt;</h5></div></div></div>
+<pre class="synopsis"><span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+  <span class="keyword">class</span> <a class="link" href="../../doxygen/in_place_factory/reference/classboost_1_1in__place__factory__base.html" title="类 in_place_factory_base">in_place_factory_base</a><span class="special">;</span>
+<span class="special">}</span></pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="doxygen.in_place_factory.reference.typed__in__place__factory_8hpp"></a>头文件 &lt;<a href="../../../../../../boost/utility/typed_in_place_factory.hpp" target="_top">boost/utility/typed_in_place_factory.hpp</a>&gt;</h5></div></div></div>
+<pre class="synopsis"><span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+  <span class="keyword">class</span> <a class="link" href="../../doxygen/in_place_factory/reference/classboost_1_1typed__in__place__factory__base.html" title="类 typed_in_place_factory_base">typed_in_place_factory_base</a><span class="special">;</span>
+<span class="special">}</span></pre>
+</div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="utility.utilities.in_place_factory.acknowledgments"></a><a class="link" href="in_place_factory.html#utility.utilities.in_place_factory.acknowledgments" title="致谢">致谢</a>
+</h4></div></div></div>
+<p>版权所有 Fernando Luis Cacciola Carballal, 2004</p>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2001 Beman Dawes<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../../doxygen/compressed_pair/reference/classboost_1_1compressed__pair_3_01T_00_01T_01_4.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../utilities.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="../../doxygen/in_place_factory/reference/classboost_1_1in__place__factory__base.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

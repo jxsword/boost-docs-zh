@@ -1,0 +1,148 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>扩展 BOOST_OUTCOME_TRY - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="../css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="../images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="../recipes/asio-integration-1-70.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../recipes.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../recipes/rust.html"><img src="../images/next.png" alt="下一页"></a></div><div id="content">
+  <div class="titlepage"><div><div><h1 style="clear: both">扩展 <code>BOOST_OUTCOME_TRY</code></h1></div></div></div>
+  
+
+<p>Outcome 的 <a href="../reference/macros/try.html" class="api-reference"><code>BOOST_OUTCOME_TRY(var, expr)</code></a> 操作完全可扩展, 可接受任何陌生类型作为输入. 它已经能识别匹配 <a href="../reference/types/basic_result/explicit_valueorerror_converting_constructor.html" class="api-reference"><code>concepts::value_or_error&lt;T, E&gt;</code></a> 概念的类型, 即所有具有以下特征的类型:</p>
+
+<ul>
+<li>一个公有 <code>.has_value()</code> 成员函数, 返回 <code>bool</code>.</li>
+<li>按优先顺序, 一个公有 <code>.assume_value()</code>/<code>.value()</code> 成员函数.</li>
+<li>按优先顺序, 一个公有 <code>.as_failure()</code>/<code>.assume_error()</code>/<code>.error()</code> 成员函数.</li>
+</ul>
+
+<p>这应当能自动处理 <code>std::expected&lt;T, E&gt;</code> 及许多其他类型的输入, 包括在同一翻译单元中混用 Boost.Outcome 与独立版 Outcome.</p>
+
+<p><code>BOOST_OUTCOME_TRY</code> 具有以下自由函数定制点:</p>
+
+<dl>
+<dt><code>BOOST_OUTCOME_V2_NAMESPACE::</code><a href="../reference/functions/try_operation_has_value.html" class="api-reference"><code>try_operation_has_value(X)</code></a>
+
+<dd>返回一个 `bool`, 若 TRY 的输入有值则为 true.<dt><code>BOOST_OUTCOME_V2_NAMESPACE::</code><a href="../reference/functions/try_operation_return_as.html" class="api-reference"><code>try_operation_return_as(X)</code></a>
+
+<dd>返回一个合适的 <a href="../reference/types/failure_type.html" class="api-reference"><code>failure_type&lt;EC, EP = void&gt;</code></a>, 它被立即返回以引发栈回退. 应当保持右值语义 (即若传入右值, 则把错误状态移动进失败类型).<dt><code>BOOST_OUTCOME_V2_NAMESPACE::</code><a href="../reference/functions/try_operation_extract_value.html" class="api-reference"><code>try_operation_extract_value(X)</code></a>
+
+<dd>从输入提取值类型, 供 `TRY` 设置其变量. 应当保持右值语义 (即若传入右值, 则移动该值).</dl>
+
+<p>为支持额外输入类型而对这些函数新增的重载, 必须注入 <code>BOOST_OUTCOME_V2_NAMESPACE</code> 命名空间——且要在编译器解析相关 <code>BOOST_OUTCOME_TRY</code> 之前——才能被找到. 这在 C++ 两阶段名字查找模型中称为 “早期绑定”. 之所以选择它而非 “晚期绑定”——即模板化代码中的 <code>BOOST_OUTCOME_TRY</code> 可以查找在解析包含 <code>BOOST_OUTCOME_TRY</code> 的模板之后才引入的重载——是因为它对构建时间的影响低得多: 绑定在解析点只做一次, 而不是在实例化点每次都做. 只要你注意在翻译单元解析早期注入所需的重载, 一切都会顺利.</p>
+
+<p>让我们来走一个应用实例.</p>
+
+<hr />
+
+<h2 id="a-very-foreign-pseudo-expected-type">一个非常陌生的伪 Expected 类型</h2>
+
+<p>这是对一个编写拙劣的伪 Expected 类型的转述, 我曾在某大型跨国公司的生产代码库中遇到过它. 大量代码已在用它, 而且它怪异到难以轻松换掉.</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="k">enum</span> <span class="n">Errc</span>
+<span class="p">{</span>
+  <span class="n">kBadValue</span>
+<span class="p">};</span>
+<span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">T</span><span class="p">,</span> <span class="k">class</span><span class="err"> </span><span class="nc">E</span> <span class="o">=</span> <span class="n">Errc</span><span class="o">&gt;</span> <span class="k">struct</span> <span class="n">ForeignExpected</span>
+<span class="p">{</span>
+  <span class="n">T</span> <span class="n">Value</span><span class="p">;</span>
+  <span class="n">E</span> <span class="n">Error</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">IsErrored</span><span class="p">;</span>
+
+  <span class="n">ForeignExpected</span><span class="p">(</span><span class="n">T</span> <span class="n">v</span><span class="p">)</span>
+      <span class="o">:</span> <span class="n">Value</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+      <span class="p">,</span> <span class="n">Error</span><span class="p">()</span>
+      <span class="p">,</span> <span class="n">IsErrored</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+  <span class="p">{</span>
+  <span class="p">}</span>
+  <span class="n">ForeignExpected</span><span class="p">(</span><span class="n">E</span> <span class="n">e</span><span class="p">)</span>
+      <span class="o">:</span> <span class="n">Value</span><span class="p">()</span>
+      <span class="p">,</span> <span class="n">Error</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+      <span class="p">,</span> <span class="n">IsErrored</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+  <span class="p">{</span>
+  <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/foreign_try.cpp#L37" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<p>我们希望新代码用 Outcome 编写, 同时能够透明地调用旧代码, 像这样:</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="n">ForeignExpected</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span> <span class="n">old_code</span><span class="p">(</span><span class="kt">int</span> <span class="n">a</span><span class="p">)</span>  <span class="c1">// old code
+</span><span class="c1"></span><span class="p">{</span>
+  <span class="k">if</span><span class="p">(</span><span class="mi">0</span> <span class="o">==</span> <span class="n">a</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">kBadValue</span><span class="p">;</span>
+  <span class="k">return</span> <span class="n">a</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="n">outcome</span><span class="o">::</span><span class="n">result</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span> <span class="n">new_code</span><span class="p">(</span><span class="kt">int</span> <span class="n">a</span><span class="p">)</span>  <span class="c1">// new code
+</span><span class="c1"></span><span class="p">{</span>
+  <span class="n">BOOST_OUTCOME_TRY</span><span class="p">(</span><span class="k">auto</span> <span class="n">x</span><span class="p">,</span> <span class="n">old_code</span><span class="p">(</span><span class="n">a</span><span class="p">));</span>
+  <span class="k">return</span> <span class="n">x</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/foreign_try.cpp#L88" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<p>把这个怪异的陌生 Expected 告知 Outcome 非常直接:</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="n">BOOST_OUTCOME_V2_NAMESPACE_BEGIN</span>
+<span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">T</span><span class="p">,</span> <span class="k">class</span><span class="err"> </span><span class="nc">E</span><span class="o">&gt;</span>  <span class="c1">//
+</span><span class="c1"></span><span class="kr">inline</span> <span class="kt">bool</span> <span class="n">try_operation_has_value</span><span class="p">(</span><span class="k">const</span> <span class="n">ForeignExpected</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="n">E</span><span class="o">&gt;</span> <span class="o">&amp;</span><span class="n">v</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="k">return</span> <span class="mi">0</span> <span class="o">==</span> <span class="n">v</span><span class="p">.</span><span class="n">IsErrored</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">T</span><span class="p">,</span> <span class="k">class</span><span class="err"> </span><span class="nc">E</span><span class="o">&gt;</span>  <span class="c1">//
+</span><span class="c1"></span><span class="kr">inline</span> <span class="k">auto</span> <span class="n">try_operation_return_as</span><span class="p">(</span><span class="k">const</span> <span class="n">ForeignExpected</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="n">E</span><span class="o">&gt;</span> <span class="o">&amp;</span><span class="n">v</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="k">switch</span><span class="p">(</span><span class="n">v</span><span class="p">.</span><span class="n">Error</span><span class="p">)</span>
+  <span class="p">{</span>
+  <span class="k">case</span> <span class="nl">kBadValue</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">failure</span><span class="p">(</span><span class="n">make_error_code</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">errc</span><span class="o">::</span><span class="n">argument_out_of_domain</span><span class="p">));</span>
+  <span class="p">}</span>
+  <span class="n">abort</span><span class="p">();</span>
+<span class="p">}</span>
+<span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">T</span><span class="p">,</span> <span class="k">class</span><span class="err"> </span><span class="nc">E</span><span class="o">&gt;</span>  <span class="c1">//
+</span><span class="c1"></span><span class="kr">inline</span> <span class="k">auto</span> <span class="n">try_operation_extract_value</span><span class="p">(</span><span class="k">const</span> <span class="n">ForeignExpected</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="n">E</span><span class="o">&gt;</span> <span class="o">&amp;</span><span class="n">v</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="k">return</span> <span class="n">v</span><span class="p">.</span><span class="n">Value</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="n">BOOST_OUTCOME_V2_NAMESPACE_END</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/foreign_try.cpp#L63" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<p>现在 <code>BOOST_OUTCOME_TRY</code> 完全按预期工作:</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++">  <span class="k">auto</span> <span class="n">printresult</span> <span class="o">=</span> <span class="p">[](</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">desc</span><span class="p">,</span> <span class="k">auto</span> <span class="n">x</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">if</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="p">{</span>
+      <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="n">desc</span> <span class="o">&lt;&lt;</span> <span class="s">&#34; returns successful &#34;</span> <span class="o">&lt;&lt;</span> <span class="n">x</span><span class="p">.</span><span class="n">value</span><span class="p">()</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">else</span>
+    <span class="p">{</span>
+      <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="n">desc</span> <span class="o">&lt;&lt;</span> <span class="s">&#34; returns failure &#34;</span> <span class="o">&lt;&lt;</span> <span class="n">x</span><span class="p">.</span><span class="n">error</span><span class="p">().</span><span class="n">message</span><span class="p">()</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+    <span class="p">}</span>
+  <span class="p">};</span>
+  <span class="n">printresult</span><span class="p">(</span><span class="s">&#34;</span><span class="se">\n</span><span class="s">new_code(5)&#34;</span><span class="p">,</span> <span class="n">new_code</span><span class="p">(</span><span class="mi">5</span><span class="p">));</span>
+  <span class="n">printresult</span><span class="p">(</span><span class="s">&#34;</span><span class="se">\n</span><span class="s">new_code(0)&#34;</span><span class="p">,</span> <span class="n">new_code</span><span class="p">(</span><span class="mi">0</span><span class="p">));</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/foreign_try.cpp#L105" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<p>……其输出为:</p>
+
+<pre><code>new_code(5) returns successful 5
+
+new_code(0) returns failure argument out of domain
+</code></pre>
+
+
+        </div><p><small>最后修订: December 15, 2020 at 12:22:39 UTC</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../recipes/asio-integration-1-70.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../recipes.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../recipes/rust.html"><img src="../images/next.png" alt="下一页"></a></div></body>
+</html>

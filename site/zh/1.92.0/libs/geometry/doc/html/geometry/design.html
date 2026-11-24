@@ -1,0 +1,532 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>设计原理</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Geometry">
+<link rel="up" href="../index.html" title="第 1 章 Geometry">
+<link rel="prev" href="compilation.html" title="编译">
+<link rel="next" href="quickstart.html" title="快速入门">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="compilation.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="quickstart.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="geometry.design"></a><a class="link" href="design.html" title="设计理由">设计理由</a>
+</h2></div></div></div>
+<p>假设你需要一个计算两点间距离的 C++ 程序. 你可能会定义一个结构体:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">mypoint</span>
+<span class="special">{</span>
+    <span class="keyword">double</span> <span class="identifier">x</span><span class="special">,</span> <span class="identifier">y</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>以及一个包含该算法的函数:</p>
+<pre class="programlisting"><span class="keyword">double</span> <span class="identifier">distance</span><span class="special">(</span><span class="identifier">mypoint</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a</span><span class="special">,</span> <span class="identifier">mypoint</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">b</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">double</span> <span class="identifier">dx</span> <span class="special">=</span> <span class="identifier">a</span><span class="special">.</span><span class="identifier">x</span> <span class="special">-</span> <span class="identifier">b</span><span class="special">.</span><span class="identifier">x</span><span class="special">;</span>
+    <span class="keyword">double</span> <span class="identifier">dy</span> <span class="special">=</span> <span class="identifier">a</span><span class="special">.</span><span class="identifier">y</span> <span class="special">-</span> <span class="identifier">b</span><span class="special">.</span><span class="identifier">y</span><span class="special">;</span>
+    <span class="keyword">return</span> <span class="identifier">sqrt</span><span class="special">(</span><span class="identifier">dx</span> <span class="special">*</span> <span class="identifier">dx</span> <span class="special">+</span> <span class="identifier">dy</span> <span class="special">*</span> <span class="identifier">dy</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>相当简单, 也能用, 但并不通用. 作为库, 其设计必须走得更远. 上面的设计只能用于笛卡尔坐标系中的二维点, 且仅适用于结构体 <span class="bold"><strong>mypoint</strong></span> (不能用于其他结构体). 一个通用库应当能够计算以下情形的距离:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">针对任意点类或结构体, 而不只是 <span class="bold"><strong>mypoint</strong></span> 这一类型</li>
+<li class="listitem">在二维以上的维度中</li>
+<li class="listitem">针对其他坐标系, 例如地球表面或球面</li>
+<li class="listitem">点与线之间, 或其他几何组合之间</li>
+<li class="listitem">以高于 <span class="emphasis"><em>double</em></span> 的精度</li>
+<li class="listitem">避免开平方: 我们通常不想这么做, 因为它是相对昂贵的函数, 而且比较距离时也没有必要</li>
+</ul></div>
+<p>在本节及后续各节中, 我们将逐步使这一设计更加通用.</p>
+<h4>
+<a name="geometry.design.h0"></a>
+      <span class="phrase"><a name="geometry.design.using_templates"></a></span><a class="link" href="design.html#geometry.design.using_templates">使用模板</a>
+    </h4>
+<p>距离函数可以改写为模板函数. 这很简单, 使得除 <span class="bold"><strong>mypoint</strong></span> 之外的其他点类型也能计算距离. 我们增加两个模板参数, 以允许输入两种不同的点类型.</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">P2</span><span class="special">&gt;</span>
+<span class="keyword">double</span> <span class="identifier">distance</span><span class="special">(</span><span class="identifier">P1</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a</span><span class="special">,</span> <span class="identifier">P2</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">b</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">double</span> <span class="identifier">dx</span> <span class="special">=</span> <span class="identifier">a</span><span class="special">.</span><span class="identifier">x</span> <span class="special">-</span> <span class="identifier">b</span><span class="special">.</span><span class="identifier">x</span><span class="special">;</span>
+    <span class="keyword">double</span> <span class="identifier">dy</span> <span class="special">=</span> <span class="identifier">a</span><span class="special">.</span><span class="identifier">y</span> <span class="special">-</span> <span class="identifier">b</span><span class="special">.</span><span class="identifier">y</span><span class="special">;</span>
+    <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">sqrt</span><span class="special">(</span><span class="identifier">dx</span> <span class="special">*</span> <span class="identifier">dx</span> <span class="special">+</span> <span class="identifier">dy</span> <span class="special">*</span> <span class="identifier">dy</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>这个模板版本稍好一些, 但好得不多.</p>
+<p>考虑一个成员变量受保护的 C++ 类... 这样的类不允许直接访问 <code class="computeroutput"><span class="identifier">x</span></code> 与 <code class="computeroutput"><span class="identifier">y</span></code> 成员. 所以, 本节内容很短, 我们直接继续.</p>
+<h4>
+<a name="geometry.design.h1"></a>
+      <span class="phrase"><a name="geometry.design.using_traits"></a></span><a class="link" href="design.html#geometry.design.using_traits">使用特征</a>
+    </h4>
+<p>我们需要采用一种通用方法, 允许任何点类型作为距离函数的输入. 不直接访问 <code class="computeroutput"><span class="identifier">x</span></code> 与 <code class="computeroutput"><span class="identifier">y</span></code> 成员, 而是利用特征 (traits) 系统增加几层间接. 该函数于是变为:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">P2</span><span class="special">&gt;</span>
+<span class="keyword">double</span> <span class="identifier">distance</span><span class="special">(</span><span class="identifier">P1</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a</span><span class="special">,</span> <span class="identifier">P2</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">b</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">double</span> <span class="identifier">dx</span> <span class="special">=</span> <span class="identifier">get</span><span class="special">&lt;</span><span class="number">0</span><span class="special">&gt;(</span><span class="identifier">a</span><span class="special">)</span> <span class="special">-</span> <span class="identifier">get</span><span class="special">&lt;</span><span class="number">0</span><span class="special">&gt;(</span><span class="identifier">b</span><span class="special">);</span>
+    <span class="keyword">double</span> <span class="identifier">dy</span> <span class="special">=</span> <span class="identifier">get</span><span class="special">&lt;</span><span class="number">1</span><span class="special">&gt;(</span><span class="identifier">a</span><span class="special">)</span> <span class="special">-</span> <span class="identifier">get</span><span class="special">&lt;</span><span class="number">1</span><span class="special">&gt;(</span><span class="identifier">b</span><span class="special">);</span>
+    <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">sqrt</span><span class="special">(</span><span class="identifier">dx</span> <span class="special">*</span> <span class="identifier">dx</span> <span class="special">+</span> <span class="identifier">dy</span> <span class="special">*</span> <span class="identifier">dy</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>改造后的距离函数使用一个泛型 get 函数 (以维度作为模板参数) 来访问点的坐标. 该 get 转发到特征系统, 其定义如下:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">traits</span>
+<span class="special">{</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P</span><span class="special">,</span> <span class="keyword">int</span> <span class="identifier">D</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">access</span> <span class="special">{};</span>
+<span class="special">}</span>
+</pre>
+<p>随后为我们的 <span class="bold"><strong>mypoint</strong></span> 类型对其进行特化, 实现一个名为 <code class="computeroutput"><span class="identifier">get</span></code> 的静态方法:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">traits</span>
+<span class="special">{</span>
+    <span class="keyword">template</span> <span class="special">&lt;&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">access</span><span class="special">&lt;</span><span class="identifier">mypoint</span><span class="special">,</span> <span class="number">0</span><span class="special">&gt;</span>
+    <span class="special">{</span>
+        <span class="keyword">static</span> <span class="keyword">double</span> <span class="identifier">get</span><span class="special">(</span><span class="identifier">mypoint</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">p</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="keyword">return</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">x</span><span class="special">;</span>
+        <span class="special">}</span>
+    <span class="special">};</span>
+    <span class="comment">// same for 1: p.y</span>
+    <span class="special">...</span>
+<span class="special">}</span>
+</pre>
+<p>调用 <code class="computeroutput"><span class="identifier">traits</span><span class="special">::</span><span class="identifier">access</span><span class="special">&lt;</span><span class="identifier">mypoint</span><span class="special">,</span> <span class="number">0</span><span class="special">&gt;::</span><span class="identifier">get</span><span class="special">(</span><span class="identifier">a</span><span class="special">)</span></code> 现在即可返回我们的 <code class="computeroutput"><span class="identifier">x</span></code> 坐标. 很妙, 不是吗? 对于库中如此常用的函数而言, 这样写太啰嗦了. 我们可以增加一个额外的自由函数来缩短语法:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">int</span> <span class="identifier">D</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">P</span><span class="special">&gt;</span>
+<span class="keyword">inline</span> <span class="keyword">double</span> <span class="identifier">get</span><span class="special">(</span><span class="identifier">P</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">p</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">return</span> <span class="identifier">traits</span><span class="special">::</span><span class="identifier">access</span><span class="special">&lt;</span><span class="identifier">P</span><span class="special">,</span> <span class="identifier">D</span><span class="special">&gt;::</span><span class="identifier">get</span><span class="special">(</span><span class="identifier">p</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>这使得我们可以调用 <code class="computeroutput"><span class="identifier">get</span><span class="special">&lt;</span><span class="number">0</span><span class="special">&gt;(</span><span class="identifier">a</span><span class="special">)</span></code>, 对任何具有 traits::access 特化的点均可, 正如本节开头的距离算法所示. 因此我们希望支持拥有形如 <code class="computeroutput"><span class="identifier">x</span><span class="special">()</span></code> 方法的类, 只要存在对访问特征 <code class="computeroutput"><span class="keyword">struct</span></code> 的特化, 并提供一个静态函数 <code class="computeroutput"><span class="identifier">get</span></code> 返回 <code class="computeroutput"><span class="identifier">x</span><span class="special">()</span></code> (对应维度 0), 对维度 1 和 <code class="computeroutput"><span class="identifier">y</span><span class="special">()</span></code> 也是如此.</p>
+<h4>
+<a name="geometry.design.h2"></a>
+      <span class="phrase"><a name="geometry.design.dimension_agnosticism"></a></span><a class="link" href="design.html#geometry.design.dimension_agnosticism">维度无关性</a>
+    </h4>
+<p>现在我们可以计算二维点之间、任意结构体或类的点之间的距离了. 不过, 我们还想支持三维. 因此必须使其与维度无关. 这会让距离函数变得复杂. 我们可以用 <code class="computeroutput"><span class="keyword">for</span></code> 循环遍历各维度, 但循环的性能与最初那种直接的坐标相加并不相同. 不过, 我们可以进一步利用模板, 把距离算法写成如下形式——更复杂, 但对模板爱好者很有吸引力:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">P2</span><span class="special">,</span> <span class="keyword">int</span> <span class="identifier">D</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">pythagoras</span>
+<span class="special">{</span>
+    <span class="keyword">static</span> <span class="keyword">double</span> <span class="identifier">apply</span><span class="special">(</span><span class="identifier">P1</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a</span><span class="special">,</span> <span class="identifier">P2</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">b</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="keyword">double</span> <span class="identifier">d</span> <span class="special">=</span> <span class="identifier">get</span><span class="special">&lt;</span><span class="identifier">D</span><span class="special">-</span><span class="number">1</span><span class="special">&gt;(</span><span class="identifier">a</span><span class="special">)</span> <span class="special">-</span> <span class="identifier">get</span><span class="special">&lt;</span><span class="identifier">D</span><span class="special">-</span><span class="number">1</span><span class="special">&gt;(</span><span class="identifier">b</span><span class="special">);</span>
+        <span class="keyword">return</span> <span class="identifier">d</span> <span class="special">*</span> <span class="identifier">d</span> <span class="special">+</span> <span class="identifier">pythagoras</span><span class="special">&lt;</span><span class="identifier">P1</span><span class="special">,</span> <span class="identifier">P2</span><span class="special">,</span> <span class="identifier">D</span><span class="special">-</span><span class="number">1</span><span class="special">&gt;::</span><span class="identifier">apply</span><span class="special">(</span><span class="identifier">a</span><span class="special">,</span> <span class="identifier">b</span><span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">P2</span> <span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">pythagoras</span><span class="special">&lt;</span><span class="identifier">P1</span><span class="special">,</span> <span class="identifier">P2</span><span class="special">,</span> <span class="number">0</span><span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">static</span> <span class="keyword">double</span> <span class="identifier">apply</span><span class="special">(</span><span class="identifier">P1</span> <span class="keyword">const</span><span class="special">&amp;,</span> <span class="identifier">P2</span> <span class="keyword">const</span><span class="special">&amp;)</span>
+    <span class="special">{</span>
+        <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>距离函数会调用该 <code class="computeroutput"><span class="identifier">pythagoras</span></code> 结构, 并指定维度数:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">P2</span><span class="special">&gt;</span>
+<span class="keyword">double</span> <span class="identifier">distance</span><span class="special">(</span><span class="identifier">P1</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a</span><span class="special">,</span> <span class="identifier">P2</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">b</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">static_assert</span><span class="special">(</span><span class="identifier">dimension</span><span class="special">&lt;</span><span class="identifier">P1</span><span class="special">&gt;::</span><span class="identifier">value</span> <span class="special">==</span> <span class="identifier">dimension</span><span class="special">&lt;</span><span class="identifier">P2</span><span class="special">&gt;::</span><span class="identifier">value</span><span class="special">,</span>
+        <span class="string">"Distance can only be computed for points of same dimension."</span><span class="special">);</span>
+
+    <span class="keyword">return</span> <span class="identifier">sqrt</span><span class="special">(</span><span class="identifier">pythagoras</span><span class="special">&lt;</span><span class="identifier">P1</span><span class="special">,</span> <span class="identifier">P2</span><span class="special">,</span> <span class="identifier">dimension</span><span class="special">&lt;</span><span class="identifier">P1</span><span class="special">&gt;::</span><span class="identifier">value</span><span class="special">&gt;::</span><span class="identifier">apply</span><span class="special">(</span><span class="identifier">a</span><span class="special">,</span> <span class="identifier">b</span><span class="special">));</span>
+<span class="special">}</span>
+</pre>
+<p>所引用的维度由另一个特征类定义:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">traits</span>
+<span class="special">{</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">dimension</span> <span class="special">{};</span>
+<span class="special">}</span>
+</pre>
+<p>
+    </p>
+<p>它同样需要针对 <code class="computeroutput"><span class="keyword">struct</span>
+      <span class="identifier">mypoint</span></code> 再次特化.</p>
+<p>由于它只需要发布一个值, 我们干脆让它派生自 Boost.MPL 的 <code class="computeroutput"><span class="keyword">class</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">mpl</span><span class="special">::</span><span class="identifier">int_</span></code>:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">traits</span>
+<span class="special">{</span>
+    <span class="keyword">template</span> <span class="special">&lt;&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">dimension</span><span class="special">&lt;</span><span class="identifier">mypoint</span><span class="special">&gt;</span> <span class="special">:</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">mpl</span><span class="special">::</span><span class="identifier">int_</span><span class="special">&lt;</span><span class="number">2</span><span class="special">&gt;</span>
+    <span class="special">{};</span>
+<span class="special">}</span>
+</pre>
+<p>
+    </p>
+<p>与自由 get 函数一样, 库中也包含一个维度元函数 (meta-function).</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">dimension</span> <span class="special">:</span> <span class="identifier">traits</span><span class="special">::</span><span class="identifier">dimension</span><span class="special">&lt;</span><span class="identifier">P</span><span class="special">&gt;</span>
+<span class="special">{};</span>
+</pre>
+<p>后文会解释为什么这个额外的声明有用. 现在我们实现了维度数量上的无关性. 更通用的距离函数现在可以接受三维或更多维的点. 编译期断言会阻止点 a 为二维而点 b 为三维的情况.</p>
+<h4>
+<a name="geometry.design.h3"></a>
+      <span class="phrase"><a name="geometry.design.coordinate_type"></a></span><a class="link" href="design.html#geometry.design.coordinate_type">坐标类型</a>
+    </h4>
+<p>上文我们假定坐标是 double. 如果我们的点是整数呢?</p>
+<p>我们可以轻松增加一个特征类, 后面就会这么做. 不过, 两个整数坐标之间的距离仍可能是分数值. 此外, 设计目标之一是避免开平方. 这些情况会在下面另一节中处理. 目前我们仍返回 double, 但允许点类型使用整数坐标. 为定义坐标类型, 我们再增加一个特征类 <code class="computeroutput"><span class="identifier">coordinate_type</span></code>, 它应由库用户特化:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">traits</span>
+<span class="special">{</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">coordinate_type</span><span class="special">{};</span>
+
+    <span class="comment">// specialization for our mypoint</span>
+    <span class="keyword">template</span> <span class="special">&lt;&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">coordinate_type</span><span class="special">&lt;</span><span class="identifier">mypoint</span><span class="special">&gt;</span>
+    <span class="special">{</span>
+        <span class="keyword">typedef</span> <span class="keyword">double</span> <span class="identifier">type</span><span class="special">;</span>
+    <span class="special">};</span>
+<span class="special">}</span>
+</pre>
+<p>与访问函数的情形类似 (我们有一个自由 get 函数), 这里也增加一个代理. 后文会给出更长的版本, 短版本函数如下:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">coordinate_type</span> <span class="special">:</span>    <span class="identifier">traits</span><span class="special">::</span><span class="identifier">coordinate_type</span><span class="special">&lt;</span><span class="identifier">P</span><span class="special">&gt;</span> <span class="special">{};</span>
+</pre>
+<p>现在可以再次修改距离算法. 由于它仍返回 double, 我们只需修改 <code class="computeroutput"><span class="identifier">pythagoras</span></code> 计算类. 它应当返回其输入的坐标类型. 但它有两个可能不同的输入点类型, 两者的坐标类型也可能不同. 虽然这种情况不太可能发生, 但我们设计的是通用库, 应当处理这些奇怪的情况. 我们必须在两种坐标类型中做出选择, 当然选择精度最高的那种. 这里不展开实现, 那会太长, 而且与几何无关. 我们只假设存在一个元函数 <code class="computeroutput"><span class="identifier">select_most_precise</span></code> 来选出最佳类型.</p>
+<p>于是我们的计算类变为:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">P2</span><span class="special">,</span> <span class="keyword">int</span> <span class="identifier">D</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">pythagoras</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">select_most_precise</span>
+        <span class="special">&lt;</span>
+            <span class="keyword">typename</span> <span class="identifier">coordinate_type</span><span class="special">&lt;</span><span class="identifier">P1</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">,</span>
+            <span class="keyword">typename</span> <span class="identifier">coordinate_type</span><span class="special">&lt;</span><span class="identifier">P2</span><span class="special">&gt;::</span><span class="identifier">type</span>
+        <span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">computation_type</span><span class="special">;</span>
+
+    <span class="keyword">static</span> <span class="identifier">computation_type</span> <span class="identifier">apply</span><span class="special">(</span><span class="identifier">P1</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a</span><span class="special">,</span> <span class="identifier">P2</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">b</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">computation_type</span> <span class="identifier">d</span> <span class="special">=</span> <span class="identifier">get</span><span class="special">&lt;</span><span class="identifier">D</span><span class="special">-</span><span class="number">1</span><span class="special">&gt;(</span><span class="identifier">a</span><span class="special">)</span> <span class="special">-</span> <span class="identifier">get</span><span class="special">&lt;</span><span class="identifier">D</span><span class="special">-</span><span class="number">1</span><span class="special">&gt;(</span><span class="identifier">b</span><span class="special">);</span>
+        <span class="keyword">return</span> <span class="identifier">d</span> <span class="special">*</span> <span class="identifier">d</span> <span class="special">+</span> <span class="identifier">pythagoras</span> <span class="special">&lt;</span><span class="identifier">P1</span><span class="special">,</span> <span class="identifier">P2</span><span class="special">,</span> <span class="identifier">D</span><span class="special">-</span><span class="number">1</span><span class="special">&gt;</span> <span class="special">::</span><span class="identifier">apply</span><span class="special">(</span><span class="identifier">a</span><span class="special">,</span> <span class="identifier">b</span><span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<h4>
+<a name="geometry.design.h4"></a>
+      <span class="phrase"><a name="geometry.design.different_geometries"></a></span><a class="link" href="design.html#geometry.design.different_geometries">不同几何类型</a>
+    </h4>
+<p>我们已经设计出一个维度无关的系统, 支持任意坐标类型的任意点类型. 还有一些细节待调整, 留待以后处理. 现在来看如何计算点到多边形、点到线段之间的距离. 这些公式更复杂, 对设计的影响也更大. 我们不想再增加一个用别的名字命名的函数:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">S</span><span class="special">&gt;</span>
+<span class="keyword">double</span> <span class="identifier">distance_point_segment</span><span class="special">(</span><span class="identifier">P</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">p</span><span class="special">,</span> <span class="identifier">S</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">s</span><span class="special">)</span>
+</pre>
+<p>我们希望保持通用, 距离函数必须能被不了解其所处理几何类型的代码调用, 因此它必须命名为 distance. 我们也不能创建重载, 因为模板签名相同会产生歧义. 有两种解决方案:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">标签分派 (tag dispatching)</li>
+<li class="listitem">
+          SFINAE
+        </li>
+</ul></div>
+<p>我们选择标签分派, 因为它契合特征系统. Boost.Geometry 的早期版本 (预览版) 曾使用 SFINAE, 但我们发现对于如此庞大的设计它有若干缺点, 于是改用了标签分派.</p>
+<p>借助标签分派, 距离算法会检查输入参数的几何类型. 距离函数将改成这样:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">G1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">G2</span><span class="special">&gt;</span>
+<span class="keyword">double</span> <span class="identifier">distance</span><span class="special">(</span><span class="identifier">G1</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">g1</span><span class="special">,</span> <span class="identifier">G2</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">g2</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">return</span> <span class="identifier">dispatch</span><span class="special">::</span><span class="identifier">distance</span>
+        <span class="special">&lt;</span>
+            <span class="keyword">typename</span> <span class="identifier">tag</span><span class="special">&lt;</span><span class="identifier">G1</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">,</span>
+            <span class="keyword">typename</span> <span class="identifier">tag</span><span class="special">&lt;</span><span class="identifier">G2</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">,</span>
+            <span class="identifier">G1</span><span class="special">,</span> <span class="identifier">G2</span>
+        <span class="special">&gt;::</span><span class="identifier">apply</span><span class="special">(</span><span class="identifier">g1</span><span class="special">,</span> <span class="identifier">g2</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>它引用 tag 元函数, 并把调用转发给 <span class="bold"><strong>apply</strong></span> 方法, 该方法属于 <span class="emphasis"><em>dispatch::distance</em></span> 结构. <span class="bold"><strong>tag</strong></span> 元函数是另一个特征类, 应针对每种点类型进行特化, 两者如下所示:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">traits</span>
+<span class="special">{</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">G</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">tag</span> <span class="special">{};</span>
+
+    <span class="comment">// specialization</span>
+    <span class="keyword">template</span> <span class="special">&lt;&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">tag</span><span class="special">&lt;</span><span class="identifier">mypoint</span><span class="special">&gt;</span>
+    <span class="special">{</span>
+        <span class="keyword">typedef</span> <span class="identifier">point_tag</span> <span class="identifier">type</span><span class="special">;</span>
+    <span class="special">};</span>
+<span class="special">}</span>
+</pre>
+<p>自由元函数, 如 coordinate_system 与 get:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">G</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">tag</span> <span class="special">:</span> <span class="identifier">traits</span><span class="special">::</span><span class="identifier">tag</span><span class="special">&lt;</span><span class="identifier">G</span><span class="special">&gt;</span> <span class="special">{};</span>
+</pre>
+<p>
+      <span class="bold"><strong>标签</strong></span> (<code class="computeroutput"><span class="identifier">point_tag</span></code>, <code class="computeroutput"><span class="identifier">segment_tag</span></code> 等) 是空结构体, 用途是为分派结构体提供特化依据. distance 的分派结构体及其各特化都定义在一个单独的命名空间中, 形式如下:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">dispatch</span> <span class="special">{</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">Tag1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Tag2</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">G1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">G2</span> <span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">distance</span>
+    <span class="special">{};</span>
+
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">P2</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">distance</span> <span class="special">&lt;</span> <span class="identifier">point_tag</span><span class="special">,</span> <span class="identifier">point_tag</span><span class="special">,</span> <span class="identifier">P1</span><span class="special">,</span> <span class="identifier">P2</span> <span class="special">&gt;</span>
+    <span class="special">{</span>
+        <span class="keyword">static</span> <span class="keyword">double</span> <span class="identifier">apply</span><span class="special">(</span><span class="identifier">P1</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">a</span><span class="special">,</span> <span class="identifier">P2</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">b</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="comment">// here we call pythagoras</span>
+            <span class="comment">// exactly like we did before</span>
+            <span class="special">...</span>
+        <span class="special">}</span>
+    <span class="special">};</span>
+
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">S</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">distance</span>
+    <span class="special">&lt;</span>
+        <span class="identifier">point_tag</span><span class="special">,</span> <span class="identifier">segment_tag</span><span class="special">,</span> <span class="identifier">P</span><span class="special">,</span> <span class="identifier">S</span>
+    <span class="special">&gt;</span>
+    <span class="special">{</span>
+        <span class="keyword">static</span> <span class="keyword">double</span> <span class="identifier">apply</span><span class="special">(</span><span class="identifier">P</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">p</span><span class="special">,</span> <span class="identifier">S</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">s</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="comment">// here we refer to another function</span>
+            <span class="comment">// implementing point-segment</span>
+            <span class="comment">// calculations in 2 or 3</span>
+            <span class="comment">// dimensions...</span>
+            <span class="special">...</span>
+        <span class="special">}</span>
+    <span class="special">};</span>
+
+    <span class="comment">// here we might have many more</span>
+    <span class="comment">// specializations,</span>
+    <span class="comment">// for point-polygon, box-circle, etc.</span>
+
+<span class="special">}</span> <span class="comment">// namespace</span>
+</pre>
+<p>所以, 这是可行的; 距离算法现在已经通用, 意义在于它也支持不同的几何类型. 一个缺点是: 我们必须分别为 point - segment 与 segment - point 定义两个分派特化. 这也会在下面的“可逆性”一节中解决. 下面的示例展示了我们目前的成果: 不同的点类型、几何类型与维度.</p>
+<pre class="programlisting"><span class="identifier">point</span> <span class="identifier">a</span><span class="special">(</span><span class="number">1</span><span class="special">,</span><span class="number">1</span><span class="special">);</span>
+<span class="identifier">point</span> <span class="identifier">b</span><span class="special">(</span><span class="number">2</span><span class="special">,</span><span class="number">2</span><span class="special">);</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">distance</span><span class="special">(</span><span class="identifier">a</span><span class="special">,</span><span class="identifier">b</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="identifier">segment</span> <span class="identifier">s1</span><span class="special">(</span><span class="number">0</span><span class="special">,</span><span class="number">0</span><span class="special">,</span><span class="number">5</span><span class="special">,</span><span class="number">3</span><span class="special">);</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">distance</span><span class="special">(</span><span class="identifier">a</span><span class="special">,</span> <span class="identifier">s1</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="identifier">rgb</span> <span class="identifier">red</span><span class="special">(</span><span class="number">255</span><span class="special">,</span> <span class="number">0</span><span class="special">,</span> <span class="number">0</span><span class="special">);</span>
+<span class="identifier">rbc</span> <span class="identifier">orange</span><span class="special">(</span><span class="number">255</span><span class="special">,</span> <span class="number">128</span><span class="special">,</span> <span class="number">0</span><span class="special">);</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"color distance: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">distance</span><span class="special">(</span><span class="identifier">red</span><span class="special">,</span> <span class="identifier">orange</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+</pre>
+<h4>
+<a name="geometry.design.h5"></a>
+      <span class="phrase"><a name="geometry.design.kernel_revisited"></a></span><a class="link" href="design.html#geometry.design.kernel_revisited">再谈内核</a>
+    </h4>
+<p>上文提到我们有一个特征类 <code class="computeroutput"><span class="identifier">coordinate_type</span></code>, 定义在 traits 命名空间中, 同时还定义了一个单独的 <code class="computeroutput"><span class="identifier">coordinate_type</span></code> 类. 在此之前这其实并不真正必要, 因为二者唯一的区别就是命名空间子句. 但现在我们有了另一种几何类型 (此处是线段), 这就必不可少了. 我们可以对任何几何类型 (点、线段、多边形等) 调用 <code class="computeroutput"><span class="identifier">coordinate_type</span></code> 元函数, 它同样通过标签分派实现:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">G</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">coordinate_type</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">dispatch</span><span class="special">::</span><span class="identifier">coordinate_type</span>
+        <span class="special">&lt;</span>
+            <span class="keyword">typename</span> <span class="identifier">tag</span><span class="special">&lt;</span><span class="identifier">G</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">,</span> <span class="identifier">G</span>
+        <span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">type</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>在 dispatch 命名空间内部, 该元函数有两个实现: 泛型版本和针对点的特化. 针对点的特化调用特征类. 泛型版本调用点的特化, 有点像递归的元函数定义:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">dispatch</span>
+<span class="special">{</span>
+
+    <span class="comment">// Version for any geometry:</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">GeometryTag</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">G</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">coordinate_type</span>
+    <span class="special">{</span>
+        <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">point_type</span>
+            <span class="special">&lt;</span>
+                <span class="identifier">GeometryTag</span><span class="special">,</span> <span class="identifier">G</span>
+            <span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">point_type</span><span class="special">;</span>
+
+        <span class="comment">// Call specialization on point-tag</span>
+        <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">coordinate_type</span> <span class="special">&lt;</span> <span class="identifier">point_tag</span><span class="special">,</span> <span class="identifier">point_type</span> <span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">type</span><span class="special">;</span>
+    <span class="special">};</span>
+
+    <span class="comment">// Specialization for point-type:</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">coordinate_type</span><span class="special">&lt;</span><span class="identifier">point_tag</span><span class="special">,</span> <span class="identifier">P</span><span class="special">&gt;</span>
+    <span class="special">{</span>
+        <span class="keyword">typedef</span> <span class="keyword">typename</span>
+            <span class="identifier">traits</span><span class="special">::</span><span class="identifier">coordinate_type</span><span class="special">&lt;</span><span class="identifier">P</span><span class="special">&gt;::</span><span class="identifier">type</span>
+            <span class="identifier">type</span><span class="special">;</span>
+    <span class="special">};</span>
+<span class="special">}</span>
+</pre>
+<p>因此它调用另一个元函数 point_type. 这里不展开细讲, 但要知道它对所有几何类型都可用, 它会 typedef 出构成该几何的点类型, 命名为 type.</p>
+<p>元函数 dimension 以及后面将出现的坐标系元函数也是如此.</p>
+<h4>
+<a name="geometry.design.h6"></a>
+      <span class="phrase"><a name="geometry.design.coordinate_system"></a></span><a class="link" href="design.html#geometry.design.coordinate_system">坐标系</a>
+    </h4>
+<p>到目前为止我们假定的都是笛卡尔坐标系. 但我们知道地球并不是平的. 用上面的系统计算两个 GPS 点之间的距离会得出毫无意义的结果. 于是我们再次扩展设计. 我们再次利用特征系统为每种点类型定义一个坐标系类型, 然后让计算依赖于该坐标系.</p>
+<p>坐标系与坐标类型类似, 也是一个元函数, 通过调用分派函数使之适用于任何几何类型, 再转发到其点的特化, 最后调用特征类, 在其中用 typedef 定义 type 为一个坐标系. 这些就不再全部展示了. 我们只给出几个坐标系的定义:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">cartesian</span> <span class="special">{};</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">DegreeOrRadian</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">geographic</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="identifier">DegreeOrRadian</span> <span class="identifier">units</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>可见笛卡尔坐标系很简单; 对于地理坐标系, 还可以选择坐标以度还是以弧度存储.</p>
+<p>距离函数现在要变了: 它会为相应的坐标系选择计算方法, 然后调用 distance 的分派结构体. 我们把针对坐标系特化的计算方法称为策略 (strategy). 于是距离函数的新版本是:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">G1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">G2</span><span class="special">&gt;</span>
+<span class="keyword">double</span> <span class="identifier">distance</span><span class="special">(</span><span class="identifier">G1</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">g1</span><span class="special">,</span> <span class="identifier">G2</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">g2</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">strategy_distance</span>
+        <span class="special">&lt;</span>
+            <span class="keyword">typename</span> <span class="identifier">coordinate_system</span><span class="special">&lt;</span><span class="identifier">G1</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">,</span>
+            <span class="keyword">typename</span> <span class="identifier">coordinate_system</span><span class="special">&lt;</span><span class="identifier">G2</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">,</span>
+            <span class="keyword">typename</span> <span class="identifier">point_type</span><span class="special">&lt;</span><span class="identifier">G1</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">,</span>
+            <span class="keyword">typename</span> <span class="identifier">point_type</span><span class="special">&lt;</span><span class="identifier">G2</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">,</span>
+            <span class="identifier">dimension</span><span class="special">&lt;</span><span class="identifier">G1</span><span class="special">&gt;::</span><span class="identifier">value</span>
+        <span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">strategy</span><span class="special">;</span>
+
+    <span class="keyword">return</span> <span class="identifier">dispatch</span><span class="special">::</span><span class="identifier">distance</span>
+        <span class="special">&lt;</span>
+            <span class="keyword">typename</span> <span class="identifier">tag</span><span class="special">&lt;</span><span class="identifier">G1</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">,</span>
+            <span class="keyword">typename</span> <span class="identifier">tag</span><span class="special">&lt;</span><span class="identifier">G2</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">,</span>
+            <span class="identifier">G1</span><span class="special">,</span> <span class="identifier">G2</span><span class="special">,</span> <span class="identifier">strategy</span>
+        <span class="special">&gt;::</span><span class="identifier">apply</span><span class="special">(</span><span class="identifier">g1</span><span class="special">,</span> <span class="identifier">g2</span><span class="special">,</span> <span class="identifier">strategy</span><span class="special">());</span>
+<span class="special">}</span>
+</pre>
+<p>这里提到的 strategy_distance 是一个结构体, 针对不同的坐标系有不同特化.</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">T1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">T2</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">P1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">P2</span><span class="special">,</span> <span class="keyword">int</span> <span class="identifier">D</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">strategy_distance</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="keyword">void</span> <span class="identifier">type</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">P2</span><span class="special">,</span> <span class="keyword">int</span> <span class="identifier">D</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">strategy_distance</span><span class="special">&lt;</span><span class="identifier">cartesian</span><span class="special">,</span> <span class="identifier">cartesian</span><span class="special">,</span> <span class="identifier">P1</span><span class="special">,</span> <span class="identifier">P2</span><span class="special">,</span> <span class="identifier">D</span><span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="identifier">pythagoras</span><span class="special">&lt;</span><span class="identifier">P1</span><span class="special">,</span> <span class="identifier">P2</span><span class="special">,</span> <span class="identifier">D</span><span class="special">&gt;</span> <span class="identifier">type</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>于是, 我们的 <code class="computeroutput"><span class="identifier">pythagoras</span></code> 又出现了, 这次定义为策略. distance 的分派函数只调用其 apply 方法.</p>
+<p>这是重要的一步: 对于球面或地理坐标系, 可以实现另一种策略 (计算方法). 球面坐标系有半正矢 (haversine) 公式. 于是分派特征结构体的特化如下</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">P1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">P2</span><span class="special">,</span> <span class="keyword">int</span> <span class="identifier">D</span> <span class="special">=</span> <span class="number">2</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">strategy_distance</span><span class="special">&lt;</span><span class="identifier">spherical</span><span class="special">,</span> <span class="identifier">spherical</span><span class="special">,</span> <span class="identifier">P1</span><span class="special">,</span> <span class="identifier">P2</span><span class="special">,</span> <span class="identifier">D</span><span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="identifier">haversine</span><span class="special">&lt;</span><span class="identifier">P1</span><span class="special">,</span> <span class="identifier">P2</span><span class="special">&gt;</span> <span class="identifier">type</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="comment">// struct haversine with apply function</span>
+<span class="comment">// is omitted here</span>
+</pre>
+<p>对于地理坐标系, 距离计算有若干选择: Andoyer 方法快速而精确, Vincenty 方法较慢但更精确, 还有一些精度较低的方法.</p>
+<p>每个坐标系都有一个策略被定义为默认策略. 为了也能使用其他策略, 我们再次修改设计, 为 distance 算法增加一个重载, 将策略对象作为第三个参数.</p>
+<p>这个新的重载 distance 函数还有个好处: 策略可以在 distance 函数之外构造. 由于上文策略是在函数内部构造的, 它无法拥有构造参数. 但对 Andoyer、Vincenty 或半正矢公式而言, 提供一个以地球半径为参数的构造函数显然很有意义.</p>
+<p>于是, distance 的重载函数为:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">G1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">G2</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">S</span><span class="special">&gt;</span>
+<span class="keyword">double</span> <span class="identifier">distance</span><span class="special">(</span><span class="identifier">G1</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">g1</span><span class="special">,</span> <span class="identifier">G2</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">g2</span><span class="special">,</span> <span class="identifier">S</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">strategy</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">return</span> <span class="identifier">dispatch</span><span class="special">::</span><span class="identifier">distance</span>
+        <span class="special">&lt;</span>
+            <span class="keyword">typename</span> <span class="identifier">tag</span><span class="special">&lt;</span><span class="identifier">G1</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">,</span>
+            <span class="keyword">typename</span> <span class="identifier">tag</span><span class="special">&lt;</span><span class="identifier">G2</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">,</span>
+            <span class="identifier">G1</span><span class="special">,</span> <span class="identifier">G2</span><span class="special">,</span> <span class="identifier">S</span>
+        <span class="special">&gt;::</span><span class="identifier">apply</span><span class="special">(</span><span class="identifier">g1</span><span class="special">,</span> <span class="identifier">g2</span><span class="special">,</span> <span class="identifier">strategy</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>策略必须有一个 apply 方法, 以两个点作为参数 (针对点的情况). 它不必须是静态方法. 策略可以定义一个构造函数, 传入配置值并保存为成员变量. 在这种情况下静态方法会不方便. 它可以实现为普通方法 (带 const 限定符).</p>
+<p>我们这里不列出全部实现——Vincenty 会占半页数学推导, 但你能理解其思想. 我们可以这样调用 distance:</p>
+<pre class="programlisting"><span class="identifier">distance</span><span class="special">(</span><span class="identifier">c1</span><span class="special">,</span> <span class="identifier">c2</span><span class="special">)</span>
+</pre>
+<p>其中 <code class="computeroutput"><span class="identifier">c1</span></code> 与 <code class="computeroutput"><span class="identifier">c2</span></code> 是笛卡尔点, 或者这样调用:</p>
+<pre class="programlisting"><span class="identifier">distance</span><span class="special">(</span><span class="identifier">g1</span><span class="special">,</span> <span class="identifier">g2</span><span class="special">)</span>
+</pre>
+<p>其中 <code class="computeroutput"><span class="identifier">g1</span></code> 与 <code class="computeroutput"><span class="identifier">g2</span></code> 是地理点, 调用针对地理点的默认策略 (如 Andoyer), 或者这样调用:</p>
+<pre class="programlisting"><span class="identifier">distance</span><span class="special">(</span><span class="identifier">g1</span><span class="special">,</span> <span class="identifier">g2</span><span class="special">,</span> <span class="identifier">vincenty</span><span class="special">&lt;</span><span class="identifier">G1</span><span class="special">,</span> <span class="identifier">G2</span><span class="special">&gt;(</span><span class="number">6275</span><span class="special">))</span>
+</pre>
+<p>其中显式指定了策略, 并用半径构造.</p>
+<h4>
+<a name="geometry.design.h7"></a>
+      <span class="phrase"><a name="geometry.design.point_concept"></a></span><a class="link" href="design.html#geometry.design.point_concept">点概念</a>
+    </h4>
+<p>前几节提到的五个特征类共同构成点概念 (Point Concept). 任何在 traits 命名空间中实现了特化的点类型都应被接受为有效类型. 因此点概念由以下部分组成:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"> <code class="computeroutput"><span class="identifier">traits</span><span class="special">::</span><span class="identifier">tag</span></code> 的一个特化</li>
+<li class="listitem"> <code class="computeroutput"><span class="identifier">traits</span><span class="special">::</span><span class="identifier">coordinate_system</span></code> 的一个特化</li>
+<li class="listitem"> <code class="computeroutput"><span class="identifier">traits</span><span class="special">::</span><span class="identifier">coordinate_type</span></code> 的一个特化</li>
+<li class="listitem"> <code class="computeroutput"><span class="identifier">traits</span><span class="special">::</span><span class="identifier">dimension</span></code> 的一个特化</li>
+<li class="listitem"> <code class="computeroutput"><span class="identifier">traits</span><span class="special">::</span><span class="identifier">access</span></code> 的一个特化</li>
+</ul></div>
+<p>最后一个是类, 包含 get 方法和 (可选的) set 方法; 前四个是元函数, 或定义 type 或声明一个值 (遵循 MPL 惯例).</p>
+<p>至此我们实现了维度数量无关和坐标系无关; 该设计可以处理任何坐标类型, 也能处理不同的几何类型. 此外我们还可以指定自己的策略; 两个点维度不同时代码无法编译 (因为断言), 两个点坐标系不同时也无法编译 (因为没有特化). 库可以检查点类型是否满足概念所施加的要求. 这将在后面的概念检查 (Concept Checking) 一节中介绍.</p>
+<h4>
+<a name="geometry.design.h8"></a>
+      <span class="phrase"><a name="geometry.design.return_type"></a></span><a class="link" href="design.html#geometry.design.return_type">返回类型</a>
+    </h4>
+<p>我们曾承诺, 调用 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">sqrt</span></code> 并非总是必要. 因此我们定义一个距离结果 <code class="computeroutput"><span class="keyword">struct</span></code>, 它包含平方值且可转换为 double 值. 不过, 只需要对 <code class="computeroutput"><span class="identifier">pythagoras</span></code> 这样做. 球面距离函数不做开平方, 因此无需避免昂贵的开平方调用, 可以直接返回距离.</p>
+<p>因此距离结果结构体依赖于策略, 于是被做成策略的成员类型. 结果结构体如下:</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">T</span> <span class="special">=</span> <span class="keyword">double</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">cartesian_distance</span>
+<span class="special">{</span>
+    <span class="identifier">T</span> <span class="identifier">sq</span><span class="special">;</span>
+    <span class="keyword">explicit</span> <span class="identifier">cartesian_distance</span><span class="special">(</span><span class="identifier">T</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">v</span><span class="special">)</span> <span class="special">:</span> <span class="identifier">sq</span> <span class="special">(</span><span class="identifier">v</span><span class="special">)</span> <span class="special">{}</span>
+
+    <span class="keyword">inline</span> <span class="keyword">operator</span> <span class="identifier">T</span><span class="special">()</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">sqrt</span><span class="special">(</span><span class="identifier">sq</span><span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>它还定义了运算符, 可以在不开平方的情况下与其他结果比较.</p>
+<p>每个策略都应在策略类内部定义其返回类型, 例如:</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="identifier">cartesian_distance</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span> <span class="identifier">return_type</span><span class="special">;</span>
+</pre>
+<p>或者:</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="keyword">double</span> <span class="identifier">return_type</span><span class="special">;</span>
+</pre>
+<p>分别对应笛卡尔 (毕达哥拉斯) 与球面.</p>
+<p>同样如预期, 我们的 distance 函数将再次修改以体现新的返回类型. 对于带策略的重载, 并不复杂:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">G1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">G2</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Strategy</span> <span class="special">&gt;</span>
+<span class="keyword">typename</span> <span class="identifier">Strategy</span><span class="special">::</span><span class="identifier">return_type</span> <span class="identifier">distance</span><span class="special">(</span> <span class="identifier">G1</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">G1</span> <span class="special">,</span> <span class="identifier">G2</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">G2</span> <span class="special">,</span> <span class="identifier">S</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">strategy</span><span class="special">)</span>
+</pre>
+<p>但对于不带策略的版本, 我们必须选择策略、坐标类型等. 一行代码写不下, 所以我们增加一个单独的元函数:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">G1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">G2</span> <span class="special">=</span> <span class="identifier">G1</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">distance_result</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">point_type</span><span class="special">&lt;</span><span class="identifier">G1</span><span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">P1</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">point_type</span><span class="special">&lt;</span><span class="identifier">G2</span><span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">P2</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">strategy_distance</span>
+        <span class="special">&lt;</span>
+            <span class="keyword">typename</span> <span class="identifier">cs_tag</span><span class="special">&lt;</span><span class="identifier">P1</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">,</span>
+            <span class="keyword">typename</span> <span class="identifier">cs_tag</span><span class="special">&lt;</span><span class="identifier">P2</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">,</span>
+            <span class="identifier">P1</span><span class="special">,</span> <span class="identifier">P2</span>
+        <span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">S</span><span class="special">;</span>
+
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">S</span><span class="special">::</span><span class="identifier">return_type</span> <span class="identifier">type</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>并修改我们的 distance 函数:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">G1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">G2</span><span class="special">&gt;</span>
+<span class="keyword">inline</span> <span class="keyword">typename</span> <span class="identifier">distance_result</span><span class="special">&lt;</span><span class="identifier">G1</span><span class="special">,</span> <span class="identifier">G2</span><span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">distance</span><span class="special">(</span><span class="identifier">G1</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">g1</span><span class="special">,</span> <span class="identifier">G2</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">g2</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="comment">// ...</span>
+<span class="special">}</span>
+</pre>
+<p>当然, 分派特化中的 apply 函数也将返回这样的结果. 它们到处都以策略作为模板参数, 这使得更简洁的版本成为可能.</p>
+<h4>
+<a name="geometry.design.h9"></a>
+      <span class="phrase"><a name="geometry.design.axis_order"></a></span><a class="link" href="design.html#geometry.design.axis_order">轴顺序</a>
+    </h4>
+<p>对开发 GIS 应用、要求符合 OGC 标准或使用多种坐标参考系统 (CRS) 的用户来说, 这是一条重要提示.</p>
+<p>Boost.Geometry 的约定是: 二维元组的坐标值始终按数学轴顺序给出, 即 X,Y. 对 GIS 应用而言, 这总是意味着东坐标,北坐标; 用地理坐标系的术语说就是经度,纬度. Boost.Geometry 不允许也不遵循坐标参考系统 (CRS) 所指定的轴顺序来排列坐标值.</p>
+<p>在实践中, 用户可以轻松适配采用其他轴顺序的点类型, 并按 Boost.Geometry 期望的顺序指定坐标访问.</p>
+<h4>
+<a name="geometry.design.h10"></a>
+      <span class="phrase"><a name="geometry.design.summary"></a></span><a class="link" href="design.html#geometry.design.summary">小结</a>
+    </h4>
+<p>在本设计原理中, 我们使用标签分派、概念、特征与元编程逐步设计了 Boost.Geometry. 我们用广为人知的 distance 函数来展示这一设计.</p>
+<p>Boost.Geometry 的设计如上文所述, 此外还运用了一些别的技术: 自动反转模板参数、标签转换 (tag casting), 以及在其他分派类中把实现类或分派类复用为策略.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2009-2024 Barend Gehrels, Bruno Lalande, Mateusz Loskot, Adam Wulkiewicz, Oracle and/or its affiliates<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="compilation.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="quickstart.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

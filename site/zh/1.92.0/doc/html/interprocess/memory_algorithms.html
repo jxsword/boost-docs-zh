@@ -1,0 +1,92 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>内存分配算法</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../interprocess.html" title="第 15 章 Boost.Interprocess">
+<link rel="prev" href="additional_containers.html" title="与 Boost.Interprocess 兼容的 Boost 容器">
+<link rel="next" href="streams.html" title="直接 iostream 格式化: vectorstream 与 bufferstream">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="additional_containers.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../interprocess.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="streams.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="interprocess.memory_algorithms"></a><a class="link" href="memory_algorithms.html" title="内存分配算法">内存分配算法</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="memory_algorithms.html#interprocess.memory_algorithms.simple_seq_fit">simple_seq_fit: 简单的共享内存管理算法</a></span></dt>
+<dt><span class="section"><a href="memory_algorithms.html#interprocess.memory_algorithms.rbtree_best_fit">rbtree_best_fit: 对数时间复杂度的最佳适配分配</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.memory_algorithms.simple_seq_fit"></a><a class="link" href="memory_algorithms.html#interprocess.memory_algorithms.simple_seq_fit" title="simple_seq_fit: 简单的共享内存管理算法">simple_seq_fit: 简单的共享内存管理算法</a>
+</h3></div></div></div>
+<p>该算法是顺序适配算法的变体, 使用空闲内存缓冲区的单向链表. 算法基于题为 <a href="http://home.earthlink.net/~joshwalker1/writing/SharedMemory.html" target="_top"><span class="emphasis"><em>"Taming Shared Memory"</em></span> 的共享内存文章 </a> . 算法如下:</p>
+<p>共享内存被划分为若干空闲共享内存块, 每块带有一些控制数据和若干可立即使用的内存字节. 控制数据包含指向下一个空闲块的指针 (在我们的实现中是 offset_ptr) 和块的大小. 分配器由按地址排序的空闲块单向链表组成. 最后一块始终指向第一块:</p>
+<pre class="programlisting"><span class="identifier">simple_seq_fit</span> <span class="identifier">memory</span> <span class="identifier">layout</span><span class="special">:</span>
+
+    <span class="identifier">main</span>      <span class="identifier">extra</span>  <span class="identifier">allocated</span>  <span class="identifier">free_block_1</span>     <span class="identifier">allocated</span>   <span class="identifier">free_block_2</span>    <span class="identifier">allocated</span>   <span class="identifier">free_block_3</span>
+    <span class="identifier">header</span>    <span class="identifier">header</span>  <span class="identifier">block</span>       <span class="identifier">ctrl</span>     <span class="identifier">usr</span>     <span class="identifier">block</span>      <span class="identifier">ctrl</span>     <span class="identifier">usr</span>     <span class="identifier">block</span>      <span class="identifier">ctrl</span>     <span class="identifier">usr</span>
+   <span class="identifier">_________</span>  <span class="identifier">_____</span>  <span class="identifier">_________</span>  <span class="identifier">_______________</span>  <span class="identifier">_________</span>  <span class="identifier">_______________</span>  <span class="identifier">_________</span>  <span class="identifier">_______________</span>
+  <span class="special">|</span>         <span class="special">||</span>     <span class="special">||</span>         <span class="special">||</span>         <span class="special">|</span>     <span class="special">||</span>         <span class="special">||</span>         <span class="special">|</span>     <span class="special">||</span>         <span class="special">||</span>         <span class="special">|</span>     <span class="special">|</span>
+  <span class="special">|</span><span class="identifier">free</span><span class="special">|</span><span class="identifier">ctrl</span><span class="special">||</span><span class="identifier">extra</span><span class="special">||</span>         <span class="special">||</span><span class="identifier">next</span><span class="special">|</span><span class="identifier">size</span><span class="special">|</span> <span class="identifier">mem</span> <span class="special">||</span>         <span class="special">||</span><span class="identifier">next</span><span class="special">|</span><span class="identifier">size</span><span class="special">|</span> <span class="identifier">mem</span> <span class="special">||</span>         <span class="special">||</span><span class="identifier">next</span><span class="special">|</span><span class="identifier">size</span><span class="special">|</span> <span class="identifier">mem</span> <span class="special">|</span>
+  <span class="special">|</span><span class="identifier">_________</span><span class="special">||</span><span class="identifier">_____</span><span class="special">||</span><span class="identifier">_________</span><span class="special">||</span><span class="identifier">_________</span><span class="special">|</span><span class="identifier">_____</span><span class="special">||</span><span class="identifier">_________</span><span class="special">||</span><span class="identifier">_________</span><span class="special">|</span><span class="identifier">_____</span><span class="special">||</span><span class="identifier">_________</span><span class="special">||</span><span class="identifier">_________</span><span class="special">|</span><span class="identifier">_____</span><span class="special">|</span>
+      <span class="special">|</span>                         <span class="special">|</span> <span class="special">|</span>                         <span class="special">|</span>  <span class="special">|</span>                       <span class="special">|</span> <span class="special">|</span>
+      <span class="special">|</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">|</span> <span class="special">|</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">|</span>  <span class="special">|</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">&gt;</span><span class="identifier">_</span><span class="special">|</span> <span class="special">|</span>
+                                <span class="special">|</span>                                                        <span class="special">|</span>
+                                <span class="special">|</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">_</span><span class="special">&lt;</span><span class="identifier">__</span><span class="special">|</span>
+</pre>
+<p>当用户请求 N 字节内存时, 分配器遍历空闲块链表, 寻找足够大的块. 如果块的 "mem" 部分与请求的内存大小相同, 我们把该块从链表中移除, 并返回指向其 "mem" 部分的指针. 如果 "mem" 部分大于所需, 我们把该块拆成两块: 一块为请求大小, 另一块为剩余大小. 然后取出大小恰好合适的块, 从链表中移除并交给用户.</p>
+<p>当用户释放一个块时, 我们遍历链表 (记住链表是有序的), 根据块地址找到其位置. 找到后, 尽可能与相邻块合并.</p>
+<p>为便于实现, 空闲内存块的大小以 "basic_size" 字节的倍数来度量. basic size 是对齐到机器最严格对齐值的控制块大小.</p>
+<p>该算法是空间开销低的算法, 适合简单的分配方案. 只有当大小是主要考量时才应使用它, 因为内存碎片化时该算法的性能会下降. 该算法的分配和释放时间是线性的, 因此当分配数量很多时, 用户应使用对性能更友好的算法.</p>
+<p>在大多数 32 位系统上, 按 8 字节对齐, "basic_size" 为 8 字节. 这意味着 1 字节的分配请求会产生 16 字节的块, 其中 8 字节可供用户使用. 分配 8 字节同样产生相同的 16 字节块.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.memory_algorithms.rbtree_best_fit"></a><a class="link" href="memory_algorithms.html#interprocess.memory_algorithms.rbtree_best_fit" title="rbtree_best_fit: 对数时间复杂度的最佳适配分配">rbtree_best_fit: 对数时间复杂度的最佳适配分配</a>
+</h3></div></div></div>
+<p>该算法是高级算法, 使用红黑树按大小对内存段的空闲部分排序, 从而实现对数复杂度的分配. 除此之外, 它还维护一个由所有内存部分 (空闲与已分配) 组成的双向链表, 以便在合并操作时以常数时间访问前一块和后一块.</p>
+<p>用于构建空闲节点红黑树的数据会被用户覆盖, 因为内存一旦分配, 这些数据就不再使用. 这把内存大小开销保持在双向链表开销的水平, 相当小 (两个指针). 基本方案如下:</p>
+<pre class="programlisting"><span class="identifier">rbtree_best_fit</span> <span class="identifier">memory</span> <span class="identifier">layout</span><span class="special">:</span>
+
+   <span class="identifier">main</span>            <span class="identifier">allocated</span> <span class="identifier">block</span>   <span class="identifier">free</span> <span class="identifier">block</span>                        <span class="identifier">allocated</span> <span class="identifier">block</span>  <span class="identifier">free</span> <span class="identifier">block</span>
+   <span class="identifier">header</span>
+  <span class="identifier">_______________</span>  <span class="identifier">_______________</span>  <span class="identifier">_________________________________</span>  <span class="identifier">_______________</span>  <span class="identifier">_________________________________</span>
+ <span class="special">|</span>               <span class="special">||</span>         <span class="special">|</span>     <span class="special">||</span>         <span class="special">|</span>                 <span class="special">|</span>     <span class="special">||</span>         <span class="special">|</span>     <span class="special">||</span>         <span class="special">|</span>                 <span class="special">|</span>     <span class="special">|</span>
+ <span class="special">|</span>  <span class="identifier">main</span> <span class="identifier">header</span>  <span class="special">||</span><span class="identifier">next</span><span class="special">|</span><span class="identifier">prev</span><span class="special">|</span> <span class="identifier">mem</span> <span class="special">||</span><span class="identifier">next</span><span class="special">|</span><span class="identifier">prev</span><span class="special">|</span><span class="identifier">left</span><span class="special">|</span><span class="identifier">right</span><span class="special">|</span><span class="identifier">parent</span><span class="special">|</span> <span class="identifier">mem</span> <span class="special">||</span><span class="identifier">next</span><span class="special">|</span><span class="identifier">prev</span><span class="special">|</span> <span class="identifier">mem</span> <span class="special">||</span><span class="identifier">next</span><span class="special">|</span><span class="identifier">prev</span><span class="special">|</span><span class="identifier">left</span><span class="special">|</span><span class="identifier">right</span><span class="special">|</span><span class="identifier">parent</span><span class="special">|</span> <span class="identifier">mem</span> <span class="special">|</span>
+ <span class="special">|</span><span class="identifier">_______________</span><span class="special">||</span><span class="identifier">_________</span><span class="special">|</span><span class="identifier">_____</span><span class="special">||</span><span class="identifier">_________</span><span class="special">|</span><span class="identifier">_________________</span><span class="special">|</span><span class="identifier">_____</span><span class="special">||</span><span class="identifier">_________</span><span class="special">|</span><span class="identifier">_____</span><span class="special">||</span><span class="identifier">_________</span><span class="special">|</span><span class="identifier">_________________</span><span class="special">|</span><span class="identifier">_____</span><span class="special">|</span>
+</pre>
+<p>该分配算法相当快, 在大共享内存段和大数量分配的情况下扩展性良好. 形成一个块需要最小的内存量: 双向链表与红黑树控制数据之和. 块的大小以最严格对齐值的倍数度量.</p>
+<p>在大多数按 8 字节对齐的 32 位系统上, 块的最小大小为 24 字节. 当块被分配时, 与红黑树相关的控制数据会被用户覆盖 (因为只有空闲块才需要它).</p>
+<p>在这些系统上, 1 字节的分配请求意味着:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">用段中的 24 字节内存形成一个块.</li>
+<li class="listitem">其中 16 字节可供用户使用.</li>
+</ul></div>
+<p>对于极小的分配 (&lt;= 8 字节), 该算法比简单顺序适配算法浪费更多内存 (多 8 字节). 对大于 8 字节的分配, 内存开销完全相同. 这是 <span class="bold"><strong>Boost.Interprocess</strong></span> 托管内存段的默认分配算法.</p>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2005-2024 Ion Gaztanaga<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="additional_containers.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../interprocess.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="streams.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

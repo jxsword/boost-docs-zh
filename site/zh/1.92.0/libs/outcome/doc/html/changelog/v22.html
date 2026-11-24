@@ -1,0 +1,41 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>v2.2 重大变更 - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="../css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="../images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="../changelog/upgrade_v21_v22.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../changelog.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../history.html"><img src="../images/next.png" alt="下一页"></a></div><div id="content">
+  <div class="titlepage"><div><div><h1 style="clear: both">v2.2 重大变更</h1></div></div></div>
+  <p>此处列出 v2.2 相对 v2.1 的重大变更.</p>
+
+<ol>
+<li><p>新增特征 <code>is_move_bitcopying&lt;T&gt;</code>, 它让类型加入对 <a href="https://wg21.link/P1029">P1029 <em>move = bitcopies</em></a> 的基于库的模拟. <a href="https://wg21.link/P1028">Experimental <code>std::error</code></a> 默认已加入. 如果你的 <code>T</code> 或 <code>E</code> 类型的该特征为 true, Outcome 会为你的类型跟踪已移动状态, 且仅在该类型未被移动过时才调用其析构函数. 如果你的编译器优化器折叠代码的能力足够强, 这会显著改善 Experimental Outcome 的代码生成质量, 接近 P1029 类型所能带来的收益. 注意, 实测性能差异可能为零, 但代码生成看起来确实优雅得多.</p></li>
+
+<li><p>对 <code>basic_result&lt;T, E&gt;</code> 而言, 如果 <code>T</code> 与 <code>E</code> 都是可平凡复制的, 就会使用基于 union 而非 struct 的存储. 这能显著改善那些在深层函数调用栈中除了创建并返回 <code>result&lt;T, E&gt;</code> 之外什么都不做的人工基准测试的性能, 使 Outcome 相对其他错误处理选择能给出有竞争力的结果, 改善比较观感. 预期在真实代码中这种性能差异无法被实测察觉. 预期 union 存储对构建时间的影响不会明显, 因为对可平凡复制类型使用 union 存储比不可平凡复制 (non-TC) 类型容易得多.</p>
+
+<p>注意, 如果 <code>T</code> 或 <code>E</code> 既不可平凡复制、特征 <code>is_move_bitcopying&lt;T&gt;</code> 也不为 true, 存储仍保持基于 struct. 这是因为对复杂类型使用基于 union 的存储对构建时间影响显著——任何把 <code>std::variant</code> 或 <code>std::expected</code> 部署到全局可见公共 API 中的人都会注意到这一点.</p></li>
+
+<li><p>对 <code>E</code> 类型必须具有默认构造函数的编译期要求已被移除.</p></li>
+
+<li><p><code>BOOST_OUTCOME_TRY(var, expr)</code> 不再总是把 <code>var</code> 声明为 <code>auto &amp;&amp;var</code>, 而是按原样使用它. 这允许 <code>TRY</code> 进行初始化或赋值. 如果你想要 Outcome v2.2 之前的行为, 可以使用宏 <code>OUTCOME21_TRY</code>. 升级代码时, 你可能会发现正则表达式 <code>_TRY\(([^(]*?),(.*?)\);</code> =&gt; <code>_TRY(auto &amp;&amp;\1,\2);</code> 对你有用.</p></li>
+
+<li><p><code>BOOST_OUTCOME_TRY</code> 现在把保存表达式结果的内部唯一命名临时变量声明为 <code>auto unique = expr</code> 而非 <code>auto &amp;&amp;unique = expr</code>. 这会导致对 <code>result&lt;UncopyableAndImmovable&gt;</code> 与 <code>outcome&lt;UncopyableAndImmovable&gt;</code> 的 TRY 编译失败, 而此前它们可以编译. 另一个大的语义变化是, TRY 现在会 '消费' 移动进来的值, 而此前不会. 此变更的原因是, 旧行为在各种边角使用场景中会产生未定义行为, 尤其是在泛型代码中. 你可以<a href="../tutorial/essential/result/try_ref.html">使用一种特殊语法</a> 告知 TRY 对其唯一命名临时对象使用引用而非值.</p></li>
+
+<li><p><code>BOOST_OUTCOME_TRY</code> 现在会把输入 Result/Outcome 的 <a href="../reference/functions/hooks/spare_storage.html" class="api-reference"><code>spare_storage(const basic_result|basic_outcome *) noexcept</code></a> 中的值传播到 TRY 返回的任何 <a href="../reference/traits/is_failure_type.html" class="api-reference"><code>failure_type&lt;T&gt;</code></a> 中. Result/Outcome 现在会从构造它的任何 <a href="../reference/types/success_type.html" class="api-reference"><code>success_type&lt;T&gt;</code></a> 或 <a href="../reference/traits/is_failure_type.html" class="api-reference"><code>failure_type&lt;T&gt;</code></a> 设置其备用存储值. 这是一项破坏性变更, 因为此前备用存储值不会被传播. 不过这一变更意味着, 由失败 result 构造钩子捕获的任何栈回溯标识符, 现在都会从失败点起穿过所有 TRY 操作完整传播到处理失败的代码.</p></li>
+
+<li><p><a href="../tutorial/advanced/hooks.html">ADL 发现的事件钩子</a>已被策略指定的事件钩子取代. 原因在于其脆弱性 (一旦有人改动某些东西, 钩子就会悄然自我禁用)、编译器缺陷 (编译器设置的差异会导致发现错误的钩子, 或只发现部分而非全部钩子), 以及最终用户根本难以使用它们. 策略指定的事件钩子可以被告知默认退回 ADL 发现的钩子以保持向后兼容: 把 <a href="../reference/macros/enable_legacy_support_for.html" class="api-reference"><code>BOOST_OUTCOME_ENABLE_LEGACY_SUPPORT_FOR</code></a> 设为小于 <code>220</code> 即可启用模拟.</p></li>
+</ol>
+
+
+        </div><p><small>最后修订: February 23, 2021 at 17:37:27 UTC</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../changelog/upgrade_v21_v22.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../changelog.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../history.html"><img src="../images/next.png" alt="下一页"></a></div></body>
+</html>

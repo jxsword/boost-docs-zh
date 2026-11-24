@@ -1,0 +1,21 @@
+# Version 1.20.0
+
+## Version 1.20.0
+
+January 6th, 2001 12:00 GMT
+
+- [Conversion Library](/libs/conversion/index.html) added - [cast](/libs/conversion/cast.htm) and [lexical_cast](/libs/conversion/lexical_cast.htm) headers from Dave Abrahams and Kevlin Henney.
+
+- Web site moved to a larger host after the old ISP collapsed unexpectedly.
+
+- Regression tests now include execution testing. See [Compiler Status](/status/compiler_status.html).
+
+- [Discussion Policy](/more/discussion_policy.htm) page added.
+
+- [Array Library](/libs/array/index.html) minor documentation improvements.
+
+- [Graph Library](/libs/graph/doc/table_of_contents.html) minor updates.
+
+- [Regular Expression Library](/libs/regex/index.html) minor updates.
+
+Copyright Rene Rivera 2006-2007.

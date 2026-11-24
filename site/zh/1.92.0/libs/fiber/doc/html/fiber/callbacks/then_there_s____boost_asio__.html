@@ -1,0 +1,419 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>接下来便是 Boost.Asio</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Fiber">
+<link rel="up" href="../callbacks.html" title="将纤程与异步回调集成">
+<link rel="prev" href="success_error_virtual_methods.html" title="成功/错误虚方法">
+<link rel="next" href="../nonblocking.html" title="将纤程与非阻塞 I/O 集成">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="success_error_virtual_methods.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../callbacks.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="../nonblocking.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="fiber.callbacks.then_there_s____boost_asio__"></a><a name="callbacks_asio"></a><a class="link" href="then_there_s____boost_asio__.html" title="接下来便是 Boost.Asio">接下来便是 Boost.Asio</a>
+</h3></div></div></div>
+<p>由于 Boost.Asio 异步操作完成标记的最简单形式就是一个回调函数, 我们本可以对 Asio 采用与前面假想的 <code class="computeroutput"><span class="identifier">AsyncAPI</span></code> 异步操作相同的技巧.</p>
+<p>幸运的是我们无需如此. Boost.Asio 内置了一种机制<a href="#ftn.fiber.callbacks.then_there_s____boost_asio__.f0" class="footnote" name="fiber.callbacks.then_there_s____boost_asio__.f0"><sup class="footnote">[5]</sup></a>, 调用方可以借此定制任何异步操作的通知行为. 因此我们可以构造一个 <span class="emphasis"><em>完成标记</em></span>, 当把它传给 <a href="http://www.boost.org/doc/libs/release/libs/asio/index.html" target="_top">Boost.Asio</a> 的异步操作时, 会请求阻塞调用方纤程.</p>
+<p>一个典型的 Asio 异步函数大致如下:<a href="#ftn.fiber.callbacks.then_there_s____boost_asio__.f1" class="footnote" name="fiber.callbacks.then_there_s____boost_asio__.f1"><sup class="footnote">[6]</sup></a>
+      </p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span> <span class="special">...,</span> <span class="keyword">class</span> <span class="identifier">CompletionToken</span> <span class="special">&gt;</span>
+<span class="emphasis"><em>deduced_return_type</em></span>
+<span class="identifier">async_something</span><span class="special">(</span> <span class="special">...</span> <span class="special">,</span> <span class="identifier">CompletionToken</span><span class="special">&amp;&amp;</span> <span class="identifier">token</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="comment">// construct handler_type instance from CompletionToken</span>
+    <span class="identifier">handler_type</span><span class="special">&lt;</span><span class="identifier">CompletionToken</span><span class="special">,</span> <span class="special">...&gt;::</span><span class="identifier">type</span> <span class="bold"><strong><code class="computeroutput">handler(token)</code></strong></span><span class="special">;</span>
+    <span class="comment">// construct async_result instance from handler_type</span>
+    <span class="identifier">async_result</span><span class="special">&lt;</span><span class="keyword">decltype</span><span class="special">(</span><span class="identifier">handler</span><span class="special">)&gt;</span> <span class="bold"><strong><code class="computeroutput">result(handler)</code></strong></span><span class="special">;</span>
+
+    <span class="comment">// ... arrange to call handler on completion ...</span>
+    <span class="comment">// ... initiate actual I/O operation ...</span>
+
+    <span class="keyword">return</span> <span class="bold"><strong><code class="computeroutput">result.get()</code></strong></span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>我们将启用这一机制, 它基于对 Asio 的 <code class="computeroutput"><span class="identifier">handler_type</span><span class="special">&lt;&gt;</span></code> 模板按 <code class="computeroutput"><span class="identifier">CompletionToken</span></code> 类型和特定回调的签名进行特化. 本节余下的讨论将反复引用 <code class="computeroutput"><span class="identifier">async_something</span><span class="special">()</span></code> 作为所考虑的 Asio 异步函数.</p>
+<p>下面描述的实现使用了比 <code class="computeroutput"><span class="identifier">promise</span></code> 和 <code class="computeroutput"><span class="identifier">future</span></code> 更底层的设施, 因为 <code class="computeroutput"><span class="identifier">promise</span></code> 机制与 <a href="http://www.boost.org/doc/libs/release/doc/html/boost_asio/reference/io_service/stop.html" target="_top"><code class="computeroutput"><span class="identifier">io_service</span><span class="special">::</span><span class="identifier">stop</span><span class="special">()</span></code></a> 的交互很差, 会产生 <code class="computeroutput"><span class="identifier">broken_promise</span></code> 异常.</p>
+<p>
+        <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">yield</span></code> 就是这类完成标记. <code class="computeroutput"><span class="identifier">yield</span></code> 是 <code class="computeroutput"><span class="identifier">yield_t</span></code> 的一个实例:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">yield_t</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">yield_t</span><span class="special">()</span> <span class="special">=</span> <span class="keyword">default</span><span class="special">;</span>
+
+    <span class="comment">/**
+     * @code
+     * static yield_t yield;
+     * boost::system::error_code myec;
+     * func(yield[myec]);
+     * @endcode
+     * @c yield[myec] returns an instance of @c yield_t whose @c ec_ points
+     * to @c myec. The expression @c yield[myec] "binds" @c myec to that
+     * (anonymous) @c yield_t instance, instructing @c func() to store any
+     * @c error_code it might produce into @c myec rather than throwing @c
+     * boost::system::system_error.
+     */</span>
+    <span class="identifier">yield_t</span> <span class="keyword">operator</span><span class="special">[](</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span> <span class="special">&amp;</span> <span class="identifier">ec</span><span class="special">)</span> <span class="keyword">const</span> <span class="special">{</span>
+        <span class="identifier">yield_t</span> <span class="identifier">tmp</span><span class="special">;</span>
+        <span class="identifier">tmp</span><span class="special">.</span><span class="identifier">ec_</span> <span class="special">=</span> <span class="special">&amp;</span> <span class="identifier">ec</span><span class="special">;</span>
+        <span class="keyword">return</span> <span class="identifier">tmp</span><span class="special">;</span>
+    <span class="special">}</span>
+
+<span class="comment">//private:</span>
+    <span class="comment">// ptr to bound error_code instance if any</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span>   <span class="special">*</span>   <span class="identifier">ec_</span><span class="special">{</span> <span class="keyword">nullptr</span> <span class="special">};</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<p>
+        <code class="computeroutput"><span class="identifier">yield_t</span></code> 实际上只是一个占位符, 一种触发 Boost.Asio 定制的方式. 它可以绑定一个 <a href="http://www.boost.org/doc/libs/release/libs/system/doc/reference.html#Class-error_code" target="_top"><code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span></code></a> 供实际的处理器使用.</p>
+<p>
+        <code class="computeroutput"><span class="identifier">yield</span></code> 声明如下:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// canonical instance</span>
+<span class="keyword">thread_local</span> <span class="identifier">yield_t</span> <span class="identifier">yield</span><span class="special">{};</span>
+</pre>
+<p>
+      </p>
+<p>Asio 定制的启用方式是特化 <a href="http://www.boost.org/doc/libs/release/doc/html/boost_asio/reference/handler_type.html" target="_top"><code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">handler_type</span><span class="special">&lt;&gt;</span></code></a> 以适配 <code class="computeroutput"><span class="identifier">yield_t</span></code>:</p>
+<p>
+        [asio_handler_type]
+      </p>
+<p>(在 <a href="../../../../examples/asio/detail/yield.hpp" target="_top">detail/yield.hpp</a> 中实际上有四个不同的特化, 对应我们预期的四种 Asio 异步回调签名各一个.)</p>
+<p>上面的代码指示 Asio 把 <code class="computeroutput"><span class="identifier">yield_handler</span></code> 用作传入了 <code class="computeroutput"><span class="identifier">yield</span></code> 的异步操作的实际处理器. 这里有一个通用的 <code class="computeroutput"><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code> 实现和一个 <code class="computeroutput"><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span></code> 特化. 我们先从 <code class="computeroutput"><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span></code> 特化开始:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// yield_handler&lt;void&gt; is like yield_handler&lt;T&gt; without value_. In fact it's</span>
+<span class="comment">// just like yield_handler_base.</span>
+<span class="keyword">template</span><span class="special">&lt;&gt;</span>
+<span class="keyword">class</span> <span class="identifier">yield_handler</span><span class="special">&lt;</span> <span class="keyword">void</span> <span class="special">&gt;:</span> <span class="keyword">public</span> <span class="identifier">yield_handler_base</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="keyword">explicit</span> <span class="identifier">yield_handler</span><span class="special">(</span> <span class="identifier">yield_t</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">y</span><span class="special">)</span> <span class="special">:</span>
+        <span class="identifier">yield_handler_base</span><span class="special">{</span> <span class="identifier">y</span> <span class="special">}</span> <span class="special">{</span>
+    <span class="special">}</span>
+
+    <span class="comment">// nullary completion callback</span>
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()()</span> <span class="special">{</span>
+        <span class="special">(</span> <span class="special">*</span> <span class="keyword">this</span><span class="special">)(</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span><span class="special">()</span> <span class="special">);</span>
+    <span class="special">}</span>
+
+    <span class="comment">// inherit operator()(error_code) overload from base class</span>
+    <span class="keyword">using</span> <span class="identifier">yield_handler_base</span><span class="special">::</span><span class="keyword">operator</span><span class="special">();</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<p>
+        <code class="computeroutput"><span class="identifier">async_something</span><span class="special">()</span></code> 在查阅了 <code class="computeroutput"><span class="identifier">handler_type</span><span class="special">&lt;&gt;</span></code> 特征特化之后, 会实例化一个 <code class="computeroutput"><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span></code>, 作为该异步操作的实际回调传入. <code class="computeroutput"><span class="identifier">yield_handler</span></code> 的构造函数接受 <code class="computeroutput"><span class="identifier">yield_t</span></code> 实例 (即传给异步函数的 <code class="computeroutput"><span class="identifier">yield</span></code> 对象), 并把它传递给 <code class="computeroutput"><span class="identifier">yield_handler_base</span></code>:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// This class encapsulates common elements between yield_handler&lt;T&gt; (capturing</span>
+<span class="comment">// a value to return from asio async function) and yield_handler&lt;void&gt; (no</span>
+<span class="comment">// such value). See yield_handler&lt;T&gt; and its &lt;void&gt; specialization below. Both</span>
+<span class="comment">// yield_handler&lt;T&gt; and yield_handler&lt;void&gt; are passed by value through</span>
+<span class="comment">// various layers of asio functions. In other words, they're potentially</span>
+<span class="comment">// copied multiple times. So key data such as the yield_completion instance</span>
+<span class="comment">// must be stored in our async_result&lt;yield_handler&lt;&gt;&gt; specialization, which</span>
+<span class="comment">// should be instantiated only once.</span>
+<span class="keyword">class</span> <span class="identifier">yield_handler_base</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">yield_handler_base</span><span class="special">(</span> <span class="identifier">yield_t</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">y</span><span class="special">)</span> <span class="special">:</span>
+        <span class="comment">// capture the context* associated with the running fiber</span>
+        <span class="identifier">ctx_</span><span class="special">{</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">context</span><span class="special">::</span><span class="identifier">active</span><span class="special">()</span> <span class="special">},</span>
+        <span class="comment">// capture the passed yield_t</span>
+        <span class="identifier">yt_</span><span class="special">(</span> <span class="identifier">y</span> <span class="special">)</span> <span class="special">{</span>
+    <span class="special">}</span>
+
+    <span class="comment">// completion callback passing only (error_code)</span>
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">ec</span><span class="special">)</span> <span class="special">{</span>
+        <span class="identifier">BOOST_ASSERT_MSG</span><span class="special">(</span> <span class="identifier">ycomp_</span><span class="special">,</span>
+                          <span class="string">"Must inject yield_completion* "</span>
+                          <span class="string">"before calling yield_handler_base::operator()()"</span><span class="special">);</span>
+        <span class="identifier">BOOST_ASSERT_MSG</span><span class="special">(</span> <span class="identifier">yt_</span><span class="special">.</span><span class="identifier">ec_</span><span class="special">,</span>
+                          <span class="string">"Must inject boost::system::error_code* "</span>
+                          <span class="string">"before calling yield_handler_base::operator()()"</span><span class="special">);</span>
+        <span class="comment">// If originating fiber is busy testing state_ flag, wait until it</span>
+        <span class="comment">// has observed (completed != state_).</span>
+        <span class="identifier">yield_completion</span><span class="special">::</span><span class="identifier">lock_t</span> <span class="identifier">lk</span><span class="special">{</span> <span class="identifier">ycomp_</span><span class="special">-&gt;</span><span class="identifier">mtx_</span> <span class="special">};</span>
+        <span class="identifier">yield_completion</span><span class="special">::</span><span class="identifier">state_t</span> <span class="identifier">state</span> <span class="special">=</span> <span class="identifier">ycomp_</span><span class="special">-&gt;</span><span class="identifier">state_</span><span class="special">;</span>
+        <span class="comment">// Notify a subsequent yield_completion::wait() call that it need not</span>
+        <span class="comment">// suspend.</span>
+        <span class="identifier">ycomp_</span><span class="special">-&gt;</span><span class="identifier">state_</span> <span class="special">=</span> <span class="identifier">yield_completion</span><span class="special">::</span><span class="identifier">complete</span><span class="special">;</span>
+        <span class="comment">// set the error_code bound by yield_t</span>
+        <span class="special">*</span> <span class="identifier">yt_</span><span class="special">.</span><span class="identifier">ec_</span> <span class="special">=</span> <span class="identifier">ec</span><span class="special">;</span>
+        <span class="comment">// unlock the lock that protects state_</span>
+        <span class="identifier">lk</span><span class="special">.</span><span class="identifier">unlock</span><span class="special">();</span>
+        <span class="comment">// If ctx_ is still active, e.g. because the async operation</span>
+        <span class="comment">// immediately called its callback (this method!) before the asio</span>
+        <span class="comment">// async function called async_result_base::get(), we must not set it</span>
+        <span class="comment">// ready.</span>
+        <span class="keyword">if</span> <span class="special">(</span> <span class="identifier">yield_completion</span><span class="special">::</span><span class="identifier">waiting</span> <span class="special">==</span> <span class="identifier">state</span><span class="special">)</span> <span class="special">{</span>
+            <span class="comment">// wake the fiber</span>
+            <span class="identifier">fibers</span><span class="special">::</span><span class="identifier">context</span><span class="special">::</span><span class="identifier">active</span><span class="special">()-&gt;</span><span class="identifier">schedule</span><span class="special">(</span> <span class="identifier">ctx_</span><span class="special">);</span>
+        <span class="special">}</span>
+    <span class="special">}</span>
+
+<span class="comment">//private:</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">context</span>      <span class="special">*</span>   <span class="identifier">ctx_</span><span class="special">;</span>
+    <span class="identifier">yield_t</span>                         <span class="identifier">yt_</span><span class="special">;</span>
+    <span class="comment">// We depend on this pointer to yield_completion, which will be injected</span>
+    <span class="comment">// by async_result.</span>
+    <span class="identifier">yield_completion</span><span class="special">::</span><span class="identifier">ptr_t</span>         <span class="identifier">ycomp_</span><span class="special">{};</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<p>
+        <code class="computeroutput"><span class="identifier">yield_handler_base</span></code> 存储 <code class="computeroutput"><span class="identifier">yield_t</span></code> 实例的一个副本——如上所示, 其中只包含一个 <code class="computeroutput"><span class="identifier">error_code</span><span class="special">*</span></code>. 它还会捕获当前运行纤程的 <a class="link" href="../scheduling.html#class_context"><code class="computeroutput">context</code></a>*, 方法是调用 <a class="link" href="../scheduling.html#context_active"><code class="computeroutput">context::active()</code></a>.</p>
+<p>你会注意到 <code class="computeroutput"><span class="identifier">yield_handler_base</span></code> 还有一个额外的数据成员 (<code class="computeroutput"><span class="identifier">ycomp_</span></code>), 它由构造函数初始化为 <code class="computeroutput"><span class="keyword">nullptr</span></code>——不过其 <code class="computeroutput"><span class="keyword">operator</span><span class="special">()()</span></code> 方法依赖于 <code class="computeroutput"><span class="identifier">ycomp_</span></code> 非空. 稍后再详述这一点.</p>
+<p>构造完 <code class="computeroutput"><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span></code> 实例之后, <code class="computeroutput"><span class="identifier">async_something</span><span class="special">()</span></code> 接着会构造一个 <code class="computeroutput"><span class="identifier">async_result</span></code>, 它针对 <code class="computeroutput"><span class="identifier">handler_type</span><span class="special">&lt;&gt;::</span><span class="identifier">type</span></code> 做了特化: 在本例中是 <code class="computeroutput"><span class="identifier">async_result</span><span class="special">&lt;</span><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;&gt;</span></code>. 它把 <code class="computeroutput"><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span></code> 实例传给新的 <code class="computeroutput"><span class="identifier">async_result</span></code> 实例.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// Without the need to handle a passed value, our yield_handler&lt;void&gt;</span>
+<span class="comment">// specialization is just like async_result_base.</span>
+<span class="keyword">template</span><span class="special">&lt;&gt;</span>
+<span class="keyword">class</span> <span class="identifier">async_result</span><span class="special">&lt;</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">yield_t</span><span class="special">,</span> <span class="keyword">void</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span><span class="special">)</span> <span class="special">&gt;</span> <span class="special">:</span>
+    <span class="keyword">public</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">async_result_base</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="keyword">using</span> <span class="identifier">return_type</span> <span class="special">=</span> <span class="keyword">void</span><span class="special">;</span>
+    <span class="keyword">using</span> <span class="identifier">completion_handler_type</span> <span class="special">=</span> <span class="identifier">fibers</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;;</span>
+
+    <span class="keyword">explicit</span> <span class="identifier">async_result</span><span class="special">(</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">yield_handler</span><span class="special">&lt;</span> <span class="keyword">void</span> <span class="special">&gt;</span> <span class="special">&amp;</span> <span class="identifier">h</span><span class="special">):</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">async_result_base</span><span class="special">{</span> <span class="identifier">h</span> <span class="special">}</span> <span class="special">{</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<p>自然而然, 这就把我们直接引向了 <code class="computeroutput"><span class="identifier">async_result_base</span></code>:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// Factor out commonality between async_result&lt;yield_handler&lt;T&gt;&gt; and</span>
+<span class="comment">// async_result&lt;yield_handler&lt;void&gt;&gt;</span>
+<span class="keyword">class</span> <span class="identifier">async_result_base</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="keyword">explicit</span> <span class="identifier">async_result_base</span><span class="special">(</span> <span class="identifier">yield_handler_base</span> <span class="special">&amp;</span> <span class="identifier">h</span><span class="special">)</span> <span class="special">:</span>
+            <span class="identifier">ycomp_</span><span class="special">{</span> <span class="keyword">new</span> <span class="identifier">yield_completion</span><span class="special">{}</span> <span class="special">}</span> <span class="special">{</span>
+        <span class="comment">// Inject ptr to our yield_completion instance into this</span>
+        <span class="comment">// yield_handler&lt;&gt;.</span>
+        <span class="identifier">h</span><span class="special">.</span><span class="identifier">ycomp_</span> <span class="special">=</span> <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">ycomp_</span><span class="special">;</span>
+        <span class="comment">// if yield_t didn't bind an error_code, make yield_handler_base's</span>
+        <span class="comment">// error_code* point to an error_code local to this object so</span>
+        <span class="comment">// yield_handler_base::operator() can unconditionally store through</span>
+        <span class="comment">// its error_code*</span>
+        <span class="keyword">if</span> <span class="special">(</span> <span class="special">!</span> <span class="identifier">h</span><span class="special">.</span><span class="identifier">yt_</span><span class="special">.</span><span class="identifier">ec_</span><span class="special">)</span> <span class="special">{</span>
+            <span class="identifier">h</span><span class="special">.</span><span class="identifier">yt_</span><span class="special">.</span><span class="identifier">ec_</span> <span class="special">=</span> <span class="special">&amp;</span> <span class="identifier">ec_</span><span class="special">;</span>
+        <span class="special">}</span>
+    <span class="special">}</span>
+
+    <span class="keyword">void</span> <span class="identifier">get</span><span class="special">()</span> <span class="special">{</span>
+        <span class="comment">// Unless yield_handler_base::operator() has already been called,</span>
+        <span class="comment">// suspend the calling fiber until that call.</span>
+        <span class="identifier">ycomp_</span><span class="special">-&gt;</span><span class="identifier">wait</span><span class="special">();</span>
+        <span class="comment">// The only way our own ec_ member could have a non-default value is</span>
+        <span class="comment">// if our yield_handler did not have a bound error_code AND the</span>
+        <span class="comment">// completion callback passed a non-default error_code.</span>
+        <span class="keyword">if</span> <span class="special">(</span> <span class="identifier">ec_</span><span class="special">)</span> <span class="special">{</span>
+            <span class="identifier">throw_exception</span><span class="special">(</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">system_error</span><span class="special">{</span> <span class="identifier">ec_</span> <span class="special">}</span> <span class="special">);</span>
+        <span class="special">}</span>
+    <span class="special">}</span>
+
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="comment">// If yield_t does not bind an error_code instance, store into here.</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span>       <span class="identifier">ec_</span><span class="special">{};</span>
+    <span class="identifier">yield_completion</span><span class="special">::</span><span class="identifier">ptr_t</span>         <span class="identifier">ycomp_</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<p> <code class="computeroutput"><span class="identifier">yield_handler_base</span><span class="special">::</span><span class="identifier">ycomp_</span></code> 就是这样变为非空的: <code class="computeroutput"><span class="identifier">async_result_base</span></code> 的构造函数会注入一个指回其自身 <code class="computeroutput"><span class="identifier">yield_completion</span></code> 成员的指针.</p>
+<p>回想一下, 规范的 <code class="computeroutput"><span class="identifier">yield_t</span></code> 实例 <code class="computeroutput"><span class="identifier">yield</span></code> 会把其 <code class="computeroutput"><span class="identifier">error_code</span><span class="special">*</span></code> 成员 <code class="computeroutput"><span class="identifier">ec_</span></code> 初始化为 <code class="computeroutput"><span class="keyword">nullptr</span></code>. 如果这个实例被传给 <code class="computeroutput"><span class="identifier">async_something</span><span class="special">()</span></code> (<code class="computeroutput"><span class="identifier">ec_</span></code> 仍为 <code class="computeroutput"><span class="keyword">nullptr</span></code>), 那么存储在 <code class="computeroutput"><span class="identifier">yield_handler_base</span></code> 中的副本同样会有空的 <code class="computeroutput"><span class="identifier">ec_</span></code>. <code class="computeroutput"><span class="identifier">async_result_base</span></code> 的构造函数会把 <code class="computeroutput"><span class="identifier">yield_handler_base</span></code> 的 <code class="computeroutput"><span class="identifier">yield_t</span></code> 的 <code class="computeroutput"><span class="identifier">ec_</span></code> 成员设置为指向其自身的 <code class="computeroutput"><span class="identifier">error_code</span></code> 成员.</p>
+<p>现在一切就绪. <code class="computeroutput"><span class="identifier">async_something</span><span class="special">()</span></code> 发起实际的异步操作, 并安排在完成时调用其 <code class="computeroutput"><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span></code> 实例. 为了便于讨论, 不妨假定实际异步操作的回调具有签名 <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="identifier">error_code</span><span class="special">)</span></code>.</p>
+<p>但由于这是异步操作, 控制权立即返回到 <code class="computeroutput"><span class="identifier">async_something</span><span class="special">()</span></code>. <code class="computeroutput"><span class="identifier">async_something</span><span class="special">()</span></code> 调用 <code class="computeroutput"><span class="identifier">async_result</span><span class="special">&lt;</span><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;&gt;::</span><span class="identifier">get</span><span class="special">()</span></code>, 并将返回其返回值.</p>
+<p>
+        <code class="computeroutput"><span class="identifier">async_result</span><span class="special">&lt;</span><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;&gt;::</span><span class="identifier">get</span><span class="special">()</span></code> 继承自 <code class="computeroutput"><span class="identifier">async_result_base</span><span class="special">::</span><span class="identifier">get</span><span class="special">()</span></code>.</p>
+<p>
+        <code class="computeroutput"><span class="identifier">async_result_base</span><span class="special">::</span><span class="identifier">get</span><span class="special">()</span></code> 会立即调用 <code class="computeroutput"><span class="identifier">yield_completion</span><span class="special">::</span><span class="identifier">wait</span><span class="special">()</span></code>.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// Bundle a completion bool flag with a spinlock to protect it.</span>
+<span class="keyword">struct</span> <span class="identifier">yield_completion</span> <span class="special">{</span>
+    <span class="keyword">enum</span> <span class="identifier">state_t</span> <span class="special">{</span>
+        <span class="identifier">init</span><span class="special">,</span>
+        <span class="identifier">waiting</span><span class="special">,</span>
+        <span class="identifier">complete</span>
+    <span class="special">};</span>
+
+    <span class="keyword">typedef</span> <span class="identifier">fibers</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">spinlock</span>                    <span class="identifier">mutex_t</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_lock</span><span class="special">&lt;</span> <span class="identifier">mutex_t</span> <span class="special">&gt;</span>                 <span class="identifier">lock_t</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">intrusive_ptr</span><span class="special">&lt;</span> <span class="identifier">yield_completion</span> <span class="special">&gt;</span>    <span class="identifier">ptr_t</span><span class="special">;</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">atomic</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="special">&gt;</span>  <span class="identifier">use_count_</span><span class="special">{</span> <span class="number">0</span> <span class="special">};</span>
+    <span class="identifier">mutex_t</span>                     <span class="identifier">mtx_</span><span class="special">{};</span>
+    <span class="identifier">state_t</span>                     <span class="identifier">state_</span><span class="special">{</span> <span class="identifier">init</span> <span class="special">};</span>
+
+    <span class="keyword">void</span> <span class="identifier">wait</span><span class="special">()</span> <span class="special">{</span>
+        <span class="comment">// yield_handler_base::operator()() will set state_ `complete` and</span>
+        <span class="comment">// attempt to wake a suspended fiber. It would be Bad if that call</span>
+        <span class="comment">// happened between our detecting (complete != state_) and suspending.</span>
+        <span class="identifier">lock_t</span> <span class="identifier">lk</span><span class="special">{</span> <span class="identifier">mtx_</span> <span class="special">};</span>
+        <span class="comment">// If state_ is already set, we're done here: don't suspend.</span>
+        <span class="keyword">if</span> <span class="special">(</span> <span class="identifier">complete</span> <span class="special">!=</span> <span class="identifier">state_</span><span class="special">)</span> <span class="special">{</span>
+            <span class="identifier">state_</span> <span class="special">=</span> <span class="identifier">waiting</span><span class="special">;</span>
+            <span class="comment">// suspend(unique_lock&lt;spinlock&gt;) unlocks the lock in the act of</span>
+            <span class="comment">// resuming another fiber</span>
+            <span class="identifier">fibers</span><span class="special">::</span><span class="identifier">context</span><span class="special">::</span><span class="identifier">active</span><span class="special">()-&gt;</span><span class="identifier">suspend</span><span class="special">(</span> <span class="identifier">lk</span><span class="special">);</span>
+        <span class="special">}</span>
+    <span class="special">}</span>
+
+    <span class="keyword">friend</span> <span class="keyword">void</span> <span class="identifier">intrusive_ptr_add_ref</span><span class="special">(</span> <span class="identifier">yield_completion</span> <span class="special">*</span> <span class="identifier">yc</span><span class="special">)</span> <span class="keyword">noexcept</span> <span class="special">{</span>
+        <span class="identifier">BOOST_ASSERT</span><span class="special">(</span> <span class="keyword">nullptr</span> <span class="special">!=</span> <span class="identifier">yc</span><span class="special">);</span>
+        <span class="identifier">yc</span><span class="special">-&gt;</span><span class="identifier">use_count_</span><span class="special">.</span><span class="identifier">fetch_add</span><span class="special">(</span> <span class="number">1</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">memory_order_relaxed</span><span class="special">);</span>
+    <span class="special">}</span>
+
+    <span class="keyword">friend</span> <span class="keyword">void</span> <span class="identifier">intrusive_ptr_release</span><span class="special">(</span> <span class="identifier">yield_completion</span> <span class="special">*</span> <span class="identifier">yc</span><span class="special">)</span> <span class="keyword">noexcept</span> <span class="special">{</span>
+        <span class="identifier">BOOST_ASSERT</span><span class="special">(</span> <span class="keyword">nullptr</span> <span class="special">!=</span> <span class="identifier">yc</span><span class="special">);</span>
+        <span class="keyword">if</span> <span class="special">(</span> <span class="number">1</span> <span class="special">==</span> <span class="identifier">yc</span><span class="special">-&gt;</span><span class="identifier">use_count_</span><span class="special">.</span><span class="identifier">fetch_sub</span><span class="special">(</span> <span class="number">1</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">memory_order_release</span><span class="special">)</span> <span class="special">)</span> <span class="special">{</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">atomic_thread_fence</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">memory_order_acquire</span><span class="special">);</span>
+            <span class="keyword">delete</span> <span class="identifier">yc</span><span class="special">;</span>
+        <span class="special">}</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<p>假定挂起的异步操作尚未完成, 那么 <code class="computeroutput"><span class="identifier">yield_completion</span><span class="special">::</span><span class="identifier">completed_</span></code> 仍将是 <code class="computeroutput"><span class="keyword">false</span></code>, 而 <code class="computeroutput"><span class="identifier">wait</span><span class="special">()</span></code> 将在当前运行的纤程上调用 <a class="link" href="../scheduling.html#context_suspend"><code class="computeroutput">context::suspend()</code></a>.</p>
+<p>其他纤程现在有机会运行了.</p>
+<p>一段时间之后, 异步操作完成. 它调用 <code class="computeroutput"><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;::</span><span class="keyword">operator</span><span class="special">()(</span><span class="identifier">error_code</span> <span class="keyword">const</span><span class="special">&amp;)</span></code>, 传入一个表明成功或失败的 <code class="computeroutput"><span class="identifier">error_code</span></code>. 我们将考虑这两种情况.</p>
+<p>
+        <code class="computeroutput"><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span></code> 显式继承 <code class="computeroutput"><span class="keyword">operator</span><span class="special">()(</span><span class="identifier">error_code</span> <span class="keyword">const</span><span class="special">&amp;)</span></code> (其基类为 <code class="computeroutput"><span class="identifier">yield_handler_base</span></code>).</p>
+<p>
+        <code class="computeroutput"><span class="identifier">yield_handler_base</span><span class="special">::</span><span class="keyword">operator</span><span class="special">()(</span><span class="identifier">error_code</span> <span class="keyword">const</span><span class="special">&amp;)</span></code> 首先把 <code class="computeroutput"><span class="identifier">yield_completion</span><span class="special">::</span><span class="identifier">completed_</span></code> 设置为 <code class="computeroutput"><span class="keyword">true</span></code>. 这样一来, 如果 <code class="computeroutput"><span class="identifier">async_something</span><span class="special">()</span></code> 的异步操作立即完成——即 <code class="computeroutput"><span class="identifier">yield_handler_base</span><span class="special">::</span><span class="keyword">operator</span><span class="special">()</span></code> 甚至在 <code class="computeroutput"><span class="identifier">async_result_base</span><span class="special">::</span><span class="identifier">get</span><span class="special">()</span></code> 之前就被调用——调用方纤程将 <span class="emphasis"><em>不会</em></span> 挂起.</p>
+<p>异步操作产生的实际 <code class="computeroutput"><span class="identifier">error_code</span></code> 随后通过所存储的 <code class="computeroutput"><span class="identifier">yield_t</span><span class="special">::</span><span class="identifier">ec_</span></code> 指针存入. 如果 <code class="computeroutput"><span class="identifier">async_something</span><span class="special">()</span></code> 的调用方使用了 (例如) <code class="computeroutput"><span class="identifier">yield</span><span class="special">[</span><span class="identifier">my_ec</span><span class="special">]</span></code> 来绑定一个局部 <code class="computeroutput"><span class="identifier">error_code</span></code> 实例, 那么实际的 <code class="computeroutput"><span class="identifier">error_code</span></code> 值会被存储到调用方的变量中. 否则, 它会被存储到 <code class="computeroutput"><span class="identifier">async_result_base</span><span class="special">::</span><span class="identifier">ec_</span></code> 中.</p>
+<p>如果所存储的纤程上下文 <code class="computeroutput"><span class="identifier">yield_handler_base</span><span class="special">::</span><span class="identifier">ctx_</span></code> 尚未在运行, 就通过把它传给 <a class="link" href="../scheduling.html#context_schedule"><code class="computeroutput">context::schedule()</code></a> 将其标记为可运行. 然后控制权从 <code class="computeroutput"><span class="identifier">yield_handler_base</span><span class="special">::</span><span class="keyword">operator</span><span class="special">()</span></code> 返回: 回调执行完毕.</p>
+<p>到了适当的时机, 该纤程被恢复. 控制权从 <a class="link" href="../scheduling.html#context_suspend"><code class="computeroutput">context::suspend()</code></a> 返回到 <code class="computeroutput"><span class="identifier">yield_completion</span><span class="special">::</span><span class="identifier">wait</span><span class="special">()</span></code>, 再返回到 <code class="computeroutput"><span class="identifier">async_result_base</span><span class="special">::</span><span class="identifier">get</span><span class="special">()</span></code>.</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">如果最初的调用方把 <code class="computeroutput"><span class="identifier">yield</span><span class="special">[</span><span class="identifier">my_ec</span><span class="special">]</span></code> 传给 <code class="computeroutput"><span class="identifier">async_something</span><span class="special">()</span></code> 以绑定一个局部 <code class="computeroutput"><span class="identifier">error_code</span></code> 实例, 那么 <code class="computeroutput"><span class="identifier">yield_handler_base</span><span class="special">::</span><span class="keyword">operator</span><span class="special">()</span></code> 会把其 <code class="computeroutput"><span class="identifier">error_code</span></code> 存入调用方的 <code class="computeroutput"><span class="identifier">my_ec</span></code> 实例, 使 <code class="computeroutput"><span class="identifier">async_result_base</span><span class="special">::</span><span class="identifier">ec_</span></code> 被初始化为成功.</li>
+<li class="listitem">如果最初的调用方把 <code class="computeroutput"><span class="identifier">yield</span></code> 传给 <code class="computeroutput"><span class="identifier">async_something</span><span class="special">()</span></code> 而未绑定局部 <code class="computeroutput"><span class="identifier">error_code</span></code> 变量, 那么 <code class="computeroutput"><span class="identifier">yield_handler_base</span><span class="special">::</span><span class="keyword">operator</span><span class="special">()</span></code> 会把其 <code class="computeroutput"><span class="identifier">error_code</span></code> 存入 <code class="computeroutput"><span class="identifier">async_result_base</span><span class="special">::</span><span class="identifier">ec_</span></code>. 如果该 <code class="computeroutput"><span class="identifier">error_code</span></code> 实际上是成功, 那么一切正常.</li>
+<li class="listitem">否则——最初的调用方未绑定局部 <code class="computeroutput"><span class="identifier">error_code</span></code>, 而 <code class="computeroutput"><span class="identifier">yield_handler_base</span><span class="special">::</span><span class="keyword">operator</span><span class="special">()</span></code> 被调用时传入的 <code class="computeroutput"><span class="identifier">error_code</span></code> 表明出错——<code class="computeroutput"><span class="identifier">async_result_base</span><span class="special">::</span><span class="identifier">get</span><span class="special">()</span></code> 会抛出 <code class="computeroutput"><span class="identifier">system_error</span></code>, 其中带有该 <code class="computeroutput"><span class="identifier">error_code</span></code>.</li>
+</ul></div>
+<p>当 <code class="computeroutput"><span class="identifier">async_something</span><span class="special">()</span></code> 的完成回调具有签名 <code class="computeroutput"><span class="keyword">void</span><span class="special">()</span></code> 时, 情况类似. <code class="computeroutput"><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;::</span><span class="keyword">operator</span><span class="special">()()</span></code> 会以一个 <span class="quote">"<span class="quote">success</span>"</span> <code class="computeroutput"><span class="identifier">error_code</span></code> 来调用上述机制.</p>
+<p>具有签名 <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="identifier">error_code</span><span class="special">,</span> <span class="identifier">T</span><span class="special">)</span></code> 的完成回调 (即: 除 <code class="computeroutput"><span class="identifier">error_code</span></code> 之外, 回调还会收到某个数据项) 的处理方式略有不同. 对于这种签名, <code class="computeroutput"><span class="identifier">handler_type</span><span class="special">&lt;&gt;::</span><span class="identifier">type</span></code> 指定了 <code class="computeroutput"><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code> (适用于 <code class="computeroutput"><span class="identifier">T</span></code> 不等于 <code class="computeroutput"><span class="keyword">void</span></code> 的情况).</p>
+<p> <code class="computeroutput"><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code> 会保留一个 <code class="computeroutput"><span class="identifier">value_</span></code> 指针, 指向一个 <code class="computeroutput"><span class="identifier">T</span></code> 类型的值:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// asio uses handler_type&lt;completion token type, signature&gt;::type to decide</span>
+<span class="comment">// what to instantiate as the actual handler. Below, we specialize</span>
+<span class="comment">// handler_type&lt; yield_t, ... &gt; to indicate yield_handler&lt;&gt;. So when you pass</span>
+<span class="comment">// an instance of yield_t as an asio completion token, asio selects</span>
+<span class="comment">// yield_handler&lt;&gt; as the actual handler class.</span>
+<span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">T</span> <span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">yield_handler</span><span class="special">:</span> <span class="keyword">public</span> <span class="identifier">yield_handler_base</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="comment">// asio passes the completion token to the handler constructor</span>
+    <span class="keyword">explicit</span> <span class="identifier">yield_handler</span><span class="special">(</span> <span class="identifier">yield_t</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">y</span><span class="special">)</span> <span class="special">:</span>
+        <span class="identifier">yield_handler_base</span><span class="special">{</span> <span class="identifier">y</span> <span class="special">}</span> <span class="special">{</span>
+    <span class="special">}</span>
+
+    <span class="comment">// completion callback passing only value (T)</span>
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="identifier">T</span> <span class="identifier">t</span><span class="special">)</span> <span class="special">{</span>
+        <span class="comment">// just like callback passing success error_code</span>
+        <span class="special">(*</span><span class="keyword">this</span><span class="special">)(</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span><span class="special">(),</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">t</span><span class="special">)</span> <span class="special">);</span>
+    <span class="special">}</span>
+
+    <span class="comment">// completion callback passing (error_code, T)</span>
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">ec</span><span class="special">,</span> <span class="identifier">T</span> <span class="identifier">t</span><span class="special">)</span> <span class="special">{</span>
+        <span class="identifier">BOOST_ASSERT_MSG</span><span class="special">(</span> <span class="identifier">value_</span><span class="special">,</span>
+                          <span class="string">"Must inject value ptr "</span>
+                          <span class="string">"before caling yield_handler&lt;T&gt;::operator()()"</span><span class="special">);</span>
+        <span class="comment">// move the value to async_result&lt;&gt; instance BEFORE waking up a</span>
+        <span class="comment">// suspended fiber</span>
+        <span class="special">*</span> <span class="identifier">value_</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span> <span class="identifier">t</span><span class="special">);</span>
+        <span class="comment">// forward the call to base-class completion handler</span>
+        <span class="identifier">yield_handler_base</span><span class="special">::</span><span class="keyword">operator</span><span class="special">()(</span> <span class="identifier">ec</span><span class="special">);</span>
+    <span class="special">}</span>
+
+<span class="comment">//private:</span>
+    <span class="comment">// pointer to destination for eventual value</span>
+    <span class="comment">// this must be injected by async_result before operator()() is called</span>
+    <span class="identifier">T</span>   <span class="special">*</span>   <span class="identifier">value_</span><span class="special">{</span> <span class="keyword">nullptr</span> <span class="special">};</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<p>该指针被初始化为 <code class="computeroutput"><span class="keyword">nullptr</span></code>.</p>
+<p>当 <code class="computeroutput"><span class="identifier">async_something</span><span class="special">()</span></code> 实例化 <code class="computeroutput"><span class="identifier">async_result</span><span class="special">&lt;</span><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;&gt;</span></code> 时:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// asio constructs an async_result&lt;&gt; instance from the yield_handler specified</span>
+<span class="comment">// by handler_type&lt;&gt;::type. A particular asio async method constructs the</span>
+<span class="comment">// yield_handler, constructs this async_result specialization from it, then</span>
+<span class="comment">// returns the result of calling its get() method.</span>
+<span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">ReturnType</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">T</span> <span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">async_result</span><span class="special">&lt;</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">yield_t</span><span class="special">,</span> <span class="identifier">ReturnType</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span><span class="special">,</span> <span class="identifier">T</span><span class="special">)</span> <span class="special">&gt;</span> <span class="special">:</span>
+    <span class="keyword">public</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">async_result_base</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="comment">// type returned by get()</span>
+    <span class="keyword">using</span> <span class="identifier">return_type</span> <span class="special">=</span> <span class="identifier">T</span><span class="special">;</span>
+    <span class="keyword">using</span> <span class="identifier">completion_handler_type</span> <span class="special">=</span> <span class="identifier">fibers</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;;</span>
+
+    <span class="keyword">explicit</span> <span class="identifier">async_result</span><span class="special">(</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">yield_handler</span><span class="special">&lt;</span> <span class="identifier">T</span> <span class="special">&gt;</span> <span class="special">&amp;</span> <span class="identifier">h</span><span class="special">)</span> <span class="special">:</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">async_result_base</span><span class="special">{</span> <span class="identifier">h</span> <span class="special">}</span> <span class="special">{</span>
+        <span class="comment">// Inject ptr to our value_ member into yield_handler&lt;&gt;: result will</span>
+        <span class="comment">// be stored here.</span>
+        <span class="identifier">h</span><span class="special">.</span><span class="identifier">value_</span> <span class="special">=</span> <span class="special">&amp;</span> <span class="identifier">value_</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="comment">// asio async method returns result of calling get()</span>
+    <span class="identifier">return_type</span> <span class="identifier">get</span><span class="special">()</span> <span class="special">{</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">async_result_base</span><span class="special">::</span><span class="identifier">get</span><span class="special">();</span>
+        <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span> <span class="identifier">value_</span><span class="special">);</span>
+    <span class="special">}</span>
+
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="identifier">return_type</span> <span class="identifier">value_</span><span class="special">{};</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<p>该 <code class="computeroutput"><span class="identifier">async_result</span><span class="special">&lt;&gt;</span></code> 特化会保留一个 <code class="computeroutput"><span class="identifier">T</span></code> 类型的成员来接收传入的数据项, 并把 <code class="computeroutput"><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;::</span><span class="identifier">value_</span></code> 设置为指向其自身的数据成员.</p>
+<p>
+        <code class="computeroutput"><span class="identifier">async_result</span><span class="special">&lt;</span><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;&gt;</span></code> 重写了 <code class="computeroutput"><span class="identifier">get</span><span class="special">()</span></code>. 该重写会调用 <code class="computeroutput"><span class="identifier">async_result_base</span><span class="special">::</span><span class="identifier">get</span><span class="special">()</span></code>, 因此调用方纤程如上文所述挂起.</p>
+<p>
+        <code class="computeroutput"><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;::</span><span class="keyword">operator</span><span class="special">()(</span><span class="identifier">error_code</span><span class="special">,</span> <span class="identifier">T</span><span class="special">)</span></code> 把传入的 <code class="computeroutput"><span class="identifier">T</span></code> 值存储到 <code class="computeroutput"><span class="identifier">async_result</span><span class="special">&lt;</span><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;&gt;::</span><span class="identifier">value_</span></code> 中.</p>
+<p>然后它把控制权交给 <code class="computeroutput"><span class="identifier">yield_handler_base</span><span class="special">::</span><span class="keyword">operator</span><span class="special">()(</span><span class="identifier">error_code</span><span class="special">)</span></code>, 按上文所述处理唤醒原始纤程的事宜.</p>
+<p>当 <code class="computeroutput"><span class="identifier">async_result</span><span class="special">&lt;</span><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;&gt;::</span><span class="identifier">get</span><span class="special">()</span></code> 恢复运行时, 它会把存储的 <code class="computeroutput"><span class="identifier">value_</span></code> 返回给 <code class="computeroutput"><span class="identifier">async_something</span><span class="special">()</span></code>, 并最终返回给 <code class="computeroutput"><span class="identifier">async_something</span><span class="special">()</span></code> 的调用方.</p>
+<p>回调签名为 <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="identifier">T</span><span class="special">)</span></code> 的情况, 其处理方式是让 <code class="computeroutput"><span class="identifier">yield_handler</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;::</span><span class="keyword">operator</span><span class="special">()(</span><span class="identifier">T</span><span class="special">)</span></code> 启用 <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="identifier">error_code</span><span class="special">,</span> <span class="identifier">T</span><span class="special">)</span></code> 机制, 并传入一个 <span class="quote">"<span class="quote">success</span>"</span> <code class="computeroutput"><span class="identifier">error_code</span></code>.</p>
+<p>上述源代码位于 <a href="../../../../examples/asio/yield.hpp" target="_top">yield.hpp</a> 和 <a href="../../../../examples/asio/detail/yield.hpp" target="_top">detail/yield.hpp</a> 中.</p>
+<div class="footnotes">
+<br><hr style="width:100; text-align:left;margin-left: 0">
+<div id="ftn.fiber.callbacks.then_there_s____boost_asio__.f0" class="footnote"><p><a href="#fiber.callbacks.then_there_s____boost_asio__.f0" class="para"><sup class="para">[5] </sup></a> 这一机制已被提议作为允许任意异步函数的调用方指定完成处理的常规方式: <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n4045.pdf" target="_top">N4045</a>.</p></div>
+<div id="ftn.fiber.callbacks.then_there_s____boost_asio__.f1" class="footnote"><p><a href="#fiber.callbacks.then_there_s____boost_asio__.f1" class="para"><sup class="para">[6] </sup></a> 依据 <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n4045.pdf" target="_top">N4045</a>
+        </p></div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2013 Oliver Kowalke<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="success_error_virtual_methods.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../callbacks.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="../nonblocking.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

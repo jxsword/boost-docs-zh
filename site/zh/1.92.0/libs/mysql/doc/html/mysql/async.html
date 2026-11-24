@@ -1,0 +1,107 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>转向异步</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="up" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="prev" href="connection_pool.html" title="连接池">
+<link rel="next" href="interfacing_sync_async.html" title="衔接同步与异步代码: 在同步代码中使用 connection_pool">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="connection_pool.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="interfacing_sync_async.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="mysql.async"></a><a class="link" href="async.html" title="转向异步">转向异步</a>
+</h2></div></div></div>
+<p>按照 <a href="../../../../../libs/asio/index.html" target="_top">Boost.Asio</a> 的惯例, 所有网络操作都有对应的异步版本, 其名称以 <code class="computeroutput"><span class="identifier">async_</span></code> 为前缀. 异步操作的最后一个参数是 <a href="../../../../../doc/html/boost_asio/reference/asynchronous_operations.html#boost_asio.reference.asynchronous_operations.completion_tokens_and_handlers" target="_top"><span class="emphasis"><em>CompletionToken</em></span></a>, 它决定了异步操作的管理方式以及函数的返回类型. 这些 <code class="computeroutput"><span class="identifier">async_</span></code> 函数称为异步发起函数.</p>
+<p>每个异步发起函数都有一个关联的处理器类型, 它决定了异步操作如何将结果传回给调用者. 该处理器类型总是具有以下两种形式之一:</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">
+          <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="identifier">error_code</span><span class="special">)</span></code>. 用于没有实际结果的操作, 例如 <a class="link" href="ref/boost__mysql__connection/async_connect.html" title="connection::async_connect"><code class="literal">connection::async_connect</code></a>.</li>
+<li class="listitem">
+          <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="identifier">error_code</span><span class="special">,</span>
+          <span class="identifier">T</span><span class="special">)</span></code>. 用于有结果的操作, 例如 <a class="link" href="ref/boost__mysql__connection/async_prepare_statement.html" title="connection::async_prepare_statement"><code class="literal">connection::async_prepare_statement</code></a> (此时, <code class="computeroutput"><span class="identifier">T</span></code> 为 <code class="computeroutput"><span class="identifier">statement</span></code>).</li>
+</ol></div>
+<p>所有异步函数都提供了接受可选 <a class="link" href="ref/boost__mysql__diagnostics.html" title="diagnostics"><code class="literal">diagnostics</code></a> 输出参数的重载. 在调用完成处理器之前, 该参数会被填充以服务器提供的任何错误信息.</p>
+<h4>
+<a name="mysql.async.h0"></a>
+      <span class="phrase"><a name="mysql.async.single_outstanding_operation_per"></a></span><a class="link" href="async.html#mysql.async.single_outstanding_operation_per">每个连接同时只允许一个未完成的操作</a>
+    </h4>
+<p>如 <a class="link" href="overview.html#mysql.overview.async" title="每个连接只允许一个未完成的异步操作">本节</a>所述, 每个连接在同一时刻只能有一个未完成的异步操作. 如果需要并行执行查询, 请打开更多与服务器的连接.</p>
+<h4>
+<a name="mysql.async.h1"></a>
+      <span class="phrase"><a name="mysql.async.completion_tokens"></a></span><a class="link" href="async.html#mysql.async.completion_tokens">完成标记</a>
+    </h4>
+<p>任何可用于 Boost.Asio 的完成标记也可以用于本库. 下面列出了一些最常用的:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+<p class="simpara">
+          <span class="bold"><strong>C++20 协程</strong></span>, 使用 <a href="../../../../../doc/html/boost_asio/reference/co_spawn.html" target="_top"><code class="literal">asio::co_spawn</code></a> 和 <a href="../../../../../doc/html/boost_asio/reference/deferred.html" target="_top"><code class="literal">asio::deferred</code></a>. 将 <code class="computeroutput"><span class="identifier">deferred</span></code> 传递给发起函数会返回一个可被 <code class="computeroutput"><span class="identifier">co_await</span></code> 的对象. 可以将 deferred 与 <a class="link" href="async.html#mysql.async.with_diagnostics">with_diagnostics</a> 结合使用以获得更好的错误报告.</p>
+<p class="simpara">详见 <span class="bold"><strong><a class="link" href="tutorial_async.html" title="教程 2: 使用 C++20 协程进行异步操作">异步教程</a></strong></span>.</p>
+</li>
+<li class="listitem">
+<p class="simpara">
+          <span class="bold"><strong>有栈协程</strong></span>, 可用于在 C++11 中获得类似协程的功能. 通过 <a href="../../../../../doc/html/boost_asio/reference/spawn.html" target="_top"><code class="literal">asio::spawn</code></a> 和 <a href="../../../../../doc/html/boost_asio/reference/yield_context.html" target="_top"><code class="literal">asio::yield_context</code></a> 访问该功能, 也可与 <a class="link" href="async.html#mysql.async.with_diagnostics">with_diagnostics</a> 结合使用. 使用这些协程需要链接 <a href="../../../../../libs/context/index.html" target="_top">Boost.Context</a>.</p>
+<p class="simpara">详见 <span class="bold"><strong><a class="link" href="examples/coroutines_cpp11.html" title="有栈协程 (C++11 中的异步函数)">该示例</a></strong></span>.</p>
+</li>
+<li class="listitem">
+<p class="simpara">
+          <span class="bold"><strong>回调</strong></span>. 可以传入一个可调用对象 (函数指针或函数对象), 其签名与为该操作指定的处理器签名相同. 该可调用对象将在操作完成时被调用. 发起函数将返回 <code class="computeroutput"><span class="keyword">void</span></code>.</p>
+<p class="simpara">
+          <a class="link" href="examples/callbacks.html" title="回调 (C++11 中的异步函数)">该示例</a>演示了如何将异步函数与回调结合使用.</p>
+</li>
+<li class="listitem">
+<p class="simpara">
+          <span class="bold"><strong>future</strong></span>. 此时, 传入常量 <a href="../../../../../doc/html/boost_asio/reference/use_future.html" target="_top"><code class="literal">asio::use_future</code></a> 作为完成标记. 发起函数将返回以下之一:<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; ">
+<li class="listitem">
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">future</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span></code>, 若完成处理器具有 1) 所给的形式.</li>
+<li class="listitem">
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">future</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code>, 若完成处理器具有 2) 所给的形式.</li>
+</ul></div>
+        </p>
+<p class="simpara">可以通过调用 <code class="computeroutput"><span class="identifier">future</span><span class="special">::</span><span class="identifier">get</span></code> 来等待该 future. 如果发生错误, <code class="computeroutput"><span class="identifier">future</span><span class="special">::</span><span class="identifier">get</span></code> 将抛出异常. 注意, 该异常由 Asio 自身抛出, 并且始终为 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">system_error</span></code> 类型, 即使有可用的诊断信息也是如此.</p>
+</li>
+<li class="listitem">任何满足 <a href="../../../../../doc/html/boost_asio/reference/asynchronous_operations.html#boost_asio.reference.asynchronous_operations.completion_tokens_and_handlers" target="_top"><span class="emphasis"><em>CompletionToken</em></span></a> 类型要求的其他类型. 这里列出了最常用的几种, 但你也可以自己定制完成标记并将其用于本库的异步操作.</li>
+</ul></div>
+<h4>
+<a name="mysql.async.h2"></a>
+      <span class="phrase"><a name="mysql.async.with_diagnostics"></a></span><a class="link" href="async.html#mysql.async.with_diagnostics">with_diagnostics 完成标记</a>
+    </h4>
+<p>
+      <a class="link" href="ref/boost__mysql__with_diagnostics.html" title="with_diagnostics"><code class="literal">with_diagnostics</code></a> 是一个完成标记适配器, 可在使用异常的异步操作中使用. <code class="computeroutput"><span class="identifier">with_diagnostics</span></code> 使你的操作抛出 <a class="link" href="ref/boost__mysql__error_with_diagnostics.html" title="error_with_diagnostics"><code class="literal">error_with_diagnostics</code></a>, 就像同步函数那样.</p>
+<p>
+      <code class="computeroutput"><span class="identifier">with_diagnostics</span><span class="special">(</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">deferred</span><span class="special">)</span></code> 是本库大多数操作的默认完成标记. 如果按照教程中的建议使用 C++20 协程, 那么你已经在使用它了.</p>
+<p>当使用涉及异常的其他完成标记风格时, 例如 <code class="computeroutput"><span class="identifier">asio</span><span class="special">::</span><span class="identifier">yield_context</span></code>, 可能需要显式使用 <code class="computeroutput"><span class="identifier">with_diagnostics</span></code>. <a class="link" href="examples/coroutines_cpp11.html" title="有栈协程 (C++11 中的异步函数)">该示例</a>展示了具体做法.</p>
+<p>
+      <code class="computeroutput"><span class="identifier">with_diagnostics</span></code> 只在使用异常时才有意义. 使用错误码时, 可以照常继续使用 <code class="computeroutput"><span class="identifier">asio</span><span class="special">::</span><span class="identifier">as_tuple</span></code> 和 <code class="computeroutput"><span class="identifier">asio</span><span class="special">::</span><span class="identifier">redirect_error</span></code>.</p>
+<h4>
+<a name="mysql.async.h3"></a>
+      <span class="phrase"><a name="mysql.async.cancellations_and_timeouts"></a></span><a class="link" href="async.html#mysql.async.cancellations_and_timeouts">取消与超时</a>
+    </h4>
+<p>本库中的所有异步操作都支持 <a href="../../../../../doc/html/boost_asio/overview/core/cancellation.html" target="_top">逐操作取消</a>. 所有操作仅支持 <code class="computeroutput"><span class="identifier">terminal</span></code>
+      <a href="../../../../../doc/html/boost_asio/reference/cancellation_type.html" target="_top"><code class="literal">asio::cancellation_type</code></a>. 这意味着, 如果一个异步操作被取消, <a class="link" href="ref/boost__mysql__connection.html" title="connection"><code class="literal">connection</code></a> 对象将处于未指定状态, 此后你应当关闭或销毁该连接. 特别要注意, 重试被取消的操作是 <span class="bold"><strong>不</strong></span>安全的.</p>
+<p>支持取消使你可以在库没有显式支持的情况下实现超时. <a class="link" href="tutorial_error_handling.html" title="教程 7: 错误处理">该教程</a>深入讨论了这一主题.</p>
+<p>注意, 取消发生在 Boost.Asio 层面, 而不是 MySQL 操作层面. 这意味着, 取消一个操作时, 当前的网络读或写会被取消. 该操作可能已经到达服务器并被执行. 如上所述, 操作被取消后, 连接将处于未指定状态, 你应当关闭或销毁它.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2019-2024 Ruben Perez<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="connection_pool.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="interfacing_sync_async.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

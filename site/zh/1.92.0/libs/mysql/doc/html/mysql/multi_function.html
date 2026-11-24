@@ -1,0 +1,336 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>多函数操作</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="up" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="prev" href="multi_resultset.html" title="多结果集: 存储过程与多查询">
+<link rel="next" href="connection_pool.html" title="连接池">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="multi_resultset.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="connection_pool.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="mysql.multi_function"></a><a class="link" href="multi_function.html" title="多函数操作">多函数操作</a>
+</h2></div></div></div>
+<p>多函数操作允许将操作作为一系列独立步骤运行, 从而让你对执行过程有更好的控制. 它们的工作原理是将部分读写拆分为多次函数调用.</p>
+<p>可以通过动态接口或静态接口, 使用多函数操作来执行文本查询和预处理语句.</p>
+<h4>
+<a name="mysql.multi_function.h0"></a>
+      <span class="phrase"><a name="mysql.multi_function.protocol_primer"></a></span><a class="link" href="multi_function.html#mysql.multi_function.protocol_primer">协议入门</a>
+    </h4>
+<p>要善用多函数操作, 你应当对底层协议有基本的了解.</p>
+<p>该协议使用 <span class="emphasis"><em>消息</em></span>进行通信. 消息由包含消息长度的头部定界. 所有操作都由客户端通过发送单个 <span class="emphasis"><em>请求消息</em></span>发起, 服务器则以一组 <span class="emphasis"><em>响应消息</em></span>作为回应.</p>
+<p>下图展示了文本查询和语句执行时客户端与服务器之间的消息交换. 每个箭头代表一条消息.</p>
+<p>
+      <span class="inlinemediaobject"><object type="image/svg+xml" data="images/protocol.svg" align="middle"></object></span>
+    </p>
+<p>有两种不同的情况:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">如果你的查询检索了至少一列 (即使没有生成任何行), 我们就处于 <span class="emphasis"><em>情况 1</em></span>. 服务器发送: <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; ">
+<li class="listitem">一个初始包, 通知查询已正确执行, 并且我们处于 <span class="emphasis"><em>情况 1</em></span>.</li>
+<li class="listitem">若干描述查询检索到的列的元数据包. 它们对用户可用, 并且是解析行所必需的.</li>
+<li class="listitem">实际的行.</li>
+<li class="listitem">一个 OK 包, 它标记结果集的结束, 并包含 <code class="computeroutput"><span class="identifier">last_insert_id</span></code> 和 <code class="computeroutput"><span class="identifier">affected_rows</span></code> 等信息.</li>
+</ul></div>
+        </li>
+<li class="listitem">如果你的查询没有检索任何列, 我们就处于 <span class="emphasis"><em>情况 2</em></span>. 服务器只会发送一个 OK 包, 其信息与 <span class="emphasis"><em>情况 1</em></span>相同.</li>
+</ul></div>
+<p>
+      <a class="link" href="ref/boost__mysql__connection/execute.html" title="connection::execute"><code class="literal">connection::execute</code></a> 处理完整的消息交换. 相比之下, <a class="link" href="ref/boost__mysql__connection/start_execution.html" title="connection::start_execution"><code class="literal">connection::start_execution</code></a> 不会读取行 (如果有的话).</p>
+<p>几点要点:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">单函数操作与多函数操作的区别只存在于客户端. 两者在线路上交换的消息是相同的.</li>
+<li class="listitem">无法预先知道一个结果集有多少行. 你需要逐行读取, 直到找到标记结果集结束的 OK 包.</li>
+<li class="listitem">当服务器处理请求消息时, <span class="bold"><strong>它会立即发送所有响应消息</strong></span>. 这些响应会等待在客户端处以供读取. 如果你不读取 <span class="bold"><strong>全部</strong></span>响应, 后续操作会错误地将它们当作自己的响应读取, 导致包不匹配. 请小心, 不要让这种情况发生!</li>
+</ul></div>
+<h4>
+<a name="mysql.multi_function.h1"></a>
+      <span class="phrase"><a name="mysql.multi_function.using_multi_function_operations_"></a></span><a class="link" href="multi_function.html#mysql.multi_function.using_multi_function_operations_">通过动态接口使用多函数操作</a>
+    </h4>
+<p>
+      <a class="link" href="ref/boost__mysql__execution_state.html" title="execution_state"><code class="literal">execution_state</code></a> 是动态接口进行多函数操作的主类. 执行状态保存推进执行操作所需的信息, 如元数据 (解析行所必需) 和协议状态. 与 <code class="computeroutput"><span class="identifier">results</span></code>不同, 它不包含行.</p>
+<p>给定以下表定义:</p>
+<pre class="programlisting"><span class="keyword">const</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">table_definition</span> <span class="special">=</span> <span class="identifier">R</span><span class="string">"%(
+    CREATE TEMPORARY TABLE posts (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        title VARCHAR (256) NOT NULL,
+        body TEXT NOT NULL
+    )
+)%"</span><span class="special">;</span>
+</pre>
+<p>可以使用 <a class="link" href="ref/boost__mysql__connection/start_execution.html" title="connection::start_execution"><code class="literal">connection::start_execution</code></a> 启动多函数操作:</p>
+<pre class="programlisting"><span class="comment">// st will hold information about the operation being executed.</span>
+<span class="comment">// It must be passed to any successive operations for this execution</span>
+<span class="identifier">execution_state</span> <span class="identifier">st</span><span class="special">;</span>
+
+<span class="comment">// Sends the query and reads response and meta, but not the rows</span>
+<span class="identifier">conn</span><span class="special">.</span><span class="identifier">start_execution</span><span class="special">(</span><span class="string">"SELECT title, body FROM posts"</span><span class="special">,</span> <span class="identifier">st</span><span class="special">);</span>
+</pre>
+<p>现在, 我们 <span class="bold"><strong>必须</strong></span>通过调用 <a class="link" href="ref/boost__mysql__connection/read_some_rows.html" title="connection::read_some_rows"><code class="literal">connection::read_some_rows</code></a> 来读取所有生成的行, 它会返回一批大小不确定的行:</p>
+<pre class="programlisting"><span class="comment">// st.complete() returns true once the OK packet is received</span>
+<span class="keyword">while</span> <span class="special">(!</span><span class="identifier">st</span><span class="special">.</span><span class="identifier">complete</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="comment">// row_batch will be valid until conn performs the next network operation</span>
+    <span class="identifier">rows_view</span> <span class="identifier">row_batch</span> <span class="special">=</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">read_some_rows</span><span class="special">(</span><span class="identifier">st</span><span class="special">);</span>
+
+    <span class="keyword">for</span> <span class="special">(</span><span class="identifier">row_view</span> <span class="identifier">post</span> <span class="special">:</span> <span class="identifier">row_batch</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="comment">// Process post as required</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Title:"</span> <span class="special">&lt;&lt;</span> <span class="identifier">post</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+</pre>
+<p>几点说明:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">如果还有行待读取, <code class="computeroutput"><span class="identifier">read_some_rows</span></code> 会至少返回一行, 但可能返回更多.</li>
+<li class="listitem">
+          <a class="link" href="ref/boost__mysql__execution_state/complete.html" title="execution_state::complete"><code class="literal">execution_state::complete</code></a> 在我们读取完此操作的最终 OK 包后返回 <code class="computeroutput"><span class="keyword">true</span></code>.</li>
+<li class="listitem">最终的 <code class="computeroutput"><span class="identifier">row_batch</span></code> 可能为空也可能不为空, 取决于行数及其大小.</li>
+<li class="listitem">在读取最终 OK 包之后调用 <code class="computeroutput"><span class="identifier">read_some_rows</span></code> 会返回一个空批次.</li>
+</ul></div>
+<p>
+      <code class="computeroutput"><span class="identifier">read_some_rows</span></code> 返回一个指向连接内部缓冲区的 <a class="link" href="ref/boost__mysql__rows_view.html" title="rows_view"><code class="literal">rows_view</code></a> 对象. 该视图在连接执行任何其他涉及网络传输的操作之前一直有效.</p>
+<p>注意, 在代码中无需区分上图中的 <span class="emphasis"><em>情况 1</em></span> 和 <span class="emphasis"><em>情况 2</em></span>, 因为读取完整操作的行是明确定义的.</p>
+<h4>
+<a name="mysql.multi_function.h2"></a>
+      <span class="phrase"><a name="mysql.multi_function.using_multi_function_operations0"></a></span><a class="link" href="multi_function.html#mysql.multi_function.using_multi_function_operations0">通过静态接口使用多函数操作</a>
+    </h4>
+<p>机制与上面介绍的类似. 静态接口使用 <a class="link" href="ref/boost__mysql__static_execution_state.html" title="static_execution_state"><code class="literal">static_execution_state</code></a> 来承载状态. 与 <a class="link" href="ref/boost__mysql__static_results.html" title="static_results"><code class="literal">static_results</code></a>一样, 我们必须定义并传递一个描述行的类型:</p>
+<pre class="programlisting"><span class="comment">// We can use a plain struct with ints and strings to describe our rows.</span>
+<span class="comment">// This must be placed at the namespace level</span>
+<span class="keyword">struct</span> <span class="identifier">post</span>
+<span class="special">{</span>
+    <span class="keyword">int</span> <span class="identifier">id</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">title</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">body</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="comment">// We use BOOST_DESCRIBE_STRUCT to add reflection capabilities to post.</span>
+<span class="comment">// We must list all the fields that should be populated by Boost.MySQL</span>
+<span class="identifier">BOOST_DESCRIBE_STRUCT</span><span class="special">(</span><span class="identifier">post</span><span class="special">,</span> <span class="special">(),</span> <span class="special">(</span><span class="identifier">id</span><span class="special">,</span> <span class="identifier">title</span><span class="special">,</span> <span class="identifier">body</span><span class="special">))</span>
+</pre>
+<p>现在可以使用相同的 <a class="link" href="ref/boost__mysql__connection/start_execution.html" title="connection::start_execution"><code class="literal">connection::start_execution</code></a> 启动我们的操作:</p>
+<pre class="programlisting"><span class="comment">// st will hold information about the operation being executed.</span>
+<span class="comment">// It must be passed to any successive operations for this execution</span>
+<span class="identifier">static_execution_state</span><span class="special">&lt;</span><span class="identifier">post</span><span class="special">&gt;</span> <span class="identifier">st</span><span class="special">;</span>
+
+<span class="comment">// Sends the query and reads response and meta, but not the rows.</span>
+<span class="comment">// If there is any schema mismatch between the declared row type and</span>
+<span class="comment">// what the server returned, start_execution will detect it and fail</span>
+<span class="identifier">conn</span><span class="special">.</span><span class="identifier">start_execution</span><span class="special">(</span><span class="string">"SELECT id, title, body FROM posts"</span><span class="special">,</span> <span class="identifier">st</span><span class="special">);</span>
+</pre>
+<p>现在, 我们 <span class="bold"><strong>必须</strong></span>通过调用 <a class="link" href="ref/boost__mysql__connection/read_some_rows.html" title="connection::read_some_rows"><code class="literal">connection::read_some_rows</code></a> 来读取所有生成的行:</p>
+<pre class="programlisting"><span class="comment">// storage will be filled with the read rows. You can use any other contiguous range.</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span><span class="identifier">post</span><span class="special">,</span> <span class="number">20</span><span class="special">&gt;</span> <span class="identifier">posts</span><span class="special">;</span>
+
+<span class="comment">// st.complete() returns true once the OK packet is received</span>
+<span class="keyword">while</span> <span class="special">(!</span><span class="identifier">st</span><span class="special">.</span><span class="identifier">complete</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">read_rows</span> <span class="special">=</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">read_some_rows</span><span class="special">(</span><span class="identifier">st</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">span</span><span class="special">&lt;</span><span class="identifier">post</span><span class="special">&gt;(</span><span class="identifier">posts</span><span class="special">));</span>
+    <span class="keyword">for</span> <span class="special">(</span><span class="keyword">const</span> <span class="identifier">post</span><span class="special">&amp;</span> <span class="identifier">p</span> <span class="special">:</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">span</span><span class="special">&lt;</span><span class="identifier">post</span><span class="special">&gt;(</span><span class="identifier">posts</span><span class="special">.</span><span class="identifier">data</span><span class="special">(),</span> <span class="identifier">read_rows</span><span class="special">))</span>
+    <span class="special">{</span>
+        <span class="comment">// Process post as required</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Title "</span> <span class="special">&lt;&lt;</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">title</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+</pre>
+<p>几点说明:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+          <a class="link" href="ref/boost__mysql__static_execution_state.html" title="static_execution_state"><code class="literal">static_execution_state</code></a> 不以任何方式存储行. 它使用作为模板参数传入的行类型来验证服务器返回的元数据, 并确保其与将与 <code class="computeroutput"><span class="identifier">read_some_rows</span></code> 一起使用的 C++ 数据结构兼容.</li>
+<li class="listitem">我们必须向 <code class="computeroutput"><span class="identifier">read_some_rows</span></code> 传递一个适当行类型的 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">span</span></code>. 我们使用 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span></code> 将行放置在栈上, 但你可以使用任何其他连续范围.</li>
+<li class="listitem">
+          <code class="computeroutput"><span class="identifier">read_some_rows</span></code> 返回读取的行数. 最多为 span 的大小, 但可能更少, 取决于行大小和网络缓冲区大小.</li>
+<li class="listitem">如果还有行待读取, <code class="computeroutput"><span class="identifier">read_some_rows</span></code> 会至少返回一行, 但可能返回更多.</li>
+<li class="listitem">
+          <a class="link" href="ref/boost__mysql__execution_state/complete.html" title="execution_state::complete"><code class="literal">execution_state::complete</code></a> 在我们读取完此操作的最终 OK 包后返回 <code class="computeroutput"><span class="keyword">true</span></code>.</li>
+<li class="listitem">最后一次读取可能返回行, 也可能不返回, 取决于行数及其大小.</li>
+<li class="listitem">在读取最终 OK 包之后调用 <code class="computeroutput"><span class="identifier">read_some_rows</span></code> 总是读取零行.</li>
+</ul></div>
+<h4>
+<a name="mysql.multi_function.h3"></a>
+      <span class="phrase"><a name="mysql.multi_function.accessing_metadata_and_ok_packet"></a></span><a class="link" href="multi_function.html#mysql.multi_function.accessing_metadata_and_ok_packet">访问元数据与 OK 包数据</a>
+    </h4>
+<p>可以在任意时刻使用 <a class="link" href="ref/boost__mysql__execution_state/meta.html" title="execution_state::meta"><code class="literal">execution_state::meta</code></a> 或 <a class="link" href="ref/boost__mysql__static_execution_state/meta.html" title="static_execution_state::meta"><code class="literal">static_execution_state::meta</code></a> 访问元数据. 该函数返回一个 <a class="link" href="ref/boost__mysql__metadata.html" title="metadata"><code class="literal">metadata</code></a> 对象集合. 更多信息请参见 <a class="link" href="meta.html" title="元数据">本节</a>.</p>
+<p>可以使用 <a class="link" href="ref/boost__mysql__execution_state/last_insert_id.html" title="execution_state::last_insert_id"><code class="literal">last_insert_id</code></a> 和 <a class="link" href="ref/boost__mysql__execution_state/affected_rows.html" title="execution_state::affected_rows"><code class="literal">affected_rows</code></a> 等函数在 <code class="computeroutput"><span class="identifier">execution_state</span></code> 和 <code class="computeroutput"><span class="identifier">static_execution_state</span></code> 中访问 OK 包数据. 由于这些信息包含在 OK 包中, <span class="bold"><strong>只有当 <a class="link" href="ref/boost__mysql__execution_state/complete.html" title="execution_state::complete"><code class="literal">complete</code></a> 函数返回 <code class="computeroutput"><span class="keyword">true</span></code></strong></span> 后才能访问.</p>
+<h4>
+<a name="mysql.multi_function.h4"></a>
+      <span class="phrase"><a name="mysql.multi_function.using_multi_function_operations1"></a></span><a class="link" href="multi_function.html#mysql.multi_function.using_multi_function_operations1">将多函数操作用于存储过程与多查询</a>
+    </h4>
+<p>使用返回多于一个结果集的操作时 (例如调用存储过程), 协议会稍微复杂一些:</p>
+<p>
+      <span class="inlinemediaobject"><object type="image/svg+xml" data="images/protocol_multi_resultset.svg" align="middle"></object></span>
+    </p>
+<p>消息交换如下:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">向服务器发送单个执行请求.</li>
+<li class="listitem">服务器发送第一个结果集, 与单结果集情况相同. OK 包中包含一个标志, 指示后面还有另一个结果集.</li>
+<li class="listitem">然后发送另一个结果集, 其结构与前一个相同. 该过程不断重复, 直到某个 OK 包指示没有更多结果集.</li>
+</ul></div>
+<p>例如, 给定以下存储过程:</p>
+<pre class="programlisting">CREATE PROCEDURE get_company(IN pin_company_id CHAR(10))
+BEGIN
+    START TRANSACTION READ ONLY;
+    SELECT id, name, tax_id FROM company WHERE id = pin_company_id;
+    SELECT first_name, last_name, salary FROM employee WHERE company_id = pin_company_id;
+    COMMIT;
+END
+</pre>
+<p>我们可以这样写:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+              <p>动态接口</p>
+            </th>
+<th>
+              <p>静态接口</p>
+            </th>
+</tr></thead>
+<tbody><tr>
+<td>
+<pre class="table-programlisting"><span class="comment">// Get the company ID to retrieve, possibly from the user</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">company_id</span> <span class="special">=</span> <span class="identifier">get_company_id</span><span class="special">();</span>
+
+<span class="comment">// Call the procedure</span>
+<span class="identifier">execution_state</span> <span class="identifier">st</span><span class="special">;</span>
+<span class="identifier">statement</span> <span class="identifier">stmt</span> <span class="special">=</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">prepare_statement</span><span class="special">(</span><span class="string">"CALL get_employees(?)"</span><span class="special">);</span>
+<span class="identifier">conn</span><span class="special">.</span><span class="identifier">start_execution</span><span class="special">(</span><span class="identifier">stmt</span><span class="special">.</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">company_id</span><span class="special">),</span> <span class="identifier">st</span><span class="special">);</span>
+
+<span class="comment">// The above code will generate 3 resultsets</span>
+<span class="comment">// Read the 1st one, which contains the matched companies</span>
+<span class="keyword">while</span> <span class="special">(</span><span class="identifier">st</span><span class="special">.</span><span class="identifier">should_read_rows</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="identifier">rows_view</span> <span class="identifier">company_batch</span> <span class="special">=</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">read_some_rows</span><span class="special">(</span><span class="identifier">st</span><span class="special">);</span>
+
+    <span class="comment">// Use the retrieved companies as required</span>
+    <span class="keyword">for</span> <span class="special">(</span><span class="identifier">row_view</span> <span class="identifier">company</span> <span class="special">:</span> <span class="identifier">company_batch</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Company: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">company</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">1</span><span class="special">).</span><span class="identifier">as_string</span><span class="special">()</span> <span class="special">&lt;&lt;</span> <span class="string">"\n"</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+
+<span class="comment">// Move on to the 2nd one, containing the employees for these companies</span>
+<span class="identifier">conn</span><span class="special">.</span><span class="identifier">read_resultset_head</span><span class="special">(</span><span class="identifier">st</span><span class="special">);</span>
+<span class="keyword">while</span> <span class="special">(</span><span class="identifier">st</span><span class="special">.</span><span class="identifier">should_read_rows</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="identifier">rows_view</span> <span class="identifier">employee_batch</span> <span class="special">=</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">read_some_rows</span><span class="special">(</span><span class="identifier">st</span><span class="special">);</span>
+
+    <span class="comment">// Use the retrieved employees as required</span>
+    <span class="keyword">for</span> <span class="special">(</span><span class="identifier">row_view</span> <span class="identifier">employee</span> <span class="special">:</span> <span class="identifier">employee_batch</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Employee "</span> <span class="special">&lt;&lt;</span> <span class="identifier">employee</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">).</span><span class="identifier">as_string</span><span class="special">()</span> <span class="special">&lt;&lt;</span> <span class="string">" "</span> <span class="special">&lt;&lt;</span> <span class="identifier">employee</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">1</span><span class="special">).</span><span class="identifier">as_string</span><span class="special">()</span>
+                  <span class="special">&lt;&lt;</span> <span class="string">"\n"</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+
+<span class="comment">// The last one is an empty resultset containing information about the</span>
+<span class="comment">// CALL statement itself. We're not interested in this</span>
+<span class="identifier">conn</span><span class="special">.</span><span class="identifier">read_resultset_head</span><span class="special">(</span><span class="identifier">st</span><span class="special">);</span>
+<span class="identifier">assert</span><span class="special">(</span><span class="identifier">st</span><span class="special">.</span><span class="identifier">complete</span><span class="special">());</span>
+</pre>
+            </td>
+<td>
+<pre class="table-programlisting"><span class="comment">// Get the company ID to retrieve, possibly from the user</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">company_id</span> <span class="special">=</span> <span class="identifier">get_company_id</span><span class="special">();</span>
+
+<span class="comment">// Our procedure generates three resultsets. We must pass each row type</span>
+<span class="comment">// to static_execution_state as template parameters</span>
+<span class="keyword">using</span> <span class="identifier">empty</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">tuple</span><span class="special">&lt;&gt;;</span>
+<span class="identifier">static_execution_state</span><span class="special">&lt;</span><span class="identifier">company</span><span class="special">,</span> <span class="identifier">employee</span><span class="special">,</span> <span class="identifier">empty</span><span class="special">&gt;</span> <span class="identifier">st</span><span class="special">;</span>
+
+<span class="comment">// Call the procedure</span>
+<span class="identifier">statement</span> <span class="identifier">stmt</span> <span class="special">=</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">prepare_statement</span><span class="special">(</span><span class="string">"CALL get_employees(?)"</span><span class="special">);</span>
+<span class="identifier">conn</span><span class="special">.</span><span class="identifier">start_execution</span><span class="special">(</span><span class="identifier">stmt</span><span class="special">.</span><span class="identifier">bind</span><span class="special">(</span><span class="identifier">company_id</span><span class="special">),</span> <span class="identifier">st</span><span class="special">);</span>
+
+<span class="comment">// Read the 1st one, which contains the matched companies</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span><span class="identifier">company</span><span class="special">,</span> <span class="number">5</span><span class="special">&gt;</span> <span class="identifier">companies</span><span class="special">;</span>
+<span class="keyword">while</span> <span class="special">(</span><span class="identifier">st</span><span class="special">.</span><span class="identifier">should_read_rows</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">read_rows</span> <span class="special">=</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">read_some_rows</span><span class="special">(</span><span class="identifier">st</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">span</span><span class="special">&lt;</span><span class="identifier">company</span><span class="special">&gt;(</span><span class="identifier">companies</span><span class="special">));</span>
+
+    <span class="comment">// Use the retrieved companies as required</span>
+    <span class="keyword">for</span> <span class="special">(</span><span class="keyword">const</span> <span class="identifier">company</span><span class="special">&amp;</span> <span class="identifier">c</span> <span class="special">:</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">span</span><span class="special">&lt;</span><span class="identifier">company</span><span class="special">&gt;(</span><span class="identifier">companies</span><span class="special">.</span><span class="identifier">data</span><span class="special">(),</span> <span class="identifier">read_rows</span><span class="special">))</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Company: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">c</span><span class="special">.</span><span class="identifier">name</span> <span class="special">&lt;&lt;</span> <span class="string">"\n"</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+
+<span class="comment">// Move on to the 2nd one, containing the employees for these companies</span>
+<span class="identifier">conn</span><span class="special">.</span><span class="identifier">read_resultset_head</span><span class="special">(</span><span class="identifier">st</span><span class="special">);</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">,</span> <span class="number">20</span><span class="special">&gt;</span> <span class="identifier">employees</span><span class="special">;</span>
+<span class="keyword">while</span> <span class="special">(</span><span class="identifier">st</span><span class="special">.</span><span class="identifier">should_read_rows</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">read_rows</span> <span class="special">=</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">read_some_rows</span><span class="special">(</span><span class="identifier">st</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">span</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;(</span><span class="identifier">employees</span><span class="special">));</span>
+
+    <span class="comment">// Use the retrieved companies as required</span>
+    <span class="keyword">for</span> <span class="special">(</span><span class="keyword">const</span> <span class="identifier">employee</span><span class="special">&amp;</span> <span class="identifier">emp</span> <span class="special">:</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">span</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;(</span><span class="identifier">employees</span><span class="special">.</span><span class="identifier">data</span><span class="special">(),</span> <span class="identifier">read_rows</span><span class="special">))</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Employee "</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">first_name</span> <span class="special">&lt;&lt;</span> <span class="string">" "</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">last_name</span> <span class="special">&lt;&lt;</span> <span class="string">"\n"</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+
+<span class="comment">// The last one is an empty resultset containing information about the</span>
+<span class="comment">// CALL statement itself. We're not interested in this</span>
+<span class="identifier">conn</span><span class="special">.</span><span class="identifier">read_resultset_head</span><span class="special">(</span><span class="identifier">st</span><span class="special">);</span>
+<span class="identifier">assert</span><span class="special">(</span><span class="identifier">st</span><span class="special">.</span><span class="identifier">complete</span><span class="special">());</span>
+</pre>
+            </td>
+</tr></tbody>
+</table></div>
+<p>注意, 我们使用 <a class="link" href="ref/boost__mysql__execution_state/should_read_rows.html" title="execution_state::should_read_rows"><code class="literal">should_read_rows</code></a> 而不是 <a class="link" href="ref/boost__mysql__execution_state/complete.html" title="execution_state::complete"><code class="literal">complete</code></a> 作为循环终止条件. <code class="computeroutput"><span class="identifier">complete</span><span class="special">()</span></code> 在所有结果集都被读取后返回 true, 而 <code class="computeroutput"><span class="identifier">should_read_rows</span><span class="special">()</span></code> 在单个结果被完整读取后即返回 false.</p>
+<p>将静态接口用于多函数操作时, 并非所有模式不匹配都能被 <code class="computeroutput"><span class="identifier">start_execution</span></code> 函数发现, 因为此时并非所有信息都可用. 错误也可能由 <code class="computeroutput"><span class="identifier">read_some_rows</span></code> 和 <code class="computeroutput"><span class="identifier">read_resultset_head</span></code> 报告. 总体上, 执行的检查与使用 <a class="link" href="ref/boost__mysql__connection/execute.html" title="connection::execute"><code class="literal">connection::execute</code></a> 时相同, 只是发生在不同的时间点.</p>
+<h4>
+<a name="mysql.multi_function.h5"></a>
+      <span class="phrase"><a name="mysql.multi_function.multi_resultset_in_the_general_c"></a></span><a class="link" href="multi_function.html#mysql.multi_function.multi_resultset_in_the_general_c">一般情况下的多结果集</a>
+    </h4>
+<p>
+      <code class="computeroutput"><span class="identifier">execution_state</span></code> 和 <code class="computeroutput"><span class="identifier">static_execution_state</span></code> 可以看作具有四个状态的状态机. 每个状态描述下一步应调用哪个读取函数:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+          <a class="link" href="ref/boost__mysql__execution_state/should_start_op.html" title="execution_state::should_start_op"><code class="literal">should_start_op</code></a>: 初始状态, 即默认构造 <code class="computeroutput"><span class="identifier">execution_state</span></code> 之后. 此时应调用 <a class="link" href="ref/boost__mysql__connection/start_execution.html" title="connection::start_execution"><code class="literal">connection::start_execution</code></a> 或 <a class="link" href="ref/boost__mysql__connection/async_start_execution.html" title="connection::async_start_execution"><code class="literal">connection::async_start_execution</code></a> 来启动操作.</li>
+<li class="listitem">
+          <a class="link" href="ref/boost__mysql__execution_state/should_read_rows.html" title="execution_state::should_read_rows"><code class="literal">should_read_rows</code></a>: 下一个操作应为 <a class="link" href="ref/boost__mysql__connection/read_some_rows.html" title="connection::read_some_rows"><code class="literal">connection::read_some_rows</code></a>, 以读取生成的行.</li>
+<li class="listitem">
+          <a class="link" href="ref/boost__mysql__execution_state/should_read_head.html" title="execution_state::should_read_head"><code class="literal">should_read_head</code></a>: 下一个操作应为 <a class="link" href="ref/boost__mysql__connection/read_resultset_head.html" title="connection::read_resultset_head"><code class="literal">connection::read_resultset_head</code></a>, 以读取下一个结果集的元数据. 只有生成多个结果集的操作才会进入此状态.</li>
+<li class="listitem">
+          <a class="link" href="ref/boost__mysql__execution_state/complete.html" title="execution_state::complete"><code class="literal">complete</code></a>: 无需更多操作.</li>
+</ul></div>
+<p>对于多函数操作, 每当一个结果集被完整读取时 (即 <a class="link" href="ref/boost__mysql__execution_state/should_read_head.html" title="execution_state::should_read_head"><code class="literal">should_read_head</code></a> 返回 <code class="computeroutput"><span class="keyword">true</span></code> 时), 你也可以访问 OK 包数据.</p>
+<p>
+      <a class="link" href="examples/source_script.html" title="使用多查询执行 .sql 文件">该示例</a>展示了这种一般情况. 它使用多查询来运行任意 SQL 脚本文件.</p>
+<h4>
+<a name="mysql.multi_function.h6"></a>
+      <span class="phrase"><a name="mysql.multi_function.read_some_rows"></a></span><a class="link" href="multi_function.html#mysql.multi_function.read_some_rows">关于 read_some_rows 的更多内容</a>
+    </h4>
+<p>要正确理解 <code class="computeroutput"><span class="identifier">read_some_rows</span></code>, 我们需要知道每个 <a class="link" href="ref/boost__mysql__connection.html" title="connection"><code class="literal">connection</code></a> 拥有一个 <span class="bold"><strong>内部缓冲区</strong></span>, 服务器发送的数据包存储在其中. 它是一个单一的平坦缓冲区, 你可以在创建 <code class="computeroutput"><span class="identifier">connection</span></code> 时配置其初始大小, 方法是将一个 <a class="link" href="ref/boost__mysql__buffer_params.html" title="buffer_params"><code class="literal">buffer_params</code></a> 对象作为第一个参数传给 <code class="computeroutput"><span class="identifier">connection</span></code> 的构造函数. 在某些情况下, 读缓冲区可能会增长以容纳大消息.</p>
+<p>
+      <code class="computeroutput"><span class="identifier">read_some_rows</span></code> 会通过对流执行单次 <code class="computeroutput"><span class="identifier">read_some</span></code> 操作 (或使用缓存数据), 获取内部缓冲区 (在不增长的前提下) 能容纳的最大行数. 如果有行待读取, <code class="computeroutput"><span class="identifier">read_some_rows</span></code> 保证至少读取一行. 这意味着, 如果按上述方式执行后没有得到任何行 (例如由于某行过大而无法放入缓冲区), <code class="computeroutput"><span class="identifier">read_some_rows</span></code> 将增长缓冲区或执行更多读取, 直到至少读取到一行. 如果使用静态接口, 读取的行数还受传入的 span 大小限制.</p>
+<p>如果想充分发挥 <code class="computeroutput"><span class="identifier">read_some_rows</span></code> 的性能, 可以自定义初始缓冲区大小, 以最大化每批读取的行数.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2019-2024 Ruben Perez<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="multi_resultset.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="connection_pool.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

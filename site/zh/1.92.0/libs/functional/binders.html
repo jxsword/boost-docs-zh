@@ -1,0 +1,140 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html>
+<head>
+  <meta http-equiv="Content-Language" content="en-us">
+  <meta http-equiv="Content-Type" content="text/html; charset=us-ascii">
+
+  <title>Boost 函数对象适配器库</title>
+</head>
+
+<body bgcolor="#FFFFFF" text="#000000">
+  <table border="1" bgcolor="#007F7F" cellpadding="2" summary="">
+    <tr>
+      <td bgcolor="#FFFFFF"><img src="../../boost.png" alt=
+      "boost.png (6897 字节)" width="277" height="86"></td>
+
+      <td><a href="../../index.htm"><font face="Arial" color=
+      "#FFFFFF"><big>首页</big></font></a></td>
+
+      <td><a href="../libraries.htm"><font face="Arial" color=
+      "#FFFFFF"><big>库</big></font></a></td>
+
+      <td><a href="http://www.boost.org/people/people.htm"><font face="Arial" color=
+      "#FFFFFF"><big>人员</big></font></a></td>
+
+      <td><a href="http://www.boost.org/more/faq.htm"><font face="Arial" color=
+      "#FFFFFF"><big>常见问题 (FAQ) </big></font></a></td>
+
+      <td><a href="../../more/index.htm"><font face="Arial" color=
+      "#FFFFFF"><big>更多</big></font></a></td>
+    </tr>
+  </table>
+
+  <h1>绑定器</h1>
+
+  <p>头文件 <a href="../../boost/functional.hpp">functional.hpp</a> 提供 C++ 标准库 (§20.3.6) 中两个绑定器函数对象适配器的增强版本:</p>
+
+  <ul>
+    <li><tt>binder1st</tt></li>
+
+    <li><tt>binder2nd</tt></li>
+  </ul>
+
+  <p>以及对应的辅助函数</p>
+
+  <ul>
+    <li><tt>bind1st</tt></li>
+
+    <li><tt>bind2nd</tt></li>
+  </ul>
+
+  <p>这些适配器相对标准库中对应组件的关键优势在于: 它们避免了 <a href="#refref">引用的引用问题.</a></p>
+
+  <h3>用法</h3>
+
+  <p>用法与标准绑定器完全相同. 例如,</p>
+
+  <blockquote>
+    <pre>
+class Foo {
+public:
+  void bar(std::ostream &amp;);
+  // ...
+};
+// ...
+std::vector&lt;Foo&gt; c;
+// ...
+std::for_each(c.begin(), c.end(), 
+              boost::bind2nd(boost::mem_fun_ref(&amp;Foo::bar), std::cout));
+</pre>
+  </blockquote>
+
+  <h3 id="refref">引用的引用</h3>
+
+  <p>考虑上面的用法示例</p>
+
+  <blockquote>
+    <pre>
+class Foo {
+public:
+  void bar(<strong>std::ostream &amp;</strong>);
+  // ...
+};
+// ...
+std::for_each(c.begin(), c.end(), 
+              boost::bind2nd(boost::mem_fun_ref(&amp;Foo::bar), std::cout));
+</pre>
+  </blockquote>
+
+  <p>如果这段代码改用 <tt>std::bind2nd</tt> 与 <tt>std::mem_fun_ref</tt> 编写, 那么它多半无法编译.</p>
+
+  <p>问题出在 <tt>bar</tt> 接受一个引用实参. 标准对 <tt>std::mem_fun_ref</tt> 的定义使得它创建的函数对象, 其 <tt>second_argument_type</tt> 将是 <tt>std::ostream&amp;</tt>.</p>
+
+  <p>对 <tt>bind2nd</tt> 的调用会创建一个 <tt>binder2nd</tt>, 标准将其定义如下:</p>
+
+  <blockquote>
+    <pre>
+template &lt;class Operation&gt;
+class binder2nd
+    : public unary_function&lt;typename Operation::first_argument_type,
+                            typename Operation::result_type&gt; {
+...
+public:
+  binder2nd(const Operation&amp; x,
+            <strong>const typename Operation::second_argument_type&amp; y</strong>);
+  ...
+</pre>
+  </blockquote>
+
+  <p>由于我们的操作的 <tt>second_argument_type</tt> 是 <tt>std::ostream&amp;</tt>, 构造函数中 <tt>y</tt> 的类型将是 <tt>std::ostream&amp;&amp;</tt>. 由于不能存在引用的引用, 此时应得到一个编译错误, 因为引用的引用在 C++ 中是非法的 (但参见 <a href=
+  "http://www.open-std.org/jtc1/sc22/wg21/docs/cwg_active.html#106">C++ 标准核心语言活跃问题列表</a>).</p>
+
+  <p>本库中的绑定器通过使用 Boost <tt><a href="../utility/call_traits.htm">call_traits</a></tt> 模板避免了这一问题.</p>
+
+  <p>我们的构造函数声明为</p>
+
+  <blockquote>
+    <pre>
+binder2nd(const Operation&amp; x,
+          <strong>typename call_traits&lt;
+             typename binary_traits&lt;Operation&gt;::second_argument_type
+          &gt;::param_type y</strong>)
+</pre>
+  </blockquote>
+
+  <p>于是, <tt>y</tt> 的类型为 <tt>std::ostream&amp;</tt>, 我们的示例得以编译.</p>
+  <hr>
+
+  <p><a href="http://validator.w3.org/check?uri=referer"><img border="0" src=
+  "../../doc/images/valid-html401.png" alt="Valid HTML 4.01 Transitional"
+  height="31" width="88"></a></p>
+
+  <p>修订 <!--webbot bot="Timestamp" s-type="EDITED" s-format="%d %B, %Y" startspan -->02 December, 2006<!--webbot bot="Timestamp" endspan i-checksum="38510" --></p>
+
+  <p><i>版权所有 © 2000 Cadenza New Zealand Ltd.</i></p>
+
+  <p><i>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <a href="../../LICENSE_1_0.txt">LICENSE_1_0.txt</a> 或复制于 <a href=
+  "http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</a>)</i></p>
+</body>
+</html>

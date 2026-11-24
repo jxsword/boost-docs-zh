@@ -1,0 +1,428 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>常见问题 (FAQ) - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="./css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="./images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="./reference/functions/try_throw_std_exception_from_error.html"><img src="./images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="./index.html"><img src="./images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="./index.html"><img src="./images/home.png" alt="首页"></a><a accesskey="n" href="./videos.html"><img src="./images/next.png" alt="下一页"></a></div><div id="content">
+
+  <div class="titlepage"><div><div><h1 style="clear: both">常见问题 (FAQ)</h1></div></div></div>
+  <div class="toc"><dl class="toc">
+<dt>
+<dd><dl>
+<dt><a href="#is-outcome-safe-to-use-in-extern-apis">Outcome 在 extern API 中使用安全吗?</a></dt>
+<dt><a href="#does-outcome-implement-over-alignment">Outcome 实现超对齐 (over-alignment) 吗?</a></dt>
+<dt><a href="#does-outcome-implement-the-no-fail-strong-or-basic-exception-guarantee">Outcome 实现无失败、强或基本异常保证吗?</a></dt>
+<dt><a href="#does-outcome-have-a-stable-abi-and-api">Outcome 有稳定的 ABI 与 API 吗?</a></dt>
+<dt><a href="#can-i-use-result-t-ec-across-dll-shared-object-boundaries">我能跨 DLL/共享对象边界使用 <code>result&lt;T, EC&gt;</code> 吗?</a></dt>
+<dt><a href="#why-two-types-result-and-outcome-rather-than-just-one">为什么要有 <code>result&lt;&gt;</code> 与 <code>outcome&lt;&gt;</code> 两个类型, 而不只是一个?</a></dt>
+<dt><a href="#how-badly-will-including-outcome-in-my-public-interface-affect-compile-times">在公共接口中包含 Outcome 会多严重地影响编译时间?</a></dt>
+<dt><a href="#is-outcome-suitable-for-fixed-latency-predictable-execution-coding-such-as-for-high-frequency-trading-or-audio">Outcome 适合固定延迟/可预测执行编码吗, 例如高频交易或音频?</a></dt>
+<dt><a href="#what-kind-of-runtime-performance-impact-will-using-outcome-in-my-code-introduce">在我的代码中使用 Outcome 会引入何种运行期性能影响?</a>
+<dd><dl>
+<dt><a href="#high-end-cpu-intel-skylake-x64">高端 CPU: Intel Skylake x64</a></dt>
+<dt><a href="#mid-tier-cpu-arm-cortex-a72">中端 CPU: ARM Cortex A72</a></dt>
+<dt><a href="#low-end-cpus-intel-silvermont-x64-and-arm-cortex-a53">低端 CPU: Intel Silvermont x64 与 ARM Cortex A53</a></dt>
+</dl></dd></dt>
+<dt><a href="#why-is-implicit-default-construction-disabled">为什么禁用隐式默认构造?</a></dt>
+<dt><a href="#how-far-away-from-the-proposed-std-expected-t-e-is-outcome-s-checked-t-e">距离提案中的 <code>std::expected&lt;T, E&gt;</code>, Outcome 的 <code>checked&lt;T, E&gt;</code> 有多远?</a></dt>
+<dt><a href="#why-doesn-t-outcome-duplicate-std-expected-t-e-s-design">Outcome 为什么不复制 <code>std::expected&lt;T, E&gt;</code> 的设计?</a></dt>
+<dt><a href="#is-outcome-riddled-with-undefined-behaviour-for-const-const-containing-and-reference-containing-types">对于 const、含 const 与含引用的类型, Outcome 是否处处充满未定义行为?</a>
+<dd><dl>
+<dt><a href="#more-detail">更多细节</a></dt>
+</dl></dd></dt>
+</dl></dd></dt>
+</dl>
+  </div>
+
+
+
+
+<h2 id="is-outcome-safe-to-use-in-extern-apis">Outcome 在 extern API 中使用安全吗?</h2>
+
+<p>Outcome 专为在数百万行代码库的公共接口中使用而设计. <code>result</code> 的布局被硬编码为:</p>
+<div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="k">struct</span> <span class="n">trivially_copyable_result_layout</span> <span class="p">{</span>
+  <span class="k">union</span> <span class="p">{</span>
+    <span class="n">value_type</span> <span class="n">value</span><span class="p">;</span>
+    <span class="n">error_type</span> <span class="n">error</span><span class="p">;</span>
+  <span class="p">};</span>
+  <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">flags</span><span class="p">;</span>
+<span class="p">};</span>
+</code></pre></div>
+<p>……如果 <code>value_type</code> 与 <code>error_type</code> 都是 <code>TriviallyCopyable</code>; 否则:</p>
+<div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="k">struct</span> <span class="n">non_trivially_copyable_result_layout</span> <span class="p">{</span>
+  <span class="n">value_type</span> <span class="n">value</span><span class="p">;</span>
+  <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">flags</span><span class="p">;</span>
+  <span class="n">error_type</span> <span class="n">error</span><span class="p">;</span>
+<span class="p">};</span>
+</code></pre></div>
+<p>如果 <code>value_type</code> 与 <code>error_type</code> 是 C 兼容的, 这就是 C 兼容的. <a href="https://en.cppreference.com/w/cpp/error/error_code" class="api-reference" target="_blank"><i class="fa fa-book" aria-hidden="true"></i> <code>std::error_code</code></a> <em>大概</em>是 C 兼容的, 但其布局未被标准化 (不过标准中有一条关于其布局的规范注记). 因此 Outcome 无法为标准 Outcome 提供 C 宏 API, 但可以为 <a href="./experimental/c-api.html">Experimental Outcome</a> 提供.</p>
+
+<h2 id="does-outcome-implement-over-alignment">Outcome 实现超对齐 (over-alignment) 吗?</h2>
+
+<p>Outcome 会按照上文所述布局, 传播你提供给它的类型的任何超对齐. 因此, 将使用你的编译器的普通对齐与填充规则.</p>
+
+<h2 id="does-outcome-implement-the-no-fail-strong-or-basic-exception-guarantee">Outcome 实现无失败、强或基本异常保证吗?</h2>
+
+<p>(<a href="https://en.cppreference.com/w/cpp/language/exceptions#Exception_safety">你可以在 cppreference.com 阅读这些保证的含义</a>)</p>
+
+<p>如果对以下操作:</p>
+
+<ul>
+<li>构造</li>
+<li>赋值</li>
+<li>交换</li>
+</ul>
+
+<p>……如果 <strong>全部</strong> <code>value_type</code>、<code>error_type</code> (以及 <code>exception_type</code> 对 <code>outcome</code> 而言) 的对应操作都是 <code>noexcept(true)</code>, 那么 <code>result</code> 与 <code>outcome</code> 的操作就是 <code>noexcept(true)</code>. 这会传播底层类型的无失败异常保证. 否则, 除 Swap 之外都适用基本保证, 适用规则与上文给出的 <code>struct</code> 布局类型相同, 例如: 先构造 value, 然后是标志位, 然后是错误. 如果错误抛出, value 与状态位将如同失败未曾发生过一样, 与中止任何 <code>struct</code> 类型的构造相同.</p>
+
+<p>我们认识到这些弱保证可能不适合某些人, 因此 Outcome 实现了保证强得多的 <code>swap()</code>: 人们可以从 <code>result</code> 与 <code>outcome</code> 局部派生自己的自定义类, 不太费力地为构造与赋值实现更强的保证, 并以 <code>swap()</code> 作为基础构件.</p>
+
+<p>强保证 swap 的核心 ADL 发现实现是 <a href="./reference/functions/strong_swap.html" class="api-reference"><code>strong_swap(bool &amp;all_good, T &amp;a, T &amp;b)</code></a>. 第三方代码可以用自定义的强保证 swap 实现重载它, 与 <code>std::swap()</code> 一样. 由于强保证 swap 在处理 swap 失败时尝试恢复输入状态可能失败, 一旦恢复失败, <code>all_good</code> 布尔值会变为 false, 此时两个 result/outcome 都会经由 <a href="./reference/types/basic_result/has_lost_consistency.html" class="api-reference"><code>has_lost_consistency()</code></a> 被标记为已污染 (tainted).</p>
+
+<p>检查该标志以确认已知良好状态是否丢失是<strong>你自己的责任</strong>, Outcome 绝不会替你代劳. 避免处理这种情形的简单方案, 是始终选择具有不抛异常移动构造函数与移动赋值的值、错误与异常类型. 这会使强保证 swap 实现不再被使用 (因为不再需要), 并改用标准 swap.</p>
+
+<h2 id="does-outcome-have-a-stable-abi-and-api">Outcome 有稳定的 ABI 与 API 吗?</h2>
+
+<p>由于引入了基于 union 的存储, 所有可平凡复制类型的布局在 Outcome v2.1 与 v2.2 之间发生了变化. 从 v2.2 起, 预期布局不会再改变.</p>
+
+<p>如果 v2.2 被证明在 24 个月内保持不变, Outcome 的 ABI 与 API 将被正式固定为<strong>唯一</strong>的 v2 接口, 永久写死. 此后将每次提交运行 <a href="https://lvc.github.io/abi-compliance-checker/">ABI compliance checker</a>, 以确保 Outcome 的 ABI 与 API 保持稳定. 目前预期这将在 2022 年发生.</p>
+
+<p>注意, 稳定的 ABI 与 API 保证只适用于独立版 Outcome, 不适用于 Boost.Outcome. Boost.Outcome 依赖 Boost 的其他部分, 而这些依赖跨发布版并不稳定.</p>
+
+<p>另请注意, 你配置 <code>result</code> 或 <code>outcome</code> 所用的类型, 若要 <code>result</code> 或 <code>outcome</code> 是 ABI 稳定的, 也需要是 ABI 稳定的.</p>
+
+<h2 id="can-i-use-result-t-ec-across-dll-shared-object-boundaries">我能跨 DLL/共享对象边界使用 <code>result&lt;T, EC&gt;</code> 吗?</h2>
+
+<p>使用 Windows DLL (较小程度上也包括 POSIX 共享库) 的一个已知问题是: 全局对象可能被复制——可执行文件中一份, DLL 中一份. 按 C++ 标准, 这种行为并不算不正确, 因为标准不承认 DLL 或共享库的存在. 因此, 依赖全局对象具有唯一地址的程序设计, 在使用 DLL 的程序中可能受到损害.</p>
+
+<p>Outcome 中没有任何内容依赖全局对象的地址, 加上有保证的固定数据布局 (见上文答案), 意味着不同版本的 Outcome 可以用于不同的 DLL, 并且大概率能正常工作 (仍不建议你这样做, 因为这是 ODR 违规). 然而, <code>EC</code> 最可能的候选者之一——<code>std::error_code</code>——其正确运作<strong>确实</strong>依赖全局对象的地址.</p>
+
+<p>标准库被要求为标准库提供的 <a href="https://en.cppreference.com/w/cpp/error/error_category" class="api-reference" target="_blank"><i class="fa fa-book" aria-hidden="true"></i> <code>std::error_category</code></a> 实现提供全局唯一地址, 例如 <code>std::system_category()</code>. 用户定义的错误码类别可能<strong>没有</strong>唯一的全局地址, 从而引入误操作.</p>
+
+<p><code>boost::system::error_code</code> 自 1.69 版起确实提供了一个<em>可选择加入</em>的保证: <strong>如果</strong>用户定义的错误码类别<em>选择加入</em> 64 位比较机制, 它就不依赖全局对象的地址. 这可见于 <code>error_category::operator==</code> 在 <a href="https://www.boost.org/doc/libs/1_69_0/libs/system/doc/html/system.html#ref_synopsis">Boost.System synopsis</a> 中的规范.</p>
+
+<p>或者, <code>status_code</code>——<a href="(/experimental/differences.html)">Experimental Outcome</a> 中的那个——由于其更现代的设计, 在任何配置下都不会有在共享库中使用带来的问题.</p>
+
+<h2 id="why-two-types-result-and-outcome-rather-than-just-one">为什么要有 <code>result&lt;&gt;</code> 与 <code>outcome&lt;&gt;</code> 两个类型, 而不只是一个?</h2>
+
+<p><code>result</code> 是简单的 “成功或失败” 类型.</p>
+
+<p><code>outcome</code> 在 <code>result</code> 的基础上扩展了第三个可传递的状态, 惯常 (但不必然) 是某种 “中止” 或 “异常” 状态, 函数可返回它以表明操作不仅失败了, 而且是<em>灾难性</em>地失败, 即请放弃任何重试该操作的尝试.</p>
+
+<p>对中止代码路径抛出一个 C++ 异常, 是使用 <code>outcome</code> 的完美替代, 而且大多数程序确实应当那样做, 而不是使用 <code>outcome</code>. 然而, 有许多使用场景中选择 <code>outcome</code> 会大放异彩:</p>
+
+<ol>
+<li>适用于 C++ 异常或 RTTI 不可用, 但重要的是拥有不终止程序的灾难性失败能力的场合.</li>
+<li>适用于即使在灾难性失败情形下也要求确定性行为的场合.</li>
+<li>在使用 Outcome 的代码的单元测试套件中, 把测试失败积累进一个 <code>outcome</code> 以便日后报告极其方便. 类似便利也适用于 RPC 场景: 需要把 C++ 异常抛出积累起来, 以便回报给发起端点.</li>
+<li>适用于函数为 “双重用途确定性” 的场合: 它既可以确定性地使用——此时基于 <code>.error()</code> 切换控制流; 也可以非确定性地使用——通过抛出一个可能携带自定义负载的异常.</li>
+</ol>
+
+<h2 id="how-badly-will-including-outcome-in-my-public-interface-affect-compile-times">在公共接口中包含 Outcome 会多严重地影响编译时间?</h2>
+
+<p>简要回答是: 这取决于你想要多少便利.</p>
+
+<p>便利头文件 <code>&lt;result.hpp&gt;</code> 依赖 <code>&lt;system_error&gt;</code> 或 Boost.System, 而后者不幸包含 <code>&lt;string&gt;</code>, 从而拖入不少其他解析缓慢的内容. 如果你的公共接口已经包含 <code>&lt;string&gt;</code>, 那么额外包含 Outcome 的影响会很小. 如果你不包含 <code>&lt;string&gt;</code>, 遗憾的是影响可能相对较高, 取决于你公共接口文件的总影响.</p>
+
+<p>如果你一直非常小心地避免把大多数 STL 头文件包含进接口, 以最大化构建性能, 那么 <code>&lt;basic_result.hpp&gt;</code> 的依赖可以少到:</p>
+
+<ol>
+<li><code>&lt;cstdint&gt;</code></li>
+<li><code>&lt;initializer_list&gt;</code></li>
+<li><code>&lt;iosfwd&gt;</code></li>
+<li><code>&lt;new&gt;</code></li>
+<li><code>&lt;type_traits&gt;</code></li>
+<li><code>&lt;cstdio&gt;</code></li>
+<li><code>&lt;cstdlib&gt;</code></li>
+<li><code>&lt;cassert&gt;</code></li>
+</ol>
+
+<p>除了 <code>&lt;iosfwd&gt;</code> 之外, 这些在大多数标准库实现中往往对构建时间影响极低. 如果你只包含 <code>&lt;basic_result.hpp&gt;</code>, 并手动配置 <code>basic_result&lt;&gt;</code>, 编译时间影响将被降到最低.</p>
+
+<p>(更多细节参见 <a href="./reference/types/basic_result.html" class="api-reference"><code>basic_result&lt;T, E, NoValuePolicy&gt;</code></a> 的参考文档.</p>
+
+<h2 id="is-outcome-suitable-for-fixed-latency-predictable-execution-coding-such-as-for-high-frequency-trading-or-audio">Outcome 适合固定延迟/可预测执行编码吗, 例如高频交易或音频?</h2>
+
+<p>我们极其注意确保 Outcome 永远不会意外执行任何执行时间无界的东西, 例如 <code>malloc()</code>、<code>dynamic_cast&lt;&gt;()</code> 或 <code>throw</code>. Outcome 在全局禁用 C++ 异常与 RTTI 时完美工作.</p>
+
+<p>Outcome 的全部设计前提是: 其用户乐于在成功代码路径中接受一个小而可预测的常量开销, 以换取可预测的失败代码路径.</p>
+
+<p>与之相反, 基于表的异常处理在成功代码路径上零运行时开销, 而失败代码路径上的开销则完全不可预测 (且非常昂贵).</p>
+
+<p>对无论哪条代码路径都要求执行可预测性的代码而言, 把所有代码都写成使用 Outcome 是一个不错的起点. 显然, 配置 <code>outcome</code> 或 <code>result</code> 时务必选择不抛异常的策略, 例如 <a href="./reference/policies/all_narrow.html" class="api-reference"><code>all_narrow</code></a>, 以保证 Outcome 永远不会抛出异常 (或使用 <code>result</code> 的便利 typedef <a href="./reference/aliases/unchecked.html" class="api-reference"><code>unchecked&lt;T, E = varies&gt;</code></a>, 它使用 <code>policy::all_narrow</code>).</p>
+
+<h2 id="what-kind-of-runtime-performance-impact-will-using-outcome-in-my-code-introduce">在我的代码中使用 Outcome 会引入何种运行期性能影响?</h2>
+
+<p>对从未见过的代码库, 很难就性能影响给出任何定论. 每个代码库都是独特的. 不过为了得出某种度量, 我们对经由每种主要机制遍历十个栈帧进行了计时, 包括 “什么都不做” (空) 的情形.</p>
+
+<p>栈帧定义为: 在最内层被调者的返回点与最初调用者之间回退栈时被编译器调用之物, 例如十个栈上分配的对象可能被析构, 或十层栈深可能被回退. 这不是一个特别现实的测试, 但它至少能让人对以下性能影响有个概念: 返回 Outcome 的 <code>result</code> 或 <code>outcome</code>, 相比返回一个普通整数或抛出一个异常.</p>
+
+<p>以下数字针对配合 GCC 7.4、clang 8.0 与 Visual Studio 2017.9 的 Outcome v2.1.0. 更新的 Outcome 配合更新的编译器的数字可在 <a href="https://github.com/ned14/outcome/tree/develop/benchmark">https://github.com/ned14/outcome/tree/develop/benchmark</a> 找到.</p>
+
+<h3 id="high-end-cpu-intel-skylake-x64">高端 CPU: Intel Skylake x64</h3>
+
+<p>这是一款高端 CPU, 具有非常强的缓存、预测、并行化与乱序执行能力, 使紧凑的重复循环表现极佳. 它有一个能把测试循环完整容纳的巨大 μop 缓存, 这意味着这些结果是<strong>最佳情形</strong>性能.</p>
+
+<figure>
+    <img src="./faq/results_skylake_log.png"/> <figcaption>
+            <h4>对数坐标图, 比较 x64 上 GCC 7.4、clang 8.0 与 Visual Studio 2017.9 在全局禁用异常、普通与链接时优化构建配置下的表现.</h4>
+        </figcaption>
+</figure>
+
+<p>如你所见, 在这类基于表的异常处理实现上, 抛出并捕获异常非常昂贵, 在 26,000 到 43,000 个 CPU 周期之间. 而且这是<em>热路径</em>情形——该基准测试是围绕热缓存代码的循环. 如果表被换页到存储器上, 那将是<strong>数百万</strong>个 CPU 周期.</p>
+
+<p>简单整数返回 (即什么都不做的空情形) 总是最快的, 因为它们做的工作最少, 在这款 Intel Skylake CPU 上耗 80 到 90 个 CPU 周期.</p>
+
+<p>注意, 在 GCC 与 clang 上, 返回一个带 “成功 (错误码)” 的 <code>result&lt;int, std::error_code&gt;</code>, 相比返回裸 int 的额外运行时开销不超过 5%. 在 MSVC 上则要付出约 20% 的额外代价, 主要归咎于 VS2017.9 编译器较差的代码优化. 注意 “成功 (experimental 状态码)” 优化得好得多, 相对裸 int 几乎没有开销.</p>
+
+<p>在 GCC、clang 与 MSVC 上, 返回一个带 “失败 (错误码)” 的 <code>result&lt;int, std::error_code&gt;</code>, 相比返回成功的运行时开销不足 5%.</p>
+
+<p>你可能想知道, 如果类型 <code>E</code> 具有非平凡析构函数, 从而使 <code>result&lt;T, E&gt;</code> 也具有非平凡析构函数, 会发生什么? 我们测试了 <code>E = std::exception_ptr</code>, 发现返回成功时对 <code>E = std::error_code</code> 的开销不足 5%. 返回失败显然慢得多, 在 300 到 1,100 个 CPU 周期之间, 原因是 exception ptr 的动态内存分配与释放, 加上每个栈帧至少两次原子操作, 但这仍比抛出并捕获异常好两个数量级.</p>
+
+<p>我们的结论是: 如果在你的 C++ 代码库中失败并非极其罕见, 使用 Outcome 而非抛出并捕获异常总体上应当更快:</p>
+
+<ul>
+<li>在这款高端 CPU 上, 无论返回成功还是失败, Experimental Outcome 在所有编译器上与空情形在统计上无法区分.</li>
+<li>在 GCC 与 clang 上, 返回成功时 Standard Outcome 比空情形差不足 5%, 返回失败时比空情形差不足 10%.</li>
+<li>Standard Outcome 在 VS2017.9 上优化得很差, 确实明显差于之前的点版本, 希望微软能尽快修复. 它目前相对空情形的开销不足 20%.</li>
+</ul>
+
+<h3 id="mid-tier-cpu-arm-cortex-a72">中端 CPU: ARM Cortex A72</h3>
+
+<p>这是一款四年前的中端 CPU, 曾用于当时许多高端手机与平板, 具有良好的缓存、预测、并行化与乱序执行能力, 使紧凑的重复循环表现极佳. 它有一个能把测试循环完整容纳的 μop 缓存, 这意味着这些结果是<strong>最佳情形</strong>性能.</p>
+
+<figure>
+    <img src="./faq/results_arm_a72_log.png"/> <figcaption>
+            <h4>对数坐标图, 比较 ARM64 上 GCC 7.3 与 clang 7.3 在全局禁用异常、普通与链接时优化构建配置下的表现.</h4>
+        </figcaption>
+</figure>
+
+<p>这款 ARM 芯片表现非常一致——空情形、成功或失败, 都消耗几乎完全相同的 CPU 周期. 无论何种配置, 选择 Outcome 与完全不使用 Outcome 没有区别. 抛出并捕获一个 C++ 异常约耗 90,000 个 CPU 周期, 而空情形/Outcome 约耗 130 - 140 个 CPU 周期.</p>
+
+<p>关于这款 CPU 几乎没有什么可说的, 除了 Outcome 在其上零开销. 顺便一提, ARM Cortex A15 也是如此——在第一次同行评审之后决定 Outcome v2 设计时, 我对它做过大量测试. v2 设计被选中, 部分正是因为 ARM 上如此一致的性能.</p>
+
+<h3 id="low-end-cpus-intel-silvermont-x64-and-arm-cortex-a53">低端 CPU: Intel Silvermont x64 与 ARM Cortex A53</h3>
+
+<p>这些是低端 CPU, 执行核心大体或完全按序执行. 它们的 μop 缓存很小或没有, 意味着 CPU 必须始终解码指令流. 这些结果代表了一个更接近二十年前 CPU 的执行环境——那时如果你从不抛异常, 基于表的 EH 会带来巨大的性能收益.</p>
+
+<p><figure>
+    <img src="./faq/results_silvermont_log.png"/> <figcaption>
+            <h4>对数坐标图, 比较 x64 上 GCC 7.3 与 clang 7.3 在全局禁用异常、普通与链接时优化构建配置下的表现.</h4>
+        </figcaption>
+</figure>
+<figure>
+    <img src="./faq/results_arm_a53_log.png"/> <figcaption>
+            <h4>对数坐标图, 比较 ARM64 上 GCC 7.3 与 clang 7.3 在全局禁用异常、普通与链接时优化构建配置下的表现.</h4>
+        </figcaption>
+</figure></p>
+
+<p>首先要提的是, clang 为按序核心生成的代码性能非常高, 远好于 GCC. 据说这源于 Apple 多年来为其设备在 clang/LLVM 上的巨额投入. 无论如何, 如果你的目标按序 CPU 可以用 clang, 就别用 GCC!</p>
+
+<p>就空情形而言, Silvermont 与 Cortex A53 在 CPU 时钟周期上相当接近. 抛出并捕获 C++ 异常亦然 (约 150,000 个 CPU 周期). 然而 Cortex A53 使用 Outcome 的表现远好于 Silvermont: Standard Outcome 的开销为 15% 对 100%, Experimental Outcome 的开销为 4% 对 20%.</p>
+
+<p>这一巨大差异很大程度上其实源于调用约定的差异. x64 允许函数经由 CPU 寄存器返回最多 8 字节. <code>result&lt;int&gt;</code> 占 24 字节, 因此在 x64 上编译器把返回值写入栈. 然而 ARM64 允许在寄存器中返回最多 64 字节, 因此在 ARM64 上 <code>result&lt;int&gt;</code> 经由 CPU 寄存器返回.</p>
+
+<p>在较高端 CPU 上, 内存按缓存行 (32 或 64 字节) 读写, 读写会被乱序执行核心合并与批量处理. 在这些低端 CPU 上, 内存按每条汇编指令顺序读写, 因此一次只能有一个加载或一个存储到达 L1 缓存. 这使得在按序 CPU 上写栈特别慢. 在较高端 CPU 上 “消失” 的内存操作, 在低端 CPU 上会耗费相当长时间. 这格外惩罚了 Silvermont 而没有同样惩罚 Cortex A53, 因为必须向栈写入多个值才能创建要返回的 24 字节对象.</p>
+
+<p>由此应得出的结论是: 如果你的目标是低端 CPU, 基于表的 EH 仍能为成功代码路径带来显著的性能改进. 除非失败中的确定性至关重要, 否则不应在按序执行 CPU 上使用 Outcome.</p>
+
+<h2 id="why-is-implicit-default-construction-disabled">为什么禁用隐式默认构造?</h2>
+
+<p>这是 Outcome v1 同行评审期间较有趣的讨论点之一. v1 有一个正式的空状态. 这带来许多好处, 但人们觉得这不符合 STL 习惯——其本意就是 <code>std::optional&lt;result&lt;T&gt;&gt;</code>——因此 v2 消除了任何合法变为空的可能性.</p>
+
+<p>当时的 <code>expected&lt;T, E&gt;</code> 提案 (2017 年 5 月) 确实允许默认构造——如果其 <code>T</code> 类型允许默认构造. 这样做是特意为了让 <code>expected&lt;T, E&gt;</code> 在 STL 容器中更有用, 例如可以 resize 一个 vector 而无需提供 <code>expected&lt;T, E&gt;</code> 实例来填充新元素. 然而, 人们对该设计选择有些不安, 因为它可能导致程序员使用某些类型 <code>T</code>, 其默认构造状态被附加含义所超载, 典型的是 “待填充”, 即通过选择一个魔数形成的实际上的空状态.</p>
+
+<p>在 v2 重新设计时, 考虑了 v1 评审期间的各种论点. 与旨在作为通用 Either 单子词汇类型的 <code>expected&lt;T, E&gt;</code> 不同, Outcome 的类型主要意图是从函数返回成功或失败. 因此 API 应当鼓励程序员不要给成功类型超载 “待填充” 的附加含义, 例如 <code>result&lt;std::optional&lt;T&gt;&gt;</code>. 于是决定禁用<em>隐式</em>默认构造, 但仍允许<em>显式</em>默认构造——让程序员通过额外的键入来表明其意图.</p>
+
+<p>因此, 要显式默认构造一个 <code>result&lt;T&gt;</code> 或 <code>outcome&lt;T&gt;</code>, 请按使用场景选择以下最合适的形式之一:</p>
+
+<ol>
+<li>仅用 <code>in_place_type&lt;T&gt;</code> 构造, 例如 <code>result&lt;T&gt;(in_place_type&lt;T&gt;)</code>.</li>
+<li>经由 <code>success()</code> 构造, 例如 <code>outcome&lt;T&gt;(success())</code>.</li>
+<li>从 <code>void</code> 形式构造, 例如 <code>result&lt;T&gt;(result&lt;void&gt;(in_place_type&lt;void&gt;))</code>.</li>
+</ol>
+
+<h2 id="how-far-away-from-the-proposed-std-expected-t-e-is-outcome-s-checked-t-e">距离提案中的 <code>std::expected&lt;T, E&gt;</code>, Outcome 的 <code>checked&lt;T, E&gt;</code> 有多远?</h2>
+
+<p>不远. 事实上, 在 2017 年 5 月第一次 Boost.Outcome 同行评审之后, Expected 向 Outcome 靠近了许多, 而 Outcome 也特意提供 <a href="./reference/aliases/checked.html" class="api-reference"><code>checked&lt;T, E = varies&gt;</code></a> 作为语义等价物.</p>
+
+<p>以下是其余差异, 代表 Boost 同行评审与 WG21 就该对象的恰当设计在共识意见上的分歧:</p>
+
+<ol>
+<li><code>checked&lt;T, E&gt;</code> 没有默认构造函数. 若 <code>T</code> 有默认构造函数, Expected 就有默认构造函数.</li>
+<li><code>checked&lt;T, E&gt;</code> 使用与 <code>std::variant&lt;...&gt;</code> 相同的构造函数设计. Expected 使用 <code>std::optional&lt;T&gt;</code> 的构造函数设计.</li>
+<li><code>checked&lt;T, E&gt;</code> 在构造后除赋值外不可修改. Expected 提供 <code>.emplace()</code> 修改器.</li>
+<li><code>checked&lt;T, E&gt;</code> 在无歧义时允许从 <code>T</code> 与 <code>E</code> 隐式构造. Expected 仅允许从 <code>T</code> 隐式构造.</li>
+<li><code>checked&lt;T, E&gt;</code> 不允许 <code>T</code> 与 <code>E</code> 相同, 并且如果它们可互相构造, 使用起来会变得烦人 (隐式构造会自我禁用). Expected 允许 <code>T</code> 与 <code>E</code> 相同.</li>
+<li><code>checked&lt;T, E&gt;</code> 抛出 <code>bad_result_access_with&lt;E&gt;</code> 而非 Expected 的 <code>bad_expected_access&lt;E&gt;</code>.</li>
+<li><code>checked&lt;T, E&gt;</code> 建模 <code>std::variant&lt;...&gt;</code>. Expected 建模 <code>std::optional&lt;T&gt;</code>. 因此: <ul>
+<li><code>checked&lt;T, E&gt;</code> 既不提供 <code>operator*()</code> 也不提供 <code>operator-&gt;</code></li>
+<li><code>checked&lt;T, E&gt;</code> <code>.error()</code> 像 <code>.value()</code> 一样是宽的 (即在无值时抛出). Expected 的 <code>.error()</code> 是窄的 (无错误时为未定义行为). [<code>checked&lt;T, E&gt;</code> 为窄的 (引发未定义行为的) 观察器提供 <code>.assume_value()</code> 与 <code>.assume_error()</code>].</li>
+</ul></li>
+<li><code>checked&lt;T, E&gt;</code> 使用 <code>success&lt;T&gt;</code> 与 <code>failure&lt;E&gt;</code> 类型糖来消歧. Expected 仅使用 <code>unexpected&lt;E&gt;</code>.</li>
+<li><code>checked&lt;T, E&gt;</code> 不实现允许隐式转换的比较运算符 (容易导致意外的误操作), 例如 <code>checked&lt;T&gt; == T</code> 将无法编译. 请改为编写无歧义的代码, 例如 <code>checked&lt;T&gt; == success(T)</code> 或 <code>checked&lt;T&gt; == failure(T)</code>.</li>
+<li><code>checked&lt;T, E&gt;</code> 把 <code>E</code> 默认为 <code>std::error_code</code> 或 <code>boost::system::error_code</code>. Expected 不给 <code>E</code> 提供默认.</li>
+</ol>
+
+<p>事实上, 两者在设计上足够接近, 以至于一个高度符合的 <code>expected&lt;T, E&gt;</code> 可以通过用差异化的功能包装 <code>checked&lt;T, E&gt;</code> 来实现:</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="cm">/* Here is a fairly conforming implementation of P0323R3 `expected&lt;T, E&gt;` using `checked&lt;T, E&gt;`.
+</span><span class="cm">It passes the reference test suite for P0323R3 at
+</span><span class="cm">https://github.com/viboes/std-make/blob/master/test/expected/expected_pass.cpp with modifications
+</span><span class="cm">only to move the test much closer to the P0323R3 Expected, as the reference test suite is for a
+</span><span class="cm">much older proposed Expected.
+</span><span class="cm">
+</span><span class="cm">Known differences from P0323R3 in this implementation:
+</span><span class="cm">- `T` and `E` cannot be the same type.
+</span><span class="cm">- `E` must be default constructible.
+</span><span class="cm">- No variant storage is implemented (note the Expected proposal does not actually require this).
+</span><span class="cm">*/</span>
+
+<span class="k">namespace</span> <span class="n">detail</span>
+<span class="p">{</span>
+  <span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">T</span><span class="p">,</span> <span class="k">class</span><span class="err"> </span><span class="nc">E</span><span class="o">&gt;</span> <span class="k">using</span> <span class="n">expected_result</span> <span class="o">=</span> <span class="n">BOOST_OUTCOME_V2_NAMESPACE</span><span class="o">::</span><span class="n">checked</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="n">E</span><span class="o">&gt;</span><span class="p">;</span>
+  <span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">T</span><span class="p">,</span> <span class="k">class</span><span class="err"> </span><span class="nc">E</span><span class="o">&gt;</span> <span class="k">struct</span> <span class="nl">enable_default_constructor</span> <span class="p">:</span> <span class="k">public</span> <span class="n">expected_result</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="n">E</span><span class="o">&gt;</span>
+  <span class="p">{</span>
+    <span class="k">using</span> <span class="n">base</span> <span class="o">=</span> <span class="n">expected_result</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="n">E</span><span class="o">&gt;</span><span class="p">;</span>
+    <span class="k">using</span> <span class="n">base</span><span class="o">::</span><span class="n">base</span><span class="p">;</span>
+    <span class="k">constexpr</span> <span class="nf">enable_default_constructor</span><span class="p">()</span>
+        <span class="o">:</span> <span class="n">base</span><span class="p">{</span><span class="n">BOOST_OUTCOME_V2_NAMESPACE</span><span class="o">::</span><span class="n">in_place_type</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">}</span>
+    <span class="p">{</span>
+    <span class="p">}</span>
+  <span class="p">};</span>
+  <span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">T</span><span class="p">,</span> <span class="k">class</span><span class="err"> </span><span class="nc">E</span><span class="o">&gt;</span> <span class="k">using</span> <span class="n">select_expected_base</span> <span class="o">=</span> <span class="n">std</span><span class="o">::</span><span class="n">conditional_t</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">is_default_constructible</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;::</span><span class="n">value</span><span class="p">,</span> <span class="n">enable_default_constructor</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="n">E</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">expected_result</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="n">E</span><span class="o">&gt;&gt;</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">T</span><span class="p">,</span> <span class="k">class</span><span class="err"> </span><span class="nc">E</span><span class="o">&gt;</span> <span class="k">class</span><span class="err"> </span><span class="nc">expected</span> <span class="o">:</span> <span class="k">public</span> <span class="n">detail</span><span class="o">::</span><span class="n">select_expected_base</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="n">E</span><span class="o">&gt;</span>
+<span class="p">{</span>
+  <span class="k">static_assert</span><span class="p">(</span><span class="o">!</span><span class="n">std</span><span class="o">::</span><span class="n">is_same</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="n">E</span><span class="o">&gt;::</span><span class="n">value</span><span class="p">,</span> <span class="s">&#34;T and E cannot be the same in this expected implementation&#34;</span><span class="p">);</span>
+  <span class="k">using</span> <span class="n">base</span> <span class="o">=</span> <span class="n">detail</span><span class="o">::</span><span class="n">select_expected_base</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="n">E</span><span class="o">&gt;</span><span class="p">;</span>
+
+<span class="k">public</span><span class="o">:</span>
+  <span class="c1">// Inherit base&#39;s constructors
+</span><span class="c1"></span>  <span class="k">using</span> <span class="n">base</span><span class="o">::</span><span class="n">base</span><span class="p">;</span>
+  <span class="n">expected</span><span class="p">()</span> <span class="o">=</span> <span class="k">default</span><span class="p">;</span>
+
+  <span class="c1">// Expected takes in_place not in_place_type
+</span><span class="c1"></span>  <span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err">... </span><span class="nc">Args</span><span class="o">&gt;</span>
+  <span class="k">constexpr</span> <span class="k">explicit</span> <span class="n">expected</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">in_place_t</span> <span class="cm">/*unused*/</span><span class="p">,</span> <span class="n">Args</span> <span class="o">&amp;&amp;</span><span class="p">...</span> <span class="n">args</span><span class="p">)</span>
+      <span class="o">:</span> <span class="n">base</span><span class="p">{</span><span class="n">BOOST_OUTCOME_V2_NAMESPACE</span><span class="o">::</span><span class="n">in_place_type</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="n">forward</span><span class="o">&lt;</span><span class="n">Args</span><span class="o">&gt;</span><span class="p">(</span><span class="n">args</span><span class="p">)...}</span>
+  <span class="p">{</span>
+  <span class="p">}</span>
+
+  <span class="c1">// Expected always accepts a T even if ambiguous
+</span><span class="c1"></span>  <span class="n">BOOST_OUTCOME_TEMPLATE</span><span class="p">(</span><span class="k">class</span><span class="err"> </span><span class="nc">U</span><span class="p">)</span>
+  <span class="n">BOOST_OUTCOME_TREQUIRES</span><span class="p">(</span><span class="n">BOOST_OUTCOME_TPRED</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">is_constructible</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="n">U</span><span class="o">&gt;::</span><span class="n">value</span><span class="p">))</span>
+  <span class="k">constexpr</span> <span class="n">expected</span><span class="p">(</span><span class="n">U</span> <span class="o">&amp;&amp;</span><span class="n">v</span><span class="p">)</span>
+      <span class="o">:</span> <span class="n">base</span><span class="p">{</span><span class="n">BOOST_OUTCOME_V2_NAMESPACE</span><span class="o">::</span><span class="n">in_place_type</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="n">forward</span><span class="o">&lt;</span><span class="n">U</span><span class="o">&gt;</span><span class="p">(</span><span class="n">v</span><span class="p">)}</span>
+  <span class="p">{</span>
+  <span class="p">}</span>
+
+  <span class="c1">// Expected has an emplace() modifier
+</span><span class="c1"></span>  <span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err">... </span><span class="nc">Args</span><span class="o">&gt;</span> <span class="kt">void</span> <span class="n">emplace</span><span class="p">(</span><span class="n">Args</span> <span class="o">&amp;&amp;</span><span class="p">...</span> <span class="n">args</span><span class="p">)</span> <span class="p">{</span> <span class="o">*</span><span class="k">static_cast</span><span class="o">&lt;</span><span class="n">base</span> <span class="o">*&gt;</span><span class="p">(</span><span class="k">this</span><span class="p">)</span> <span class="o">=</span> <span class="n">base</span><span class="p">{</span><span class="n">BOOST_OUTCOME_V2_NAMESPACE</span><span class="o">::</span><span class="n">in_place_type</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="n">forward</span><span class="o">&lt;</span><span class="n">Args</span><span class="o">&gt;</span><span class="p">(</span><span class="n">args</span><span class="p">)...};</span> <span class="p">}</span>
+
+  <span class="c1">// Expected has a narrow operator* and operator-&gt;
+</span><span class="c1"></span>  <span class="k">constexpr</span> <span class="k">const</span> <span class="n">T</span> <span class="o">&amp;</span><span class="k">operator</span><span class="o">*</span><span class="p">()</span> <span class="k">const</span> <span class="o">&amp;</span> <span class="p">{</span> <span class="k">return</span> <span class="n">base</span><span class="o">::</span><span class="n">assume_value</span><span class="p">();</span> <span class="p">}</span>
+  <span class="k">constexpr</span> <span class="n">T</span> <span class="o">&amp;</span><span class="k">operator</span><span class="o">*</span><span class="p">()</span> <span class="o">&amp;</span> <span class="p">{</span> <span class="k">return</span> <span class="n">base</span><span class="o">::</span><span class="n">assume_value</span><span class="p">();</span> <span class="p">}</span>
+  <span class="k">constexpr</span> <span class="k">const</span> <span class="n">T</span> <span class="o">&amp;&amp;</span><span class="k">operator</span><span class="o">*</span><span class="p">()</span> <span class="k">const</span> <span class="o">&amp;&amp;</span> <span class="p">{</span> <span class="k">return</span> <span class="n">base</span><span class="o">::</span><span class="n">assume_value</span><span class="p">();</span> <span class="p">}</span>
+  <span class="k">constexpr</span> <span class="n">T</span> <span class="o">&amp;&amp;</span><span class="k">operator</span><span class="o">*</span><span class="p">()</span> <span class="o">&amp;&amp;</span> <span class="p">{</span> <span class="k">return</span> <span class="n">base</span><span class="o">::</span><span class="n">assume_value</span><span class="p">();</span> <span class="p">}</span>
+  <span class="k">constexpr</span> <span class="k">const</span> <span class="n">T</span> <span class="o">*</span><span class="k">operator</span><span class="o">-&gt;</span><span class="p">()</span> <span class="k">const</span> <span class="p">{</span> <span class="k">return</span> <span class="o">&amp;</span><span class="n">base</span><span class="o">::</span><span class="n">assume_value</span><span class="p">();</span> <span class="p">}</span>
+  <span class="k">constexpr</span> <span class="n">T</span> <span class="o">*</span><span class="k">operator</span><span class="o">-&gt;</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="o">&amp;</span><span class="n">base</span><span class="o">::</span><span class="n">assume_value</span><span class="p">();</span> <span class="p">}</span>
+
+  <span class="c1">// Expected has a narrow error() observer
+</span><span class="c1"></span>  <span class="k">constexpr</span> <span class="k">const</span> <span class="n">E</span> <span class="o">&amp;</span><span class="n">error</span><span class="p">()</span> <span class="k">const</span> <span class="o">&amp;</span> <span class="p">{</span> <span class="k">return</span> <span class="n">base</span><span class="o">::</span><span class="n">assume_error</span><span class="p">();</span> <span class="p">}</span>
+  <span class="k">constexpr</span> <span class="n">E</span> <span class="o">&amp;</span><span class="n">error</span><span class="p">()</span> <span class="o">&amp;</span> <span class="p">{</span> <span class="k">return</span> <span class="n">base</span><span class="o">::</span><span class="n">assume_error</span><span class="p">();</span> <span class="p">}</span>
+  <span class="k">constexpr</span> <span class="k">const</span> <span class="n">E</span> <span class="o">&amp;&amp;</span><span class="n">error</span><span class="p">()</span> <span class="k">const</span> <span class="o">&amp;&amp;</span> <span class="p">{</span> <span class="k">return</span> <span class="n">base</span><span class="o">::</span><span class="n">assume_error</span><span class="p">();</span> <span class="p">}</span>
+  <span class="k">constexpr</span> <span class="n">E</span> <span class="o">&amp;</span><span class="n">error</span><span class="p">()</span> <span class="o">&amp;&amp;</span> <span class="p">{</span> <span class="k">return</span> <span class="n">base</span><span class="o">::</span><span class="n">assume_error</span><span class="p">();</span> <span class="p">}</span>
+<span class="p">};</span>
+<span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">E</span><span class="o">&gt;</span> <span class="k">class</span><span class="err"> </span><span class="nc">expected</span><span class="o">&lt;</span><span class="kt">void</span><span class="p">,</span> <span class="n">E</span><span class="o">&gt;</span> <span class="o">:</span> <span class="k">public</span> <span class="n">BOOST_OUTCOME_V2_NAMESPACE</span><span class="o">::</span><span class="n">result</span><span class="o">&lt;</span><span class="kt">void</span><span class="p">,</span> <span class="n">E</span><span class="p">,</span> <span class="n">BOOST_OUTCOME_V2_NAMESPACE</span><span class="o">::</span><span class="n">policy</span><span class="o">::</span><span class="n">throw_bad_result_access</span><span class="o">&lt;</span><span class="n">E</span><span class="p">,</span> <span class="kt">void</span><span class="o">&gt;&gt;</span>
+<span class="p">{</span>
+  <span class="k">using</span> <span class="n">base</span> <span class="o">=</span> <span class="n">BOOST_OUTCOME_V2_NAMESPACE</span><span class="o">::</span><span class="n">result</span><span class="o">&lt;</span><span class="kt">void</span><span class="p">,</span> <span class="n">E</span><span class="p">,</span> <span class="n">BOOST_OUTCOME_V2_NAMESPACE</span><span class="o">::</span><span class="n">policy</span><span class="o">::</span><span class="n">throw_bad_result_access</span><span class="o">&lt;</span><span class="n">E</span><span class="p">,</span> <span class="kt">void</span><span class="o">&gt;&gt;</span><span class="p">;</span>
+
+<span class="k">public</span><span class="o">:</span>
+  <span class="c1">// Inherit base constructors
+</span><span class="c1"></span>  <span class="k">using</span> <span class="n">base</span><span class="o">::</span><span class="n">base</span><span class="p">;</span>
+
+  <span class="c1">// Expected has a narrow operator* and operator-&gt;
+</span><span class="c1"></span>  <span class="k">constexpr</span> <span class="kt">void</span> <span class="k">operator</span><span class="o">*</span><span class="p">()</span> <span class="k">const</span> <span class="p">{</span> <span class="n">base</span><span class="o">::</span><span class="n">assume_value</span><span class="p">();</span> <span class="p">}</span>
+  <span class="k">constexpr</span> <span class="kt">void</span> <span class="k">operator</span><span class="o">-&gt;</span><span class="p">()</span> <span class="k">const</span> <span class="p">{</span> <span class="n">base</span><span class="o">::</span><span class="n">assume_value</span><span class="p">();</span> <span class="p">}</span>
+<span class="p">};</span>
+<span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">E</span><span class="o">&gt;</span> <span class="k">using</span> <span class="n">unexpected</span> <span class="o">=</span> <span class="n">BOOST_OUTCOME_V2_NAMESPACE</span><span class="o">::</span><span class="n">failure_type</span><span class="o">&lt;</span><span class="n">E</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">E</span><span class="o">&gt;</span> <span class="n">unexpected</span><span class="o">&lt;</span><span class="n">E</span><span class="o">&gt;</span> <span class="n">make_unexpected</span><span class="p">(</span><span class="n">E</span> <span class="o">&amp;&amp;</span><span class="n">arg</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="k">return</span> <span class="n">BOOST_OUTCOME_V2_NAMESPACE</span><span class="o">::</span><span class="n">failure</span><span class="o">&lt;</span><span class="n">E</span><span class="o">&gt;</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">forward</span><span class="o">&lt;</span><span class="n">E</span><span class="o">&gt;</span><span class="p">(</span><span class="n">arg</span><span class="p">));</span>
+<span class="p">}</span>
+<span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">E</span><span class="p">,</span> <span class="k">class</span><span class="err">... </span><span class="nc">Args</span><span class="o">&gt;</span> <span class="n">unexpected</span><span class="o">&lt;</span><span class="n">E</span><span class="o">&gt;</span> <span class="n">make_unexpected</span><span class="p">(</span><span class="n">Args</span> <span class="o">&amp;&amp;</span><span class="p">...</span> <span class="n">args</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="k">return</span> <span class="n">BOOST_OUTCOME_V2_NAMESPACE</span><span class="o">::</span><span class="n">failure</span><span class="o">&lt;</span><span class="n">E</span><span class="o">&gt;</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">forward</span><span class="o">&lt;</span><span class="n">Args</span><span class="o">&gt;</span><span class="p">(</span><span class="n">args</span><span class="p">)...);</span>
+<span class="p">}</span>
+<span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">E</span><span class="o">&gt;</span> <span class="k">using</span> <span class="n">bad_expected_access</span> <span class="o">=</span> <span class="n">BOOST_OUTCOME_V2_NAMESPACE</span><span class="o">::</span><span class="n">bad_result_access_with</span><span class="o">&lt;</span><span class="n">E</span><span class="o">&gt;</span><span class="p">;</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/expected_implementation.cpp#L35" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<h2 id="why-doesn-t-outcome-duplicate-std-expected-t-e-s-design">Outcome 为什么不复制 <code>std::expected&lt;T, E&gt;</code> 的设计?</h2>
+
+<p>原因有若干:</p>
+
+<ol>
+<li><p>Outcome 的目标受众与 Expected 不同. 我们面向乐于使用 Boost 的开发者与用户. Expected 面向标准库用户.</p></li>
+
+<li><p>Outcome 认为单子用例没有 Expected 所认为的那么重要. 具体而言, 我们认为现实世界中 99% 的 Expected 使用都是为了从函数返回失败, 而不是作为某种增强的或 “丰富” 的 Optional. 因此 Outcome 建模 Variant 的一个子集, 而 Expected 建模一个扩展的 Optional.</p></li>
+
+<li><p>Outcome 认为: 如果你正在考虑使用类似 Outcome 的东西, 那么对你而言, 编写失败代码的比例将与编写成功代码相同, 因此在 Outcome 中, 为失败而写与为成功而写完全一样. Expected 假定成功将比失败更常见, 因而在为失败编写时让你打更多字.</p></li>
+
+<li><p>Outcome 花了相当大力气帮助最终用户在使用时少打字. 这带来更紧凑、更不啰嗦、更简洁的代码. 代价是比使用 Expected 编程时更陡的学习曲线与更复杂的思维模型.</p></li>
+
+<li><p>Outcome 提供设施, 使各自使用互不兼容的 Outcome (或 Expected) 配置的多个第三方库之间更容易互操作. Expected 不做这些中的任何一项, 但后续的 WG21 论文确实提出了各种互操作机制, Outcome 实现了<a href="https://wg21.link/P0786">其中之一</a>, 从而使用 Expected 的代码能与使用 Outcome 的代码无缝互操作.</p></li>
+
+<li><p>Outcome 是在 Optional 与 Expected 之后凭事后之明设计的——人们发现它们的隐式转换方式容易导致无意间写出有缺陷的代码. Outcome 同时允许更多隐式转换 (在那些明确安全的场合, 为易用与便利), 并阻止 Boost 同行评审报告为危险的其他隐式转换.</p></li>
+</ol>
+
+<h2 id="is-outcome-riddled-with-undefined-behaviour-for-const-const-containing-and-reference-containing-types">对于 const、含 const 与含引用的类型, Outcome 是否处处充满未定义行为?</h2>
+
+<p>简短回答是: 在 C++ 20 及以后不再如此, 这得益于 2019 年 11 月贝尔法斯特 WG21 会议上对 C++ 20 所作的修改.</p>
+
+<p>较长的回答是: 在 C++ 20 之前, 对包含 <code>const</code> 成员类型的类型使用 placement new 且丢弃所得指针, 是未定义行为. 随着一项国家团体意见的解决, 情况不再如此, 从 C++ 20 起 Outcome 已摆脱这一特定未定义行为.</p>
+
+<p>这仍然影响 C++ 20 之前的版本, 尽管没有主流编译器受影响. 尽管如此, 如果你想避开未定义行为, 不要在 Outcome 类型内使用 <code>const</code> 类型 (同理, 也不要使用任何 <code>optional&lt;T&gt;</code>、<code>vector&lt;T&gt;</code> 或任何 STL 容器类型).</p>
+
+<h3 id="more-detail">更多细节</h3>
+
+<p>在 C++ 14 标准之前, 对曾容纳过 const 类型的存储做 placement new, 一律是未定义行为, 没有例外. 因此, 在 C++ 14 之前, 在 <code>result&lt;const_containing_type&gt;</code> (乃至 <code>optional&lt;const_containing_type&gt;</code>) 内对 placement new 的一切使用都总是未定义行为. 以下引自 C++ 11 标准的 <code>[basic.life]</code>:</p>
+
+<blockquote>
+<p>在具有静态、线程或自动存储期的 const 对象所占用的存储位置处, 或在该 const 对象生存期结束前曾占用的存储位置处创建新对象, 会导致未定义行为.</p>
+</blockquote>
+
+<p>由于过度严苛, 从 C++ 14 起, <code>[basic_life]</code> 改为:</p>
+
+<blockquote>
+<p>如果在对象的生存期结束之后、且在该对象所占用的存储被复用或释放之前, 一个新对象在该原对象占用的存储位置被创建, 那么指向原对象的指针、引用原对象的引用或原对象的名称将自动指向新对象, 并且一旦新对象的生存期开始, 即可用于操纵新对象, 如果:</p>
+
+<p>——新对象的存储恰好覆盖原对象占用的存储位置, 并且</p>
+
+<p>——新对象与原对象类型相同 (忽略顶层 cv 限定符), 并且</p>
+
+<p>——原对象的类型不是 const 限定的, 并且若为类类型, 不包含任何类型为 const 限定或引用类型的非静态数据成员, 并且</p>
+
+<p>——原对象与新对象都不是潜在重叠子对象</p>
+</blockquote>
+
+<p>暂且不论我个人对给予非 const 非引用类型的 placement new 神奇指针重命名能力的反对, 结论是: 如果你想要对包含 const 类型或引用的类型进行 placement new 时有确定行为, 就必须保存 placement new 返回的指针, 并在后续所有对该新建对象的引用中使用该指针. 这显然会给 <code>result&lt;const_containing_type&gt;</code> 增加 8 字节存储——鉴于为保持其小巧所付出的全部心血, 这是极不可取的. 替代方案是使用 C++ 17 加入的 <a href="https://en.cppreference.com/w/cpp/utility/launder" class="api-reference" target="_blank"><i class="fa fa-book" aria-hidden="true"></i> <code>std::launder</code></a>, 在每次使用该存储之前对 placement new 所写入的存储进行 “清洗 (launder)”. 这会强制编译器每次都重新加载由 placement new 存储的对象, 而不能假设它可以被常量传播, 这会影响代码生成质量.</p>
+
+<p>如上所述, 该问题 (就其适用于包含用户提供的 <code>T</code>——它可能是 <code>const</code>——的类型而言) 已自 C++ 20 起得到解决, 考虑到 STL 容器会因此破坏之多, 任何 C++ 编译器在 C++ 17 或 14 中对这里的任何未定义行为采取行动都极不可能.</p>
+
+
+
+        </div><p><small>最后修订: April 20, 2021 at 11:39:35 +0100</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="./reference/functions/try_throw_std_exception_from_error.html"><img src="./images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="./index.html"><img src="./images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="./index.html"><img src="./images/home.png" alt="首页"></a><a accesskey="n" href="./videos.html"><img src="./images/next.png" alt="下一页"></a></div></body>
+</html>

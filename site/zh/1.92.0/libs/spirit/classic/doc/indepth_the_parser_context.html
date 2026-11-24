@@ -1,0 +1,179 @@
+<html>
+<head>
+<title>深入: 解析器上下文</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<link rel="stylesheet" href="theme/style.css" type="text/css">
+</head>
+
+<body>
+<table width="100%" border="0" background="theme/bkd2.gif" cellspacing="2">
+  <tr> 
+    <td width="10"> 
+    </td>
+    <td width="85%"> <font size="6" face="Verdana, Arial, Helvetica, sans-serif"><b>深入: 解析器上下文</b></font></td>
+    <td width="112"><a href="http://spirit.sf.net"><img src="theme/spirit.gif" width="112" height="48" align="right" border="0"></a></td>
+  </tr>
+</table>
+<br>
+<table border="0">
+  <tr>
+    <td width="10"></td>
+    <td width="30"><a href="../index.html">
+    <img src="theme/u_arr.gif" border="0" width="20" height="19"></a></td>
+    <td width="30"><a href="indepth_the_scanner.html">
+    <img src="theme/l_arr.gif" border="0" width="20" height="19"></a></td>
+    <td width="30"><a href="predefined_actors.html">
+    <img src="theme/r_arr.gif" border="0" width="20" height="19"></a></td>
+  </tr>
+</table>
+<h2>概述</h2>
+<p>解析器的 <b>上下文(context)</b>是又一个概念. 一个 <tt>context</tt> 类的实例(对象)在非终结符开始解析之前创建, 在解析结束之后销毁. 非终结符是 <tt>rule</tt>, <tt>subrule</tt> 或 <tt>grammar</tt>. 非终结符拥有 <tt>ContextT</tt> 模板参数. 下面的伪代码描绘了非终结符被调用时发生的事情:</p>
+<pre><code><font color="#000000"><span class=special>    </span><span class=identifier>return_type
+    </span><span class=identifier>a_non_terminal</span><span class=special>::</span><span class=identifier>parse</span><span class=special>(</span><span class=identifier>ScannerT </span><span class=keyword>const</span><span class=special>& </span><span class=identifier>scan</span><span class=special>)
+    {
+        </span><span class=identifier>context_t ctx</span><span class=special>(/**/);
+        </span><span class=identifier>ctx</span><span class=special>.</span><span class=identifier>pre_parse</span><span class=special>(/**/);
+
+        </span><span class=comment>//  main parse code of the non-terminal here...
+
+        </span><span class=keyword>return </span><span class=identifier>ctx</span><span class=special>.</span><span class=identifier>post_parse</span><span class=special>(/**/);
+    }</span></font></code></pre>
+<p>提供上下文是为了可扩展性. 其主要目的是暴露非终结符 parse 成员函数的开始与结束, 以容纳外部挂钩. 通过编写专门的上下文类, 我们可以以多种方式扩展非终结符, 而无需修改类本身. 例如, 我们可以编写一个上下文类, 在解析遍历中非终结符被调用的每个节点打印扫描器的当前状态, 从而让非终结符输出调试诊断信息.</p>
+<p>一个打印调试信息的解析器上下文示例:</p>
+<pre><code><font color="#000000">    pre_parse</font>:<font color="#000000">      non-terminal XXX is entered<font color="#0000ff">.</font> The current state of the input
+                    is <font color="#616161"><i>&quot;hello world, this is a test&quot;</i></font>
+
+    post_parse</font>:<font color="#000000">     non-terminal XXX has concluded<font color="#0000ff">,</font> the non-terminal matched <font color="#616161"><i>&quot;hello world&quot;</i></font><font color="#0000ff">.</font>
+                    The current state of the input is <font color="#616161"><i>&quot;, this is a test&quot;</i></font></font></code></pre>
+<p>大多数时候, 上下文在用户视野中是不可见的. 一般而言, 框架的使用者无需直接处理上下文, 甚至无需知道上下文的存在. 不过, 高级用户可能会发现上下文的某些用途. 因此, 这是公开 API 的一部分. 框架中位于核心之上其他层的其他部分, 也利用上下文来扩展非终结符.</p>
+<h2>类声明</h2>
+<p> <tt>parser_context</tt> 类是非终结符使用的默认上下文类.</p>
+<pre><span class=keyword>    </span><span class="identifier">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">AttrT</span> <span class="special">=</span> <span class="identifier">nil_t</span><span class="special">&gt;</span><span class=keyword><br>    struct </span><span class=identifier>parser_context
+</span><span class=special>    {
+        </span><span class=keyword>typedef </span>AttrT <span class=identifier>attr_t</span><span class=special>;
+        </span><span class=keyword>typedef </span><span class=identifier>implementation_defined base_t</span><span class=special>;
+        </span><span class="keyword">typedef</span><span class=special> </span>parser_context_linker<span class="special">&lt;</span>parser_context<span class="special">&lt;</span><span class="identifier">AttrT</span><span class="special">&gt;</span> <span class="special">&gt;</span> <span class="identifier">context_linker_t</span><span class=special>;
+
+        </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>ParserT</span><span class=special>&gt;
+        </span><span class=identifier>parser_context</span><span class=special>(</span><span class=identifier>ParserT </span><span class=keyword>const</span><span class=special>&amp; </span><span class=identifier>p</span><span class=special>) {}
+
+    </span><span class=keyword>    template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>ParserT</span><span class=special>, </span><span class=keyword>typename </span><span class=identifier>ScannerT</span><span class=special>&gt;
+    </span><span class=keyword>    void
+    </span><span class=identifier>    pre_parse</span><span class=special>(</span><span class=identifier>ParserT </span><span class=keyword>const</span><span class=special>&amp; </span><span class=identifier>p</span><span class=special>, </span><span class=identifier>ScannerT </span><span class=keyword>const</span><span class=special>&amp; </span><span class=identifier>scan</span><span class=special>) {}
+
+        </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>ResultT</span><span class=special>, </span><span class=keyword>typename </span><span class=identifier>ParserT</span><span class=special>, </span><span class=keyword>typename </span><span class=identifier>ScannerT</span><span class=special>&gt;
+        </span><span class=identifier>ResultT</span><span class=special>&amp;
+    </span><span class=identifier>    post_parse</span><span class=special>(</span><span class=identifier>ResultT</span><span class=special>&amp; </span><span class=identifier>hit</span><span class=special>, </span><span class=identifier>ParserT </span><span class=keyword>const</span><span class=special>&amp; </span><span class=identifier>p</span><span class=special>, </span><span class=identifier>ScannerT </span><span class=keyword>const</span><span class=special>&amp; </span><span class=identifier>scan</span><span class=special>)
+        { </span><span class=keyword>return </span><span class=identifier>hit</span><span class=special>; }
+    };</span></pre>
+<p>非终结符的 <tt>ContextT</tt> 模板参数是一个概念. 上面的 <tt>parser_context</tt> 类是该概念最简单的模型. 默认 <tt>parser_context</tt> 的<tt> pre_parse</tt> 与 <tt>post_parse</tt> 成员函数只是空操作. 你可以把非终结符的 <tt>ContextT</tt> 模板参数看作支配非终结符在解析之前和之后如何表现的策略. 使用者可以通过向特定非终结符传递用户自定义的上下文模板参数, 来提供自己的上下文策略.</p>
+<table width="90%" border="0" align="center">
+  <tr> 
+    <td class="table_title" colspan="8">解析器上下文策略</td>
+  </tr>
+  <tr> 
+  <tr> 
+    <td class="table_cells"><strong><span class=identifier>attr_t</span></strong></td>
+    <td class="table_cells">typedef: 非终结符的属性类型. 见 <a href="indepth_the_parser.html#match">match</a>.</td>
+  </tr>
+  <td class="table_cells"><strong><span class=identifier>base_t</span></strong></td>
+  <td class="table_cells">typedef: 非终结符的基类. 非终结符继承自该类.</td>
+  </tr>
+  <tr> 
+    <td class="table_cells"><strong><span class="identifier">context_linker_t</span></strong></td>
+    <td class="table_cells">typedef: 该类类型为 Spirit 提供了把额外功能插入非终结符 parse 函数, 甚至绕过给定上下文的可能. 它应简单地 typedef 为 <tt>parser_context_linker&lt;T&gt;</tt>, 其中 T 是用户自定义上下文类的类型.</td>
+  </tr>
+  <td class="table_cells"><strong>constructor</strong></td>
+  <td class="table_cells">构造上下文. 非终结符作为实参传递给构造函数.</td>
+  </tr>
+  <tr> 
+    <td class="table_cells"><strong>pre_parse</strong></td>
+    <td class="table_cells">在解析之前做些事情. 非终结符和当前扫描器作为实参传入.</td>
+  </tr>
+  <tr> 
+    <td class="table_cells"><strong>post_parse</strong></td>
+    <td class="table_cells">在解析之后做些事情. 无论解析结果如何都会调用它. 传入一个对解析器结果的引用. 上下文有权修改它. 非终结符和当前扫描器也作为实参传入.</td>
+  </tr>
+</table>
+<p> <tt>base_t</tt> 值得进一步解释. 来吧... 上下文严格来说是一个基于栈的类. 它在解析之前创建, 在非终结符的 parse 成员函数退出之后销毁. 有时, 我们需要在非终结符宿主的完整生存期内存在的辅助数据. 由于非终结符继承自上下文的 <tt>base_t</tt>, 上下文自身在创建时, 于构造期间(当非终结符作为实参传给构造函数时)就能获得对 this 的访问. <tt>pre_parse</tt> 与 <tt>post_parse</tt> 亦然.</p>
+<p>非终结符继承自上下文的 <tt>base_t</tt> typedef. 唯一的要求是它是一个可默认构造的类. 拷贝构造与赋值的要求取决于宿主. 若宿主需要, 上下文的 <tt>base_t</tt> 也同样需要. 一般来说, 提供这些基本要求并无害处.</p>
+<h2>非默认属性类型</h2>
+<p>开箱即用, <tt>parser_context</tt> 类可以 <tt>nil_t</tt> 以外的类型参数化. 以下代码演示了 <tt>parser_context</tt> 模板带显式实参的用法, 用于声明匹配结果不同于 <tt>nil_t</tt> 的规则:</p>
+<pre><span class=number>    </span><span class=identifier>rule</span><span class=special>&lt;</span><span class=identifier>parser_context</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt; </span><span class=special>&gt; </span><span class=identifier>int_rule </span><span class=special>= </span><span class=identifier>int_p</span><span class=special>;
+
+    </span><span class=identifier>parse</span><span class=special>(
+        </span><span class=string>&quot;123&quot;</span><span class=special>,
+        </span><span class=comment>// Using a returned value in the semantic action
+        </span><span class=identifier>int_rule</span><span class=special>[</span><span class=identifier>cout </span><span class=special>&lt;&lt; </span><span class=identifier>arg1 </span><span class=special>&lt;&lt; </span><span class=identifier>endl</span><span class=special>] 
+    </span><span class=special>);</span> </pre>
+<p>在这个例子中, <tt>int_rule</tt> 以 <tt>int</tt> 属性类型声明. 因此, <tt>int_rule</tt> 变量可以持有任何返回 <tt>int</tt> 值的解析器(例如 <tt>int_p</tt> 或 <tt>bin_p</tt>). 需要注意的重要一点是, 我们可以在绑定到 <tt>int_rule</tt> 的语义动作中使用该返回值.</p>
+<p><img src="theme/lens.gif" width="15" height="16">示例见 examples 中的 <a href="../example/fundamental/parser_context.cpp">parser_context.cpp</a>. 它是 Spirit 发行包的一部分.</p>
+<h2>一个示例</h2>
+<p>作为示例, 让我们看看 Spirit 解析器上下文, 它向解析过程插入一些调试输出:</p>
+<pre>    <span class="keyword">template</span>&lt;<span class="keyword">typename</span> ContextT&gt;
+    <span class="keyword">struct</span> parser_context_linker : <span class="keyword">public</span> ContextT
+    <span class="special">{</span>
+        <span class="keyword">typedef</span> ContextT base_t;
+
+        <span class="keyword">template</span> &lt;<span class="keyword">typename</span> ParserT&gt;
+        parser_context_linker(ParserT const&amp; p)
+        : ContextT(p) {}
+        
+    <span class="comment">// This is called just before parsing of this non-terminal</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> ParserT<span class="special">,</span> <span class="keyword">typename</span> ScannerT<span class="special">&gt;</span>
+        <span class="keyword">void</span> pre_parse<span class="special">(</span>ParserT <span class="keyword">const</span><span class="special">&amp;</span> p<span class="special">,</span> ScannerT <span class="special">&amp;</span>scan<span class="special">)</span>
+        <span class="special">{</span>
+        <span class="comment">// call the pre_parse function of the base class</span>
+            <span class="keyword">this</span><span class="special">-&gt;</span>base_t<span class="special">::</span>pre_parse<span class="special">(</span>p<span class="special">,</span> scan<span class="special">);</span>
+<span class="preprocessor">
+#if</span> <span class="identifier">BOOST_SPIRIT_DEBUG_FLAGS</span> <span class="special">&amp;</span> <span class="identifier">BOOST_SPIRIT_DEBUG_FLAGS_NODES</span>
+            <span class="keyword">if</span> <span class="special">(</span>trace_parser<span class="special">(</span>p<span class="special">.</span>derived<span class="special">())) {</span>
+            <span class="comment">// print out pre parse info</span>
+                impl<span class="special">::</span>print_node_info<span class="special">(</span>
+                <span class="keyword">false</span><span class="special">,</span> scan.get_level<span class="special">(),</span> <span class="keyword">false</span><span class="special">,</span>
+                parser_name<span class="special">(</span>p.derived<span class="special">()),</span>
+                scan<span class="special">.</span>first<span class="special">,</span> scan.last<span class="special">);</span>
+            <span class="special">}</span>
+            scan.get_level<span class="special">()++;</span>  <span class="comment">// increase nesting level</span>
+<span class="preprocessor">#endif</span> 
+        <span class="special">}</span>
+    <span class="comment">// This is called just after parsing of the current non-terminal</span>
+        <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> ResultT<span class="special">,</span> <span class="keyword">typename</span> ParserT<span class="special">,</span> <span class="keyword">typename</span> ScannerT<span class="special">&gt;</span>
+        ResultT<span class="special">&amp;</span> post_parse<span class="special">(</span>
+            ResultT<span class="special">&amp;</span> hit<span class="special">,</span> ParserT <span class="keyword">const</span><span class="special">&amp;</span> p<span class="special">,</span> ScannerT<span class="special">&amp;</span> scan<span class="special">)
+        {</span>
+<span class="preprocessor">
+#if</span> <span class="identifier">BOOST_SPIRIT_DEBUG_FLAGS</span> <span class="special">&amp;</span> <span class="identifier">BOOST_SPIRIT_DEBUG_FLAGS_NODES</span>
+            <span class="special">--</span>scan.get_level<span class="special">();</span>  <span class="comment">// decrease nesting level</span>
+            <span class="keyword">if</span> <span class="special">(</span>trace_parser<span class="special">(</span>p<span class="special">.</span>derived<span class="special">())) {</span>
+                impl<span class="special">::</span>print_node_info<span class="special">(</span>
+                    hit<span class="special">,</span> scan<span class="special">.</span>get_level<span class="special">(),</span> <span class="keyword">true</span><span class="special">,</span>
+                    parser_name<span class="special">(</span>p<span class="special">.</span>derived<span class="special">()),</span>
+                    scan<span class="special">.</span>first<span class="special">,</span> scan<span class="special">.</span>last<span class="special">);
+            }</span>
+<span class="preprocessor">#endif</span>
+        <span class="comment">// call the post_parse function of the base class</span>
+            <span class="keyword">return</span> <span class="keyword">this</span><span class="special">-&gt;</span>base_t<span class="special">::</span>post_parse<span class="special">(</span>hit<span class="special">,</span> p<span class="special">,</span> scan<span class="special">);
+        }
+    };</span>
+</pre>
+<p>在调试期间(定义了 <tt>BOOST_SPIRIT_DEBUG</tt>), 这个解析器上下文会被注入当前 <tt>parser_context</tt> 的派生层次中 —— 它原本被指定用于某个具体解析器 —— 因此模板参数 <tt>ContextT</tt> 代表原始的 <tt>parser_context</tt>. 出于这个原因, <tt>pre_parse</tt> 与 <tt>post_parse</tt> 函数会调用基类中对应的函数. 此外, 这些函数还会调用一个特殊的 <tt>print_node_info</tt> 函数, 由它实际输出当前非终结符的解析器状态信息. 有关打印信息的更多信息, 你可能想看看 <a href="debugging.html">Debugging</a> 主题.</p>
+<table border="0">
+  <tr> 
+    <td width="10"></td>
+    <td width="30"><a href="../index.html">
+    <img src="theme/u_arr.gif" border="0" width="20" height="19"></a></td>
+    <td width="30"><a href="indepth_the_scanner.html">
+    <img src="theme/l_arr.gif" border="0" width="20" height="19"></a></td>
+    <td width="30"><a href="predefined_actors.html">
+    <img src="theme/r_arr.gif" border="0" width="20" height="19"></a></td>
+  </tr>
+</table>
+<br>
+<hr size="1">
+<p class="copyright">Copyright © 1998-2003 Joel de Guzman<br>
+  <br>
+  <font size="2">使用、修改与分发受 Boost 软件许可 1.0 版(Boost Software License, Version 1.0)约束. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt)</font></p>
+<p class="copyright">&nbsp;</p>
+</body>
+</html>

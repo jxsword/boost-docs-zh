@@ -1,0 +1,401 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>basic_result&lt;T, E, NoValuePolicy&gt; - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="../../css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="../../images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="../../reference/types/basic_outcome/as_failure_rvalue.html"><img src="../../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../../reference/types.html"><img src="../../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../../index.html"><img src="../../images/home.png" alt="首页"></a><a accesskey="n" href="../../reference/types/basic_result/default.html"><img src="../../images/next.png" alt="下一页"></a></div><div id="content">
+
+  <div class="titlepage"><div><div><h1 style="clear: both"><code>basic_result&lt;T, E, NoValuePolicy&gt;</code></h1></div></div></div>
+  <div class="toc"><dl class="toc">
+<dt>
+<dd><dl>
+<dt>
+<dd><dl>
+<dt><a href="#design-rationale">设计理由</a></dt>
+<dt><a href="#public-member-type-aliases">公有成员类型别名</a></dt>
+<dt><a href="#protected-member-predicate-booleans">受保护成员谓词布尔量</a>
+<dd><dl>
+<dt><a href="#summary-of-standard-requirements-provided-https-en-cppreference-com-w-cpp-named-req">所提供的 <a href="https://en.cppreference.com/w/cpp/named_req">标准要求摘要</a></a></dt>
+</dl></dd></dt>
+<dt><a href="#public-member-functions">公有成员函数</a>
+<dd><dl>
+<dt><a href="#disabling-constructors">禁用构造函数</a></dt>
+</dl></dd></dt>
+</dl></dd></dt>
+</dl></dd></dt>
+</dl>
+  </div>
+
+
+<p>一种和类型, 携带 <code>T</code> 或 <code>E</code> 之一; <code>NoValuePolicy</code> 规定在试图读取不存在的状态时该怎么办, 并支持注入钩子以在生命周期事件发生时捕获. <code>T</code> 与 <code>E</code> 之一或两者可为 <code>void</code>, 以表示该状态没有值. 注意, <code>E = void</code> 会把 basic result 实质上变成一个 <code>optional&lt;T&gt;</code>, 但带有 <code>NoValuePolicy</code> 可配置的行为. 可用 <a href="../../reference/traits/is_basic_result.html" class="api-reference"><code>is_basic_result&lt;T&gt;</code></a> 检测.</p>
+
+<p><em>要求</em>: C++ 20 下为 concept 要求, 否则为静态断言:</p>
+
+<ul>
+<li>trait <a href="../../reference/traits/type_can_be_used_in_basic_result.html" class="api-reference"><code>type_can_be_used_in_basic_result&lt;R&gt;</code></a> 对 <code>T</code> 与 <code>E</code> 皆为真.</li>
+<li>要么 <code>E</code> 为 <code>void</code>, 要么为 <code>DefaultConstructible</code> (仅限 Outcome v2.1 及更早版本).</li>
+</ul>
+
+<p><em>命名空间</em>: <code>BOOST_OUTCOME_V2_NAMESPACE</code></p>
+
+<p><em>头文件</em>: <code>&lt;boost/outcome/basic_result.hpp&gt;</code></p>
+
+<p><em>包含</em>: 最轻量的 C 与 C++ 头文件:</p>
+
+<ol>
+<li><code>&lt;cstdint&gt;</code></li>
+<li><code>&lt;initializer_list&gt;</code></li>
+<li><code>&lt;iosfwd&gt;</code></li>
+<li><code>&lt;new&gt;</code></li>
+<li><code>&lt;type_traits&gt;</code></li>
+<li>若 <a href="../../reference/macros/in_place_type.html" class="api-reference"><code>BOOST_OUTCOME_USE_STD_IN_PLACE_TYPE</code></a> 为 <code>1</code>, 则为 <code>&lt;utility&gt;</code> (仅 C++ 17 或更高时默认为 <code>1</code>)</li>
+<li>仅当 C++ 异常被禁用且 <code>BOOST_OUTCOME_DISABLE_EXECINFO</code> 未定义时 (用于在 “异常抛出” 时打印栈回溯): <ol>
+<li><code>&lt;sal.h&gt;</code> (仅 Windows)</li>
+<li><code>&lt;stddef.h&gt;</code> (仅 Windows)</li>
+<li><code>&lt;string.h&gt;</code> (仅 Windows)</li>
+<li><code>&lt;execinfo.h&gt;</code> (仅 POSIX)</li>
+</ol></li>
+<li><code>&lt;cstdio&gt;</code></li>
+<li><code>&lt;cstdlib&gt;</code></li>
+<li><code>&lt;cassert&gt;</code></li>
+</ol>
+
+<p>这套非常轻量的包含依赖, 使 basic result 适合用于超大型 C++ 代码库的全局头文件.</p>
+
+<h3 id="design-rationale">设计理由</h3>
+
+<p>basic result 类型是 Outcome 库的主力类型, 提供一个带可选值的简单和类型, 表示成功或失望. 与 <a href="https://wg21.link/P0323" class="api-reference" target="_blank"><i class="fa fa-book" aria-hidden="true"></i> P0323 <code>std::expected&lt;T, E&gt;</code></a> 不同, Outcome 的 result 类型专为在超大型代码库中实现失败处理的便利而设计, 并为此做了多处 API 差异化.</p>
+
+<p>第一个主要设计差异是: basic result 的构造函数设计以 <a href="https://en.cppreference.com/w/cpp/utility/variant" class="api-reference" target="_blank"><i class="fa fa-book" aria-hidden="true"></i> <code>std::variant&lt;...&gt;</code></a> 为范本——而 <a href="https://en.cppreference.com/w/cpp/utility/optional" class="api-reference" target="_blank"><i class="fa fa-book" aria-hidden="true"></i> <code>std::optional&lt;T&gt;</code></a> 的构造函数设计则是 <code>std::expected&lt;T, E&gt;</code> 所效仿的对象. 这意味着只要无歧义, basic result 会隐式构造 <code>T</code> 或 <code>E</code>, 与 <code>variant</code> 的行为相同. 当隐式构造有歧义时, 隐式构造函数被禁用, 一个 <code>T</code> 或 <code>E</code> 可以经由 <a href="../../reference/types/in_place_type_t.html" class="api-reference"><code>in_place_type_t&lt;T&gt;</code></a> 指定, 或经由 <a href="../../reference/types/success_type.html" class="api-reference"><code>success_type&lt;T&gt;</code></a> 或 <a href="../../reference/traits/is_failure_type.html" class="api-reference"><code>failure_type&lt;T&gt;</code></a>. 我们实现了 variant 构造函数的一个子集以降低编译期影响, 因此隐式与显式构造函数设计被划分为固定子集以减少 SFINAE 执行.</p>
+
+<p>第二个主要设计差异是: 仅当 <code>T</code> 与 <code>E</code> 都是可平凡复制或 <code>void</code> 时才使用 union 存储, 否则使用 struct 存储. 这通常不是问题, 因为假定 <code>sizeof(E)</code> 在失败处理场景中会很小. 只为可平凡复制类型使用 union 存储的选择极大降低了编译器负担, 并在超大型 C++ 14 代码库中大幅缩短编译时间, 因为拷贝与移动无需为了实现基于 union 存储的实现所要求的 never-empty 保证而经历复杂仪式 (C++ 17 起拷贝与移动构造函数实例化少得多, 但积少成多——避免的工作总是最快的).</p>
+
+<h3 id="public-member-type-aliases">公有成员类型别名</h3>
+
+<ul>
+<li><code>value_type</code> 为 <code>T</code>.</li>
+<li><code>error_type</code> 为 <code>E</code>.</li>
+<li><code>no_value_policy_type</code> 为 <code>NoValuePolicy</code>.</li>
+<li><code>value_type_if_enabled</code> 为 <code>T</code>——当可从 <code>T</code> 构造时; 否则它是一个命名有用的不可用内部类型.</li>
+<li><code>error_type_if_enabled</code> 为 <code>E</code>——当可从 <code>E</code> 构造时; 否则它是一个命名有用的不可用内部类型.</li>
+<li><code>rebind&lt;A, B = E, C = NoValuePolicy&gt;</code> 为 <code>basic_result&lt;A, B, C&gt;</code>.</li>
+</ul>
+
+<h3 id="protected-member-predicate-booleans">受保护成员谓词布尔量</h3>
+
+<ul>
+<li><p><code>predicate::constructors_enabled</code> 为 constexpr 布尔真, 如果衰变后的 <code>value_type</code> 与衰变后的 <code>error_type</code> 不是同一类型.</p></li>
+
+<li><p><code>predicate::implicit_constructors_enabled</code> 为 constexpr 布尔真, 如果:</p>
+
+<ol>
+<li><code>predicate::constructors_enabled</code> 为真.</li>
+<li>trait <a href="../../reference/traits/is_error_type.html" class="api-reference"><code>is_error_type&lt;E&gt;</code></a> 不同时对衰变后的 <code>value_type</code> 与衰变后的 <code>error_type</code> 为真.</li>
+<li><code>value_type</code> 不能从 <code>error_type</code> 隐式构造, 且 <code>error_type</code> 不能从 <code>value_type</code> 隐式构造. <br>OR<br>trait <a href="../../reference/traits/is_error_type.html" class="api-reference"><code>is_error_type&lt;E&gt;</code></a> 对衰变后的 <code>error_type</code> 为真, 且 <code>error_type</code> 不能从 <code>value_type</code> 隐式构造, 且 <code>value_type</code> 是整型.</li>
+</ol></li>
+
+<li><p><code>predicate::enable_value_converting_constructor&lt;A&gt;</code> 为 constexpr 布尔真, 如果:</p>
+
+<ol>
+<li><code>predicate::constructors_enabled</code> 为真.</li>
+<li>衰变后的 <code>A</code> 不是此 <code>basic_result</code> 类型.</li>
+<li><code>predicate::implicit_constructors_enabled</code> 为真.</li>
+<li>衰变后的 <code>A</code> 不是 <code>in_place_type_t</code>.</li>
+<li>trait <a href="../../reference/traits/is_error_type_enum.html" class="api-reference"><code>is_error_type_enum&lt;E, Enum&gt;</code></a> 对 <code>error_type</code> 与衰变后的 <code>A</code> 为假.</li>
+<li><code>value_type</code> 可从 <code>A</code> 隐式构造, 且 <code>error_type</code> 不能从 <code>A</code> 隐式构造. <br>OR<br><code>value_type</code> 与衰变后的 <code>A</code> 是完全相同的类型, 且 <code>value_type</code> 可从 <code>A</code> 隐式构造.</li>
+</ol></li>
+
+<li><p><code>predicate::enable_error_converting_constructor&lt;A&gt;</code> 为 constexpr 布尔真, 如果:</p>
+
+<ol>
+<li><code>predicate::constructors_enabled</code> 为真.</li>
+<li>衰变后的 <code>A</code> 不是此 <code>basic_result</code> 类型.</li>
+<li><code>predicate::implicit_constructors_enabled</code> 为真.</li>
+<li>衰变后的 <code>A</code> 不是 <code>in_place_type_t</code>.</li>
+<li>trait <a href="../../reference/traits/is_error_type_enum.html" class="api-reference"><code>is_error_type_enum&lt;E, Enum&gt;</code></a> 对 <code>error_type</code> 与衰变后的 <code>A</code> 为假.</li>
+<li><code>value_type</code> 不能从 <code>A</code> 隐式构造, 且 <code>error_type</code> 可从 <code>A</code> 隐式构造. <br>OR<br><code>error_type</code> 与衰变后的 <code>A</code> 是完全相同的类型, 且 <code>error_type</code> 可从 <code>A</code> 隐式构造.</li>
+</ol></li>
+
+<li><p><code>predicate::enable_error_condition_converting_constructor&lt;ErrorCondEnum&gt;</code> 为 constexpr 布尔真, 如果:</p>
+
+<ol>
+<li><code>predicate::constructors_enabled</code> 为真.</li>
+<li>衰变后的 <code>ErrorCondEnum</code> 不是此 <code>basic_result</code> 类型.</li>
+<li>衰变后的 <code>ErrorCondEnum</code> 不是 <code>in_place_type_t</code>.</li>
+<li>trait <a href="../../reference/traits/is_error_type_enum.html" class="api-reference"><code>is_error_type_enum&lt;E, Enum&gt;</code></a> 对 <code>error_type</code> 与衰变后的 <code>ErrorCondEnum</code> 为真.</li>
+</ol></li>
+
+<li><p><code>predicate::enable_compatible_conversion&lt;A, B, C&gt;</code> 为 constexpr 布尔真, 如果:</p>
+
+<ol>
+<li><code>predicate::constructors_enabled</code> 为真.</li>
+<li><code>basic_result&lt;A, B, C&gt;</code> 不是此 <code>basic_result</code> 类型.</li>
+<li><code>A</code> 为 <code>void</code>, 或 <code>value_type</code> 可从 <code>A</code> 显式构造.</li>
+<li><code>B</code> 为 <code>void</code>, 或 <code>error_type</code> 可从 <code>B</code> 显式构造.</li>
+</ol></li>
+
+<li><p><code>predicate::enable_make_error_code_compatible_conversion&lt;A, B, C&gt;</code> 为 constexpr 布尔真, 如果:</p>
+
+<ol>
+<li><code>predicate::constructors_enabled</code> 为真.</li>
+<li><code>basic_result&lt;A, B, C&gt;</code> 不是此 <code>basic_result</code> 类型.</li>
+<li>trait <a href="../../reference/traits/is_error_code_available.html" class="api-reference"><code>is_error_code_available&lt;T&gt;</code></a> 对衰变后的 <code>error_type</code> 为真.</li>
+<li><code>predicate::enable_compatible_conversion&lt;A, B, C&gt;</code> 不为真.</li>
+<li><code>A</code> 为 <code>void</code>, 或 <code>value_type</code> 可从 <code>A</code> 显式构造.</li>
+<li><code>error_type</code> 可从 <code>make_error_code(B)</code> 显式构造.</li>
+</ol></li>
+
+<li><p><code>predicate::enable_make_exception_ptr_compatible_conversion&lt;A, B, C&gt;</code> 为 constexpr 布尔真, 如果:</p>
+
+<ol>
+<li><code>predicate::constructors_enabled</code> 为真.</li>
+<li><code>basic_result&lt;A, B, C&gt;</code> 不是此 <code>basic_result</code> 类型.</li>
+<li>trait <a href="../../reference/traits/is_exception_ptr_available.html" class="api-reference"><code>is_exception_ptr_available&lt;T&gt;</code></a> 对衰变后的 <code>error_type</code> 为真.</li>
+<li><code>predicate::enable_compatible_conversion&lt;A, B, C&gt;</code> 不为真.</li>
+<li><code>A</code> 为 <code>void</code>, 或 <code>value_type</code> 可从 <code>A</code> 显式构造.</li>
+<li><code>error_type</code> 可从 <code>make_exception_ptr(B)</code> 显式构造.</li>
+</ol></li>
+
+<li><p><code>predicate::enable_inplace_value_constructor&lt;Args...&gt;</code> 为 constexpr 布尔真, 如果:</p>
+
+<ol>
+<li><code>predicate::constructors_enabled</code> 为真.</li>
+<li><code>value_type</code> 为 <code>void</code>, 或 <code>value_type</code> 可从 <code>Args...</code> 显式构造.</li>
+</ol></li>
+
+<li><p><code>predicate::enable_inplace_error_constructor&lt;Args...&gt;</code> 为 constexpr 布尔真, 如果:</p>
+
+<ol>
+<li><code>predicate::constructors_enabled</code> 为真.</li>
+<li><code>error_type</code> 为 <code>void</code>, 或 <code>error_type</code> 可从 <code>Args...</code> 显式构造.</li>
+</ol></li>
+
+<li><p><code>predicate::enable_inplace_value_error_constructor&lt;Args...&gt;</code> 为 constexpr 布尔真, 如果:</p>
+
+<ol>
+<li><code>predicate::constructors_enabled</code> 为真.</li>
+<li><code>predicate::implicit_constructors_enabled</code> 为真.</li>
+<li> <code>value_type</code> 可从 <code>Args...</code> 显式构造, 或 <code>error_type</code> 可从 <code>Args...</code> 显式构造——两者中恰好一个成立 (不可同时).</li>
+</ol></li>
+</ul>
+
+<h4 id="summary-of-standard-requirements-provided-https-en-cppreference-com-w-cpp-named-req">所提供的 <a href="https://en.cppreference.com/w/cpp/named_req">标准要求摘要</a></h4>
+
+<ul>
+<li><del><code>DefaultConstructible</code></del>, 总是删除, 以迫使用户为每个实例化的 result 选择有值或出错.</li>
+<li><code>MoveConstructible</code>, 如果 <code>value_type</code> 与 <code>error_type</code> 都实现移动构造函数.</li>
+<li><code>CopyConstructible</code>, 如果 <code>value_type</code> 与 <code>error_type</code> 都实现拷贝构造函数.</li>
+<li><code>MoveAssignable</code>, 如果 <code>value_type</code> 与 <code>error_type</code> 都实现移动构造函数与移动赋值.</li>
+<li><code>CopyAssignable</code>, 如果 <code>value_type</code> 与 <code>error_type</code> 都实现拷贝构造函数与拷贝赋值.</li>
+<li><code>Destructible</code>.</li>
+<li><code>Swappable</code>, 带强保证而非弱保证. 更多信息参见 <a href="../../reference/types/basic_result/swap.html" class="api-reference"><code>void swap(basic_result &amp;)</code></a>.</li>
+<li><code>TriviallyCopyable</code>, 如果 <code>value_type</code> 与 <code>error_type</code> 都是可平凡复制的.</li>
+<li><code>TrivialType</code>, 如果 <code>value_type</code> 与 <code>error_type</code> 都是平凡类型.</li>
+<li><code>LiteralType</code>, 如果 <code>value_type</code> 与 <code>error_type</code> 都是字面类型.</li>
+
+<li><p><code>StandardLayoutType</code>, 如果 <code>value_type</code> 与 <code>error_type</code> 都是标准布局类型. 若是, <code>basic_result</code> 在 C 中的布局保证为以下之一:</p>
+<div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="k">struct</span> <span class="n">trivially_copyable_result_layout</span> <span class="p">{</span>
+  <span class="k">union</span> <span class="p">{</span>
+    <span class="n">value_type</span> <span class="n">value</span><span class="p">;</span>
+    <span class="n">error_type</span> <span class="n">error</span><span class="p">;</span>
+  <span class="p">};</span>
+  <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">flags</span><span class="p">;</span>
+<span class="p">};</span>
+</code></pre></div>
+<p>……如果 <code>value_type</code> 与 <code>error_type</code> 都是 <code>TriviallyCopyable</code>; 否则:</p>
+<div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="k">struct</span> <span class="n">non_trivially_copyable_result_layout</span> <span class="p">{</span>
+  <span class="n">value_type</span> <span class="n">value</span><span class="p">;</span>
+  <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">flags</span><span class="p">;</span>
+  <span class="n">error_type</span> <span class="n">error</span><span class="p">;</span>
+<span class="p">};</span>
+</code></pre></div>
+<p>显然, 所有 C 兼容的 C++ 类型都是 <code>TriviallyCopyable</code>, 所以如果你把不可平凡复制的类型从 C++ 传给 C, 你就是在做未定义行为.</p></li>
+
+<li><p><code>EqualityComparable</code>, 如果 <code>value_type</code> 与 <code>error_type</code> 彼此之间实现相等比较.</p></li>
+
+<li><p><del><code>LessThanComparable</code></del>, 未实现, 因为存在来自 <code>value_type</code> 与 <code>error_type</code> 的隐式转换, 这会造成重大意外 (即难以诊断的缺陷), 所以我们完全不实现它们.</p></li>
+
+<li><p><del><code>Hash</code></del>, 未实现, 因为对不相等的非值项实现通用唯一哈希需要依赖启用 RTTI.</p></li>
+</ul>
+
+<p>因此 <code>basic_result</code> 满足 <code>Regular</code> concept——如果 <code>value_type</code> 与 <code>error_type</code> 都是 <code>Regular</code> (除缺少默认构造函数外). 在需要默认构造函数的场合, 把 <code>basic_result</code> 包装进 <a href="https://en.cppreference.com/w/cpp/utility/optional" class="api-reference" target="_blank"><i class="fa fa-book" aria-hidden="true"></i> <code>std::optional&lt;T&gt;</code></a> 通常就足够了.</p>
+
+<h3 id="public-member-functions">公有成员函数</h3>
+
+<h4 id="disabling-constructors">禁用构造函数</h4>
+
+<ol class="children children-li"><li>
+	<a href="../../reference/types/basic_result/disabling_catchall.html" ><code>basic_result(Args...) = delete</code></a>
+<p>禁用型全捕获构造函数, 用于在 <code>predicate::constructors_enabled</code> 为假时尝试使用非原位构造函数时给出有用的诊断错误.</p><li>
+	<a href="../../reference/types/basic_result/disabling_implicit_constructor.html" ><code>basic_result(X &amp;&amp;) = delete</code></a>
+<p>禁用型隐式构造函数, 用于在 <code>predicate::implicit_constructors_enabled</code> 为假时尝试使用隐式构造函数时给出有用的诊断错误.</p></li></ol>
+
+<h4 id="copy-and-move-constructors-and-assignment-and-destructor">拷贝与移动构造函数和赋值, 以及析构函数</h4>
+
+<ol class="children children-li"><li>
+    <a href="../../reference/types/basic_result/default.html" ><code>basic_result() = delete</code></a>
+<p>默认构造函数 (已禁用).</p><li>
+    <a href="../../reference/types/basic_result/move_constructor.html" ><code>basic_result(basic_result &amp;&amp;)</code></a>
+<p>移动构造函数. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/copy_constructor.html" ><code>basic_result(const basic_result &amp;)</code></a>
+<p>拷贝构造函数. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/move_assignment.html" ><code>basic_result &amp;operator=(basic_result &amp;&amp;)</code></a>
+<p>移动赋值. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/copy_assignment.html" ><code>basic_result &amp;operator=(const basic_result &amp;)</code></a>
+<p>拷贝赋值. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/destructor.html" ><code>~basic_result()</code></a>
+<p>析构函数. constexpr、平凡性与 noexcept 传播.</p></li></ol>
+
+<h4 id="converting-constructors">转换构造函数</h4>
+
+<ol class="children children-li"><li>
+    <a href="../../reference/types/basic_result/implicit_value_converting_constructor.html" ><code>basic_result(R &amp;&amp;)</code></a>
+<p>隐式 <code>value_type</code> 构造函数. 当 <code>predicate::enable_value_converting_constructor&lt;R&gt;</code> 为真时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/implicit_error_converting_constructor.html" ><code>basic_result(S &amp;&amp;)</code></a>
+<p>隐式 <code>error_type</code> 构造函数. 当 <code>predicate::enable_error_converting_constructor&lt;S&gt;</code> 为真时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/implicit_error_condition_converting_constructor.html" ><code>basic_result(ErrorCondEnum &amp;&amp;)</code></a>
+<p>隐式 <code>error_type</code>——来自 <code>ErrorCondEnum</code>——构造函数. 当 <code>predicate::enable_error_condition_converting_constructor&lt;ErrorCondEnum&gt;</code> 为真时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/explicit_valueorerror_converting_constructor.html" ><code>explicit basic_result(concepts::value_or_error&lt;T, E&gt; &amp;&amp;)</code></a>
+<p>来自 <code>concepts::value_or_error&lt;T, E&gt;</code> concept 匹配类型的显式转换构造函数. 当 <code>convert::value_or_error&lt;&gt;</code> 允许时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/explicit_copy_converting_constructor.html" ><code>explicit basic_result(const basic_result&lt;R, S, P&gt; &amp;)</code></a>
+<p>来自兼容 <code>basic_result</code> 的显式转换拷贝构造函数. 当 <code>predicate::enable_compatible_conversion&lt;R, S, P&gt;</code> 为真时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/explicit_move_converting_constructor.html" ><code>explicit basic_result(basic_result&lt;R, S, P&gt; &amp;&amp;)</code></a>
+<p>来自兼容 <code>basic_result</code> 的显式转换移动构造函数. 当 <code>predicate::enable_compatible_conversion&lt;R, S, P&gt;</code> 为真时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/explicit_make_error_code_copy_converting_constructor.html" ><code>explicit basic_result(const basic_result&lt;R, S, P&gt; &amp;)</code></a>
+<p>来自兼容 <code>basic_result</code> 的显式转换拷贝构造函数. 当 <code>predicate::enable_make_error_code_compatible_conversion&lt;R, S, P&gt;</code> 为真时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/explicit_make_error_code_move_converting_constructor.html" ><code>explicit basic_result(basic_result&lt;R, S, P&gt; &amp;&amp;)</code></a>
+<p>来自兼容 <code>basic_result</code> 的显式转换移动构造函数. 当 <code>predicate::enable_make_error_code_compatible_conversion&lt;R, S, P&gt;</code> 为真时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/explicit_make_exception_ptr_copy_converting_constructor.html" ><code>explicit basic_result(const basic_result&lt;R, S, P&gt; &amp;)</code></a>
+<p>来自兼容 <code>basic_result</code> 的显式转换拷贝构造函数. 当 <code>predicate::enable_make_exception_ptr_compatible_conversion&lt;R, S, P&gt;</code> 为真时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/explicit_make_exception_ptr_move_converting_constructor.html" ><code>explicit basic_result(basic_result&lt;R, S, P&gt; &amp;&amp;)</code></a>
+<p>来自兼容 <code>basic_result</code> 的显式转换移动构造函数. 当 <code>predicate::enable_make_exception_ptr_compatible_conversion&lt;R, S, P&gt;</code> 为真时可用. constexpr、平凡性与 noexcept 传播.</p></li></ol>
+
+<h4 id="inplace-constructors">原位构造函数</h4>
+
+<ol class="children children-li"><li>
+    <a href="../../reference/types/basic_result/explicit_inplace_value_constructor.html" ><code>explicit basic_result(in_place_type_t&lt;value_type_if_enabled&gt;, Args ...)</code></a>
+<p>显式原位值构造函数. 当 <code>predicate::enable_inplace_value_constructor&lt;Args ...&gt;</code> 为真时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/explicit_inplace_value_constructor_il.html" ><code>explicit basic_result(in_place_type_t&lt;value_type_if_enabled&gt;, std::initializer_list&lt;U&gt;, Args ...)</code></a>
+<p>显式原位值构造函数. 当 <code>predicate::enable_inplace_value_constructor&lt;std::initializer_list&lt;U&gt;, Args ...&gt;</code> 为真时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/explicit_inplace_error_constructor.html" ><code>explicit basic_result(in_place_type_t&lt;error_type_if_enabled&gt;, Args ...)</code></a>
+<p>显式原位错误构造函数. 当 <code>predicate::enable_inplace_error_constructor&lt;Args ...&gt;</code> 为真时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/explicit_inplace_error_constructor_il.html" ><code>explicit basic_result(in_place_type_t&lt;error_type_if_enabled&gt;, std::initializer_list&lt;U&gt;, Args ...)</code></a>
+<p>显式原位错误构造函数. 当 <code>predicate::enable_inplace_error_constructor&lt;std::initializer_list&lt;U&gt;, Args ...&gt;</code> 为真时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/implicit_inplace_value_error_constructor.html" ><code>basic_result(A1 &amp;&amp;, A2 &amp;&amp;, Args ...)</code></a>
+<p>隐式原位值或错误构造函数. 当 <code>predicate::enable_inplace_value_error_constructor&lt;A1, A2, Args ...&gt;</code> 为真时可用. constexpr、平凡性与 noexcept 传播.</p></li></ol>
+
+<h4 id="tagged-constructors">带标签构造函数</h4>
+
+<ol class="children children-li"><li>
+    <a href="../../reference/types/basic_result/implicit_success_copy_constructor.html" ><code>basic_result(const success_type&lt;T&gt; &amp;)</code></a>
+<p>来自成功类型糖的隐式值拷贝构造函数. 当 <code>predicate::enable_compatible_conversion&lt;T, void, void&gt;</code> 为真, 或 <code>T</code> 为 <code>void</code> 时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/implicit_success_move_constructor.html" ><code>basic_result(success_type&lt;T&gt; &amp;&amp;)</code></a>
+<p>来自成功类型糖的隐式值移动构造函数. 当 <code>predicate::enable_compatible_conversion&lt;T, void, void&gt;</code> 为真, 或 <code>T</code> 为 <code>void</code> 时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/implicit_failure_copy_constructor.html" ><code>basic_result(const failure_type&lt;T&gt; &amp;)</code></a>
+<p>来自失败类型糖的隐式错误拷贝构造函数. 当 <code>predicate::enable_compatible_conversion&lt;void, T, void&gt;</code> 为真, 或 <code>T</code> 为 <code>void</code> 时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/implicit_failure_move_constructor.html" ><code>basic_result(failure_type&lt;T&gt; &amp;&amp;)</code></a>
+<p>来自失败类型糖的隐式错误移动构造函数. 当 <code>predicate::enable_compatible_conversion&lt;void, T, void&gt;</code> 为真, 或 <code>T</code> 为 <code>void</code> 时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/implicit_failure_make_error_code_copy_constructor.html" ><code>basic_result(const failure_type&lt;T&gt; &amp;)</code></a>
+<p>来自失败类型糖的隐式错误拷贝构造函数. 当 <code>predicate::enable_make_error_code_compatible_conversion&lt;void, T, void&gt;</code> 为真, 或 <code>T</code> 为 <code>void</code> 时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/implicit_failure_make_error_code_move_constructor.html" ><code>basic_result(failure_type&lt;T&gt; &amp;&amp;)</code></a>
+<p>来自失败类型糖的隐式错误移动构造函数. 当 <code>predicate::enable_make_error_code_compatible_conversion&lt;void, T, void&gt;</code> 为真, 或 <code>T</code> 为 <code>void</code> 时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/implicit_failure_make_exception_ptr_copy_constructor.html" ><code>basic_result(const failure_type&lt;T&gt; &amp;)</code></a>
+<p>来自失败类型糖的隐式错误拷贝构造函数. 当 <code>predicate::enable_make_exception_ptr_compatible_conversion&lt;void, T, void&gt;</code> 为真, 或 <code>T</code> 为 <code>void</code> 时可用. constexpr、平凡性与 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/implicit_failure_make_exception_ptr_move_constructor.html" ><code>basic_result(failure_type&lt;T&gt; &amp;&amp;)</code></a>
+<p>来自失败类型糖的隐式错误移动构造函数. 当 <code>predicate::enable_make_exception_ptr_compatible_conversion&lt;void, T, void&gt;</code> 为真, 或 <code>T</code> 为 <code>void</code> 时可用. constexpr、平凡性与 noexcept 传播.</p></li></ol>
+
+<h4 id="observers">观察器</h4>
+
+<ol class="children children-li"><li>
+    <a href="../../reference/types/basic_result/operator_bool.html" ><code>explicit operator bool() const noexcept</code></a>
+<p>若存在值则返回 true. constexpr, 永不抛出.</p><li>
+    <a href="../../reference/types/basic_result/has_value.html" ><code>bool has_value() const noexcept</code></a>
+<p>若存在值则返回 true. constexpr, 永不抛出.</p><li>
+    <a href="../../reference/types/basic_result/has_error.html" ><code>bool has_error() const noexcept</code></a>
+<p>若存在错误则返回 true. constexpr, 永不抛出.</p><li>
+    <a href="../../reference/types/basic_result/has_exception.html" ><code>bool has_exception() const noexcept</code></a>
+<p>对 <code>basic_result</code> 总是返回 false. constexpr, 永不抛出.</p><li>
+    <a href="../../reference/types/basic_result/has_failure.html" ><code>bool has_failure() const noexcept</code></a>
+<p>若存在错误或异常则返回 true. constexpr, 永不抛出.</p><li>
+    <a href="../../reference/types/basic_result/has_lost_consistency.html" ><code>bool has_lost_consistency() const noexcept</code></a>
+<p>若涉及此对象的先前 swap 未能保持强保证则返回 true. constexpr, 永不抛出.</p><li>
+    <a href="../../reference/types/basic_result/assume_value_lvalue.html" ><code>value_type &amp;assume_value() &amp; noexcept</code></a>
+<p>对所存任意值的窄契约左值引用观察器. constexpr 传播, 永不抛出.</p><li>
+    <a href="../../reference/types/basic_result/assume_value_lvalue_const.html" ><code>const value_type &amp;assume_value() const &amp; noexcept</code></a>
+<p>对所存任意值的窄契约 const 左值引用观察器. constexpr 传播, 永不抛出.</p><li>
+    <a href="../../reference/types/basic_result/assume_value_rvalue.html" ><code>value_type &amp;&amp;assume_value() &amp;&amp; noexcept</code></a>
+<p>对所存任意值的窄契约右值引用观察器. constexpr 传播, 永不抛出.</p><li>
+    <a href="../../reference/types/basic_result/assume_value_rvalue_const.html" ><code>const value_type &amp;&amp;assume_value() const &amp;&amp; noexcept</code></a>
+<p>对所存任意值的窄契约 const 右值引用观察器. constexpr 传播, 永不抛出.</p><li>
+    <a href="../../reference/types/basic_result/value_lvalue.html" ><code>value_type &amp;value() &amp;</code></a>
+<p>对所存任意值的宽契约左值引用观察器. constexpr 传播.</p><li>
+    <a href="../../reference/types/basic_result/value_lvalue_const.html" ><code>const value_type &amp;value() const &amp;</code></a>
+<p>对所存任意值的宽契约 const 左值引用观察器. constexpr 传播.</p><li>
+    <a href="../../reference/types/basic_result/value_rvalue.html" ><code>value_type &amp;&amp;value() &amp;&amp;</code></a>
+<p>对所存任意值的宽契约右值引用观察器. constexpr 传播.</p><li>
+    <a href="../../reference/types/basic_result/value_rvalue_const.html" ><code>const value_type &amp;&amp;value() const &amp;&amp;</code></a>
+<p>对所存任意值的宽契约 const 右值引用观察器. constexpr 传播.</p><li>
+    <a href="../../reference/types/basic_result/assume_error_lvalue.html" ><code>error_type &amp;assume_error() &amp; noexcept</code></a>
+<p>对所存错误的窄契约左值引用观察器. constexpr 传播, 永不抛出.</p><li>
+    <a href="../../reference/types/basic_result/assume_error_lvalue_const.html" ><code>const error_type &amp;assume_error() const &amp; noexcept</code></a>
+<p>对所存错误的窄契约 const 左值引用观察器. constexpr 传播, 永不抛出.</p><li>
+    <a href="../../reference/types/basic_result/assume_error_rvalue.html" ><code>error_type &amp;&amp;assume_error() &amp;&amp; noexcept</code></a>
+<p>对所存错误的窄契约右值引用观察器. constexpr 传播, 永不抛出.</p><li>
+    <a href="../../reference/types/basic_result/assume_error_rvalue_const.html" ><code>const error_type &amp;&amp;assume_error() const &amp;&amp; noexcept</code></a>
+<p>对所存错误的窄契约 const 右值引用观察器. constexpr 传播, 永不抛出.</p><li>
+    <a href="../../reference/types/basic_result/error_lvalue.html" ><code>error_type &amp;error() &amp;</code></a>
+<p>对所存错误的宽契约左值引用观察器. constexpr 传播.</p><li>
+    <a href="../../reference/types/basic_result/error_lvalue_const.html" ><code>const error_type &amp;error() const &amp;</code></a>
+<p>对所存错误的宽契约 const 左值引用观察器. constexpr 传播.</p><li>
+    <a href="../../reference/types/basic_result/error_rvalue.html" ><code>error_type &amp;&amp;error() &amp;&amp;</code></a>
+<p>对所存错误的宽契约右值引用观察器. constexpr 传播.</p><li>
+    <a href="../../reference/types/basic_result/error_rvalue_const.html" ><code>const error_type &amp;&amp;error() const &amp;&amp;</code></a>
+<p>对所存错误的宽契约 const 右值引用观察器. constexpr 传播.</p><li>
+    <a href="../../reference/types/basic_result/as_failure_lvalue.html" ><code>auto as_failure() const &amp;</code></a>
+<p>返回自由函数 <code>failure()</code> 的输出, 包含任何出错状态的副本.</p></li></ol>
+
+<h4 id="modifiers">修改器</h4>
+
+<ol class="children children-li"><li>
+    <a href="../../reference/types/basic_result/swap.html" ><code>void swap(basic_result &amp;)</code></a>
+<p>以强保证把一个 basic_result 与另一个交换. noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/as_failure_rvalue.html" ><code>auto as_failure() &amp;&amp;</code></a>
+<p>返回自由函数 <code>failure()</code> 的输出, 包含任何出错状态的移动.</p></li></ol>
+
+<h4 id="comparisons">比较</h4>
+
+<p> <code>LessThanComparable</code> 为何未实现, 见上文.</p>
+
+<ol class="children children-li"><li>
+    <a href="../../reference/types/basic_result/equality_basic_result.html" ><code>bool operator==(const basic_result&lt;A, B, C&gt; &amp;) const</code></a>
+<p>若此 result 与另一个 result 比较相等则返回 true. constexpr 且 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/inequality_success_type.html" ><code>bool operator==(const success_type&lt;A&gt; &amp;) const</code></a>
+<p>若此 result 与成功类型糖比较相等则返回 true. constexpr 且 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/equality_failure_type.html" ><code>bool operator==(const failure_type&lt;A, void&gt; &amp;) const</code></a>
+<p>若此 result 与失败类型糖比较相等则返回 true. constexpr 且 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/inequality_basic_result.html" ><code>bool operator!=(const basic_result&lt;A, B, C&gt; &amp;) const</code></a>
+<p>若此 result 与另一个 result 比较不相等则返回 true. constexpr 且 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/equality_success_type.html" ><code>bool operator!=(const success_type&lt;A&gt; &amp;) const</code></a>
+<p>若此 result 与成功类型糖比较不相等则返回 true. constexpr 且 noexcept 传播.</p><li>
+    <a href="../../reference/types/basic_result/inequality_failure_type.html" ><code>bool operator!=(const failure_type&lt;A, void&gt; &amp;) const</code></a>
+<p>若此 result 与失败类型糖比较不相等则返回 true. constexpr 且 noexcept 传播.</p></li></ol>
+
+
+
+
+
+
+
+        </div><p><small>最后修订: December 17, 2020 at 11:27:06 UTC</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../../reference/types/basic_outcome/as_failure_rvalue.html"><img src="../../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../../reference/types.html"><img src="../../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../../index.html"><img src="../../images/home.png" alt="首页"></a><a accesskey="n" href="../../reference/types/basic_result/default.html"><img src="../../images/next.png" alt="下一页"></a></div></body>
+</html>

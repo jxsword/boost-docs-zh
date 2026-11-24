@@ -1,0 +1,387 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>托管内存段中的容器</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../interprocess.html" title="第 15 章 Boost.Interprocess">
+<link rel="prev" href="allocators_containers.html" title="分配器与内存分配算法">
+<link rel="next" href="additional_containers.html" title="与 Boost.Interprocess 兼容的 Boost 容器">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="allocators_containers.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../interprocess.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="additional_containers.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="interprocess.containers_explained"></a><a class="link" href="containers_explained.html" title="托管内存段中的容器">托管内存段中的容器</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="containers_explained.html#interprocess.containers_explained.stl_container_requirements">Boost.Interprocess 分配器对容器的要求</a></span></dt>
+<dt><span class="section"><a href="containers_explained.html#interprocess.containers_explained.containers">托管内存段中的可移植容器</a></span></dt>
+<dt><span class="section"><a href="containers_explained.html#interprocess.containers_explained.where_allocate">这块内存在哪里分配?</a></span></dt>
+<dt><span class="section"><a href="containers_explained.html#interprocess.containers_explained.containers_of_containers">容器的容器</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.containers_explained.stl_container_requirements"></a><a class="link" href="containers_explained.html#interprocess.containers_explained.stl_container_requirements" title="Boost.Interprocess 分配器对容器的要求">Boost.Interprocess 分配器对容器的要求</a>
+</h3></div></div></div>
+<p>
+        <span class="bold"><strong>Boost.Interprocess</strong></span> 的 STL 兼容分配器提供 STL 兼容的分配器接口, 如果它们把内部的 <span class="bold"><strong>pointer</strong></span> typedef 定义为相对指针, 就可以用来把 STL 容器放入共享内存、内存映射文件或用户自定义的内存段中.</p>
+<p>最初, 在 C++98 和 C++03 中, 这个 <span class="bold"><strong>pointer</strong></span> typedef 毫无用处. 正如 Scott Meyers 在其 Effective STL 一书第 10 条中提到的, <span class="emphasis"><em>"注意分配器的约定与限制"</em></span>:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <span class="emphasis"><em>"标准明确允许库实现者假设每个分配器的 pointer typedef 都是 T* 的同义词"</em></span>
+          </li>
+<li class="listitem">
+            <span class="emphasis"><em>"标准规定, STL 的实现可以假设同类型的所有分配器对象都是等价的, 且总是比较相等"</em></span>
+          </li>
+</ul></div>
+<p>显然, 如果任何 STL 实现忽略 pointer typedef, 就没有任何智能指针能用作 allocator::pointer. 如果 STL 实现假设同类型的所有分配器对象比较相等, 它就会认为分别从不同内存池分配的两个分配器相等, 这完全是灾难.</p>
+<p>我们要用 <span class="bold"><strong>Boost.Interprocess</strong></span> 放入共享内存或内存映射文件的 STL 容器不能做任何这些假设, 因此:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">STL 容器不得假设用一个分配器分配的内存可以用同类型的其他分配器释放. 只有当一个对象分配的内存可以用另一个对象释放时, 分配器对象才必须比较相等, 而这只能在运行期用 operator==() 检验.</li>
+<li class="listitem">容器的内部指针应当是 allocator::pointer 类型, 且容器不得假设 allocator::pointer 是原始指针.</li>
+</ul></div>
+<p>这在理论上已在 C++11 中修复: 引入了 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">pointer_traits</span></code> 工具, 标准库容器也为它们添加了支持. 然而, 由于 ABI 顾虑和用户需求不多, 一些实现仍未完全支持 <span class="emphasis"><em>花哨指针 (fancy pointer)</em></span> 类型, 例如 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">:</span><span class="identifier">offset_ptr</span></code> . 这些实现在某些容器中仍使用原始指针实现内部数据或迭代器.</p>
+<p>这种不可移植的情况在 <a href="https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/p0773r0.html" target="_top"><span class="emphasis"><em>"P0773R0: Towards meaningful fancy pointers"</em></span> </a> 中有描述</p>
+<div class="blockquote"><blockquote class="blockquote"><p>
+          <span class="emphasis"><em>"我们能否使用偏移花哨指针类型来实现内存区域的安全共享?"</em></span>
+        </p></blockquote></div>
+<div class="blockquote"><blockquote class="blockquote"><p>
+          <span class="emphasis"><em>"可以; 但对厂商的要求不明确, 而且程序员也面临一些陷阱."</em></span>
+        </p></blockquote></div>
+<div class="blockquote"><blockquote class="blockquote"><p>
+          <span class="emphasis"><em>"场景 (A), 即偏移指针, 只有一个站得住脚的解决方案, "继续给予部分支持""</em></span>
+        </p></blockquote></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.containers_explained.containers"></a><a class="link" href="containers_explained.html#interprocess.containers_explained.containers" title="托管内存段中的可移植容器">托管内存段中的可移植容器</a>
+</h3></div></div></div>
+<div class="important"><table border="0" summary="Important">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[重要]" src="../../../doc/src/images/important.png"></td>
+<th align="left">重要</th>
+</tr>
+<tr><td align="left" valign="top"><p>由于 <span class="bold"><strong>Boost.Container</strong></span> 于 2011 年从 <span class="bold"><strong>Boost.Interprocess</strong></span> 中诞生, 本库一直维护着几个 &lt;boost/interprocess/containers/.hpp&gt; 头文件以保持向后兼容. 这些头文件现已弃用, 并将在未来的 Boost 版本中移除. 用户应直接使用 <span class="bold"><strong>Boost.Container</strong></span> 头文件</p></td></tr>
+</table></div>
+<p>由于标准库实现存在上述部分支持的情况, <span class="bold"><strong>Boost.Interprocess</strong></span> 强烈建议使用 <span class="bold"><strong>Boost.Container</strong></span> 容器, 它们保证可与 <span class="bold"><strong>Boost.Interprocess</strong></span> 协同工作</p>
+<p>以下 <span class="bold"><strong>Boost.Container</strong></span> 容器与 <span class="bold"><strong>Boost.Interprocess</strong></span> 兼容:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">deque</span></code>
+          </li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">devector</span></code>
+          </li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">flat_map</span><span class="special">/</span><span class="identifier">multimap</span></code>
+          </li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">flat_set</span><span class="special">/</span><span class="identifier">multiset</span></code>
+          </li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">list</span></code>
+          </li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">map</span><span class="special">/</span><span class="identifier">multimap</span></code>
+          </li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">set</span><span class="special">/</span><span class="identifier">multiset</span></code>
+          </li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">slist</span></code>
+          </li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">small_vector</span></code>
+          </li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">stable_vector</span></code>
+          </li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">static_vector</span></code>
+          </li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">string</span></code>
+          </li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">vector</span></code>
+          </li>
+</ul></div>
+<p>要把这些容器放入托管内存段, 我们必须用 <span class="bold"><strong>Boost.Interprocess</strong></span> 分配器定义分配器模板参数, 使容器在托管内存段中分配值. 要把容器本身放入共享内存, 我们用 <span class="bold"><strong>Boost.Interprocess</strong></span> 在托管内存段中构造它, 就像构造其他对象一样. 注意这些容器也支持 uses-allocator 协议, 得益于隐式分配器传递协议, 用法得以简化:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">container</span><span class="special">/</span><span class="identifier">vector</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">allocator</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">managed_shared_memory</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span> <span class="special">()</span>
+<span class="special">{</span>
+   <span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">;</span>
+   <span class="comment">//Remove shared memory on construction and destruction</span>
+   <span class="keyword">struct</span> <span class="identifier">shm_remove</span>
+   <span class="special">{</span>
+      <span class="identifier">shm_remove</span><span class="special">()</span> <span class="special">{</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+      <span class="special">~</span><span class="identifier">shm_remove</span><span class="special">(){</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+   <span class="special">}</span> <span class="identifier">remover</span><span class="special">;</span>
+
+   <span class="comment">//A managed shared memory where we can construct objects</span>
+   <span class="comment">//associated with a c-string</span>
+   <span class="identifier">managed_shared_memory</span> <span class="identifier">segment</span><span class="special">(</span><span class="identifier">create_only</span><span class="special">,</span>"MyName"<span class="special">,</span> <span class="number">65536</span><span class="special">);</span>
+
+   <span class="comment">//Alias an STL-like allocator of ints that allocates ints from the segment</span>
+   <span class="keyword">typedef</span> <span class="identifier">allocator</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">managed_shared_memory</span><span class="special">::</span><span class="identifier">segment_manager</span><span class="special">&gt;</span>
+      <span class="identifier">ShmemAllocator</span><span class="special">;</span>
+
+   <span class="comment">//Alias a vector that uses the previous STL-like allocator</span>
+   <span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">container</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">ShmemAllocator</span><span class="special">&gt;</span> <span class="identifier">MyVector</span><span class="special">;</span>
+
+   <span class="keyword">int</span> <span class="identifier">initVal</span><span class="special">[]</span>        <span class="special">=</span> <span class="special">{</span><span class="number">0</span><span class="special">,</span> <span class="number">1</span><span class="special">,</span> <span class="number">2</span><span class="special">,</span> <span class="number">3</span><span class="special">,</span> <span class="number">4</span><span class="special">,</span> <span class="number">5</span><span class="special">,</span> <span class="number">6</span> <span class="special">};</span>
+   <span class="keyword">const</span> <span class="keyword">int</span> <span class="special">*</span><span class="identifier">begVal</span>    <span class="special">=</span> <span class="identifier">initVal</span><span class="special">;</span>
+   <span class="keyword">const</span> <span class="keyword">int</span> <span class="special">*</span><span class="identifier">endVal</span>    <span class="special">=</span> <span class="identifier">initVal</span> <span class="special">+</span> <span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">initVal</span><span class="special">)/</span><span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">initVal</span><span class="special">[</span><span class="number">0</span><span class="special">]);</span>
+
+   <span class="comment">//Initialize the STL-like allocator</span>
+   <span class="keyword">const</span> <span class="identifier">ShmemAllocator</span> <span class="identifier">alloc_inst</span> <span class="special">(</span><span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//Construct the vector in the shared memory segment with the STL-like allocator</span>
+   <span class="comment">//from a range of iterators</span>
+   <span class="identifier">MyVector</span> <span class="special">*</span><span class="identifier">myvector</span> <span class="special">=</span>
+      <span class="identifier">segment</span><span class="special">.</span><span class="identifier">construct</span><span class="special">&lt;</span><span class="identifier">MyVector</span><span class="special">&gt;</span>
+         <span class="special">(</span><span class="string">"MyVector"</span><span class="special">)/*</span><span class="identifier">object</span> <span class="identifier">name</span><span class="special">*/</span>
+         <span class="special">(</span><span class="identifier">begVal</span>     <span class="comment">/*first ctor parameter*/</span>
+         <span class="special">,</span><span class="identifier">endVal</span>     <span class="comment">/*second ctor parameter*/</span>
+         <span class="special">,</span><span class="identifier">alloc_inst</span> <span class="comment">/*third ctor parameter*/</span><span class="special">);</span>
+
+   <span class="comment">//Use vector as your want</span>
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">sort</span><span class="special">(</span><span class="identifier">myvector</span><span class="special">-&gt;</span><span class="identifier">rbegin</span><span class="special">(),</span> <span class="identifier">myvector</span><span class="special">-&gt;</span><span class="identifier">rend</span><span class="special">());</span>
+   <span class="comment">// . . .</span>
+   <span class="comment">//When done, destroy and delete vector from the segment</span>
+   <span class="identifier">segment</span><span class="special">.</span><span class="identifier">destroy</span><span class="special">&lt;</span><span class="identifier">MyVector</span><span class="special">&gt;(</span><span class="string">"MyVector"</span><span class="special">);</span>
+
+   <span class="comment">//Note that you can take advantage of the uses-allocator protocol and avoid</span>
+   <span class="comment">//explicitly passing the allocator parameter ("construct" will detect the container</span>
+   <span class="comment">//is compatible with the protocol and initialize the allocator accordingly:</span>
+   <span class="identifier">myvector</span> <span class="special">=</span> <span class="identifier">segment</span><span class="special">.</span><span class="identifier">construct</span><span class="special">&lt;</span><span class="identifier">MyVector</span><span class="special">&gt;(</span><span class="string">"MyVector"</span><span class="special">)</span> <span class="special">(</span><span class="identifier">begVal</span><span class="special">,</span><span class="identifier">endVal</span><span class="special">);</span>
+
+   <span class="comment">//Alternative destroy function that takes the pointer instead of the name</span>
+   <span class="identifier">segment</span><span class="special">.</span><span class="identifier">destroy_ptr</span><span class="special">(</span><span class="identifier">myvector</span><span class="special">);</span>
+
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>这些容器也展示了创建/修改现有容器使其能放入共享内存是多么容易.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.containers_explained.where_allocate"></a><a class="link" href="containers_explained.html#interprocess.containers_explained.where_allocate" title="这块内存在哪里分配?">这块内存在哪里分配?</a>
+</h3></div></div></div>
+<p>
+        <span class="bold"><strong>Boost.Interprocess</strong></span> 容器是使用两种机制 <span class="bold"><strong>同时</strong></span> 放入共享内存/内存映射文件等的:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <span class="bold"><strong>Boost.Interprocess </strong></span><code class="computeroutput"><span class="identifier">construct</span><span class="special">&lt;&gt;</span></code>, <code class="computeroutput"><span class="identifier">find_or_construct</span><span class="special">&lt;&gt;</span></code>... 函数. 这些函数把一个 C++ 对象放入共享内存/内存映射文件. 但这只放置对象本身, 而 <span class="bold"><strong>不是</strong></span> 对象可能动态分配的内存.</li>
+<li class="listitem">共享内存分配器. 它们允许分配共享内存/内存映射文件的部分区域, 使容器能够动态分配内存片段来存储新插入的元素.</li>
+</ul></div>
+<p>这意味着, 要把任何 <span class="bold"><strong>Boost.Interprocess</strong></span> 容器 (包括 <span class="bold"><strong>Boost.Interprocess</strong></span> 字符串) 放入共享内存或内存映射文件, 容器 <span class="bold"><strong>必须</strong></span>:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">把模板分配器参数定义为 <span class="bold"><strong>Boost.Interprocess</strong></span> 分配器.</li>
+<li class="listitem">每个容器构造函数都必须接受 <span class="bold"><strong>Boost.Interprocess</strong></span> 分配器作为参数.</li>
+<li class="listitem">必须使用 construct&lt;&gt;/find_or_construct&lt;&gt;... 函数把容器放入托管内存.</li>
+</ul></div>
+<p>如果做到前两点但不使用 <code class="computeroutput"><span class="identifier">construct</span><span class="special">&lt;&gt;</span></code> 或 <code class="computeroutput"><span class="identifier">find_or_construct</span><span class="special">&lt;&gt;</span></code> , 你创建的容器将 <span class="bold"><strong>只</strong></span> 存在于你的进程中, 但其包含类型的内存却从共享内存/内存映射文件分配.</p>
+<p>看一个示例:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">managed_shared_memory</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">container</span><span class="special">/</span><span class="identifier">vector</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">container</span><span class="special">/</span><span class="identifier">string</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">allocator</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span> <span class="special">()</span>
+<span class="special">{</span>
+   <span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">;</span>
+   <span class="comment">//Typedefs</span>
+   <span class="keyword">typedef</span> <span class="identifier">allocator</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">,</span> <span class="identifier">managed_shared_memory</span><span class="special">::</span><span class="identifier">segment_manager</span><span class="special">&gt;</span>
+      <span class="identifier">CharAllocator</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">container</span><span class="special">::</span><span class="identifier">basic_string</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">char_traits</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">&gt;,</span> <span class="identifier">CharAllocator</span><span class="special">&gt;</span>
+      <span class="identifier">MyShmString</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="identifier">allocator</span><span class="special">&lt;</span><span class="identifier">MyShmString</span><span class="special">,</span> <span class="identifier">managed_shared_memory</span><span class="special">::</span><span class="identifier">segment_manager</span><span class="special">&gt;</span>
+      <span class="identifier">StringAllocator</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">container</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">MyShmString</span><span class="special">,</span> <span class="identifier">StringAllocator</span><span class="special">&gt;</span>
+      <span class="identifier">MyShmStringVector</span><span class="special">;</span>
+
+   <span class="comment">//Open shared memory</span>
+   <span class="comment">//Remove shared memory on construction and destruction</span>
+   <span class="keyword">struct</span> <span class="identifier">shm_remove</span>
+   <span class="special">{</span>
+      <span class="identifier">shm_remove</span><span class="special">()</span> <span class="special">{</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+      <span class="special">~</span><span class="identifier">shm_remove</span><span class="special">(){</span> <span class="identifier">shared_memory_object</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span> <span class="special">}</span>
+   <span class="special">}</span> <span class="identifier">remover</span><span class="special">;</span>
+
+   <span class="identifier">managed_shared_memory</span> <span class="identifier">shm</span><span class="special">(</span><span class="identifier">create_only</span><span class="special">,</span> "MyName"<span class="special">,</span> <span class="number">10000</span><span class="special">);</span>
+
+   <span class="comment">//Create allocators</span>
+   <span class="identifier">CharAllocator</span>     <span class="identifier">charallocator</span>  <span class="special">(</span><span class="identifier">shm</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+   <span class="identifier">StringAllocator</span>   <span class="identifier">stringallocator</span><span class="special">(</span><span class="identifier">shm</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//This string is in only in this process (the pointer pointing to the</span>
+   <span class="comment">//buffer that will hold the text is not in shared memory).</span>
+   <span class="comment">//But the buffer that will hold "this is my text" is allocated from</span>
+   <span class="comment">//shared memory</span>
+   <span class="identifier">MyShmString</span> <span class="identifier">mystring</span><span class="special">(</span><span class="identifier">charallocator</span><span class="special">);</span>
+   <span class="identifier">mystring</span> <span class="special">=</span> <span class="string">"this is my text"</span><span class="special">;</span>
+
+   <span class="comment">//This vector is only in this process (the pointer pointing to the</span>
+   <span class="comment">//buffer that will hold the MyShmString-s is not in shared memory).</span>
+   <span class="comment">//But the buffer that will hold 10 MyShmString-s is allocated from</span>
+   <span class="comment">//shared memory using StringAllocator. Since strings use a shared</span>
+   <span class="comment">//memory allocator (CharAllocator) the 10 buffers that hold</span>
+   <span class="comment">//"this is my text" text are also in shared memory.</span>
+   <span class="identifier">MyShmStringVector</span> <span class="identifier">myvector</span><span class="special">(</span><span class="identifier">stringallocator</span><span class="special">);</span>
+   <span class="identifier">myvector</span><span class="special">.</span><span class="identifier">insert</span><span class="special">(</span><span class="identifier">myvector</span><span class="special">.</span><span class="identifier">begin</span><span class="special">(),</span> <span class="number">10</span><span class="special">,</span> <span class="identifier">mystring</span><span class="special">);</span>
+
+   <span class="comment">//This vector is fully constructed in shared memory. All pointers</span>
+   <span class="comment">//buffers are constructed in the same shared memory segment</span>
+   <span class="comment">//This vector can be safely accessed from other processes.</span>
+   <span class="identifier">MyShmStringVector</span> <span class="special">*</span><span class="identifier">myshmvector</span> <span class="special">=</span>
+      <span class="identifier">shm</span><span class="special">.</span><span class="identifier">construct</span><span class="special">&lt;</span><span class="identifier">MyShmStringVector</span><span class="special">&gt;(</span><span class="string">"myshmvector"</span><span class="special">)(</span><span class="identifier">stringallocator</span><span class="special">);</span>
+   <span class="identifier">myshmvector</span><span class="special">-&gt;</span><span class="identifier">insert</span><span class="special">(</span><span class="identifier">myshmvector</span><span class="special">-&gt;</span><span class="identifier">begin</span><span class="special">(),</span> <span class="number">10</span><span class="special">,</span> <span class="identifier">mystring</span><span class="special">);</span>
+
+   <span class="comment">//Destroy vector. This will free all strings that the vector contains</span>
+   <span class="identifier">shm</span><span class="special">.</span><span class="identifier">destroy_ptr</span><span class="special">(</span><span class="identifier">myshmvector</span><span class="special">);</span>
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.containers_explained.containers_of_containers"></a><a class="link" href="containers_explained.html#interprocess.containers_explained.containers_of_containers" title="容器的容器">容器的容器</a>
+</h3></div></div></div>
+<p>创建容器的容器时, 每个容器都需要一个分配器. 为了避免使用多个类型定义复杂的分配器, 我们可以利用 void 分配器提供的类型擦除, 以及把 void 分配器隐式转换为分配其他类型的分配器的能力.</p>
+<p>这里有一个在共享内存中构建 map 的示例. 键是字符串, 映射类型是一个存储多个容器的类:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">managed_shared_memory</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">allocator</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">container</span><span class="special">/</span><span class="identifier">map</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">container</span><span class="special">/</span><span class="identifier">vector</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">container</span><span class="special">/</span><span class="identifier">string</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">;</span>
+<span class="keyword">namespace</span> <span class="identifier">bc</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">container</span><span class="special">;</span>
+
+<span class="comment">//Typedefs of allocators and containers</span>
+<span class="keyword">typedef</span> <span class="identifier">managed_shared_memory</span><span class="special">::</span><span class="identifier">segment_manager</span>                    <span class="identifier">seg_mngr_t</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">allocator</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">,</span> <span class="identifier">seg_mngr_t</span><span class="special">&gt;</span>                               <span class="identifier">void_alloc_t</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">bc</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">allocator</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">seg_mngr_t</span><span class="special">&gt;</span> <span class="special">&gt;</span>              <span class="identifier">int_vec_t</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">bc</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">int_vec_t</span><span class="special">,</span> <span class="identifier">allocator</span><span class="special">&lt;</span><span class="identifier">int_vec_t</span><span class="special">,</span> <span class="identifier">seg_mngr_t</span><span class="special">&gt;</span> <span class="special">&gt;</span>  <span class="identifier">int_vec_vec_t</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">bc</span><span class="special">::</span><span class="identifier">basic_string</span>
+   <span class="special">&lt;</span><span class="keyword">char</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">char_traits</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">&gt;,</span> <span class="identifier">allocator</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">,</span> <span class="identifier">seg_mngr_t</span><span class="special">&gt;</span> <span class="special">&gt;</span>   <span class="identifier">string_t</span><span class="special">;</span>
+
+<span class="keyword">class</span> <span class="identifier">complex_data</span>
+<span class="special">{</span>
+   <span class="identifier">string_t</span>      <span class="identifier">string_</span><span class="special">;</span>
+   <span class="identifier">int_vec_vec_t</span> <span class="identifier">int_vec_vec_</span><span class="special">;</span>
+
+   <span class="keyword">public</span><span class="special">:</span>
+
+   <span class="identifier">complex_data</span><span class="special">(</span><span class="keyword">const</span> <span class="keyword">char</span> <span class="special">*</span><span class="identifier">name</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">void_alloc_t</span> <span class="special">&amp;</span><span class="identifier">valloc</span><span class="special">)</span> <span class="comment">//void_alloc_t is convertible to allocator&lt;T&gt;</span>
+      <span class="special">:</span> <span class="identifier">string_</span><span class="special">(</span><span class="identifier">name</span><span class="special">,</span> <span class="identifier">valloc</span><span class="special">),</span> <span class="identifier">int_vec_vec_</span><span class="special">(</span><span class="identifier">valloc</span><span class="special">)</span>
+   <span class="special">{}</span>
+<span class="special">};</span>
+
+<span class="comment">//Definition of a shared memory map&lt;string_t,complex_data...&gt;</span>
+<span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span><span class="special">&lt;</span><span class="keyword">const</span> <span class="identifier">string_t</span><span class="special">,</span> <span class="identifier">complex_data</span><span class="special">&gt;</span>                <span class="identifier">map_value_type</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">allocator</span><span class="special">&lt;</span><span class="identifier">map_value_type</span><span class="special">,</span> <span class="identifier">seg_mngr_t</span><span class="special">&gt;</span>                  <span class="identifier">map_value_type_allocator</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">bc</span><span class="special">::</span><span class="identifier">map</span><span class="special">&lt;</span> <span class="identifier">string_t</span><span class="special">,</span> <span class="identifier">complex_data</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">less</span><span class="special">&lt;</span><span class="identifier">string_t</span><span class="special">&gt;</span>
+               <span class="special">,</span> <span class="identifier">map_value_type_allocator</span><span class="special">&gt;</span>                     <span class="identifier">complex_map_type</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span> <span class="special">()</span>
+<span class="special">{</span>
+   <span class="identifier">managed_shared_memory</span> <span class="identifier">segment</span><span class="special">(</span><span class="identifier">create_only</span><span class="special">,</span>"MyName"<span class="special">,</span> <span class="number">65536</span><span class="special">);</span> <span class="comment">//Create shared memory</span>
+
+   <span class="comment">//An allocator convertible to any allocator&lt;T, seg_mngr_t&gt; type</span>
+   <span class="identifier">void_alloc_t</span> <span class="identifier">alloc_inst</span> <span class="special">(</span><span class="identifier">segment</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//Construct the map calling map(key_compare, allocator_type), the allocator argument is explicit</span>
+   <span class="identifier">complex_map_type</span> <span class="special">*</span><span class="identifier">mymap</span> <span class="special">=</span> <span class="identifier">segment</span><span class="special">.</span><span class="identifier">construct</span><span class="special">&lt;</span><span class="identifier">complex_map_type</span><span class="special">&gt;</span>
+         <span class="special">(</span><span class="string">"MyMap"</span><span class="special">)(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">less</span><span class="special">&lt;</span><span class="identifier">string_t</span><span class="special">&gt;(),</span> <span class="identifier">alloc_inst</span><span class="special">);</span>
+
+   <span class="comment">//Both key(string) and value(complex_data) need an allocator in their constructors</span>
+   <span class="identifier">string_t</span>  <span class="identifier">key_object</span><span class="special">(</span><span class="identifier">alloc_inst</span><span class="special">);</span>
+   <span class="identifier">complex_data</span> <span class="identifier">mapped_object</span><span class="special">(</span><span class="string">"default_name"</span><span class="special">,</span> <span class="identifier">alloc_inst</span><span class="special">);</span>
+   <span class="identifier">map_value_type</span> <span class="identifier">value</span><span class="special">(</span><span class="identifier">key_object</span><span class="special">,</span> <span class="identifier">mapped_object</span><span class="special">);</span>
+   <span class="comment">//Modify values and insert them in the map</span>
+   <span class="identifier">mymap</span><span class="special">-&gt;</span><span class="identifier">insert</span><span class="special">(</span><span class="identifier">value</span><span class="special">);</span>
+
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>如果用户设计一个与 <a class="link" href="managed_memory_segment_object_construction.html#interprocess.managed_memory_segment_object_construction.uses_allocator" title="用于对象构造的 uses-allocator 协议">uses-allocator 构造</a> 兼容的类型, 该示例可以简化. 这简化了代码, 并允许更高效的操作, 例如使用透明函数进行查找和插入:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">managed_shared_memory</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">allocator</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">container</span><span class="special">/</span><span class="identifier">map</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">container</span><span class="special">/</span><span class="identifier">vector</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">container</span><span class="special">/</span><span class="identifier">string</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">functional</span><span class="special">&gt;</span>
+
+<span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">;</span>
+<span class="keyword">namespace</span> <span class="identifier">bc</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">container</span><span class="special">;</span>
+
+<span class="comment">//Typedefs of allocators and containers</span>
+<span class="keyword">typedef</span> <span class="identifier">managed_shared_memory</span><span class="special">::</span><span class="identifier">segment_manager</span>                   <span class="identifier">seg_mngr_t</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">allocator</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">,</span> <span class="identifier">seg_mngr_t</span><span class="special">&gt;</span>                              <span class="identifier">void_alloc_t</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">bc</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">allocator</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">seg_mngr_t</span><span class="special">&gt;</span> <span class="special">&gt;</span>             <span class="identifier">int_vec_t</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">bc</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">int_vec_t</span><span class="special">,</span> <span class="identifier">allocator</span><span class="special">&lt;</span><span class="identifier">int_vec_t</span><span class="special">,</span> <span class="identifier">seg_mngr_t</span><span class="special">&gt;</span> <span class="special">&gt;</span> <span class="identifier">int_vec_vec_t</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">bc</span><span class="special">::</span><span class="identifier">basic_string</span>
+   <span class="special">&lt;</span><span class="keyword">char</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">char_traits</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">&gt;,</span> <span class="identifier">allocator</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">,</span> <span class="identifier">seg_mngr_t</span><span class="special">&gt;</span> <span class="special">&gt;</span>  <span class="identifier">string_t</span><span class="special">;</span>
+
+<span class="keyword">class</span> <span class="identifier">complex_data</span>
+<span class="special">{</span>
+   <span class="identifier">string_t</span>      <span class="identifier">string_</span><span class="special">;</span>
+   <span class="identifier">int_vec_vec_t</span> <span class="identifier">int_vec_vec_</span><span class="special">;</span>
+
+   <span class="keyword">public</span><span class="special">:</span>
+   <span class="keyword">typedef</span> <span class="identifier">void_alloc_t</span> <span class="identifier">allocator_type</span><span class="special">;</span> <span class="comment">//Activates the uses-allocator protocol</span>
+
+   <span class="identifier">complex_data</span><span class="special">(</span><span class="keyword">const</span> <span class="keyword">char</span> <span class="special">*</span><span class="identifier">name</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">void_alloc_t</span> <span class="special">&amp;</span><span class="identifier">valloc</span><span class="special">)</span> <span class="comment">//void_alloc_t is convertible to allocator&lt;T&gt;</span>
+      <span class="special">:</span> <span class="identifier">string_</span><span class="special">(</span><span class="identifier">name</span><span class="special">,</span> <span class="identifier">valloc</span><span class="special">),</span> <span class="identifier">int_vec_vec_</span><span class="special">(</span><span class="identifier">valloc</span><span class="special">)</span>
+   <span class="special">{}</span>
+<span class="special">};</span>
+
+<span class="comment">//Definition of a shared memory map&lt;string_t, complex_data...&gt; with transparent comparison</span>
+<span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span><span class="special">&lt;</span><span class="keyword">const</span> <span class="identifier">string_t</span><span class="special">,</span> <span class="identifier">complex_data</span><span class="special">&gt;</span>          <span class="identifier">map_value_type</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">allocator</span><span class="special">&lt;</span><span class="identifier">map_value_type</span><span class="special">,</span> <span class="identifier">seg_mngr_t</span><span class="special">&gt;</span>            <span class="identifier">map_value_type_allocator</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">bc</span><span class="special">::</span><span class="identifier">map</span><span class="special">&lt;</span> <span class="identifier">string_t</span><span class="special">,</span> <span class="identifier">complex_data</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">less</span><span class="special">&lt;&gt;</span>
+               <span class="special">,</span> <span class="identifier">map_value_type_allocator</span><span class="special">&gt;</span>               <span class="identifier">complex_map_type</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span> <span class="special">()</span>
+<span class="special">{</span>
+   <span class="identifier">managed_shared_memory</span> <span class="identifier">segment</span><span class="special">(</span><span class="identifier">create_only</span><span class="special">,</span> "MyName"<span class="special">,</span> <span class="number">65536</span><span class="special">);</span> <span class="comment">//Create shared memory</span>
+
+   <span class="comment">//Construct the map calling map(key_compare, allocator_type), the allocator argument is implicit</span>
+   <span class="identifier">complex_map_type</span> <span class="special">*</span><span class="identifier">mymap</span> <span class="special">=</span> <span class="identifier">segment</span><span class="special">.</span><span class="identifier">construct</span><span class="special">&lt;</span><span class="identifier">complex_map_type</span><span class="special">&gt;(</span><span class="string">"MyMap"</span><span class="special">)();</span>
+
+   <span class="comment">//Efficient transparent insertion, string_t and complex_data are constructed in-place with implicit allocators</span>
+   <span class="identifier">mymap</span><span class="special">-&gt;</span><span class="identifier">try_emplace</span><span class="special">(</span><span class="string">"key_str"</span><span class="special">,</span> <span class="string">"default_name"</span><span class="special">);</span>
+
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2005-2024 Ion Gaztanaga<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="allocators_containers.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../interprocess.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="additional_containers.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

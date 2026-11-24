@@ -1,0 +1,59 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>主要差异 - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="../css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="../images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="../experimental/map.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../experimental.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../experimental/status_result.html"><img src="../images/next.png" alt="下一页"></a></div><div id="content">
+  <div class="titlepage"><div><div><h1 style="clear: both">主要差异</h1></div></div></div>
+  <p> <code>&lt;system_error&gt;</code> 与提案中的 <code>&lt;system_error2&gt;</code> 之间的主要设计差异如下:</p>
+
+<ol>
+<li><p><code>experimental::status_code&lt;DomainType&gt;</code> 既能表示失败码, 也能表示警告与成功形态码. <code>experimental::errored_status_code&lt;DomainType&gt;</code> 更类似于 <code>std::error_code</code>, 它只能表示失败 (这由 C++ 20 契约或运行期断言检查强制执行).</p></li>
+
+<li><p>错误码的域实现定义由 <code>experimental::status_code&lt;DomainType&gt;</code> 传递的负载类型, 而非像 <code>int</code> 在 <code>std::error_code</code> 中那样被硬编码. 负载类型可以是任何你喜欢的类型, 包括不可平凡复制、仅可移动、复杂等类型.</p>
+
+<p>该设施极其有用. 例如, 可以返回栈回溯等额外失败元数据. 你也完全可以根据 <code>NDEBUG</code> 或 <code>_DEBUG</code> 是否被定义而改变负载.</p></li>
+
+<li><p>如果你的域定义的负载类型是可平凡复制或移动重定位<sup class="footnote-ref" id="fnref:1"><a href="#fn:1">1</a></sup> 的, 它会获得到仅可移动 <code>experimental::status_code&lt;erased&lt;T&gt;&gt;</code> (其中 <code>T</code> 是另一个可平凡复制或移动重定位类型) 的隐式可转换性. 这允许全局头文件使用单一的、通用的、类型擦除的状态码类型, 这对任何复杂程度的代码库都极为可取. 然而, 与 <code>std::error_code</code> (它在 <code>&lt;system_error&gt;</code> 代码中承担完全相同的角色) 不同, 被类型擦除的负载可以大于 <code>int</code> 在 <code>std::error_code</code> 中的硬编码大小.</p>
+
+<p>该设施同样极其有用: 额外失败元数据可被类型擦除, 穿过对它们一无所知的代码传递, 并在处理点还原出携带失败元数据的原始类型. 事实上, P1095 提案的 <code>std::error</code> 就是 <code>experimental::status_code&lt;erased&lt;intptr_t&gt;&gt;</code> 的类型别名, 它能传输被擦除的 <code>std::exception_ptr</code> 实例、POSIX 错误码以及更多其他内容.</p></li>
+
+<li><p>域不相同的状态码之间的相等比较总是<b><em>语义</em></b>上的, 即询问它们是否语义等价, 而非完全相等. 这类似于你把 <code>std::error_code</code> 与 <code>std::error_condition</code> 相比较的情形, 但由于 <code>&lt;system_error2&gt;</code> 中没有后者的对应物, 这意味着当你看到代码:</p>
+<div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="k">if</span><span class="p">(</span><span class="n">code1</span> <span class="o">==</span> <span class="n">code2</span><span class="p">)</span> <span class="p">...</span>
+</code></pre></div>
+<p>……你可以高度确信这是一个非精确的、语义上的匹配操作. 同样的代码在 <code>&lt;system_error&gt;</code> 下则高度含混: 究竟执行的是精确还是非精确比较并不明确 (毕竟那里只有 “<code>code1 == code2</code>”, 它取决于 <code>code1</code> 与 <code>code2</code> 的类型, 而这通常并不显然).</p>
+
+<p>这种含混性, 以及审计 <code>&lt;system_error&gt;</code> 代码正确性时的高认知负担, 在过去十年间给生产 C++ 带来了许多令人惊讶、始料未及的失败处理缺陷.</p></li>
+
+<li><p><code>&lt;system_error2&gt;</code> 作为全新设计, 具有全 constexpr 的构造与析构, 从而避免了 <code>&lt;system_error&gt;</code> 所需的静态全局变量. 每个静态全局变量都需要一个原子栅栏, 以防其尚未初始化, 因此每次检索错误类别都会使代码膨胀并抑制优化, 还使得在仅头文件库中使用自定义错误码类别变得不可靠. Boost.System 已复制了 <code>&lt;system_error2&gt;</code> 的全 constexpr 构造与析构, 因此在这方面现在具有类似特性.</p></li>
+
+<li><p>最后, 这是一个虽小却重要的差异. 在 <code>&lt;system_error&gt;</code> 下, 这个极其常见的使用场景是含混的:</p>
+<div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="k">if</span><span class="p">(</span><span class="n">ec</span><span class="p">)</span> <span class="p">...</span>
+</code></pre></div>
+<p>这段代码的意思是 '发生了错误?', '错误码被设置?', 还是 '错误码非零?'. 按标准的正确答案是最后一种, 但快速考察 github 上的开源 <code>&lt;system_error&gt;</code> 代码就会立刻发现, 关于正确用法存在广泛的混淆.</p>
+
+<p><code>&lt;system_error2&gt;</code> 通过完全移除布尔测试解决了这一问题. 现在人们写 <code>if(sc.success()) ...</code>、<code>if(sc.failure()) ...</code>、<code>if(sc.empty()) ...</code> 等, 从而消除含混.</p></li>
+</ol>
+<div class="footnotes">
+
+<hr />
+
+<ol>
+<li id="fn:1"><a href="http://wg21.link/P1029">移动重定位不在标准之中, 目前处于 WG21 演进工作组孵化器</a>. 它定义为这样一种类型: 其移动构造函数把逐位从源 <code>memcpy()</code> 到目标, 接着把一个默认构造实例的逐位 <code>memcpy()</code> 到源, 并带有程序员给出的保证: 对默认构造实例调用析构函数时没有任何可观察副作用. 出乎意料的是, 相当多的标准库类型能满足这一定义, 包括 <code>std::vector&lt;T&gt;</code>、<code>std::shared_ptr&lt;T&gt;</code> 与 <code>std::exception_ptr</code>. <a class="footnote-return" href="#fnref:1"><sup>[return]</sup></a></li>
+</ol>
+</div>
+
+
+        </div><p><small>最后修订: December 16, 2020 at 14:14:42 UTC</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../experimental/map.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../experimental.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../experimental/status_result.html"><img src="../images/next.png" alt="下一页"></a></div></body>
+</html>

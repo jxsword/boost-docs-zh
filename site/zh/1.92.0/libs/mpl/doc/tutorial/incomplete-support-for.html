@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<!-- Copyright Aleksey Gurtovoy 2006. Distributed under the Boost -->
+<!-- Software License, Version 1.0. (See accompanying -->
+<!-- file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt) -->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.3.6: http://docutils.sourceforge.net/" />
+<title>BOOST MPL 库: 对 lambda 表达式的支持不完整</title>
+<link rel="stylesheet" href="../style.css" type="text/css" />
+</head>
+<body class="docframe">
+<table class="header"><tr class="header"><td class="header-group navigation-bar"><span class="navigation-group"><a href="./broken-integral-constant.html" class="navigation-link">上一页</a> <a href="./eti.html" class="navigation-link">下一页</a></span><span class="navigation-group-separator"> | </span><span class="navigation-group"><a href="./broken-integral-constant.html" class="navigation-link">沿原路</a> <a href="./eti.html" class="navigation-link">返回</a></span><span class="navigation-group-separator"> | </span><span class="navigation-group"><a href="./portability.html" class="navigation-link">上一级</a> <a href="../index.html" class="navigation-link">首页</a></span><span class="navigation-group-separator"> | </span><span class="navigation-group"><a href="./tutorial_toc.html" class="navigation-link">完整目录</a></span></td>
+<td class="header-group page-location"><a href="../index.html" class="navigation-link">首页</a> / <a href="./technical-details.html" class="navigation-link">技术细节</a> / <a href="./portability.html" class="navigation-link">可移植性</a> / <a href="./incomplete-support-for.html" class="navigation-link">对 lambda 表达式的支持不完整</a></td>
+</tr></table><div class="header-separator"></div>
+<div class="section" id="incomplete-support-for">
+<h1><a class="toc-backref" href="./portability.html#id75" name="incomplete-support-for">对 lambda 表达式的支持不完整</a></h1>
+<p>经验丰富的 MPL 用户会同意我们的看法: 如果 MPL 中有什么在威力和本质上都显得近乎神奇, 那就是 MPL lambda 表达式. 实际上, 使之成为现实的机制非常直白, 对任何大体熟悉 C++ 模板的人, 恐怕用不了 10 分钟就能讲清楚.</p>
+<!-- People are going to hate you for saying so and not actually -->
+<!-- explaining it. -->
+<p>遗憾的是, 这一机制恰好依赖于对偏特化和模板模板参数的支持. 在所谓的残缺编译器中——基本上是 2000 年之前发布的大多数编译器——找到对这两个特性<em>都</em>有<em>完整</em>支持的希望渺茫. 属于此类的产品清单请参见我们的<a class="reference" href="./portability.html#compatibility-table">兼容性表</a>.</p>
+<p>虽然没有这两个特性就无法实现<em>完全透明</em>的 lambda 表达式, 但一种稍受限、需要元函数作者提供一些手动协助的实现是可能的. 本节描述所需的手工工作以及结果的局限.</p>
+<div class="section" id="incomplete-the-problem">
+<h2><a name="incomplete-the-problem">The Problem</a></h2>
+<p>如果你的编译器属于 "残缺" 类别, 下面这个有效的 MPL 元程序将无法通过编译:</p>
+<pre class="literal-block">
+#include &lt;boost/mpl/apply.hpp&gt;
+
+using namespace boost::mpl;
+
+template&lt; typename T &gt; struct add_const
+{
+    typedef T const type;
+};
+
+typedef apply1&lt; add_const&lt;_1&gt;,int &gt;::type t; // t == int const
+</pre>
+<p>更糟的是, 它很可能会带着指向库内部、并可能给人造成库本身有问题的印象的诊断回溯而失败. 事实是, 程序和库都无缺陷 (就这个特定演示而言), 该责怪的是你的编译器.</p>
+</div>
+<div class="section" id="incomplete-the-solution">
+<h2><a name="incomplete-the-solution">解决办法</a></h2>
+<p>如前所述, 解决方案需要元函数作者做一些工作, 但对这些元函数的用户而言, 结果是相对透明的. 以下是我们对前面的例子需要做的修改:</p>
+<pre class="literal-block">
+#include &lt;boost/mpl/apply.hpp&gt;
+<strong>#include &lt;boost/mpl/aux_/lambda_support.hpp&gt;</strong>
+
+using namespace boost::mpl;
+
+template&lt; typename T &gt; struct add_const
+{
+    typedef T const type;
+    <strong>BOOST_MPL_AUX_LAMBDA_SUPPORT(1, add_const, (T))</strong>
+};
+
+typedef apply1&lt; add_const&lt;_1&gt;,int &gt;::type t; // t == int const
+</pre>
+<p>有了这两处修改, 刚才还冲我们汪汪叫的编译器现在欣然接受了它. "嘿, 这也没那么糟嘛!" 你可能会说. 放个小宏进去, 又能开开心心了.</p>
+</div>
+<div class="section" id="limitations">
+<h2><a name="limitations">限制</a></h2>
+<p>遗憾的是, 故事还没完. 仍有一些情形会使上述方法失效, 我们将不得不求助于编写非内联的元函数类. 细节如下:</p>
+<blockquote>
+<p>为了在没有偏特化和模板模板参数的情况下让 lambda 表达式工作, MPL 必须实现某种其他方式来拆解模板实例化的表达式树, 而唯一的办法是通过侵入式的元函数内省机制. 这就是我们前面看到的 <tt class="literal"><span class="pre">BOOST_MPL_AUX_LAMBDA_SUPPORT</span></tt> 宏背后所隐藏的东西.</p>
+<p>但随后, 在把所需的信息 (元函数的元数及其确切的模板实参) 存入元函数自身之后, 库访问它的唯一办法就是查看元函数内部. 而后者又意味着在实际调用之前、过早地<em>以一个或多个占位符实参</em>实例化该元函数. 这最后一点是一个潜在问题.</p>
+</blockquote>
+<p>换言之, 只要你的元函数是 "占位符安全的" (可以安全地以占位符实参实例化), 该机制就能工作, 这归结为以下两条判据:</p>
+<ol class="arabic simple">
+<li>该元函数不访问其实参的嵌套成员, 或者</li>
+<li>所访问的成员只有名为 <tt class="literal"><span class="pre">::tag</span></tt> 或 <tt class="literal"><span class="pre">::type</span></tt> 的类型 (占位符确实包含这些).</li>
+</ol>
+<p>如果这两条成立, 你就可以放心地把 <tt class="literal"><span class="pre">BOOST_MPL_AUX_LAMBDA_SUPPORT</span></tt> 放进你的元函数, 不再操心此事. 如果不成立, 那你运气不佳, 恐怕得改写一个元函数类.</p>
+<p>好消息是, MPL 自身的大多数元函数和 <a class="reference" href="../../../type_traits/index.html" target="_top">Boost.Type Traits</a> 模板都是 "占位符安全的", 并已应用了该变通办法, 因此即使在破损的编译器上, 约 90% 的用例也能 "直接工作".</p>
+<p>请参阅 MPL <a class="reference" href="./reference-manual.html">参考手册</a>, 了解 <tt class="literal"><span class="pre">BOOST_MPL_AUX_LAMBDA_SUPPORT</span></tt> 宏的细节.</p>
+</div>
+</div>
+
+<div class="footer-separator"></div>
+<table class="footer"><tr class="footer"><td class="header-group navigation-bar"><span class="navigation-group"><a href="./broken-integral-constant.html" class="navigation-link">上一页</a> <a href="./eti.html" class="navigation-link">下一页</a></span><span class="navigation-group-separator"> | </span><span class="navigation-group"><a href="./broken-integral-constant.html" class="navigation-link">沿原路</a> <a href="./eti.html" class="navigation-link">返回</a></span><span class="navigation-group-separator"> | </span><span class="navigation-group"><a href="./portability.html" class="navigation-link">上一级</a> <a href="../index.html" class="navigation-link">首页</a></span><span class="navigation-group-separator"> | </span><span class="navigation-group"><a href="./tutorial_toc.html" class="navigation-link">完整目录</a></span></td>
+</tr></table></body>
+</html>

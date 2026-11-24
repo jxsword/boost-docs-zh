@@ -1,0 +1,56 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>转换器签名</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Boost.Convert 2.0">
+<link rel="up" href="../design_notes.html" title="设计说明">
+<link rel="prev" href="../design_notes.html" title="设计说明">
+<link rel="next" href="user_interface_signature.html" title="用户接口签名">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../design_notes.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../design_notes.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="user_interface_signature.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_convert.design_notes.converter_signature"></a><a class="link" href="converter_signature.html" title="转换器签名">转换器签名</a>
+</h3></div></div></div>
+<p>考虑过以下转换器签名:</p>
+<pre class="programlisting"><span class="keyword">bool</span> <span class="keyword">operator</span><span class="special">()(</span><span class="identifier">TypeIn</span> <span class="keyword">const</span><span class="special">&amp;,</span> <span class="identifier">TypeOut</span><span class="special">&amp;);</span> <span class="comment">//#1</span>
+<span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span><span class="identifier">TypeIn</span> <span class="keyword">const</span><span class="special">&amp;,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">TypeOut</span><span class="special">&gt;&amp;);</span> <span class="comment">//#2</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">TypeOut</span><span class="special">&gt;</span> <span class="keyword">operator</span><span class="special">()(</span><span class="identifier">TypeIn</span> <span class="keyword">const</span><span class="special">&amp;);</span> <span class="comment">//#3</span>
+</pre>
+<p>从设计角度看, 签名 #1 的优点是提供了最佳的 <span class="emphasis"><em>关注点分离</em></span>. 即, 它让相应的转换器只承担一个任务——实际转换任务. 不过在实践中, 这可能导致不必要的性能开销. 即, 由于从外部提供了 <span class="emphasis"><em>TypeOut</em></span> 类型的实例, 需要为该实例分配存储, 而最重要的是初始化它. 该初始化阶段 (可能开销很大) 是不必要的开销: 若转换操作成功, 初始值会被实际结果覆盖; 若失败, <span class="emphasis"><em>TypeOut</em></span> 实例的值要么毫无意义, 要么更具误导性.</p>
+<p>签名 #2 通过部署 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">optional</span></code> <span class="emphasis"><em>不初始化而分配存储</em></span> 的能力来避免初始化开销. 此时 <span class="emphasis"><em>TypeOut</em></span> 的存储仍在 (函数) 外部分配, 但不被初始化. 现在, 知道 <span class="emphasis"><em>如何</em></span> 初始化 <span class="emphasis"><em>TypeOut</em></span> 实例, 并在 <span class="emphasis"><em>需要时</em></span> 真正初始化它, 就是转换器的责任. 在实践中, 这通常比听起来容易. 例如, 基于 <code class="computeroutput"><span class="identifier">strtol</span><span class="special">()</span></code> 的转换器可能会有类似如下的代码:</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span><span class="keyword">char</span> <span class="keyword">const</span><span class="special">*</span> <span class="identifier">str_in</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;&amp;</span> <span class="identifier">result_out</span><span class="special">)</span> <span class="keyword">const</span>
+<span class="special">{</span>
+   <span class="keyword">char</span> <span class="keyword">const</span><span class="special">*</span> <span class="identifier">str_end</span> <span class="special">=</span> <span class="identifier">str_in</span> <span class="special">+</span> <span class="identifier">strlen</span><span class="special">(</span><span class="identifier">str_in</span><span class="special">);</span>
+   <span class="keyword">char</span><span class="special">*</span>       <span class="identifier">cnv_end</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+   <span class="keyword">long</span> <span class="keyword">int</span>     <span class="identifier">result</span> <span class="special">=</span> <span class="special">::</span><span class="identifier">strtol</span><span class="special">(</span><span class="identifier">str_in</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">cnv_end</span><span class="special">,</span> <span class="identifier">base_</span><span class="special">);</span>
+
+   <span class="keyword">if</span> <span class="special">(</span><span class="identifier">INT_MIN</span> <span class="special">&lt;=</span> <span class="identifier">result</span> <span class="special">&amp;&amp;</span> <span class="identifier">result</span> <span class="special">&lt;=</span> <span class="identifier">INT_MAX</span> <span class="special">&amp;&amp;</span> <span class="identifier">cnv_end</span> <span class="special">==</span> <span class="identifier">str_end</span><span class="special">)</span>
+       <span class="identifier">result_out</span> <span class="special">=</span> <span class="keyword">int</span><span class="special">(</span><span class="identifier">result</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>签名 #3 因美学优势、更符合习惯用法而被简要考虑过. 遗憾的是, 它缺少 <span class="emphasis"><em>TypeOut</em></span> 的自动推导, 因而必须显式指定之. 对于不同类型的受支持转换器 (基于类的、普通老式函数、lambda), 这会显著复杂化 <span class="emphasis"><em>Boost.Convert</em></span> 基础设施的实现, 并限制相应转换器的实现.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2009-2022 Vladimir Batov<p>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. 参见副本 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>.</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../design_notes.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../design_notes.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="user_interface_signature.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

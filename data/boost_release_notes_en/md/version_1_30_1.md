@@ -1,0 +1,11 @@
+# Version 1.30.1
+
+## Version 1.30.1
+
+August 4th, 2003 12:00 GMT
+
+This release was withdrawn on the 12 Aug 2003.
+
+Fixes were made to the following libraries: \* The [Boost.Lambda](/libs/lambda/doc/index.html) ..library is now usable with gcc-2.95.2 \* [Boost.Spirit](/libs/spirit/index.html): \* Fixed. Using MSVC++6 (SP5), calling the assign action with a string value on parsers using the file_iterator will not work. \* Fixed: using assign semantic action in a grammar with a multi_pass iterator adaptor applied to an std::istream_iterator resulted in a failure to compile under msvc 7.0. \* Fixed: There is a bug in the `range_run<CharT>::set(range<CharT> const& r)` function in "../boost/spirit/utility/impl/chset/range_run.ipp". \* Fixed: handling of trailing whitespace bug (ast_parse/pt_parse related) \* Fixed: comment_p and end of data bug \* Fixed: Most trailing space bug \* Fixed: `chset``<>::``operator`` ``~(``range``<>)` bug, `operator`` ``&(``chset``<>,`` ``range``<>)` bug, `operator`` ``&(``range``<>,`` ``chset``<>)` bug \* Fixed: `impl``::``detach_clear` bug \* Fixed: mismatch closure return type bug \* Fixed: `access_node_d``[]` and `access_match_d``[]` iterator bugs \* Fixed a bug regarding thread safety of Phoenix/Spirit closures. \* The Boost Template [Metaprogramming Library (MPL)](/libs/mpl/doc/index.html)'s ..typeof implementation is now compatible with Metrowerks CodeWarrior Pro8. \* [Boost.Function](/libs/function/index.html): workaround for the new Borland patch (version 0x564) and MSVC++ .NET 2003. \* [Boost.Config](/libs/config/index.html), [Boost.Format](/libs/format/doc/format.html), and [Boost.Regex](/libs/regex/index.html) ..have been adjusted to avoid warnings with GCC-3.3, and Boost.Format also now works with string types other than `std``::``string`. \* [Smart Pointers](/libs/smart_ptr/index.html): \* `checked_delete` now works on more platforms \* Compatibility with the SunPro compiler \* Added missing `#include`s. \* [Boost.Python](/libs/python/index.html): \* warning suppression for finicky compilers \* fixed a crashing bug in the `raw_function` facility when no keyword arguments were passed. \* Improved conversion of NULL `shared_ptr`s to Python.
+
+Copyright Rene Rivera 2006-2007.

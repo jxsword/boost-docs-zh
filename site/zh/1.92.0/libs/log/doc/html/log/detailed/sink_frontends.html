@@ -1,0 +1,513 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>接收器前端</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Boost.Log v2">
+<link rel="up" href="../detailed.html" title="功能详解">
+<link rel="prev" href="sources.html" title="日志源">
+<link rel="next" href="sink_backends.html" title="接收器后端">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr><td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td></tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="sources.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../detailed.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="sink_backends.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="log.detailed.sink_frontends"></a><a class="link" href="sink_frontends.html" title="接收器前端">接收器前端</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="sink_frontends.html#log.detailed.sink_frontends.basic_services">接收器前端基本服务</a></span></dt>
+<dt><span class="section"><a href="sink_frontends.html#log.detailed.sink_frontends.unlocked">无锁接收器前端</a></span></dt>
+<dt><span class="section"><a href="sink_frontends.html#log.detailed.sink_frontends.sync">同步接收器前端</a></span></dt>
+<dt><span class="section"><a href="sink_frontends.html#log.detailed.sink_frontends.async">异步接收器前端</a></span></dt>
+</dl></div>
+<p>接收器前端是库提供的接收器的一部分, 实现所有接收器共享的公共功能. 这包括对过滤、异常处理和线程同步的支持. 此外, 由于格式化是基于文本的接收器的典型需求, 它也由前端实现. 每个接收器前端从日志核心接收日志记录, 然后将其传递给关联的接收器后端. 前端不定义如何处理记录, 而是定义核心应以何种方式与后端交互. 定义日志记录处理规则的是后端. 当您需要创建新类型的接收器时, 大概率不必编写自己的前端, 因为库提供了覆盖大多数用例的多种前端.</p>
+<p>接收器前端派生自 <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1sink.html" title="类 sink">sink</a></code> 类模板, 日志核心使用该模板供给日志记录. 从技术上讲, 可以从 <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1sink.html" title="类 sink">sink</a></code> 模板派生自己的类, 从而得到新的接收器, 但使用接收器前端可以省去相当多的例行工作. 由于每个接收器前端都关联一个后端, 相应的后端也会在前端构造时由前端构造 (除非用户自己提供后端实例), 从而构成完整的接收器. 因此, 前端构造完成后即可注册到日志核心, 开始处理记录. 有关前端与后端交互的更多细节, 参见 <a class="link" href="sink_backends.html" title="接收器后端">接收器后端</a> 一节.</p>
+<p>下面是接收器前端所提供服务的更详细概述.</p>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="log.detailed.sink_frontends.basic_services"></a><a class="link" href="sink_frontends.html#log.detailed.sink_frontends.basic_services" title="接收器前端基本服务">接收器前端基本服务</a>
+</h4></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="sink_frontends.html#log.detailed.sink_frontends.basic_services.filtering">过滤</a></span></dt>
+<dt><span class="section"><a href="sink_frontends.html#log.detailed.sink_frontends.basic_services.formatting">格式化</a></span></dt>
+<dt><span class="section"><a href="sink_frontends.html#log.detailed.sink_frontends.basic_services.exception_handling">异常处理</a></span></dt>
+</dl></div>
+<p>所有接收器前端都提供若干基本功能.</p>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="log.detailed.sink_frontends.basic_services.filtering"></a><a class="link" href="sink_frontends.html#log.detailed.sink_frontends.basic_services.filtering" title="过滤">过滤</a>
+</h5></div></div></div>
+<p>所有接收器前端都支持过滤. 用户可以指定自定义过滤函数对象, 或使用 <a class="link" href="expressions.html" title="Lambda 表达式">库提供的工具</a> 构造的过滤器. 过滤器可以通过 <code class="computeroutput"><span class="identifier">set_filter</span></code> 方法设置, 或通过 <code class="computeroutput"><span class="identifier">reset_filter</span></code> 方法清除. 过滤器在日志核心发出的 <code class="computeroutput"><span class="identifier">will_consume</span></code> 方法调用期间被调用. 如果未设置过滤器, 则假定接收器会接受任何日志记录.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>与日志核心一样, 所有接收器前端都假定从多个线程并发调用过滤器是安全的. 库提供的过滤器满足这一要求.</p></td></tr>
+</table></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="log.detailed.sink_frontends.basic_services.formatting"></a><a class="link" href="sink_frontends.html#log.detailed.sink_frontends.basic_services.formatting" title="格式化">格式化</a>
+</h5></div></div></div>
+<p>对于基于文本的接收器后端, 前端实现记录格式化. 与过滤器一样, 可以使用 <a class="link" href="expressions.html" title="Lambda 表达式">lambda 表达式</a> 构造格式化器. 对于基于文本的接收器, 可以通过调用 <code class="computeroutput"><span class="identifier">set_formatter</span></code> 方法设置格式化器, 或通过调用 <code class="computeroutput"><span class="identifier">reset_formatter</span></code> 清除.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="log.detailed.sink_frontends.basic_services.exception_handling"></a><a class="link" href="sink_frontends.html#log.detailed.sink_frontends.basic_services.exception_handling" title="异常处理">异常处理</a>
+</h5></div></div></div>
+<p>所有接收器前端都允许设置异常处理器, 以便按接收器逐一自定义错误处理. 可以通过 <code class="computeroutput"><span class="identifier">set_exception_handler</span></code> 方法安装异常处理函数; 当在后端的记录处理过程中或接收器专属过滤期间发生异常时, 该函数将从 <code class="computeroutput"><span class="keyword">catch</span></code> 块中以无参数方式调用. 异常处理器可以自由地重新抛出异常或抑制它. 在前一种情况下, 异常会传播到核心, 在那里可以有另一层异常处理发挥作用.</p>
+<div class="tip"><table border="0" summary="Tip">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[提示]" src="../../../../../../doc/src/images/tip.png"></td>
+<th align="left">提示</th>
+</tr>
+<tr><td align="left" valign="top"><p>
+              <a class="link" href="../detailed.html#log.detailed.core.core.exception_handling" title="异常处理">日志核心</a> 和 <a class="link" href="sources.html#log.detailed.sources.exception_handling" title="支持异常处理的日志器">日志器</a> 也支持安装异常处理器.</p></td></tr>
+</table></div>
+<p>库提供了一个 <a class="link" href="utilities.html#log.detailed.utilities.exception_handlers" title="异常处理器">便捷工具</a>, 用于将异常分派到一元多态函数对象.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>异常处理器不允许返回值. 这意味着一旦发生异常, 您无法改变过滤结果, 因此过滤将始终失败.</p></td></tr>
+</table></div>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>所有接收器前端都假定从多个线程并发调用异常处理器是安全的. 库提供的异常分派器满足这一要求.</p></td></tr>
+</table></div>
+</div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="log.detailed.sink_frontends.unlocked"></a><a class="link" href="sink_frontends.html#log.detailed.sink_frontends.unlocked" title="无锁接收器前端">无锁接收器前端</a>
+</h4></div></div></div>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../../sinks.html#doxygen.sinks.unlocked__frontend_8hpp" title="头文件 &lt;boost/log/sinks/unlocked_frontend.hpp&gt;">boost/log/sinks/unlocked_frontend.hpp</a></code><span class="special">&gt;</span>
+</pre>
+<p>无锁接收器前端以 <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1unlocked__sink.html" title="类模板 unlocked_sink">unlocked_sink</a></code> 类模板实现. 该前端为后端提供最基本的服务. <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1unlocked__sink.html" title="类模板 unlocked_sink">unlocked_sink</a></code> 前端在访问后端时不执行线程同步, 假定同步要么不需要, 要么已由后端实现. 尽管如此, 设置过滤器仍然是线程安全的 (即当其他线程正在通过该接收器写日志时, 可以安全地更改 <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1unlocked__sink.html" title="类模板 unlocked_sink">unlocked_sink</a></code> 前端的过滤器). 这是单线程环境中唯一可用的接收器前端. 用法示例如下:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">enum</span> <span class="identifier">severity_level</span>
+<span class="special">{</span>
+    <span class="identifier">normal</span><span class="special">,</span>
+    <span class="identifier">warning</span><span class="special">,</span>
+    <span class="identifier">error</span>
+<span class="special">};</span>
+
+<span class="comment">// A trivial sink backend that requires no thread synchronization</span>
+<span class="keyword">class</span> <span class="identifier">my_backend</span> <span class="special">:</span>
+    <span class="keyword">public</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">basic_sink_backend</span><span class="special">&lt;</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">concurrent_feeding</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="comment">// The function is called for every log record to be written to log</span>
+    <span class="keyword">void</span> <span class="identifier">consume</span><span class="special">(</span><span class="identifier">logging</span><span class="special">::</span><span class="identifier">record_view</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rec</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="comment">// We skip the actual synchronization code for brevity</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">rec</span><span class="special">[</span><span class="identifier">expr</span><span class="special">::</span><span class="identifier">smessage</span><span class="special">]</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="comment">// Complete sink type</span>
+<span class="keyword">typedef</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">unlocked_sink</span><span class="special">&lt;</span> <span class="identifier">my_backend</span> <span class="special">&gt;</span> <span class="identifier">sink_t</span><span class="special">;</span>
+
+<span class="keyword">void</span> <span class="identifier">init_logging</span><span class="special">()</span>
+<span class="special">{</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">logging</span><span class="special">::</span><span class="identifier">core</span> <span class="special">&gt;</span> <span class="identifier">core</span> <span class="special">=</span> <span class="identifier">logging</span><span class="special">::</span><span class="identifier">core</span><span class="special">::</span><span class="identifier">get</span><span class="special">();</span>
+
+    <span class="comment">// The simplest way, the backend is default-constructed</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">sink_t</span> <span class="special">&gt;</span> <span class="identifier">sink1</span><span class="special">(</span><span class="keyword">new</span> <span class="identifier">sink_t</span><span class="special">());</span>
+    <span class="identifier">core</span><span class="special">-&gt;</span><span class="identifier">add_sink</span><span class="special">(</span><span class="identifier">sink1</span><span class="special">);</span>
+
+    <span class="comment">// One can construct backend separately and pass it to the frontend</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">my_backend</span> <span class="special">&gt;</span> <span class="identifier">backend</span><span class="special">(</span><span class="keyword">new</span> <span class="identifier">my_backend</span><span class="special">());</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">sink_t</span> <span class="special">&gt;</span> <span class="identifier">sink2</span><span class="special">(</span><span class="keyword">new</span> <span class="identifier">sink_t</span><span class="special">(</span><span class="identifier">backend</span><span class="special">));</span>
+    <span class="identifier">core</span><span class="special">-&gt;</span><span class="identifier">add_sink</span><span class="special">(</span><span class="identifier">sink2</span><span class="special">);</span>
+
+    <span class="comment">// You can manage filtering through the sink interface</span>
+    <span class="identifier">sink1</span><span class="special">-&gt;</span><span class="identifier">set_filter</span><span class="special">(</span><span class="identifier">expr</span><span class="special">::</span><span class="identifier">attr</span><span class="special">&lt;</span> <span class="identifier">severity_level</span> <span class="special">&gt;(</span><span class="string">"Severity"</span><span class="special">)</span> <span class="special">&gt;=</span> <span class="identifier">warning</span><span class="special">);</span>
+    <span class="identifier">sink2</span><span class="special">-&gt;</span><span class="identifier">set_filter</span><span class="special">(</span><span class="identifier">expr</span><span class="special">::</span><span class="identifier">attr</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="special">&gt;(</span><span class="string">"Channel"</span><span class="special">)</span> <span class="special">==</span> <span class="string">"net"</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>
+        </p>
+<p>
+          <a href="../../../../../../libs/log/example/doc/sinks_unlocked.cpp" target="_top">查看完整代码</a>.</p>
+<p>库提供的所有接收器后端都要求前端部分进行线程同步. 如果我们尝试在需要比前端所提供更严格线程保证的后端上实例化该前端, 代码将无法编译. 因此, 该前端主要用于单线程环境和自定义后端.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="log.detailed.sink_frontends.sync"></a><a class="link" href="sink_frontends.html#log.detailed.sink_frontends.sync" title="同步接收器前端">同步接收器前端</a>
+</h4></div></div></div>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../../sinks.html#doxygen.sinks.sync__frontend_8hpp" title="头文件 &lt;boost/log/sinks/sync_frontend.hpp&gt;">boost/log/sinks/sync_frontend.hpp</a></code><span class="special">&gt;</span>
+</pre>
+<p>同步接收器前端以 <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1synchronous__sink.html" title="类模板 synchronous_sink">synchronous_sink</a></code> 类模板实现. 它与 <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1unlocked__sink.html" title="类模板 unlocked_sink">unlocked_sink</a></code> 类似, 但额外在将日志记录传递给后端之前使用互斥量进行线程同步. 当前所有支持格式化的接收器后端都要求前端进行线程同步.</p>
+<p>同步接收器还引入了获取已锁定后端指针的能力. 只要该指针存在, 就保证后端不会被其他线程访问, 除非访问是通过另一个前端或对后端的直接引用进行的. 如果需要在其他线程可能正在写日志的同时对接收器后端执行某些更新, 此功能会很有用. 但要注意, 当后端被锁定时, 任何其他试图向该接收器写日志记录的线程都会被阻塞, 直到后端被释放.</p>
+<p>用法与 <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1unlocked__sink.html" title="类模板 unlocked_sink">unlocked_sink</a></code> 类似.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">enum</span> <span class="identifier">severity_level</span>
+<span class="special">{</span>
+    <span class="identifier">normal</span><span class="special">,</span>
+    <span class="identifier">warning</span><span class="special">,</span>
+    <span class="identifier">error</span>
+<span class="special">};</span>
+
+<span class="comment">// Complete sink type</span>
+<span class="keyword">typedef</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">synchronous_sink</span><span class="special">&lt;</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">text_ostream_backend</span> <span class="special">&gt;</span> <span class="identifier">sink_t</span><span class="special">;</span>
+
+<span class="keyword">void</span> <span class="identifier">init_logging</span><span class="special">()</span>
+<span class="special">{</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">logging</span><span class="special">::</span><span class="identifier">core</span> <span class="special">&gt;</span> <span class="identifier">core</span> <span class="special">=</span> <span class="identifier">logging</span><span class="special">::</span><span class="identifier">core</span><span class="special">::</span><span class="identifier">get</span><span class="special">();</span>
+
+    <span class="comment">// Create a backend and initialize it with a stream</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">text_ostream_backend</span> <span class="special">&gt;</span> <span class="identifier">backend</span> <span class="special">=</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">make_shared</span><span class="special">&lt;</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">text_ostream_backend</span> <span class="special">&gt;();</span>
+    <span class="identifier">backend</span><span class="special">-&gt;</span><span class="identifier">add_stream</span><span class="special">(</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">ostream</span> <span class="special">&gt;(&amp;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">clog</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">null_deleter</span><span class="special">()));</span>
+
+    <span class="comment">// Wrap it into the frontend and register in the core</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">sink_t</span> <span class="special">&gt;</span> <span class="identifier">sink</span><span class="special">(</span><span class="keyword">new</span> <span class="identifier">sink_t</span><span class="special">(</span><span class="identifier">backend</span><span class="special">));</span>
+    <span class="identifier">core</span><span class="special">-&gt;</span><span class="identifier">add_sink</span><span class="special">(</span><span class="identifier">sink</span><span class="special">);</span>
+
+    <span class="comment">// You can manage filtering and formatting through the sink interface</span>
+    <span class="identifier">sink</span><span class="special">-&gt;</span><span class="identifier">set_filter</span><span class="special">(</span><span class="identifier">expr</span><span class="special">::</span><span class="identifier">attr</span><span class="special">&lt;</span> <span class="identifier">severity_level</span> <span class="special">&gt;(</span><span class="string">"Severity"</span><span class="special">)</span> <span class="special">&gt;=</span> <span class="identifier">warning</span><span class="special">);</span>
+    <span class="identifier">sink</span><span class="special">-&gt;</span><span class="identifier">set_formatter</span>
+    <span class="special">(</span>
+        <span class="identifier">expr</span><span class="special">::</span><span class="identifier">stream</span>
+            <span class="special">&lt;&lt;</span> <span class="string">"Level: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">expr</span><span class="special">::</span><span class="identifier">attr</span><span class="special">&lt;</span> <span class="identifier">severity_level</span> <span class="special">&gt;(</span><span class="string">"Severity"</span><span class="special">)</span>
+            <span class="special">&lt;&lt;</span> <span class="string">" Message: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">expr</span><span class="special">::</span><span class="identifier">smessage</span>
+    <span class="special">);</span>
+
+    <span class="comment">// You can also manage backend in a thread-safe manner</span>
+    <span class="special">{</span>
+        <span class="identifier">sink_t</span><span class="special">::</span><span class="identifier">locked_backend_ptr</span> <span class="identifier">p</span> <span class="special">=</span> <span class="identifier">sink</span><span class="special">-&gt;</span><span class="identifier">locked_backend</span><span class="special">();</span>
+        <span class="identifier">p</span><span class="special">-&gt;</span><span class="identifier">add_stream</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">make_shared</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">ofstream</span> <span class="special">&gt;(</span><span class="string">"sample.log"</span><span class="special">));</span>
+    <span class="special">}</span> <span class="comment">// the backend gets released here</span>
+<span class="special">}</span>
+</pre>
+<p>
+        </p>
+<p>
+          <a href="../../../../../../libs/log/example/doc/sinks_sync.cpp" target="_top">查看完整代码</a>.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="log.detailed.sink_frontends.async"></a><a class="link" href="sink_frontends.html#log.detailed.sink_frontends.async" title="异步接收器前端">异步接收器前端</a>
+</h4></div></div></div>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../../sinks.html#doxygen.sinks.async__frontend_8hpp" title="头文件 &lt;boost/log/sinks/async_frontend.hpp&gt;">boost/log/sinks/async_frontend.hpp</a></code><span class="special">&gt;</span>
+
+<span class="comment">// Related headers</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../../sinks.html#doxygen.sinks.unbounded__fifo__queue_8hpp" title="头文件 &lt;boost/log/sinks/unbounded_fifo_queue.hpp&gt;">boost/log/sinks/unbounded_fifo_queue.hpp</a></code><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../../sinks.html#doxygen.sinks.unbounded__ordering__queue_8hpp" title="头文件 &lt;boost/log/sinks/unbounded_ordering_queue.hpp&gt;">boost/log/sinks/unbounded_ordering_queue.hpp</a></code><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../../sinks.html#doxygen.sinks.bounded__fifo__queue_8hpp" title="头文件 &lt;boost/log/sinks/bounded_fifo_queue.hpp&gt;">boost/log/sinks/bounded_fifo_queue.hpp</a></code><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../../sinks.html#doxygen.sinks.bounded__ordering__queue_8hpp" title="头文件 &lt;boost/log/sinks/bounded_ordering_queue.hpp&gt;">boost/log/sinks/bounded_ordering_queue.hpp</a></code><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../../sinks.html#doxygen.sinks.drop__on__overflow_8hpp" title="头文件 &lt;boost/log/sinks/drop_on_overflow.hpp&gt;">boost/log/sinks/drop_on_overflow.hpp</a></code><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../../sinks.html#doxygen.sinks.block__on__overflow_8hpp" title="头文件 &lt;boost/log/sinks/block_on_overflow.hpp&gt;">boost/log/sinks/block_on_overflow.hpp</a></code><span class="special">&gt;</span>
+</pre>
+<p>该前端以 <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1asynchronous__sink.html" title="类模板 asynchronous_sink">asynchronous_sink</a></code> 类模板实现. 与同步前端一样, 异步接收器前端提供了一种同步访问后端的方式. 所有日志记录都在专用线程中传递给后端, 这使它适合于可能长时间阻塞的后端 (例如网络和其他与硬件设备相关的接收器). 前端的内部线程在前端构造函数中创建, 并在其析构函数中汇合 (这意味着前端析构可能会阻塞).</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>异步接收器前端的当前实现使用记录排队. 这在记录发出与其实际处理 (例如写入文件) 之间引入了一定的延迟. 在某些场景下, 这种行为可能不合适, 例如调试容易崩溃的应用程序时.</p></td></tr>
+</table></div>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">enum</span> <span class="identifier">severity_level</span>
+<span class="special">{</span>
+    <span class="identifier">normal</span><span class="special">,</span>
+    <span class="identifier">warning</span><span class="special">,</span>
+    <span class="identifier">error</span>
+<span class="special">};</span>
+
+<span class="comment">// Complete sink type</span>
+<span class="keyword">typedef</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">asynchronous_sink</span><span class="special">&lt;</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">text_ostream_backend</span> <span class="special">&gt;</span> <span class="identifier">sink_t</span><span class="special">;</span>
+
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">sink_t</span> <span class="special">&gt;</span> <span class="identifier">init_logging</span><span class="special">()</span>
+<span class="special">{</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">logging</span><span class="special">::</span><span class="identifier">core</span> <span class="special">&gt;</span> <span class="identifier">core</span> <span class="special">=</span> <span class="identifier">logging</span><span class="special">::</span><span class="identifier">core</span><span class="special">::</span><span class="identifier">get</span><span class="special">();</span>
+
+    <span class="comment">// Create a backend and initialize it with a stream</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">text_ostream_backend</span> <span class="special">&gt;</span> <span class="identifier">backend</span> <span class="special">=</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">make_shared</span><span class="special">&lt;</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">text_ostream_backend</span> <span class="special">&gt;();</span>
+    <span class="identifier">backend</span><span class="special">-&gt;</span><span class="identifier">add_stream</span><span class="special">(</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">ostream</span> <span class="special">&gt;(&amp;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">clog</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">null_deleter</span><span class="special">()));</span>
+
+    <span class="comment">// Wrap it into the frontend and register in the core</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">sink_t</span> <span class="special">&gt;</span> <span class="identifier">sink</span><span class="special">(</span><span class="keyword">new</span> <span class="identifier">sink_t</span><span class="special">(</span><span class="identifier">backend</span><span class="special">));</span>
+    <span class="identifier">core</span><span class="special">-&gt;</span><span class="identifier">add_sink</span><span class="special">(</span><span class="identifier">sink</span><span class="special">);</span>
+
+    <span class="comment">// You can manage filtering and formatting through the sink interface</span>
+    <span class="identifier">sink</span><span class="special">-&gt;</span><span class="identifier">set_filter</span><span class="special">(</span><span class="identifier">expr</span><span class="special">::</span><span class="identifier">attr</span><span class="special">&lt;</span> <span class="identifier">severity_level</span> <span class="special">&gt;(</span><span class="string">"Severity"</span><span class="special">)</span> <span class="special">&gt;=</span> <span class="identifier">warning</span><span class="special">);</span>
+    <span class="identifier">sink</span><span class="special">-&gt;</span><span class="identifier">set_formatter</span>
+    <span class="special">(</span>
+        <span class="identifier">expr</span><span class="special">::</span><span class="identifier">stream</span>
+            <span class="special">&lt;&lt;</span> <span class="string">"Level: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">expr</span><span class="special">::</span><span class="identifier">attr</span><span class="special">&lt;</span> <span class="identifier">severity_level</span> <span class="special">&gt;(</span><span class="string">"Severity"</span><span class="special">)</span>
+            <span class="special">&lt;&lt;</span> <span class="string">" Message: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">expr</span><span class="special">::</span><span class="identifier">message</span>
+    <span class="special">);</span>
+
+    <span class="comment">// You can also manage backend in a thread-safe manner</span>
+    <span class="special">{</span>
+        <span class="identifier">sink_t</span><span class="special">::</span><span class="identifier">locked_backend_ptr</span> <span class="identifier">p</span> <span class="special">=</span> <span class="identifier">sink</span><span class="special">-&gt;</span><span class="identifier">locked_backend</span><span class="special">();</span>
+        <span class="identifier">p</span><span class="special">-&gt;</span><span class="identifier">add_stream</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">make_shared</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">ofstream</span> <span class="special">&gt;(</span><span class="string">"sample.log"</span><span class="special">));</span>
+    <span class="special">}</span> <span class="comment">// the backend gets released here</span>
+
+    <span class="keyword">return</span> <span class="identifier">sink</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+        </p>
+<div class="important"><table border="0" summary="Important">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[重要]" src="../../../../../../doc/src/images/important.png"></td>
+<th align="left">重要</th>
+</tr>
+<tr><td align="left" valign="top"><p>如果在多模块应用程序中使用异步日志, 应谨慎决定何时卸载写日志的动态加载模块. 库中有很多地方可能最终会使用位于动态加载模块中的资源, 例如虚函数表、字符串字面量和函数. 如果当这些资源所在的模块被卸载时, 库仍在使用其中任何资源, 应用程序极有可能崩溃. 严格来说, 这个问题存在于任何接收器类型 (而且首先并不仅限于接收器), 但异步接收器引入了一个额外的问题: 无法得知异步接收器正在使用哪些资源, 因为它在专用线程中工作并使用缓冲的日志记录. 这一问题没有通用解决方案. 建议用户要么避免在应用程序运行期间动态卸载模块, 要么避免使用异步日志. 作为应对该问题的补充手段, 可以尝试在卸载任何模块之前关闭所有异步接收器, 卸载后再重新创建它们. 不过, 避免动态卸载才是彻底解决该问题的唯一途径.</p></td></tr>
+</table></div>
+<p>要停止向后端馈送日志记录的专用线程, 可以调用前端的 <code class="computeroutput"><span class="identifier">stop</span></code> 方法. 该方法会在前端析构函数中自动调用. 与线程中断不同, <code class="computeroutput"><span class="identifier">stop</span></code> 方法只会在正在馈送的日志记录被后端处理完毕后终止馈送循环 (即不会中断已经开始的记录处理). 不过, 从 <code class="computeroutput"><span class="identifier">stop</span></code> 方法返回后, 队列中可能仍有剩余记录. 要将这些记录刷入后端, 需要额外调用一次 <code class="computeroutput"><span class="identifier">feed_records</span></code> 方法. 这在应用程序终止阶段很有用.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">stop_logging</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">sink_t</span> <span class="special">&gt;&amp;</span> <span class="identifier">sink</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">logging</span><span class="special">::</span><span class="identifier">core</span> <span class="special">&gt;</span> <span class="identifier">core</span> <span class="special">=</span> <span class="identifier">logging</span><span class="special">::</span><span class="identifier">core</span><span class="special">::</span><span class="identifier">get</span><span class="special">();</span>
+
+    <span class="comment">// Remove the sink from the core, so that no records are passed to it</span>
+    <span class="identifier">core</span><span class="special">-&gt;</span><span class="identifier">remove_sink</span><span class="special">(</span><span class="identifier">sink</span><span class="special">);</span>
+
+    <span class="comment">// Break the feeding loop</span>
+    <span class="identifier">sink</span><span class="special">-&gt;</span><span class="identifier">stop</span><span class="special">();</span>
+
+    <span class="comment">// Flush all log records that may have left buffered</span>
+    <span class="identifier">sink</span><span class="special">-&gt;</span><span class="identifier">flush</span><span class="special">();</span>
+
+    <span class="identifier">sink</span><span class="special">.</span><span class="identifier">reset</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<p>
+        </p>
+<p>
+          <a href="../../../../../../libs/log/example/doc/sinks_async.cpp" target="_top">查看完整代码</a>.</p>
+<p>可以通过前端可选的布尔型 <code class="computeroutput"><span class="identifier">start_thread</span></code> 命名参数抑制创建馈送日志记录的专用线程. 在这种情况下, 用户可以选择以下任一方式处理记录:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">调用前端的 <code class="computeroutput"><span class="identifier">run</span></code> 方法. 该调用会在馈送循环中阻塞. 该循环可以通过调用 <code class="computeroutput"><span class="identifier">stop</span></code> 中断.</li>
+<li class="listitem">定期调用 <code class="computeroutput"><span class="identifier">feed_records</span></code>. 该方法会处理发出调用时前端队列中的所有日志记录, 然后返回.</li>
+</ul></div>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>用户应注意不要并发混用这两种方式. 此外, 如果专用馈送线程正在运行 (即构造时未指定 <code class="computeroutput"><span class="identifier">start_thread</span></code> 或其值为 <code class="computeroutput"><span class="keyword">true</span></code>), 则不应调用这些方法中的任何一个.</p></td></tr>
+</table></div>
+<h6>
+<a name="log.detailed.sink_frontends.async.h0"></a>
+          <span class="phrase"><a name="log.detailed.sink_frontends.async.customizing_record_queueing_strategy"></a></span><a class="link" href="sink_frontends.html#log.detailed.sink_frontends.async.customizing_record_queueing_strategy">自定义记录排队策略</a>
+        </h6>
+<p> <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1asynchronous__sink.html" title="类模板 asynchronous_sink">asynchronous_sink</a></code> 类模板可以用记录排队策略进行定制. 库提供了以下几种策略:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+              <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1unbounded__fifo__queue.html" title="类 unbounded_fifo_queue">unbounded_fifo_queue</a></code>. 该策略是默认策略. 顾名思义, 队列深度不受限制, 也不对日志记录排序.</li>
+<li class="listitem">
+              <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1unbounded__ordering__queue.html" title="类模板 unbounded_ordering_queue">unbounded_ordering_queue</a></code>. 与 <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1unbounded__fifo__queue.html" title="类 unbounded_fifo_queue">unbounded_fifo_queue</a></code> 一样, 队列深度不受限制, 但会对排队的记录应用排序. 我们稍后会回到排序队列.</li>
+<li class="listitem">
+              <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1bounded__fifo__queue.html" title="类模板 bounded_fifo_queue">bounded_fifo_queue</a></code>. 队列具有在模板参数中指定的有限深度, 以及溢出处理策略. 不应用记录排序.</li>
+<li class="listitem">
+              <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1bounded__ordering__queue.html" title="类模板 bounded_ordering_queue">bounded_ordering_queue</a></code>. 与 <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1bounded__fifo__queue.html" title="类模板 bounded_fifo_queue">bounded_fifo_queue</a></code> 类似, 但还会应用日志记录排序.</li>
+</ul></div>
+<div class="warning"><table border="0" summary="Warning">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[警告]" src="../../../../../../doc/src/images/warning.png"></td>
+<th align="left">警告</th>
+</tr>
+<tr><td align="left" valign="top"><p>使用无界排队策略时要小心. 由于队列深度不受限制, 如果日志记录持续生成的速度快于后端处理的速度, 队列将不受控制地增长, 表现为内存泄漏.</p></td></tr>
+</table></div>
+<p>有界队列支持以下溢出策略:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+              <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1drop__on__overflow.html" title="类 drop_on_overflow">drop_on_overflow</a></code>. 队列已满时, 静默丢弃多余的日志记录.</li>
+<li class="listitem">
+              <code class="computeroutput"><a class="link" href="../../doxygen/sinks/classboost_1_1log_1_1sinks_1_1block__on__overflow.html" title="类 block_on_overflow">block_on_overflow</a></code>. 队列已满时, 阻塞日志线程, 直到后端馈送线程处理掉一些排队记录.</li>
+</ul></div>
+<p>例如, 我们可以这样修改前面的示例, 将记录队列限制为 100 个元素:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// Complete sink type</span>
+<span class="keyword">typedef</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">asynchronous_sink</span><span class="special">&lt;</span>
+    <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">text_ostream_backend</span><span class="special">,</span>
+    <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">bounded_fifo_queue</span><span class="special">&lt;</span>                                                   <a class="co" name="log.detailed.sink_frontends.async.c0" href="sink_frontends.html#log.detailed.sink_frontends.async.c1"><img src="../../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a>
+        <span class="number">100</span><span class="special">,</span>                                                                     <a class="co" name="log.detailed.sink_frontends.async.c2" href="sink_frontends.html#log.detailed.sink_frontends.async.c3"><img src="../../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a>
+        <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">drop_on_overflow</span>                                                  <a class="co" name="log.detailed.sink_frontends.async.c4" href="sink_frontends.html#log.detailed.sink_frontends.async.c5"><img src="../../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a>
+    <span class="special">&gt;</span>
+<span class="special">&gt;</span> <span class="identifier">sink_t</span><span class="special">;</span>
+
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">sink_t</span> <span class="special">&gt;</span> <span class="identifier">init_logging</span><span class="special">()</span>
+<span class="special">{</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">logging</span><span class="special">::</span><span class="identifier">core</span> <span class="special">&gt;</span> <span class="identifier">core</span> <span class="special">=</span> <span class="identifier">logging</span><span class="special">::</span><span class="identifier">core</span><span class="special">::</span><span class="identifier">get</span><span class="special">();</span>
+
+    <span class="comment">// Create a backend and initialize it with a stream</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">text_ostream_backend</span> <span class="special">&gt;</span> <span class="identifier">backend</span> <span class="special">=</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">make_shared</span><span class="special">&lt;</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">text_ostream_backend</span> <span class="special">&gt;();</span>
+    <span class="identifier">backend</span><span class="special">-&gt;</span><span class="identifier">add_stream</span><span class="special">(</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">ostream</span> <span class="special">&gt;(&amp;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">clog</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">null_deleter</span><span class="special">()));</span>
+
+    <span class="comment">// Wrap it into the frontend and register in the core</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">sink_t</span> <span class="special">&gt;</span> <span class="identifier">sink</span><span class="special">(</span><span class="keyword">new</span> <span class="identifier">sink_t</span><span class="special">(</span><span class="identifier">backend</span><span class="special">));</span>
+    <span class="identifier">core</span><span class="special">-&gt;</span><span class="identifier">add_sink</span><span class="special">(</span><span class="identifier">sink</span><span class="special">);</span>
+
+    <span class="comment">// ...</span>
+
+    <span class="keyword">return</span> <span class="identifier">sink</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+        </p>
+<div class="calloutlist"><table border="0" summary="Callout list">
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="log.detailed.sink_frontends.async.c1"></a><a href="#log.detailed.sink_frontends.async.c0"><img src="../../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a> </p></td>
+<td valign="top" align="left"><p>日志记录排队策略</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="log.detailed.sink_frontends.async.c3"></a><a href="#log.detailed.sink_frontends.async.c2"><img src="../../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a> </p></td>
+<td valign="top" align="left"><p>记录队列容量</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="log.detailed.sink_frontends.async.c5"></a><a href="#log.detailed.sink_frontends.async.c4"><img src="../../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a> </p></td>
+<td valign="top" align="left"><p>溢出处理策略</p></td>
+</tr>
+</table></div>
+<p>
+          <a href="../../../../../../libs/log/example/doc/sinks_async_bounded.cpp" target="_top">查看完整代码</a>.</p>
+<p>另请参阅库发行版中的 <a href="../../../../../../libs/log/example/bounded_async_log/main.cpp" target="_top"><code class="computeroutput"><span class="identifier">bounded_async_log</span></code></a> 示例.</p>
+<h6>
+<a name="log.detailed.sink_frontends.async.h1"></a>
+          <span class="phrase"><a name="log.detailed.sink_frontends.async.ordering_log_records"></a></span><a class="link" href="sink_frontends.html#log.detailed.sink_frontends.async.ordering_log_records">日志记录排序</a>
+        </h6>
+<p>记录排序可用于缓解多线程应用程序中存在的 <a class="link" href="../rationale/why_weak_record_ordering.html" title="为什么在多线程应用程序中日志记录是弱序的?">记录弱序</a> 问题.</p>
+<p>排序排队策略会给记录处理引入少量延迟. 延迟时长和排序谓词可以在前端构造时指定. 使用 <a class="link" href="utilities.html#log.detailed.utilities.record_ordering" title="日志记录排序">日志记录排序工具</a> 实现排序谓词可能会很有用.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// Complete sink type</span>
+<span class="keyword">typedef</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">asynchronous_sink</span><span class="special">&lt;</span>
+    <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">text_ostream_backend</span><span class="special">,</span>
+    <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">unbounded_ordering_queue</span><span class="special">&lt;</span>                                             <a class="co" name="log.detailed.sink_frontends.async.c6" href="sink_frontends.html#log.detailed.sink_frontends.async.c7"><img src="../../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a>
+        <span class="identifier">logging</span><span class="special">::</span><span class="identifier">attribute_value_ordering</span><span class="special">&lt;</span>                                       <a class="co" name="log.detailed.sink_frontends.async.c8" href="sink_frontends.html#log.detailed.sink_frontends.async.c9"><img src="../../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a>
+            <span class="keyword">unsigned</span> <span class="keyword">int</span><span class="special">,</span>                                                        <a class="co" name="log.detailed.sink_frontends.async.c10" href="sink_frontends.html#log.detailed.sink_frontends.async.c11"><img src="../../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">less</span><span class="special">&lt;</span> <span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="special">&gt;</span>                                            <a class="co" name="log.detailed.sink_frontends.async.c12" href="sink_frontends.html#log.detailed.sink_frontends.async.c13"><img src="../../../../../../doc/src/images/callouts/4.png" alt="4" border="0"></a>
+        <span class="special">&gt;</span>
+    <span class="special">&gt;</span>
+<span class="special">&gt;</span> <span class="identifier">sink_t</span><span class="special">;</span>
+
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">sink_t</span> <span class="special">&gt;</span> <span class="identifier">init_logging</span><span class="special">()</span>
+<span class="special">{</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">logging</span><span class="special">::</span><span class="identifier">core</span> <span class="special">&gt;</span> <span class="identifier">core</span> <span class="special">=</span> <span class="identifier">logging</span><span class="special">::</span><span class="identifier">core</span><span class="special">::</span><span class="identifier">get</span><span class="special">();</span>
+
+    <span class="comment">// Create a backend and initialize it with a stream</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">text_ostream_backend</span> <span class="special">&gt;</span> <span class="identifier">backend</span> <span class="special">=</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">make_shared</span><span class="special">&lt;</span> <span class="identifier">sinks</span><span class="special">::</span><span class="identifier">text_ostream_backend</span> <span class="special">&gt;();</span>
+    <span class="identifier">backend</span><span class="special">-&gt;</span><span class="identifier">add_stream</span><span class="special">(</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">ostream</span> <span class="special">&gt;(&amp;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">clog</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">null_deleter</span><span class="special">()));</span>
+
+    <span class="comment">// Wrap it into the frontend and register in the core</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">sink_t</span> <span class="special">&gt;</span> <span class="identifier">sink</span><span class="special">(</span><span class="keyword">new</span> <span class="identifier">sink_t</span><span class="special">(</span>
+        <span class="identifier">backend</span><span class="special">,</span>                                                                 <a class="co" name="log.detailed.sink_frontends.async.c14" href="sink_frontends.html#log.detailed.sink_frontends.async.c15"><img src="../../../../../../doc/src/images/callouts/5.png" alt="5" border="0"></a>
+        <span class="identifier">keywords</span><span class="special">::</span><span class="identifier">order</span> <span class="special">=</span> <span class="identifier">logging</span><span class="special">::</span><span class="identifier">make_attr_ordering</span><span class="special">&lt;</span> <span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="special">&gt;(</span>           <a class="co" name="log.detailed.sink_frontends.async.c16" href="sink_frontends.html#log.detailed.sink_frontends.async.c17"><img src="../../../../../../doc/src/images/callouts/6.png" alt="6" border="0"></a>
+            <span class="string">"LineID"</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">less</span><span class="special">&lt;</span> <span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="special">&gt;()),</span>
+        <span class="identifier">keywords</span><span class="special">::</span><span class="identifier">ordering_window</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">seconds</span><span class="special">(</span><span class="number">1</span><span class="special">)</span>                      <a class="co" name="log.detailed.sink_frontends.async.c18" href="sink_frontends.html#log.detailed.sink_frontends.async.c19"><img src="../../../../../../doc/src/images/callouts/7.png" alt="7" border="0"></a>
+    <span class="special">));</span>
+    <span class="identifier">core</span><span class="special">-&gt;</span><span class="identifier">add_sink</span><span class="special">(</span><span class="identifier">sink</span><span class="special">);</span>
+
+    <span class="comment">// You can manage filtering and formatting through the sink interface</span>
+    <span class="identifier">sink</span><span class="special">-&gt;</span><span class="identifier">set_filter</span><span class="special">(</span><span class="identifier">expr</span><span class="special">::</span><span class="identifier">attr</span><span class="special">&lt;</span> <span class="identifier">severity_level</span> <span class="special">&gt;(</span><span class="string">"Severity"</span><span class="special">)</span> <span class="special">&gt;=</span> <span class="identifier">warning</span><span class="special">);</span>
+    <span class="identifier">sink</span><span class="special">-&gt;</span><span class="identifier">set_formatter</span>
+    <span class="special">(</span>
+        <span class="identifier">expr</span><span class="special">::</span><span class="identifier">stream</span>
+            <span class="special">&lt;&lt;</span> <span class="string">"Level: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">expr</span><span class="special">::</span><span class="identifier">attr</span><span class="special">&lt;</span> <span class="identifier">severity_level</span> <span class="special">&gt;(</span><span class="string">"Severity"</span><span class="special">)</span>
+            <span class="special">&lt;&lt;</span> <span class="string">" Message: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">expr</span><span class="special">::</span><span class="identifier">smessage</span>
+    <span class="special">);</span>
+
+    <span class="comment">// You can also manage backend in a thread-safe manner</span>
+    <span class="special">{</span>
+        <span class="identifier">sink_t</span><span class="special">::</span><span class="identifier">locked_backend_ptr</span> <span class="identifier">p</span> <span class="special">=</span> <span class="identifier">sink</span><span class="special">-&gt;</span><span class="identifier">locked_backend</span><span class="special">();</span>
+        <span class="identifier">p</span><span class="special">-&gt;</span><span class="identifier">add_stream</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">make_shared</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">ofstream</span> <span class="special">&gt;(</span><span class="string">"sample.log"</span><span class="special">));</span>
+    <span class="special">}</span> <span class="comment">// the backend gets released here</span>
+
+    <span class="keyword">return</span> <span class="identifier">sink</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+        </p>
+<div class="calloutlist"><table border="0" summary="Callout list">
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="log.detailed.sink_frontends.async.c7"></a><a href="#log.detailed.sink_frontends.async.c6"><img src="../../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a> </p></td>
+<td valign="top" align="left"><p>日志记录排队策略</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="log.detailed.sink_frontends.async.c9"></a><a href="#log.detailed.sink_frontends.async.c8"><img src="../../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a> </p></td>
+<td valign="top" align="left"><p>日志记录排序谓词类型</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="log.detailed.sink_frontends.async.c11"></a><a href="#log.detailed.sink_frontends.async.c10"><img src="../../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a> </p></td>
+<td valign="top" align="left"><p>属性值类型</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="log.detailed.sink_frontends.async.c13"></a><a href="#log.detailed.sink_frontends.async.c12"><img src="../../../../../../doc/src/images/callouts/4.png" alt="4" border="0"></a> </p></td>
+<td valign="top" align="left"><p>可选, 属性值比较谓词; 默认使用 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">less</span></code> 等价物</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="log.detailed.sink_frontends.async.c15"></a><a href="#log.detailed.sink_frontends.async.c14"><img src="../../../../../../doc/src/images/callouts/5.png" alt="5" border="0"></a> </p></td>
+<td valign="top" align="left"><p>指向预初始化后端的指针</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="log.detailed.sink_frontends.async.c17"></a><a href="#log.detailed.sink_frontends.async.c16"><img src="../../../../../../doc/src/images/callouts/6.png" alt="6" border="0"></a> </p></td>
+<td valign="top" align="left"><p>日志记录排序谓词</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="log.detailed.sink_frontends.async.c19"></a><a href="#log.detailed.sink_frontends.async.c18"><img src="../../../../../../doc/src/images/callouts/7.png" alt="7" border="0"></a> </p></td>
+<td valign="top" align="left"><p>日志记录处理延迟</p></td>
+</tr>
+</table></div>
+<p>在上面的代码示例中, 接收器前端会将日志记录保留在内部队列中最多一秒, 并基于 <code class="computeroutput"><span class="keyword">unsigned</span>
+          <span class="keyword">int</span></code> 类型的日志记录计数器进行排序. <code class="computeroutput"><span class="identifier">ordering_window</span></code> 参数是可选的, 默认为某个足够小的系统特定值, 足以维持日志记录按时间顺序流向后端.</p>
+<p>即使停止了内部馈送循环, 前端也会保持排序窗口, 因此可以重新进入循环而不破坏记录排序. 另一方面, 为了确保所有日志记录都被刷入后端, 必须在应用程序结束时调用 <code class="computeroutput"><span class="identifier">flush</span></code> 方法.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">stop_logging</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">sink_t</span> <span class="special">&gt;&amp;</span> <span class="identifier">sink</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span> <span class="identifier">logging</span><span class="special">::</span><span class="identifier">core</span> <span class="special">&gt;</span> <span class="identifier">core</span> <span class="special">=</span> <span class="identifier">logging</span><span class="special">::</span><span class="identifier">core</span><span class="special">::</span><span class="identifier">get</span><span class="special">();</span>
+
+    <span class="comment">// Remove the sink from the core, so that no records are passed to it</span>
+    <span class="identifier">core</span><span class="special">-&gt;</span><span class="identifier">remove_sink</span><span class="special">(</span><span class="identifier">sink</span><span class="special">);</span>
+
+    <span class="comment">// Break the feeding loop</span>
+    <span class="identifier">sink</span><span class="special">-&gt;</span><span class="identifier">stop</span><span class="special">();</span>
+
+    <span class="comment">// Flush all log records that may have left buffered</span>
+    <span class="identifier">sink</span><span class="special">-&gt;</span><span class="identifier">flush</span><span class="special">();</span>
+
+    <span class="identifier">sink</span><span class="special">.</span><span class="identifier">reset</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<p>
+        </p>
+<p>库发行版中的 <a href="../../../../../../libs/log/example/async_log/main.cpp" target="_top"><code class="computeroutput"><span class="identifier">async_log</span></code></a> 示例也演示了这一技术.</p>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2007-2024 Andrey Semashev<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>) .</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="sources.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../detailed.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="sink_backends.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

@@ -1,0 +1,767 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>高级客户端侧 SQL 查询格式化</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="up" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="prev" href="error_handling.html" title="错误处理与可用重载">
+<link rel="next" href="meta.html" title="元数据">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="error_handling.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="meta.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="mysql.sql_formatting_advanced"></a><a class="link" href="sql_formatting_advanced.html" title="高级客户端 SQL 查询格式化">高级客户端侧 SQL 查询格式化</a>
+</h2></div></div></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mysql.sql_formatting_advanced.expand"></a><a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.expand" title="只格式化查询而不执行">格式化查询而不执行</a>
+</h3></div></div></div>
+<p>
+        <code class="computeroutput"><span class="identifier">with_params</span></code> 很方便, 但在涉及逻辑复杂的查询的某些情况下可能不够用. 对于这些情况, 可以使用 <a class="link" href="ref/boost__mysql__format_sql.html" title="format_sql"><code class="literal">format_sql</code></a> 和 <a class="link" href="ref/boost__mysql__format_sql_to.html" title="format_sql_to"><code class="literal">format_sql_to</code></a> 来展开查询而不执行它. 这些 API 不涉及与服务器的通信.</p>
+<p>
+        <a class="link" href="ref/boost__mysql__format_sql.html" title="format_sql"><code class="literal">format_sql</code></a> 是最简单的一种, 类似于 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">format</span></code>:</p>
+<pre class="programlisting"><span class="comment">// Compose the SQL query without executing it.</span>
+<span class="comment">// format_opts returns a system::result&lt;format_options&gt;,</span>
+<span class="comment">// contains settings like the current character set.</span>
+<span class="comment">// If the connection is using an unknown character set, this will throw an error.</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">query</span> <span class="special">=</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_sql</span><span class="special">(</span>
+    <span class="identifier">conn</span><span class="special">.</span><span class="identifier">format_opts</span><span class="special">().</span><span class="identifier">value</span><span class="special">(),</span>
+    <span class="string">"SELECT id, salary FROM employee WHERE last_name = {}"</span><span class="special">,</span>
+    <span class="string">"Doe"</span>
+<span class="special">);</span>
+
+<span class="identifier">BOOST_TEST</span><span class="special">(</span><span class="identifier">query</span> <span class="special">==</span> <span class="string">"SELECT id, salary FROM employee WHERE last_name = 'Doe'"</span><span class="special">);</span>
+</pre>
+<p>
+        <code class="computeroutput"><span class="identifier">format_sql</span></code> 需要一个描述连接配置的 <a class="link" href="ref/boost__mysql__format_options.html" title="format_options"><code class="literal">format_options</code></a> 实例, 例如当前使用的字符集. <a class="link" href="ref/boost__mysql__any_connection/format_opts.html" title="any_connection::format_opts"><code class="literal">any_connection::format_opts</code></a> 提供了一种获取这些配置的简便方式. <a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.format_options"> 本节</a> 包含关于 <code class="computeroutput"><span class="identifier">format_opts</span></code> 的更多信息.</p>
+<p>某些用例 (通常涉及条件逻辑) 可能无法用单个格式字符串表达. 此时可以使用 <a class="link" href="ref/boost__mysql__format_context.html" title="format_context"><code class="literal">format_context</code></a> 和 <a class="link" href="ref/boost__mysql__format_sql_to.html" title="format_sql_to"><code class="literal">format_sql_to</code></a> 增量地构建查询字符串:</p>
+<pre class="programlisting"><span class="comment">// Compose a query that retrieves all employees in a company,</span>
+<span class="comment">// with an optional limit</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">compose_select_query</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_options</span> <span class="identifier">opts</span><span class="special">,</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span> <span class="identifier">company_id</span><span class="special">,</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="keyword">long</span><span class="special">&gt;</span> <span class="identifier">limit</span>
+<span class="special">)</span>
+<span class="special">{</span>
+    <span class="comment">// format_context will accumulate the query as we compose it</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_context</span> <span class="identifier">ctx</span><span class="special">(</span><span class="identifier">opts</span><span class="special">);</span>
+
+    <span class="comment">// format_sql_to expands a format string and appends the result</span>
+    <span class="comment">// to a format context. This way, we can build our query in smaller pieces</span>
+    <span class="comment">// Add all the query except for the LIMIT clause</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_sql_to</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">,</span> <span class="string">"SELECT * FROM employee WHERE company_id = {}"</span><span class="special">,</span> <span class="identifier">company_id</span><span class="special">);</span>
+
+    <span class="keyword">if</span> <span class="special">(</span><span class="identifier">limit</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="comment">// Add the LIMIT clause</span>
+        <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_sql_to</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">,</span> <span class="string">" LIMIT {}"</span><span class="special">,</span> <span class="special">*</span><span class="identifier">limit</span><span class="special">);</span>
+    <span class="special">}</span>
+
+    <span class="comment">// Retrieve the generated query string.</span>
+    <span class="comment">// get() returns a boost::system::result&lt;std::string&gt; that</span>
+    <span class="comment">// contains an error if any of the format operations failed.</span>
+    <span class="comment">// Calling value() will throw on error, like format_sql does</span>
+    <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">).</span><span class="identifier">get</span><span class="special">().</span><span class="identifier">value</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">query</span> <span class="special">=</span> <span class="identifier">compose_select_query</span><span class="special">(</span><span class="identifier">conn</span><span class="special">.</span><span class="identifier">format_opts</span><span class="special">().</span><span class="identifier">value</span><span class="special">(),</span> <span class="string">"HGS"</span><span class="special">,</span> <span class="special">{});</span>
+<span class="identifier">BOOST_TEST</span><span class="special">(</span><span class="identifier">query</span> <span class="special">==</span> <span class="string">"SELECT * FROM employee WHERE company_id = 'HGS'"</span><span class="special">);</span>
+
+<span class="identifier">query</span> <span class="special">=</span> <span class="identifier">compose_select_query</span><span class="special">(</span><span class="identifier">conn</span><span class="special">.</span><span class="identifier">format_opts</span><span class="special">().</span><span class="identifier">value</span><span class="special">(),</span> <span class="string">"HGS"</span><span class="special">,</span> <span class="number">50</span><span class="special">);</span>
+<span class="identifier">BOOST_TEST</span><span class="special">(</span><span class="identifier">query</span> <span class="special">==</span> <span class="string">"SELECT * FROM employee WHERE company_id = 'HGS' LIMIT 50"</span><span class="special">);</span>
+</pre>
+<p>
+        <a class="link" href="ref/boost__mysql__sequence.html" title="sequence"><code class="literal">sequence</code></a> 利用此特性使范围格式化更简单.</p>
+<p>任何适用于 <code class="computeroutput"><span class="identifier">with_params</span></code> 的类型同样适用于 <code class="computeroutput"><span class="identifier">format_sql</span></code> 和 <code class="computeroutput"><span class="identifier">format_sql_to</span></code>. 这些类型称为满足 <a class="link" href="ref/boost__mysql__Formattable.html" title="Formattable 概念"><code class="literal">Formattable</code></a> 概念. <a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.reference" title="内置 SQL 格式化支持的类型"> 此表</a> 汇总了这些类型.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mysql.sql_formatting_advanced.ranges"></a><a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.ranges" title="用 sequence 格式化范围">用 sequence 格式化范围</a>
+</h3></div></div></div>
+<p>当默认的范围格式化不够用时, 可以使用 <a class="link" href="ref/boost__mysql__sequence.html" title="sequence"><code class="literal">sequence</code></a> 函数. 若你的范围中的元素不可格式化, 可以向 <code class="computeroutput"><span class="identifier">sequence</span></code> 传入一个用户自定义函数, 描述如何格式化每个元素:</p>
+<pre class="programlisting"><span class="comment">// Employee is a plain struct, not formattable by default</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="identifier">employees</span><span class="special">{</span>
+    <span class="special">{</span><span class="string">"John"</span><span class="special">,</span> <span class="string">"Doe"</span><span class="special">,</span>   <span class="string">"HGS"</span><span class="special">},</span>
+    <span class="special">{</span><span class="string">"Kate"</span><span class="special">,</span> <span class="string">"Smith"</span><span class="special">,</span> <span class="string">"AWC"</span><span class="special">},</span>
+<span class="special">};</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">query</span> <span class="special">=</span> <span class="identifier">format_sql</span><span class="special">(</span>
+    <span class="identifier">conn</span><span class="special">.</span><span class="identifier">format_opts</span><span class="special">().</span><span class="identifier">value</span><span class="special">(),</span>
+    <span class="string">"INSERT INTO employee (first_name, last_name, company_id) VALUES {}"</span><span class="special">,</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">sequence</span><span class="special">(</span>
+        <span class="identifier">employees</span><span class="special">,</span>
+        <span class="special">[](</span><span class="keyword">const</span> <span class="identifier">employee</span><span class="special">&amp;</span> <span class="identifier">e</span><span class="special">,</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_context_base</span><span class="special">&amp;</span> <span class="identifier">ctx</span><span class="special">)</span> <span class="special">{</span>
+            <span class="comment">// This function will be called for each element in employees,</span>
+            <span class="comment">// and should format a single element into the passed ctx.</span>
+            <span class="comment">// Commas will be inserted separating elements.</span>
+            <span class="identifier">format_sql_to</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">,</span> <span class="string">"({}, {}, {})"</span><span class="special">,</span> <span class="identifier">e</span><span class="special">.</span><span class="identifier">first_name</span><span class="special">,</span> <span class="identifier">e</span><span class="special">.</span><span class="identifier">last_name</span><span class="special">,</span> <span class="identifier">e</span><span class="special">.</span><span class="identifier">company_id</span><span class="special">);</span>
+        <span class="special">}</span>
+    <span class="special">)</span>
+<span class="special">);</span>
+<span class="identifier">BOOST_TEST</span><span class="special">(</span>
+    <span class="identifier">query</span> <span class="special">==</span>
+    <span class="string">"INSERT INTO employee (first_name, last_name, company_id) VALUES "</span>
+    <span class="string">"('John', 'Doe', 'HGS'), ('Kate', 'Smith', 'AWC')"</span>
+<span class="special">);</span>
+</pre>
+<p>默认情况下, 元素以逗号分隔, 但这是可配置的:</p>
+<pre class="programlisting"><span class="comment">// A collection of filters to apply to a query</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span><span class="special">&gt;&gt;</span> <span class="identifier">filters</span><span class="special">{</span>
+    <span class="special">{</span><span class="string">"company_id"</span><span class="special">,</span> <span class="string">"HGS"</span> <span class="special">},</span>
+    <span class="special">{</span><span class="string">"first_name"</span><span class="special">,</span> <span class="string">"John"</span><span class="special">},</span>
+<span class="special">};</span>
+
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">query</span> <span class="special">=</span> <span class="identifier">format_sql</span><span class="special">(</span>
+    <span class="identifier">conn</span><span class="special">.</span><span class="identifier">format_opts</span><span class="special">().</span><span class="identifier">value</span><span class="special">(),</span>
+    <span class="string">"SELECT * FROM employee WHERE {}"</span><span class="special">,</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">sequence</span><span class="special">(</span>
+        <span class="identifier">filters</span><span class="special">,</span>
+        <span class="special">[](</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span><span class="special">&gt;&amp;</span> <span class="identifier">f</span><span class="special">,</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_context_base</span><span class="special">&amp;</span> <span class="identifier">ctx</span><span class="special">)</span> <span class="special">{</span>
+            <span class="comment">// Compose a single filter</span>
+            <span class="identifier">format_sql_to</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">,</span> <span class="string">"{:i} = {}"</span><span class="special">,</span> <span class="identifier">f</span><span class="special">.</span><span class="identifier">first</span><span class="special">,</span> <span class="identifier">f</span><span class="special">.</span><span class="identifier">second</span><span class="special">);</span>
+        <span class="special">},</span>
+        <span class="string">" AND "</span>  <span class="comment">// glue string: separate each element with AND clauses</span>
+    <span class="special">)</span>
+<span class="special">);</span>
+
+<span class="identifier">BOOST_TEST</span><span class="special">(</span><span class="identifier">query</span> <span class="special">==</span> <span class="string">"SELECT * FROM employee WHERE `company_id` = 'HGS' AND `first_name` = 'John'"</span><span class="special">);</span>
+</pre>
+<p>可以将 <code class="computeroutput"><span class="identifier">sequence</span></code> 和 <a class="link" href="ref/boost__mysql__with_params.html" title="with_params"><code class="literal">with_params</code></a> 结合使用.</p>
+<p>默认情况下, <code class="computeroutput"><span class="identifier">sequence</span></code> 会复制你作为参数传入的范围, 这对异步代码更安全. 可使用 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">reference_wrapper</span></code> 或 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">span</span></code> 来避免此类复制.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mysql.sql_formatting_advanced.format_specifiers"></a><a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.format_specifiers" title="格式说明符">格式说明符</a>
+</h3></div></div></div>
+<p>某些类型 (如字符串) 可以用多种方式格式化. 与 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">format</span></code> 一样, 可以使用格式说明符选择格式化方式.</p>
+<p>如前所述, 字符串默认格式化为单引号值. 若使用 <code class="computeroutput"><span class="special">{:</span><span class="identifier">i</span><span class="special">}</span></code> 说明符, 则可以获得动态 SQL 标识符:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">query</span> <span class="special">=</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_sql</span><span class="special">(</span>
+    <span class="identifier">conn</span><span class="special">.</span><span class="identifier">format_opts</span><span class="special">().</span><span class="identifier">value</span><span class="special">(),</span>
+    <span class="string">"SELECT id, last_name FROM employee ORDER BY {:i} DESC"</span><span class="special">,</span>
+    <span class="string">"company_id"</span>
+<span class="special">);</span>
+
+<span class="identifier">BOOST_TEST</span><span class="special">(</span><span class="identifier">query</span> <span class="special">==</span> <span class="string">"SELECT id, last_name FROM employee ORDER BY `company_id` DESC"</span><span class="special">);</span>
+</pre>
+<p>说明符同样兼容显式索引和命名实参. 这等价于前一个代码片段:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">query</span> <span class="special">=</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_sql</span><span class="special">(</span>
+    <span class="identifier">conn</span><span class="special">.</span><span class="identifier">format_opts</span><span class="special">().</span><span class="identifier">value</span><span class="special">(),</span>
+    <span class="string">"SELECT id, last_name FROM employee ORDER BY {0:i} DESC"</span><span class="special">,</span>
+    <span class="string">"company_id"</span>
+<span class="special">);</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mysql.sql_formatting_advanced.extending_format_sql"></a><a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.extending_format_sql" title="扩展 format_sql">扩展 format_sql</a>
+</h3></div></div></div>
+<p>可以特化 <a class="link" href="ref/boost__mysql__formatter.html" title="formatter"><code class="literal">formatter</code></a> 为你的类型添加格式化支持:</p>
+<pre class="programlisting"><span class="comment">// We want to add formatting support for employee</span>
+<span class="keyword">struct</span> <span class="identifier">employee</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">first_name</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">last_name</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">company_id</span><span class="special">;</span>
+<span class="special">};</span>
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">mysql</span> <span class="special">{</span>
+
+<span class="keyword">template</span> <span class="special">&lt;&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">formatter</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="comment">// formatter&lt;T&gt; should define the following functions:</span>
+    <span class="comment">//    const char* parse(const char* first, const char*);</span>
+    <span class="comment">//    void format(const T&amp;, format_context_base&amp;) const;</span>
+
+    <span class="keyword">const</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">parse</span><span class="special">(</span><span class="keyword">const</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">begin</span><span class="special">,</span> <span class="keyword">const</span> <span class="keyword">char</span><span class="special">*</span> <span class="comment">/* end */</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="comment">// Parse any format specifiers for this type.</span>
+        <span class="comment">// [begin, end) points to the range of characters holding the format specifier string</span>
+        <span class="comment">// We should return a pointer to the first unparsed character.</span>
+        <span class="comment">// We don't support any specifiers for this type, so we return the begin pointer.</span>
+        <span class="keyword">return</span> <span class="identifier">begin</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">void</span> <span class="identifier">format</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">employee</span><span class="special">&amp;</span> <span class="identifier">emp</span><span class="special">,</span> <span class="identifier">format_context_base</span><span class="special">&amp;</span> <span class="identifier">ctx</span><span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="comment">// Perform the actual formatting by appending characters to ctx.</span>
+        <span class="comment">// We usually use format_sql_to to achieve this.</span>
+        <span class="comment">// We will make this suitable for INSERT statements</span>
+        <span class="identifier">format_sql_to</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">,</span> <span class="string">"{}, {}, {}"</span><span class="special">,</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">first_name</span><span class="special">,</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">last_name</span><span class="special">,</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">company_id</span><span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="special">}</span>  <span class="comment">// namespace mysql</span>
+<span class="special">}</span>  <span class="comment">// namespace boost</span>
+</pre>
+<p>该类型现在可用于 <a class="link" href="ref/boost__mysql__format_sql.html" title="format_sql"><code class="literal">format_sql</code></a>、<a class="link" href="ref/boost__mysql__format_sql_to.html" title="format_sql_to"><code class="literal">format_sql_to</code></a> 和 <a class="link" href="ref/boost__mysql__with_params.html" title="with_params"><code class="literal">with_params</code></a>:</p>
+<pre class="programlisting"><span class="comment">// We can now use employee as a built-in value</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">query</span> <span class="special">=</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_sql</span><span class="special">(</span>
+    <span class="identifier">conn</span><span class="special">.</span><span class="identifier">format_opts</span><span class="special">().</span><span class="identifier">value</span><span class="special">(),</span>
+    <span class="string">"INSERT INTO employee (first_name, last_name, company_id) VALUES ({}), ({})"</span><span class="special">,</span>
+    <span class="identifier">employee</span><span class="special">{</span><span class="string">"John"</span><span class="special">,</span> <span class="string">"Doe"</span><span class="special">,</span> <span class="string">"HGS"</span><span class="special">},</span>
+    <span class="identifier">employee</span><span class="special">{</span><span class="string">"Rick"</span><span class="special">,</span> <span class="string">"Johnson"</span><span class="special">,</span> <span class="string">"AWC"</span><span class="special">}</span>
+<span class="special">);</span>
+
+<span class="identifier">BOOST_TEST</span><span class="special">(</span>
+    <span class="identifier">query</span> <span class="special">==</span>
+    <span class="string">"INSERT INTO employee (first_name, last_name, company_id) VALUES "</span>
+    <span class="string">"('John', 'Doe', 'HGS'), ('Rick', 'Johnson', 'AWC')"</span>
+<span class="special">);</span>
+</pre>
+<p>可以通过修改 <code class="computeroutput"><span class="identifier">parse</span></code> 中的 <code class="computeroutput"><span class="identifier">formatter</span></code> 函数为你的类型添加对格式说明符的支持. 例如, <code class="computeroutput"><span class="identifier">employee</span></code> 可以根据它是用在 <code class="computeroutput"><span class="identifier">INSERT</span></code> 还是 <code class="computeroutput"><span class="identifier">UPDATE</span></code> 中而以不同方式格式化:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">formatter</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="comment">// Should we format our employee as an INSERT or an UPDATE?</span>
+    <span class="comment">// This flag is set by parse and used by format</span>
+    <span class="keyword">bool</span> <span class="identifier">format_as_update</span><span class="special">{</span><span class="keyword">false</span><span class="special">};</span>
+
+    <span class="keyword">const</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">parse</span><span class="special">(</span><span class="keyword">const</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">it</span><span class="special">,</span> <span class="keyword">const</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">end</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="comment">// Parse any format specifiers for this type.</span>
+        <span class="comment">// We recognize the 'u' specifier, which means that we should</span>
+        <span class="comment">// format the type for an UPDATE statement, instead of an INSERT</span>
+        <span class="comment">// If no specifier is found, default to INSERT</span>
+        <span class="comment">// Note that the range may be empty, so we must check for this condition</span>
+        <span class="keyword">if</span> <span class="special">(</span><span class="identifier">it</span> <span class="special">!=</span> <span class="identifier">end</span> <span class="special">&amp;&amp;</span> <span class="special">*</span><span class="identifier">it</span> <span class="special">==</span> <span class="char">'u'</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="comment">// The 'u' specifier is present, record it</span>
+            <span class="identifier">format_as_update</span> <span class="special">=</span> <span class="keyword">true</span><span class="special">;</span>
+
+            <span class="comment">// Mark the current character as parsed</span>
+            <span class="special">++</span><span class="identifier">it</span><span class="special">;</span>
+        <span class="special">}</span>
+
+        <span class="comment">// Return a pointer to the first unparsed character.</span>
+        <span class="comment">// If we didn't manage to parse the entire character range, an error will be emitted.</span>
+        <span class="comment">// The library already takes care of this.</span>
+        <span class="keyword">return</span> <span class="identifier">it</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">void</span> <span class="identifier">format</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">employee</span><span class="special">&amp;</span> <span class="identifier">emp</span><span class="special">,</span> <span class="identifier">format_context_base</span><span class="special">&amp;</span> <span class="identifier">ctx</span><span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">if</span> <span class="special">(</span><span class="identifier">format_as_update</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="comment">// This should be suitable to be placed in an UPDATE ... SET statement</span>
+            <span class="identifier">format_sql_to</span><span class="special">(</span>
+                <span class="identifier">ctx</span><span class="special">,</span>
+                <span class="string">"first_name={}, last_name={}, company_id={}"</span><span class="special">,</span>
+                <span class="identifier">emp</span><span class="special">.</span><span class="identifier">first_name</span><span class="special">,</span>
+                <span class="identifier">emp</span><span class="special">.</span><span class="identifier">last_name</span><span class="special">,</span>
+                <span class="identifier">emp</span><span class="special">.</span><span class="identifier">company_id</span>
+            <span class="special">);</span>
+        <span class="special">}</span>
+        <span class="keyword">else</span>
+        <span class="special">{</span>
+            <span class="comment">// Format only the values, as in INSERT statements</span>
+            <span class="identifier">format_sql_to</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">,</span> <span class="string">"{}, {}, {}"</span><span class="special">,</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">first_name</span><span class="special">,</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">last_name</span><span class="special">,</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">company_id</span><span class="special">);</span>
+        <span class="special">}</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>现在可以这样使用它:</p>
+<pre class="programlisting"><span class="comment">// We can now use the 'u' specifier with employee</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">query</span> <span class="special">=</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_sql</span><span class="special">(</span>
+    <span class="identifier">conn</span><span class="special">.</span><span class="identifier">format_opts</span><span class="special">().</span><span class="identifier">value</span><span class="special">(),</span>
+    <span class="string">"UPDATE employee SET {:u} WHERE id = {}"</span><span class="special">,</span>
+    <span class="identifier">employee</span><span class="special">{</span><span class="string">"John"</span><span class="special">,</span> <span class="string">"Doe"</span><span class="special">,</span> <span class="string">"HGS"</span><span class="special">},</span>
+    <span class="number">42</span>
+<span class="special">);</span>
+
+<span class="identifier">BOOST_TEST</span><span class="special">(</span>
+    <span class="identifier">query</span> <span class="special">==</span> <span class="string">"UPDATE employee SET first_name='John', last_name='Doe', company_id='HGS' WHERE id = 42"</span>
+<span class="special">);</span>
+
+<span class="comment">// If no format specifier is provided, we get the old behavior</span>
+<span class="identifier">query</span> <span class="special">=</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_sql</span><span class="special">(</span>
+    <span class="identifier">conn</span><span class="special">.</span><span class="identifier">format_opts</span><span class="special">().</span><span class="identifier">value</span><span class="special">(),</span>
+    <span class="string">"INSERT INTO employee (first_name, last_name, company_id) VALUES ({}), ({})"</span><span class="special">,</span>
+    <span class="identifier">employee</span><span class="special">{</span><span class="string">"John"</span><span class="special">,</span> <span class="string">"Doe"</span><span class="special">,</span> <span class="string">"HGS"</span><span class="special">},</span>
+    <span class="identifier">employee</span><span class="special">{</span><span class="string">"Rick"</span><span class="special">,</span> <span class="string">"Johnson"</span><span class="special">,</span> <span class="string">"AWC"</span><span class="special">}</span>
+<span class="special">);</span>
+
+<span class="identifier">BOOST_TEST</span><span class="special">(</span>
+    <span class="identifier">query</span> <span class="special">==</span>
+    <span class="string">"INSERT INTO employee (first_name, last_name, company_id) VALUES "</span>
+    <span class="string">"('John', 'Doe', 'HGS'), ('Rick', 'Johnson', 'AWC')"</span>
+<span class="special">);</span>
+</pre>
+<p>更多信息参见 <a class="link" href="ref/boost__mysql__formatter.html" title="formatter"><code class="literal">formatter</code></a> 参考文档.</p>
+</div>
+<h4>
+<a name="mysql.sql_formatting_advanced.h0"></a>
+      <span class="phrase"><a name="mysql.sql_formatting_advanced.format_string_syntax"></a></span><a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.format_string_syntax"> </a>格式字符串语法</h4>
+<p>本节扩展格式字符串支持的语法. 该语法与 <code class="computeroutput"><span class="identifier">fmtlib</span></code> 中的语法类似.</p>
+<p>格式字符串由常规文本和替换字段组成. 常规文本原样输出, 替换字段则被已格式化的实参替换. 例如, 在 <code class="computeroutput"><span class="string">"SELECT {} FROM
+      employee"</span></code> 中, <code class="computeroutput"><span class="string">"SELECT "</span></code> 和 <code class="computeroutput"><span class="string">" FROM EMPLOYEE"</span></code> 是常规文本, <code class="computeroutput"><span class="string">"{}"</span></code> 是替换字段.</p>
+<p> <code class="computeroutput"><span class="special">{}</span></code> 称为 <span class="bold"><strong>自动索引</strong></span> 替换字段. 实参按其传递给格式化函数的顺序替换. 例如:</p>
+<pre class="programlisting"><span class="identifier">BOOST_TEST</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}, {}, {}"</span><span class="special">,</span> <span class="number">42</span><span class="special">,</span> <span class="string">"abc"</span><span class="special">,</span> <span class="keyword">nullptr</span><span class="special">)</span> <span class="special">==</span> <span class="string">"SELECT 42, 'abc', NULL"</span>
+<span class="special">);</span>
+</pre>
+<p>可以在花括号内包含字段索引. 这称为 <span class="bold"><strong>手动索引</strong></span>. 索引可以按任意顺序出现, 并且可以重复:</p>
+<p>
+      [sql_formatting_manual_indices]
+    </p>
+<p>格式字符串可以使用手动索引或自动索引, 但不能混用:</p>
+<pre class="programlisting"><span class="keyword">try</span>
+<span class="special">{</span>
+    <span class="comment">// Mixing manual and auto indexing is illegal. This will throw an exception.</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {0}, {}"</span><span class="special">,</span> <span class="number">42</span><span class="special">);</span>
+<span class="special">}</span>
+<span class="keyword">catch</span> <span class="special">(</span><span class="keyword">const</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">system_error</span><span class="special">&amp;</span> <span class="identifier">err</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">BOOST_TEST</span><span class="special">(</span><span class="identifier">err</span><span class="special">.</span><span class="identifier">code</span><span class="special">()</span> <span class="special">==</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">client_errc</span><span class="special">::</span><span class="identifier">format_string_manual_auto_mix</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>未被引用的格式化实参会被忽略. 提供多于所需数量的格式化实参并不是错误:</p>
+<pre class="programlisting"><span class="comment">// This is OK</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">query</span> <span class="special">=</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="number">42</span><span class="special">,</span> <span class="string">"abc"</span><span class="special">);</span>
+</pre>
+<p>可以通过将花括号成对书写来输出花括号字面量:</p>
+<pre class="programlisting"><span class="identifier">BOOST_TEST</span><span class="special">(</span>
+    <span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT 'Brace literals: {{ and }}'"</span><span class="special">)</span> <span class="special">==</span> <span class="string">"SELECT 'Brace literals: { and }'"</span>
+<span class="special">);</span>
+</pre>
+<p>某些类型支持格式说明符 (如 <code class="computeroutput"><span class="special">{:</span><span class="identifier">i</span><span class="special">}</span></code>), 但比 fmtlib 中少见得多, 因为大多数类型只有单一的规范表示.</p>
+<p>说明符可以在自动索引 (如 <code class="computeroutput"><span class="special">{:</span><span class="identifier">i</span><span class="special">}</span></code>) 或手动索引 (如 <code class="computeroutput"><span class="special">{</span><span class="number">0</span><span class="special">:</span><span class="identifier">i</span><span class="special">}</span></code>) 时出现.</p>
+<p>特化格式化器的类型可以定义自定义说明符. 只有不属于 <code class="computeroutput"><span class="special">{</span></code> 或 <code class="computeroutput"><span class="special">}</span></code> 的可打印 ASCII 字符才能用作说明符.</p>
+<p>格式字符串必须按照 <a class="link" href="ref/boost__mysql__format_options/charset.html" title="format_options::charset"><code class="literal">format_options::charset</code></a> 编码. 否则将产生错误.</p>
+<h4>
+<a name="mysql.sql_formatting_advanced.h1"></a>
+      <span class="phrase"><a name="mysql.sql_formatting_advanced.error_handling"></a></span><a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.error_handling"> </a>错误处理模型</h4>
+<p>某些值无法被安全地格式化. 例如, C++ <code class="computeroutput"><span class="keyword">double</span></code> 可能是 NaN 和无穷大, 这不受 MySQL 支持. 字符串可能包含不表示有效字符的字节序列, 这使其无法被安全地转义.</p>
+<p>使用 <a class="link" href="ref/boost__mysql__with_params.html" title="with_params"><code class="literal">with_params</code></a> 时, 若遇到此类错误, <a class="link" href="ref/boost__mysql__any_connection/execute.html" title="any_connection::execute"><code class="literal">execute</code></a> 操作将失败, 就像遇到了服务器错误一样. 这对用户是透明的, 因此无需采取任何行动.</p>
+<p>
+      <a class="link" href="ref/boost__mysql__format_sql.html" title="format_sql"><code class="literal">format_sql</code></a> 通过抛出 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">system_error</span></code> 异常来报告这些错误, 异常中包含描述发生了什么的错误码. 例如:</p>
+<pre class="programlisting"><span class="keyword">try</span>
+<span class="special">{</span>
+    <span class="comment">// We're trying to format a double infinity value, which is not</span>
+    <span class="comment">// supported by MySQL. This will throw an exception.</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">formatted_query</span> <span class="special">=</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="identifier">HUGE_VAL</span><span class="special">);</span>
+<span class="special">}</span>
+<span class="keyword">catch</span> <span class="special">(</span><span class="keyword">const</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">system_error</span><span class="special">&amp;</span> <span class="identifier">err</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">BOOST_TEST</span><span class="special">(</span><span class="identifier">err</span><span class="special">.</span><span class="identifier">code</span><span class="special">()</span> <span class="special">==</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">client_errc</span><span class="special">::</span><span class="identifier">unformattable_value</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>不过你不必使用异常. <a class="link" href="ref/boost__mysql__basic_format_context.html" title="basic_format_context"><code class="literal">basic_format_context</code></a> 和 <a class="link" href="ref/boost__mysql__format_sql_to.html" title="format_sql_to"><code class="literal">format_sql_to</code></a> 改用 <a class="link" href="error_handling.html#mysql.error_handling.system_result"><code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">result</span></code></a>.</p>
+<p>
+      <a class="link" href="ref/boost__mysql__basic_format_context.html" title="basic_format_context"><code class="literal">basic_format_context</code></a> 包含一个在格式化值失败时被设置的错误码. 这称为 <span class="emphasis"><em>错误状态</em></span> , 可通过 <a class="link" href="ref/boost__mysql__format_context_base/error_state.html" title="format_context_base::error_state"><code class="literal">format_context_base::error_state</code></a> 查询. 当调用 <a class="link" href="ref/boost__mysql__basic_format_context/get.html" title="basic_format_context::get"><code class="literal">basic_format_context::get</code></a> 时 (在所有单个值格式化完毕之后), 会检查错误状态. <code class="computeroutput"><span class="identifier">system</span><span class="special">::</span><span class="identifier">result</span></code> 返回的 <code class="computeroutput"><span class="identifier">get</span></code> 将包含已设置的错误状态 (若已设置), 或生成的查询 (若未设置):</p>
+<pre class="programlisting"><span class="comment">// ctx contains an error code that tracks whether any error happened</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_context</span> <span class="identifier">ctx</span><span class="special">(</span><span class="identifier">opts</span><span class="special">);</span>
+
+<span class="comment">// We're trying to format a infinity, which is an error. This</span>
+<span class="comment">// will set the error state, but won't throw.</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_sql_to</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">,</span> <span class="string">"SELECT {}, {}"</span><span class="special">,</span> <span class="identifier">HUGE_VAL</span><span class="special">,</span> <span class="number">42</span><span class="special">);</span>
+
+<span class="comment">// The error state gets checked at this point. Since it is set,</span>
+<span class="comment">// res will contain an error.</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">result</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;</span> <span class="identifier">res</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">).</span><span class="identifier">get</span><span class="special">();</span>
+<span class="identifier">BOOST_TEST</span><span class="special">(!</span><span class="identifier">res</span><span class="special">.</span><span class="identifier">has_value</span><span class="special">());</span>
+<span class="identifier">BOOST_TEST</span><span class="special">(</span><span class="identifier">res</span><span class="special">.</span><span class="identifier">has_error</span><span class="special">());</span>
+<span class="identifier">BOOST_TEST</span><span class="special">(</span><span class="identifier">res</span><span class="special">.</span><span class="identifier">error</span><span class="special">()</span> <span class="special">==</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">client_errc</span><span class="special">::</span><span class="identifier">unformattable_value</span><span class="special">);</span>
+<span class="comment">// res.value() would throw an error, like format_sql would</span>
+</pre>
+<p>设计理由: 错误状态机制使组合格式化器更容易, 因为错误状态只需检查一次.</p>
+<p>由无效格式字符串导致的错误也使用此机制报告.</p>
+<h4>
+<a name="mysql.sql_formatting_advanced.h2"></a>
+      <span class="phrase"><a name="mysql.sql_formatting_advanced.format_options"></a></span><a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.format_options"> </a>格式选项与字符集跟踪</h4>
+<p>MySQL 有许多影响其语法的配置选项. 格式化函数需要知道其中两个选项才能正常工作:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">反斜杠字符是否表示转义序列. 默认是, 但可以通过设置 <a href="https://dev.mysql.com/doc/refman/8.0/en/sql-mode.html#sqlmode_no_backslash_escapes" target="_top"> SQL 模式动态禁用. </a> 会自动跟踪 <a class="link" href="ref/boost__mysql__any_connection.html" title="any_connection"><code class="literal">any_connection</code></a> (见 <a class="link" href="ref/boost__mysql__any_connection/backslash_escapes.html" title="any_connection::backslash_escapes"><code class="literal">any_connection::backslash_escapes</code></a>).</li>
+<li class="listitem">连接的 <span class="bold"><strong>当前字符集</strong></span> . 它决定哪些多字节序列有效, 并且是遍历和转义字符串所必需的. 连接会尽可能跟踪当前字符集, 但协议的缺陷会造成客户端可能不知道字符集的情况. 当前字符集可通过 <a class="link" href="ref/boost__mysql__any_connection/current_character_set.html" title="any_connection::current_character_set"><code class="literal">any_connection::current_character_set</code></a> 访问.</li>
+</ul></div>
+<p>
+      <a class="link" href="ref/boost__mysql__any_connection/format_opts.html" title="any_connection::format_opts"><code class="literal">any_connection::format_opts</code></a> 是一个便捷函数, 返回 <a class="link" href="error_handling.html#mysql.error_handling.system_result"><code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">result</span></code></a><code class="computeroutput"><span class="special">&lt;</span></code><a class="link" href="ref/boost__mysql__format_options.html" title="format_options"><code class="literal">format_options</code></a><code class="computeroutput"><span class="special">&gt;</span></code>. 若连接无法确定当前字符集, 结果将包含一个错误. 关于字符集跟踪工作原理的参考, 请阅读 <a class="link" href="charsets.html#mysql.charsets.tracking">本节</a>.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>在连接建立之前, 连接的字符集始终未知. 请在调用 <code class="computeroutput"><span class="identifier">format_opts</span></code> 之前先建立连接.</p></td></tr>
+</table></div>
+<div class="warning"><table border="0" summary="Warning">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[警告]" src="../../../../../doc/src/images/warning.png"></td>
+<th align="left">警告</th>
+</tr>
+<tr><td align="left" valign="top"><p>向格式化函数传入错误的 <code class="computeroutput"><span class="identifier">format_options</span></code> 值可能导致转义生成错误的值, 进而产生漏洞. 为了安全, 请始终使用 <a class="link" href="ref/boost__mysql__any_connection/format_opts.html" title="any_connection::format_opts"><code class="literal">any_connection::format_opts</code></a> 而非手工构造 <code class="computeroutput"><span class="identifier">format_options</span></code> 值. 这样一来, 若无法安全地确定字符集, 你会得到 <code class="computeroutput"><span class="identifier">client_errc</span><span class="special">::</span><span class="identifier">unknown_character_set</span></code> 错误而不是漏洞.</p></td></tr>
+</table></div>
+<h4>
+<a name="mysql.sql_formatting_advanced.h3"></a>
+      <span class="phrase"><a name="mysql.sql_formatting_advanced.custom_string_types"></a></span><a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.custom_string_types"> </a>自定义字符串类型</h4>
+<p>
+      <a class="link" href="ref/boost__mysql__format_sql_to.html" title="format_sql_to"><code class="literal">format_sql_to</code></a> 可用于不是 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span></code> 的字符串类型, 只要它们满足 <a class="link" href="ref/boost__mysql__OutputString.html" title="OutputString 概念"><code class="literal">OutputString</code></a> 概念即可. 这包括带自定义分配器的字符串 (如 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">pmr</span><span class="special">::</span><span class="identifier">string</span></code>) 和 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">static_string</span></code>. 你需要使用 <a class="link" href="ref/boost__mysql__basic_format_context.html" title="basic_format_context"><code class="literal">basic_format_context</code></a> , 并指明字符串类型:</p>
+<pre class="programlisting"><span class="comment">// Create a format context that uses std::pmr::string</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">basic_format_context</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">pmr</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;</span> <span class="identifier">ctx</span><span class="special">(</span><span class="identifier">conn</span><span class="special">.</span><span class="identifier">format_opts</span><span class="special">().</span><span class="identifier">value</span><span class="special">());</span>
+
+<span class="comment">// Compose your query as usual</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_sql_to</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">,</span> <span class="string">"SELECT * FROM employee WHERE id = {}"</span><span class="special">,</span> <span class="number">42</span><span class="special">);</span>
+
+<span class="comment">// Retrieve the query as usual</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">pmr</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">query</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">).</span><span class="identifier">get</span><span class="special">().</span><span class="identifier">value</span><span class="special">();</span>
+</pre>
+<h4>
+<a name="mysql.sql_formatting_advanced.h4"></a>
+      <span class="phrase"><a name="mysql.sql_formatting_advanced.re_using_string_memory"></a></span><a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.re_using_string_memory"> </a>复用字符串内存</h4>
+<p>可以向上下文的构造函数传入一个字符串值, 以复用内存:</p>
+<pre class="programlisting"><span class="comment">// we want to re-use memory held by storage</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">storage</span><span class="special">;</span>
+
+<span class="comment">// storage is moved into ctx by the constructor. If any memory</span>
+<span class="comment">// had been allocated by the string, it will be re-used.</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_context</span> <span class="identifier">ctx</span><span class="special">(</span><span class="identifier">conn</span><span class="special">.</span><span class="identifier">format_opts</span><span class="special">().</span><span class="identifier">value</span><span class="special">(),</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">storage</span><span class="special">));</span>
+
+<span class="comment">// Use ctx as you normally would</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">format_sql_to</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="number">42</span><span class="special">);</span>
+
+<span class="comment">// When calling get(), the string is moved out of the context</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">query</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">).</span><span class="identifier">get</span><span class="special">().</span><span class="identifier">value</span><span class="special">();</span>
+</pre>
+<h4>
+<a name="mysql.sql_formatting_advanced.h5"></a>
+      <span class="phrase"><a name="mysql.sql_formatting_advanced.raw_string_escaping"></a></span><a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.raw_string_escaping"> </a>原始字符串转义</h4>
+<p>若你在构建 SQL 框架, 或执行非常底层的任务, 可能只需要转义字符串, 而不加引号或不做格式化. 可以使用 <a class="link" href="ref/boost__mysql__escape_string.html" title="escape_string"><code class="literal">escape_string</code></a> , 它模仿 <a href="https://dev.mysql.com/doc/c-api/8.0/en/mysql-real-escape-string.html" target="_top"><code class="computeroutput"><span class="identifier">mysql_real_escape_string</span></code></a>.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>除非清楚自己在做什么, 否则不要使用此功能.</p></td></tr>
+</table></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mysql.sql_formatting_advanced.reference"></a><a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.reference" title="内置 SQL 格式化支持的类型">内置支持 SQL 格式化的类型</a>
+</h3></div></div></div>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>C++ 类型</p>
+              </th>
+<th>
+                <p>格式化为…</p>
+              </th>
+<th>
+                <p>示例</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="keyword">signed</span> <span class="keyword">char</span></code>,
+                  <code class="computeroutput"><span class="keyword">short</span></code>, <code class="computeroutput"><span class="keyword">int</span></code>, <code class="computeroutput"><span class="keyword">long</span></code>,
+                  <code class="computeroutput"><span class="keyword">long</span> <span class="keyword">long</span></code>
+                </p>
+              </td>
+<td>
+                <p>整数字面量<br> 不允许使用格式说明符</p>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="number">42</span><span class="special">)</span> <span class="special">==</span> <span class="string">"SELECT 42"</span>
+<span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="special">-</span><span class="number">1</span><span class="special">)</span> <span class="special">==</span> <span class="string">"SELECT -1"</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="keyword">unsigned</span> <span class="keyword">char</span></code>,
+                  <code class="computeroutput"><span class="keyword">unsigned</span> <span class="keyword">short</span></code>,
+                  <code class="computeroutput"><span class="keyword">unsigned</span> <span class="keyword">int</span></code>,
+                  <code class="computeroutput"><span class="keyword">unsigned</span> <span class="keyword">long</span></code>,
+                  <code class="computeroutput"><span class="keyword">unsigned</span> <span class="keyword">long</span>
+                  <span class="keyword">long</span></code>
+                </p>
+              </td>
+<td>
+                <p>整数字面量<br> 不允许使用格式说明符</p>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="number">42u</span><span class="special">)</span> <span class="special">==</span> <span class="string">"SELECT 42"</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="keyword">bool</span></code>
+                </p>
+              </td>
+<td>
+                <p>若 <code class="computeroutput"><span class="number">1</span></code> 则为整数字面量 <code class="computeroutput"><span class="keyword">true</span></code> , 若 <code class="computeroutput"><span class="number">0</span></code> 则为 <code class="computeroutput"><span class="keyword">false</span></code><br> 不允许使用格式说明符</p>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="keyword">false</span><span class="special">)</span> <span class="special">==</span> <span class="string">"SELECT 0"</span>
+<span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="keyword">true</span><span class="special">)</span> <span class="special">==</span> <span class="string">"SELECT 1"</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>字符串类型 (可转换为 <a class="link" href="ref/boost__mysql__string_view.html" title="string_view"><code class="literal">string_view</code></a>), 包括:<br> <br> <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span></code><br>
+                  <br> <a class="link" href="ref/boost__mysql__string_view.html" title="string_view"><code class="literal">string_view</code></a><br>
+                  <br> <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span></code><br> <br> <code class="computeroutput"><span class="keyword">const</span> <span class="keyword">char</span><span class="special">*</span></code><br> <br>
+                </p>
+              </td>
+<td>
+                <p>无格式说明符: 单引号、已转义的字符串字面量. 注意 <code class="computeroutput"><span class="identifier">LIKE</span></code> 特殊字符 (<code class="computeroutput"><span class="special">%</span></code> 和 <code class="computeroutput"><span class="identifier">_</span></code>) 不会被转义.<br> <br> <span class="bold"><strong><code class="computeroutput"><span class="identifier">i</span></code></strong></span> 说明符: 反引号包围、已转义的 SQL 标识符.<br>
+                  <br> <span class="bold"><strong><code class="computeroutput"><span class="identifier">r</span></code></strong></span> 说明符: 原始、未转义的 SQL. <span class="bold"><strong>警告</strong></span>: 谨慎使用此说明符.</p>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="comment">// Without format specifier: escaped, quoted string value</span>
+<span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="string">"Hello world"</span><span class="special">)</span> <span class="special">==</span> <span class="string">"SELECT 'Hello world'"</span>
+<span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="string">"Hello 'world'"</span><span class="special">)</span> <span class="special">==</span> <span class="identifier">R</span><span class="string">"(SELECT 'Hello \'world\'')"</span>
+
+<span class="comment">// {:i}: escaped, quoted dynamic identifier</span>
+<span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {:i} FROM t"</span><span class="special">,</span> <span class="string">"salary"</span><span class="special">)</span> <span class="special">==</span> <span class="string">"SELECT `salary` FROM t"</span>
+<span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {:i} FROM t"</span><span class="special">,</span> <span class="string">"sal`ary"</span><span class="special">)</span> <span class="special">==</span> <span class="string">"SELECT `sal``ary` FROM t"</span>
+
+<span class="comment">// {:r}: raw, unescaped SQL. WARNING: incorrect use can cause vulnerabilities</span>
+<span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT * FROM t WHERE id = 42 {:r} salary &gt; 20000"</span><span class="special">,</span> <span class="string">"OR"</span><span class="special">)</span> <span class="special">==</span>
+    <span class="string">"SELECT * FROM t WHERE id = 42 OR salary &gt; 20000"</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>blob 类型 (可转换为 <code class="computeroutput"><span class="identifier">span</span><span class="special">&lt;</span><span class="keyword">const</span>
+                  <span class="keyword">unsigned</span> <span class="keyword">char</span><span class="special">&gt;</span></code>), 包括:<br> <br>
+                  <a class="link" href="ref/boost__mysql__blob.html" title="blob"><code class="literal">blob</code></a> (<code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">unsigned</span> <span class="keyword">char</span><span class="special">&gt;</span></code>)<br> <br> <a class="link" href="ref/boost__mysql__blob_view.html" title="blob_view"><code class="literal">blob_view</code></a> (<code class="computeroutput"><span class="identifier">span</span><span class="special">&lt;</span><span class="keyword">const</span> <span class="keyword">unsigned</span>
+                  <span class="keyword">char</span><span class="special">&gt;</span></code>)<br>
+                  <br> <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span><span class="keyword">unsigned</span> <span class="keyword">char</span><span class="special">,</span> <span class="identifier">N</span><span class="special">&gt;</span></code>
+                </p>
+              </td>
+<td>
+                <p>十六进制字符串字面量<br> 不允许使用格式说明符</p>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="identifier">blob</span><span class="special">{</span><span class="number">0x00</span><span class="special">,</span> <span class="number">0x48</span><span class="special">,</span> <span class="number">0xff</span><span class="special">})</span> <span class="special">==</span> <span class="identifier">R</span><span class="string">"(SELECT x'0048ff')"</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="keyword">float</span></code> , 但不包括 NaN 和 inf</p>
+              </td>
+<td>
+                <p>浮点字面量, 先转换为 <code class="computeroutput"><span class="keyword">double</span><span class="special">.</span></code><br> MySQL 不支持 NaN 和无穷大. 尝试格式化它们会导致 <code class="computeroutput"><span class="identifier">client_errc</span><span class="special">::</span><span class="identifier">unformattable_value</span></code> 错误.<br> 不允许使用格式说明符.</p>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="comment">// Equivalent to format_sql(opts, "SELECT {}", static_cast&lt;double&gt;(4.2f))</span>
+<span class="comment">// Note that MySQL uses doubles for all floating point literals</span>
+<span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="number">4.2f</span><span class="special">)</span> <span class="special">==</span> <span class="string">"SELECT 4.199999809265137e+00"</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="keyword">double</span></code> , 但不包括 NaN 和 inf</p>
+              </td>
+<td>
+                <p>浮点字面量.<br> MySQL 不支持 NaN 和无穷大. 尝试格式化它们会导致 <code class="computeroutput"><span class="identifier">client_errc</span><span class="special">::</span><span class="identifier">unformattable_value</span></code> 错误.<br> 不允许使用格式说明符.</p>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="number">4.2</span><span class="special">)</span> <span class="special">==</span> <span class="string">"SELECT 4.2e+00"</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <a class="link" href="ref/boost__mysql__date.html" title="date"><code class="literal">date</code></a>
+                </p>
+              </td>
+<td>
+                <p>单引号、与 <code class="computeroutput"><span class="identifier">DATE</span></code> 兼容的字符串字面量<br> 不允许使用格式说明符</p>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="identifier">date</span><span class="special">(</span><span class="number">2021</span><span class="special">,</span> <span class="number">1</span><span class="special">,</span> <span class="number">2</span><span class="special">))</span> <span class="special">==</span> <span class="string">"SELECT '2021-01-02'"</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <a class="link" href="ref/boost__mysql__datetime.html" title="datetime"><code class="literal">datetime</code></a>
+                </p>
+              </td>
+<td>
+                <p>单引号、与 <code class="computeroutput"><span class="identifier">DATETIME</span></code> 兼容的字符串字面量<br> 不允许使用格式说明符</p>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="identifier">datetime</span><span class="special">(</span><span class="number">2021</span><span class="special">,</span> <span class="number">1</span><span class="special">,</span> <span class="number">2</span><span class="special">,</span> <span class="number">23</span><span class="special">,</span> <span class="number">51</span><span class="special">,</span> <span class="number">14</span><span class="special">))</span> <span class="special">==</span> <span class="string">"SELECT '2021-01-02 23:51:14.000000'"</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <a class="link" href="ref/boost__mysql__time.html" title="time"><code class="literal">time</code></a> 以及可转换为 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">duration</span></code> 的 <a class="link" href="ref/boost__mysql__time.html" title="time"><code class="literal">time</code></a> 类型</p>
+              </td>
+<td>
+                <p>单引号、与 <code class="computeroutput"><span class="identifier">TIME</span></code> 兼容的字符串字面量<br> 不允许使用格式说明符</p>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">seconds</span><span class="special">(</span><span class="number">121</span><span class="special">))</span> <span class="special">==</span> <span class="string">"SELECT '00:02:01.000000'"</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">nullptr_t</span></code>
+                </p>
+              </td>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">NULL</span></code><br> 不允许使用格式说明符</p>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="keyword">nullptr</span><span class="special">)</span> <span class="special">==</span> <span class="string">"SELECT NULL"</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code> 与 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code> , 其中 <code class="computeroutput"><span class="identifier">T</span></code> 是上述基本类型之一.<br> 不适用于自定义类型或范围.<br> 不允许使用格式说明符</p>
+              </td>
+<td>
+                <p>若存在底层值则格式化该值.<br> <code class="computeroutput"><span class="identifier">NULL</span></code> 否则为 <br>.</p>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="identifier">optional</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;(</span><span class="number">42</span><span class="special">))</span> <span class="special">==</span> <span class="string">"SELECT 42"</span>
+<span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="identifier">optional</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;())</span> <span class="special">==</span> <span class="string">"SELECT NULL"</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <a class="link" href="ref/boost__mysql__field.html" title="field"><code class="literal">field</code></a> 与 <a class="link" href="ref/boost__mysql__field_view.html" title="field_view"><code class="literal">field_view</code></a>
+                </p>
+              </td>
+<td>
+                <p>格式化底层值.<br> 不允许使用格式说明符</p>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="identifier">field</span><span class="special">(</span><span class="number">42</span><span class="special">))</span> <span class="special">==</span> <span class="string">"SELECT 42"</span>
+<span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="identifier">field</span><span class="special">(</span><span class="string">"abc"</span><span class="special">))</span> <span class="special">==</span> <span class="string">"SELECT 'abc'"</span>
+<span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="identifier">field</span><span class="special">())</span> <span class="special">==</span> <span class="string">"SELECT NULL"</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>可格式化元素的范围. 非正式地说, 这类范围支持 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">begin</span><span class="special">()</span></code> 和 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">end</span><span class="special">()</span></code> , 且其迭代器 <code class="computeroutput"><span class="keyword">operator</span><span class="special">*</span></code> 必须产生以下之一:</p>
+                <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">一个 <a class="link" href="ref/boost__mysql__WritableFieldTuple.html" title="WritableField 与 WritableFieldTuple 概念"><code class="literal">WritableField</code></a> (即上述基本类型之一).</li>
+<li class="listitem">带自定义格式化器的类型.</li>
+</ul></div>
+                <p>不支持范围的嵌套范围. 注意 <code class="computeroutput"><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">unsigned</span>
+                  <span class="keyword">char</span><span class="special">&gt;</span></code> 及类似类型会作为 blob 而非序列进行格式化.</p>
+                <p>正式定义见 <a class="link" href="ref/boost__mysql__Formattable.html" title="Formattable 概念"><code class="literal">the
+                  Formattable concept reference</code></a>.</p>
+              </td>
+<td>
+                <p>格式化范围中的每个元素, 以逗号分隔元素.<br> 可通过在说明符前加冒号 (<code class="computeroutput"><span class="special">:</span></code>) 将其应用于单个元素</p>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="comment">// long is a WritableField</span>
+<span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">long</span><span class="special">&gt;{</span><span class="number">1</span><span class="special">,</span> <span class="number">5</span><span class="special">,</span> <span class="number">20</span><span class="special">})</span> <span class="special">==</span> <span class="string">"SELECT 1, 5, 20"</span>
+
+<span class="comment">// C++20 ranges and other custom ranges accepted</span>
+<span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">long</span><span class="special">&gt;{</span><span class="number">1</span><span class="special">,</span> <span class="number">5</span><span class="special">,</span> <span class="number">20</span><span class="special">}</span> <span class="special">|</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">ranges</span><span class="special">::</span><span class="identifier">views</span><span class="special">::</span><span class="identifier">take</span><span class="special">(</span><span class="number">2</span><span class="special">))</span> <span class="special">==</span>
+<span class="string">"SELECT 1, 5"</span>
+
+<span class="comment">// Apply the 'i' specifier to each element in the sequence</span>
+<span class="identifier">format_sql</span><span class="special">(</span>
+    <span class="identifier">opts</span><span class="special">,</span>
+    <span class="string">"SELECT {::i} FROM employee"</span><span class="special">,</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">string_view</span><span class="special">&gt;{</span><span class="string">"first_name"</span><span class="special">,</span> <span class="string">"last_name"</span><span class="special">}</span>
+<span class="special">)</span> <span class="special">==</span> <span class="string">"SELECT `first_name`, `last_name` FROM employee"</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <a class="link" href="ref/boost__mysql__format_sequence.html" title="format_sequence"><code class="literal">format_sequence</code></a> (由 <a class="link" href="ref/boost__mysql__sequence.html" title="sequence"><code class="literal">sequence</code></a> 返回)</p>
+              </td>
+<td>
+                <p>通过调用用户提供的函数格式化范围中的每个元素, 元素之间以粘接字符串分隔 (默认为逗号).<br> 不允许使用格式说明符</p>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="identifier">format_sql</span><span class="special">(</span>
+    <span class="identifier">opts</span><span class="special">,</span>
+    <span class="string">"SELECT {}"</span><span class="special">,</span>
+    <span class="identifier">sequence</span><span class="special">(</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;{</span><span class="number">1</span><span class="special">,</span> <span class="number">5</span><span class="special">,</span> <span class="number">20</span><span class="special">},</span>
+        <span class="special">[](</span><span class="keyword">int</span> <span class="identifier">val</span><span class="special">,</span> <span class="identifier">format_context_base</span><span class="special">&amp;</span> <span class="identifier">ctx</span><span class="special">)</span> <span class="special">{</span> <span class="identifier">format_sql_to</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">,</span> <span class="string">"{}+1"</span><span class="special">,</span> <span class="identifier">val</span><span class="special">);</span> <span class="special">}</span>
+    <span class="special">)</span>
+<span class="special">)</span> <span class="special">==</span> <span class="string">"SELECT 1+1, 5+1, 20+1"</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>特化了 <a class="link" href="ref/boost__mysql__formatter.html" title="formatter"><code class="literal">formatter</code></a> 的自定义类型</p>
+              </td>
+<td>
+                <p>调用 <code class="computeroutput"><span class="identifier">formatter</span><span class="special">::</span><span class="identifier">parse</span></code> 和 <code class="computeroutput"><span class="identifier">formatter</span><span class="special">::</span><span class="identifier">format</span></code><br> 可接受用户自定义的格式说明符.</p>
+              </td>
+<td>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <a class="link" href="ref/boost__mysql__formattable_ref.html" title="formattable_ref"><code class="literal">formattable_ref</code></a>
+                </p>
+              </td>
+<td>
+                <p>格式化底层值. 可表示上述任何类型.<br> 接受与底层类型相同的格式说明符.</p>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {}"</span><span class="special">,</span> <span class="identifier">formattable_ref</span><span class="special">(</span><span class="number">42</span><span class="special">))</span> <span class="special">==</span> <span class="string">"SELECT 42"</span>
+<span class="identifier">format_sql</span><span class="special">(</span><span class="identifier">opts</span><span class="special">,</span> <span class="string">"SELECT {:i} FROM t"</span><span class="special">,</span> <span class="identifier">formattable_ref</span><span class="special">(</span><span class="string">"salary"</span><span class="special">))</span> <span class="special">==</span> <span class="string">"SELECT `salary` FROM t"</span>
+</pre>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2019-2024 Ruben Perez<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="error_handling.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="meta.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

@@ -1,0 +1,106 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>设计理由</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Spirit 2.59">
+<link rel="up" href="../index.html" title="Spirit 2.59">
+<link rel="prev" href="notes/style_guide.html" title="风格指南">
+<link rel="next" href="repository.html" title="Spirit 仓库">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="notes/style_guide.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="repository.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="spirit.rationale"></a><a class="link" href="rationale.html" title="设计理由">设计理由</a>
+</h2></div></div></div>
+<h4>
+<a name="spirit.rationale.h0"></a>
+      <span class="phrase"><a name="spirit.rationale.naming"></a></span><a class="link" href="rationale.html#spirit.rationale.naming">命名</a>
+    </h4>
+<p>为什么使用 "Spirit"、"Qi" 和 "Karma" 这些名字? 因为 xpressive 的名字有更好的 spirit (精神), 为你的软件带来 qi (气), 并提升你的 karma (业力), 从而治愈你的 (con)fusion (困惑), 让你像凤凰一样从灰烬中重生. (Joachim Faulhaber)</p>
+<h4>
+<a name="spirit.rationale.h1"></a>
+      <span class="phrase"><a name="spirit.rationale.type_erasure__from_static_to_dynamic_c__"></a></span><a class="link" href="rationale.html#spirit.rationale.type_erasure__from_static_to_dynamic_c__">类型擦除: 从静态 C++ 到动态 C++</a>
+    </h4>
+<p>rule 跨越了静态 C++ 与动态 C++ 的边界. 实际上, rule 把编译期多态 (使用模板) 转换为运行期多态 (使用虚函数). 这是必要的, 因为 C++ 无法自动声明一个变量, 其类型由赋值表达式右侧 (rhs) 的任意复杂表达式推导得出. 基本上, 我们想这样做:</p>
+<pre class="programlisting"><span class="identifier">T</span> <span class="identifier">rule</span> <span class="special">=</span> <span class="identifier">an_arbitrarily_complex_expression</span><span class="special">;</span>
+</pre>
+<p>而不必知道或关心赋值表达式右侧 (rhs) 的结果类型. 使用现代 C++0x 编译器, 这可以用 <code class="computeroutput"><span class="keyword">auto</span></code> 做到:</p>
+<pre class="programlisting"><span class="keyword">auto</span> <span class="identifier">rule</span> <span class="special">=</span> <span class="identifier">an_arbitrarily_complex_expression</span><span class="special">;</span>
+</pre>
+<p>除此之外, 我们还需要一个设施来前置声明未知类型:</p>
+<pre class="programlisting"><span class="identifier">T</span> <span class="identifier">rule</span><span class="special">;</span>
+<span class="special">...</span>
+<span class="identifier">rule</span> <span class="special">=</span> <span class="identifier">a</span> <span class="special">|</span> <span class="identifier">b</span><span class="special">;</span>
+</pre>
+<p>这些限制使我们采用了这种 rule 实现. 代价是每次调用 rule 都要付出一次类型擦除调用的开销 -- 这是一次无法内联的间接函数调用.</p>
+<h4>
+<a name="spirit.rationale.h2"></a>
+      <span class="phrase"><a name="spirit.rationale.multiple_declaration"></a></span><a class="link" href="rationale.html#spirit.rationale.multiple_declaration">多重声明</a>
+    </h4>
+<p>某些 BNF 变体允许对 rule 进行多重声明. 这些声明被当作备选项. 示例:</p>
+<pre class="programlisting"><span class="identifier">r</span> <span class="special">=</span> <span class="identifier">a</span><span class="special">;</span>
+<span class="identifier">r</span> <span class="special">=</span> <span class="identifier">b</span><span class="special">;</span>
+</pre>
+<p>等价于:</p>
+<pre class="programlisting"><span class="identifier">r</span> <span class="special">=</span> <span class="identifier">a</span> <span class="special">|</span> <span class="identifier">b</span><span class="special">;</span>
+</pre>
+<p>Spirit v1.3 允许这种行为. 然而, Spirit 当前版本不再允许这样做, 因为经验表明这种行为会导致不必要的陷阱 (例如, 它不允许把 rule 保存在容器中). 在当前版本的 Spirit 中, 对 rule 的第二次赋值只会简单地重定义它. 旧定义被销毁. 这更贴近 C++ 语义, 也更符合用户对 rule 行为的预期.</p>
+<h4>
+<a name="spirit.rationale.h3"></a>
+      <span class="phrase"><a name="spirit.rationale.sequencing_syntax"></a></span><a class="link" href="rationale.html#spirit.rationale.sequencing_syntax">序列化语法</a>
+    </h4>
+<p>像 <code class="computeroutput"><span class="identifier">a</span><span class="special">,</span> <span class="identifier">b</span></code> 中的逗号运算符从语法上看似乎是更好的候选. 但问题在于它的优先级. 它在 C/C++ 中优先级最低, 这使它实际上毫无用处.</p>
+<p>Bjarne Stroustrup 在其文章 "Generalizing Overloading for C++2000" 中谈到了重载空白. 这样的特性将允许解析器对象像我们在 (E)BNF 中那样并置 (例如 a b | c 而不是 a &gt;&gt; b | c). 遗憾的是, 这篇文章的日期是 1998 年 4 月 1 日. 唉.</p>
+<h4>
+<a name="spirit.rationale.h4"></a>
+      <span class="phrase"><a name="spirit.rationale.forward_iterators"></a></span><a class="link" href="rationale.html#spirit.rationale.forward_iterators">前向迭代器</a>
+    </h4>
+<p>一般来说, 期望的迭代器至少是符合标准的前向迭代器. 回溯需要前向迭代器, 因为迭代器位置需要保存以便日后恢复. 一般而言, Spirit 是一个回溯解析器. 这意味着在某些时刻, 必须保存迭代器位置, 以便解析器能够回溯到之前的点. 因此, 要使回溯工作, 该框架至少需要前向迭代器.</p>
+<p>当然有补救办法. 在我们需要使用输入迭代器的场合, 你可以使用 <a class="link" href="support/multi_pass.html" title="多遍迭代器"><code class="computeroutput"><span class="identifier">multi_pass</span></code></a> 迭代器来构造前向迭代器.</p>
+<p>某些解析器可能需要更专门的迭代器 (双向甚至随机访问). 或许将来, 确定性解析器加入该框架后, 将不做回溯, 只需要一个记号的前瞻, 因此只需要输入迭代器.</p>
+<h4>
+<a name="spirit.rationale.h5"></a>
+      <span class="phrase"><a name="spirit.rationale.exhaustive_backtracking_and_greedy_rd"></a></span><a class="link" href="rationale.html#spirit.rationale.exhaustive_backtracking_and_greedy_rd">穷尽回溯与贪婪递归下降</a>
+    </h4>
+<p>Spirit 不像正则表达式那样做穷尽回溯. 例如:</p>
+<pre class="programlisting"><span class="special">*</span><span class="identifier">char_</span><span class="special">(</span><span class="char">'a'</span><span class="special">)</span> <span class="special">&gt;&gt;</span> <span class="identifier">char_</span><span class="special">(</span><span class="char">'a'</span><span class="special">);</span>
+</pre>
+<p>将总是无法匹配, 因为当 rule 的其余部分匹配失败时, Spirit 的 Kleene 星号不会回退.</p>
+<p>实际上, 这个贪婪递归下降问题是有解决方案的. 《Parsing Techniques: A Practical Guide》第 6.6.2 节讨论了这样一种方案. 其诀窍是向每个解析器传递一个尾解析器 (除扫描器之外). 起始解析器于是就是简单的:</p>
+<pre class="programlisting"><span class="identifier">start</span> <span class="special">&gt;&gt;</span> <span class="identifier">end</span><span class="special">;</span>
+</pre>
+<p>(end 是 start 的尾解析器).</p>
+<p>Spirit 是贪婪的 -- 使用直接的、朴素的递归下降 (RD). 实现上面给出的完全回溯方案当然是可能的, 但肯定会有性能损失. 该方案总是会尝试匹配所有可能的解析器路径 (完整解析器层次遍历), 直到达到确定的点: 整体匹配或不匹配.</p>
+<div class="blockquote"><blockquote class="blockquote">
+<p>回溯与贪婪递归下降</p>
+<p>Spirit 在何时回溯以及回溯到哪里这一点上相当一致且直观, 尽管对来自不同背景的人来说可能不明显. 一般而言, 任何 (子) 解析器在相同输入下总是匹配输入的相同部分 (或完全不匹配输入). 这意味着 Spirit 天生是贪婪的. 只有当某个 (子) 解析器匹配输入失败时, Spirit 才会回溯, 并且总是回溯到解析器结构中向上 (而非向后) 的下一个选择点. 换句话说, abb|ab 会匹配 <code class="computeroutput"><span class="string">"ab"</span></code>, <code class="computeroutput"><span class="identifier">a</span><span class="special">(</span><span class="identifier">bb</span><span class="special">|</span><span class="identifier">b</span><span class="special">)</span></code> 也是, 但 <code class="computeroutput"><span class="special">(</span><span class="identifier">ab</span><span class="special">|</span><span class="identifier">a</span><span class="special">)</span><span class="identifier">b</span></code> 不会, 因为 <code class="computeroutput"><span class="special">(</span><span class="identifier">ab</span><span class="special">|</span><span class="identifier">a</span><span class="special">)</span></code> 子解析器总是会匹配 <code class="computeroutput"><span class="char">'b'</span></code> (在 <code class="computeroutput"><span class="char">'a'</span></code> 之后), 如果它可用.</p>
+<p>
+        --Rainer Deyke
+      </p>
+</blockquote></div>
+<p>这正是 <a class="link" href="abstracts/parsing_expression_grammar.html" title="解析表达式文法(PEG)">解析表达式文法 (PEG)</a> 的本质.</p>
+<p>目前, 强烈倾向于 "简单, 需要时提供所有旋钮" 的做法. 另一方面, Spirit 的灵活性使得可以提供不同的可选方案. 将来或许可以把穷尽回溯的 RD 方案实现为可选特性.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2001-2011 Joel de Guzman, Hartmut Kaiser<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="notes/style_guide.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="repository.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

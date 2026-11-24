@@ -1,0 +1,382 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+  "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!--
+  == Copyright 2002 The Trustees of Indiana University.
+
+  == Use, modification and distribution is subject to the Boost Software 
+  == License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+  == http://www.boost.org/LICENSE_1_0.txt)
+
+  ==  Boost.MultiArray Library
+  ==  Authors: Ronald Garcia
+  ==           Jeremy Siek
+  ==           Andrew Lumsdaine
+  ==  See http://www.boost.org/libs/multi_array for documentation.
+  -->
+<head>
+  <title>Boost 多维数组库 (Boost.MultiArray)</title>
+</head>
+
+<body>
+
+<h1>
+   <img src="../../../boost.png" alt="boost 徽标"
+    width="277" align="middle" height="86">
+   <br>Boost 多维数组库 <br>(Boost.MultiArray)</h1>
+
+<h2>概要</h2>
+
+<p>Boost 多维数组库提供一个用于多维数组的类模板, 以及语义等价的、面向连续数据数组的适配器. 本库中的各个类实现了一个公共接口, 该接口被形式化为一个泛型编程概念. 其接口设计遵循 C++ 标准库容器所确立的先例. 与现有的替代方案相比 (尤其是 <tt>std::vector&lt;std::vector&lt;...&gt;&gt;</tt> 这种表示 N 维数组的方式), Boost MultiArray 是一种表达 N 维数组的更高效、更便捷的方式. 库所提供的数组可以使用人们熟悉的原生 C++ 数组语法来访问. 此外还提供了一些附加特性, 如调整大小、重设形状和创建视图 (下文将予以描述).<h2>目录</h2>
+
+<ol>
+      <li><a href="#sec_introduction">引言</a>
+
+      <li><a href="#sec_example">简短示例</a>
+
+      <li><a href="#sec_components">MultiArray 组件</a>
+
+      <li><a href="#sec_assignment">构造与赋值</a>
+
+      <li><a href="#sec_generators">数组视图与子数组类型生成器</a>
+
+      <li><a href="#sec_dimensions">指定数组维度</a>
+
+      <li><a href="#sec_access">访问元素</a>
+
+      <li><a href="#sec_views">创建视图</a>
+
+      <li><a href="#sec_storage">存储序</a>
+
+      <li><a href="#sec_base">设置数组基值</a>
+
+      <li><a href="#sec_reshape">改变数组的形状</a>
+
+      <li><a href="#sec_resize">调整数组大小</a>
+
+      <li><a href="#sec_concepts">MultiArray 概念</a>
+
+      <li><a href="#sec_testcases">测试用例</a>
+
+      <li><a href="#sec_related">相关工作</a>
+      <li><a href="#sec_credits">致谢</a>
+</ol>  
+
+
+<a name="sec_introduction"></a>
+<h2>引言</h2>
+
+<p>C++ 标准库提供了若干泛型容器, 但并未提供任何多维数组类型. 类模板 <tt>std::vector</tt> 可以用来实现 N 维数组, 例如表达一个由 <tt>double</tt> 元素构成的二维数组, 所用类型为 <tt>std::vector&lt;std::vector&lt;double&gt;&gt;</tt>, 但得到的接口笨拙难用, 且内存开销可能相当高. 原生 C++ 数组 (即 <tt>int arr[2][2][2];</tt>) 无法直接与 C++ 标准库良好互操作, 而且它们在函数调用边界处还会丢失信息 (具体而言是最后一维的范围). 最后, 动态分配的连续元素块也可以当作数组来用, 但这种方法需要手工记账, 既容易出错, 又掩盖了程序员的意图.</p>
+
+<p>Boost MultiArray 库以功能多样的多维数组抽象增强了 C++ 标准容器. 它包含一个通用的数组类模板以及原生数组适配器, 后者支持惯用的数组操作, 并能与 C++ 标准库的容器和算法互操作. 这些数组共享一个公共接口, 该接口以泛型编程的方式表达, 基于它可以实现泛型的数组算法.</p>
+
+<p>本文档旨在为 MultiArray 组件最基本和最常见的使用模式提供入门教程与用户指南. <a href="./reference.html">参考手册</a> 对库的特性提供了更完整、更正式的文档.</p>
+
+<a name="sec_example"></a>
+<h2>简短示例</h2> 下面是使用 <tt>multi_array</tt> 的一个简短示例: <blockquote>
+<pre>
+#include "boost/multi_array.hpp"
+#include &lt;cassert&gt;
+
+int 
+main () {
+  // Create a 3D array that is 3 x 4 x 2
+  typedef boost::multi_array&lt;double, 3&gt; array_type;
+  typedef array_type::index index;
+  array_type A(boost::extents[3][4][2]);
+
+  // Assign values to the elements
+  int values = 0;
+  for(index i = 0; i != 3; ++i) 
+    for(index j = 0; j != 4; ++j)
+      for(index k = 0; k != 2; ++k)
+        A[i][j][k] = values++;
+
+  // Verify values
+  int verify = 0;
+  for(index i = 0; i != 3; ++i) 
+    for(index j = 0; j != 4; ++j)
+      for(index k = 0; k != 2; ++k)
+        assert(A[i][j][k] == verify++);
+
+  return 0;
+}
+</pre>
+</blockquote>
+
+<a name="sec_components"></a>
+<h2>MultiArray 组件</h2> Boost.MultiArray 的实现 (boost/multi_array.hpp) 提供三个用户层级的类模板: <ol>
+      <li><a href="./reference.html#multi_array"><tt>multi_array</tt></a>, 
+
+      <li><a href="./reference.html#multi_array_ref"><tt>multi_array_ref</tt></a>, 以及<li><a href="./reference.html#const_multi_array_ref"><tt>const_multi_array_ref</tt></a>  
+</ol>
+
+<tt>multi_array</tt> 是一个容器模板. 实例化时, 它会按照构造时指定的维度为相应数量的元素分配空间. <tt>multi_array</tt> 也可以默认构造, 并按需调整大小. <p>
+<tt>multi_array_ref</tt> 对现有的数据数组进行适配, 以提供 <tt>multi_array</tt> 接口. <tt>multi_array_ref</tt> 并不拥有传递给它的数据.<p>
+<tt>const_multi_array_ref</tt> 与 <tt>multi_array_ref</tt> 类似, 但保证数组的内容不可变. 因此它可以包装类型为 <i>T const*</i> 的指针.<p>这三个组件的行为非常相似. 除构造函数参数之外, <tt>multi_array</tt> 与 <tt>multi_array_ref</tt> 导出相同的接口. <tt>const_multi_array_ref</tt> 仅提供 <tt>multi_array_ref</tt> 接口中保持 const 性的部分. <a name="sec_assignment"></a>
+<h2>构造与赋值</h2>
+<p>每种数组类型 - <a href="./reference.html#multi_array"><tt>multi_array</tt></a>, <a href="./reference.html#multi_array_ref"><tt>multi_array_ref</tt></a> 与 <a href="./reference.html#const_multi_array_ref"><tt>const_multi_array_ref</tt></a> - 都提供一组专门的构造函数. 更多信息请查阅它们各自的参考页.<p>本库中所有非 const 的数组类型都提供赋值运算符 <tt>operator=()</tt>. 数组类型 <tt>multi_array</tt>, <tt>multi_array_ref</tt>, <tt>subarray</tt> 与 <tt>array_view</tt> 中的每一个都可以从其他任何一个赋值, 只要它们的形状匹配. const 变体 <tt>const_multi_array_ref</tt>, <tt>const_subarray</tt> 与 <tt>const_array_view</tt> 则可以作为拷贝的源, 复制到形状匹配的数组. 赋值会对数组所包含的数据进行深拷贝 (逐元素复制). <a name="sec_generators"></a>
+<h2>数组视图与子数组类型生成器</h2> 在某些情况下, 对 array_view 和 subarray 类型使用嵌套生成器并不方便. 例如, 在以数组类型为参数的函数模板内部, 额外的 "template" 关键字可能令人困惑. 更常见的情况则是, 某些编译器无法处理嵌套于模板参数中的模板. 出于这个原因, 库提供了类型生成器 <tt>subarray_gen</tt>, <tt>const_subarray_gen</tt>, <tt>array_view_gen</tt> 与 <tt>const_array_view_gen</tt>. 这样, 下例中的两个 typedef 将得到相同的类型: <blockquote>
+<pre>
+template &lt;typename Array&gt;
+void my_function() {
+  typedef typename Array::template array_view&lt;3&gt;::type view1_t;
+  typedef typename boost::array_view_gen&lt;Array,3&gt;::type view2_t;
+  // ...
+}
+</pre>
+</blockquote>
+
+<a name="sec_dimensions"></a>
+<h2>指定数组维度</h2> 创建大多数 Boost.MultiArray 组件时, 需要同时指定维度数量和每一维的范围 (<tt>boost::multi_array</tt> 还提供默认构造函数). 虽然维度数量总是作为模板参数来指定, 但库提供了两种不同的机制来指定每一维的范围. <p>第一种方法是向构造函数传入一个由各维范围组成的 <a href="../../utility/Collection.html">Collection</a>, 最常见的是 <tt>boost::array</tt>. 构造函数将从该容器取得起始迭代器, 并取出 N 个元素, 对应于 N 个维度的范围. 这对编写与维度无关的代码很有用.<h3>示例</h3>
+<blockquote>
+<pre>
+  typedef boost::multi_array&lt;double, 3&gt; array_type;
+  boost::array&lt;array_type::index, 3&gt; shape = {{ 3, 4, 2 }};
+  array_type A(shape);
+</pre>
+</blockquote>
+
+<p>第二种方法是向构造函数传入一个 <tt>extent_gen</tt> 对象, 用以指定矩阵的维度. <tt>extent_gen</tt> 类型定义在 <tt>multi_array_types</tt> 命名空间中, 同时也是每个数组类型的成员; 但默认情况下, 库会构造一个全局的 <tt>extent_gen</tt> 对象 <tt>boost::extents</tt>. 如果担心这些对象占用的内存, 在包含库头文件之前定义 <tt>BOOST_MULTI_ARRAY_NO_GENERATORS</tt> 即可阻止其构造.<h3>示例</h3>
+<blockquote>
+<pre>
+  typedef boost::multi_array&lt;double, 3&gt; array_type;
+  array_type A(boost::extents[3][4][2]);
+</pre>
+</blockquote>
+
+<a name="sec_access"></a>
+<h2>访问元素</h2> Boost.MultiArray 组件提供两种访问容器内特定元素的方式. 第一种使用传统的 C 数组记法, 由 <tt>operator[]</tt> 提供. <h3>示例</h3>
+<blockquote>
+<pre>
+  typedef boost::multi_array&lt;double, 3&gt; array_type;
+  array_type A(boost::extents[3][4][2]);
+  A[0][0][0] = 3.14;
+  assert(A[0][0][0] == 3.14);
+</pre>
+</blockquote>
+
+<p>第二种方法涉及传入一个由索引组成的 <a href="../../utility/Collection.html">Collection</a>, 以调用 <tt>operator()</tt>. 将从 Collection 中取出 N 个索引, 对应容器的 N 个维度.<h3>示例</h3>
+<blockquote>
+<pre>
+  typedef boost::multi_array&lt;double, 3&gt; array_type;
+  array_type A(boost::extents[3][4][2]);
+  boost::array&lt;array_type::index,3&gt; idx = {{0,0,0}};
+  A(idx) = 3.14;
+  assert(A(idx) == 3.14);
+</pre>
+</blockquote> 这对编写与维度无关的代码很有用, 而且在某些编译器上可能比 <tt>operator[].</tt> 获得更高的性能. <p>默认情况下, 上述两种元素访问方法都会执行范围检查. 如果所提供的索引超出了为数组定义的范围, 断言将终止程序. 要禁用范围检查 (出于正式发布版本中的性能考虑), 请定义 <tt>BOOST_DISABLE_ASSERTS</tt> 预处理宏, 然后再在应用程序中包含 multi_array.hpp. <a name="sec_views"></a>
+<h2>创建视图</h2> Boost.MultiArray 提供为既有数组组件创建子视图的设施. 它允许你创建与原数组维度数量相同的子视图, 也允许创建维度少于原数组的子视图. <p>创建子视图的方式是调用 operator[], 向其传入一个 <tt>index_gen</tt> 类型的对象. <tt>index_gen</tt> 的填充方式是向其传入 <tt>index_range</tt> 对象给它的 <tt>operator[]</tt>. <tt>index_range</tt> 与 <tt>index_gen</tt> 类型定义于 <tt>multi_array_types</tt> 命名空间中, 同时也是每个数组类型的嵌套成员. 与 <tt>boost::extents</tt> 类似, 库默认会构造对象 <tt>boost::indices</tt>. 在包含库头文件之前定义 <tt>BOOST_MULTI_ARRAY_NO_GENERATORS</tt> 即可抑制该对象的构造. 下面是一个简单的子视图创建示例.<h3>示例</h3>
+<blockquote>
+<pre>
+  // myarray = 2 x 3 x 4
+
+  //
+  // array_view dims: [base,bound) (dimension striding default = 1)
+  // dim 0: [0,2) 
+  // dim 1: [1,3) 
+  // dim 2: [0,4) (strided by 2), 
+  // 
+
+  typedef boost::multi_array_types::index_range range;
+  // OR typedef array_type::index_range range;
+  array_type::array_view&lt;3&gt;::type myview =
+    myarray[ boost::indices[range(0,2)][range(1,3)][range(0,4,2)] ];
+
+  for (array_type::index i = 0; i != 2; ++i)
+    for (array_type::index j = 0; j != 2; ++j)
+      for (array_type::index k = 0; k != 2; ++k) 
+	assert(myview[i][j][k] == myarray[i][j+1][k*2]);
+</pre>
+</blockquote>
+
+
+<p>通过向 index_gen 传入一个整数值, 可以创建维度少于原数组组件的子视图 (也称作切片).<h3>示例</h3>
+<blockquote>
+<pre>
+  // myarray = 2 x 3 x 4
+
+  //
+  // array_view dims:
+  // [base,stride,bound)
+  // [0,1,2), 1, [0,2,4) 
+  // 
+
+  typedef boost::multi_array_types::index_range range;
+  array_type::index_gen indices;
+  array_type::array_view&lt;2&gt;::type myview =
+    myarray[ indices[range(0,2)][1][range(0,4,2)] ];
+
+  for (array_type::index i = 0; i != 2; ++i)
+    for (array_type::index j = 0; j != 2; ++j)
+	assert(myview[i][j] == myarray[i][1][j*2]);
+</pre>
+</blockquote>
+
+<h3>更多关于 <tt>index_range</tt></h3> <tt>index_range</tt> 类型提供了为子视图生成指定范围的若干方法. 下面是几个指定同一范围的 range 实例. <h3>示例</h3>
+<blockquote>
+<pre>
+  // [base,stride,bound)
+  // [0,2,4) 
+
+  typedef boost::multi_array_types::index_range range;
+  range a_range;
+  a_range = range(0,4,2);
+  a_range = range().start(0).finish(4).stride(2);
+  a_range = range().start(0).stride(2).finish(4);
+  a_range = 0 &lt;= range().stride(2) &lt; 4;
+  a_range = 0 &lt;= range().stride(2) &lt;= 3;
+</pre>
+</blockquote> 一个<tt>index_range</tt> 对象若未提供起始和/或结束值, 将从被切片的数组继承这些值. 这在某些情况下免去了了解数组维度边界的必要, 十分便利. 例如, 默认构造的 range 将取其被用于指定的那个维度的完整范围. <h3>示例</h3>
+<blockquote>
+<pre>
+  typedef boost::multi_array_types::index_range range;
+  range a_range;
+
+  // All elements in this dimension
+  a_range = range(); 
+
+  // indices i where 3 &lt;= i
+  a_range = range().start(3) 
+  a_range = 3 &lt;= range();
+  a_range = 2 &lt; range();
+
+  // indices i where i &lt; 7
+  a_range = range().finish(7)
+  a_range = range() &lt; 7;
+  a_range = range() &lt;= 6;
+</pre>
+</blockquote> 下面的示例切片操作展示了上面的一些可选方式 <blockquote>
+<pre>
+    // take all of dimension 1
+    // take i &lt; 5 for dimension 2
+    // take 4 &lt;= j &lt;= 7 for dimension 3 with stride 2
+    myarray[ boost::indices[range()][range() &lt; 5 ][4 &lt;= range().stride(2) &lt;= 7] ];
+</pre>
+</blockquote>
+
+<a name="sec_storage"></a>
+<h2>存储序</h2> 每个数组类都提供接受存储序参数的构造函数. 在与要求不同于标准 C 的存储序的遗留代码 (如 FORTRAN) 交互时, 这最为有用. 可选值为 <tt>c_storage_order</tt>, <tt>fortran_storage_order</tt> 与 <tt>general_storage_order</tt>. <p><tt>c_storage_order</tt>, 它是默认值, 将以与 C 数组相同的顺序在内存中存储元素, 即各维度按从最后一维到第一维的顺序存储.<p><tt>fortran_storage_order</tt> 将以 FORTRAN 的顺序在内存中存储元素: 从第一维到最后一维. 注意, 使用此参数时, 数组索引仍以零为基.<h3>示例</h3>
+<blockquote>
+<pre>
+  typedef boost::multi_array&lt;double,3&gt; array_type;
+  array_type A(boost::extents[3][4][2],boost::fortran_storage_order()); 
+  call_fortran_function(A.data());
+</pre>
+</blockquote>
+
+<p><tt>general_storage_order</tt> 允许自定义各维度在内存中的存储顺序, 以及各维度按升序还是降序存储.<h3>示例</h3>
+<blockquote>
+<pre>
+  typedef boost::general_storage_order&lt;3&gt; storage;
+  typedef boost::multi_array&lt;int,3&gt; array_type;
+ 
+  // Store last dimension, then first, then middle
+  array_type::size_type ordering[] = {2,0,1};
+
+  // Store the first dimension (dimension 0) in descending order 
+  bool ascending[] = {false,true,true};
+
+  array_type A(extents[3][4][2],storage(ordering,ascending)); 
+</pre>
+</blockquote>
+
+
+<a name="sec_base"></a>
+<h2>设置数组基值</h2> 在某些情况下, 使用以零为基的数组可能不方便或很别扭. Boost.MultiArray 组件提供了两种改变数组基值的设施. 可以使用 <tt>extent_range</tt> 类型向 <tt>extent_gen</tt> 构造函数指定一对范围值, 以设置基值. <h3>示例</h3>
+<blockquote>
+<pre>
+  typedef boost::multi_array&lt;double, 3&gt; array_type;
+  typedef boost::multi_array_types::extent_range range;
+  // OR typedef array_type::extent_range range;
+
+  array_type::extent_gen extents;
+ 
+  // dimension 0: 0-based
+  // dimension 1: 1-based
+  // dimension 2: -1 - based
+  array_type A(extents[2][range(1,4)][range(-1,3)]);
+</pre>
+</blockquote>
+
+<p>另一种做法是先正常构造数组, 然后重设基值. 要把所有基值设为同一值, 可使用 <tt>reindex</tt> 成员函数, 向其传入单个新索引值.<h3>示例</h3>
+<blockquote>
+<pre>
+  typedef boost::multi_array&lt;double, 3&gt; array_type;
+
+  array_type::extent_gen extents;
+ 
+  array_type A(extents[2][3][4]);
+  // change to 1-based
+  A.reindex(1)
+</pre>
+</blockquote>
+
+<p>另一种做法是使用 <tt>reindex</tt> 成员函数分别设置每个基值, 向其传入一个由索引基值组成的 Collection.<h3>示例</h3>
+<blockquote>
+<pre>
+  typedef boost::multi_array&lt;double, 3&gt; array_type;
+
+  array_type::extent_gen extents;
+ 
+  // dimension 0: 0-based
+  // dimension 1: 1-based
+  // dimension 2: (-1)-based
+  array_type A(extents[2][3][4]);
+  boost::array&lt;array_type::index,ndims&gt; bases = {{0, 1, -1}};       
+  A.reindex(bases);
+</pre>
+</blockquote>
+
+
+<a name="sec_reshape"></a>
+<h2>改变数组的形状</h2> Boost.MultiArray 的数组提供 reshape 操作. 维度数量必须保持不变, 但只要所含元素总数不变, 数组的形状就可以改变. <h3>示例</h3>
+<blockquote>
+<pre>
+  typedef boost::multi_array&lt;double, 3&gt; array_type;
+
+  array_type::extent_gen extents;
+  array_type A(extents[2][3][4]);
+  boost::array&lt;array_type::index,ndims&gt; dims = {{4, 3, 2}};       
+  A.reshape(dims);
+</pre>
+</blockquote>
+
+<p>注意, 重设数组的形状不会影响索引. <a name="sec_resize"></a>
+<h2>调整数组大小</h2> <tt>boost::multi_array</tt> 类提供保留元素的 resize 操作. 维度数量必须保持不变, 但每一维的范围可以按需增大或减小. 当数组严格变大时, 现有元素将被保留: 先把它们复制到新的底层内存, 然后析构旧底层内存中的元素. 数组中任何新元素都采用默认构造. 但是, 如果新数组大小缩减了某些维度, 某些元素将不再可用. <h3>示例</h3>
+<blockquote>
+<pre>
+  typedef boost::multi_array&lt;int, 3&gt; array_type;
+
+  array_type::extent_gen extents;
+  array_type A(extents[3][3][3]);
+  A[0][0][0] = 4;
+  A[2][2][2] = 5;
+  A.resize(extents[2][3][4]);
+  assert(A[0][0][0] == 4);
+  // A[2][2][2] is no longer valid.
+</pre>
+</blockquote>
+
+
+<a name="sec_concepts"></a>
+<h2>MultiArray 概念</h2> Boost.MultiArray 定义并使用 <a href="./reference.html#MultiArray">MultiArray</a> 概念. 它为 N 维容器规定了一个接口. <a name="sec_testcases"></a>
+<h2>测试用例</h2> Boost.MultiArray 附带一组测试用例, 用于演练本库的特性和语义. 测试用例的描述见 <a href="./test_cases.html">此处</a>. <a name="sec_related"></a>
+<h2>Related Work</h2>
+
+<a href="../../array/index.html">boost::array</a> 与 <a href="https://www.boost.org/sgi/stl/Vector.html">std::vector</a> 是用户数据的一维容器, 两者都自行管理内存. <tt>std::valarray</tt> 是 C++ 标准库的一个底层组件, 旨在为数值应用提供可移植的高性能. <a href="http://www.oonumerics.org/blitz/">Blitz++</a> 是 Todd Veldhuizen 开发的数组库. 它使用先进的 C++ 技术, 为基于数组的数值应用提供接近 FORTRAN 的性能. <b>array_traits</b> 是一个 beta 库 (曾随 Boost 一起发行), 它提供在原生 C++ 数组上创建迭代器的手段. 该库与 <a href="../../array/index.html">boost::array</a> 类似: 它增强 C 风格的 N 维数组, 正如 <tt>boost::array</tt> 对 C 一维数组所做的那样. <a name="sec_credits"></a>
+<h2>致谢</h2>
+<ul>
+      
+      <li><a href="mailto:garcia@osl.iu.edu">Ronald Garcia</a> 是本库的主要作者.<li><a href="http://www.boost.org/people/jeremy_siek.htm">Jeremy Siek</a> 协助了本库的开发, 为各种想法与建议提供了讨论对象, 并协助将其移植到 Microsoft Visual C++.<li><a href="mailto:gbavestrelli@yahoo.com">Giovanni Bavestrelli</a> 提供了一个 N 维数组的早期实现, 它引发了 <a href="http://www.boost.org/">Boost</a> 邮件列表成员的反馈. 这项工作中的一些设计决策正是基于该实现及其引发的评论而作出的.<li><a href="mailto:tveldhui@acm.org">Todd Veldhuizen</a> 编写了 <a href="http://oonumerics.org/blitz/">Blitz++</a>, 本设计的一些方面即受其启发. 此外, 他还对本库的设计与实现提供了反馈.<li><a href="mailto:jewillco@osl.iu.edu">Jeremiah Willcock</a> 对本库的实现与设计提供了反馈, 并对特性提出了一些建议.<li><a href="mailto:bdawes@acm.org">Beman Dawes</a> 为把本库移植到 Microsoft Windows 编译器提供了极大的帮助.<li><a href="mailto:glenjofe@gmail.com">Glen Fernandes</a> 实现了对 C++11 分配器模型的支持, 包括对有状态分配器、最小分配器的支持, 以及针对无状态分配器的优化存储.</ul>
+
+<hr>
+
+<address>
+<a href="mailto:garcia@.cs.indiana.edu">Ronald Garcia</a>
+</address>
+<!-- Created: Fri Jun 29 10:53:07 EST 2001 -->
+<!-- hhmts start -->最后修改: Tue Feb 7 17:15:50 EST 2006 <!-- hhmts end -->
+
+</body>
+</html>

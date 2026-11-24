@@ -1,0 +1,114 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>再谈动作 (Action)</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Phoenix 3.2.0">
+<link rel="up" href="../inside.html" title="深入 Phoenix">
+<link rel="prev" href="expression/boilerplate_macros.html" title="样板宏">
+<link rel="next" href="rules.html" title="预定义表达式与规则">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="expression/boilerplate_macros.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../inside.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="rules.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="phoenix.inside.actions"></a><a class="link" href="actions.html" title="再谈动作 (Action)">再谈动作 (Action) </a>
+</h3></div></div></div>
+<p>如<a class="link" href="actor.html" title="Actor 详解">Actor 详解</a>一节所述, 动作 (Action) 正是赋予 Phoenix 表达式树生命的东西.</p>
+<p>处理 Phoenix 表达式树时, 求值自顶向下进行. 示例:</p>
+<pre class="programlisting"><span class="identifier">_1</span> <span class="special">+</span> <span class="number">3</span> <span class="special">*</span> <span class="identifier">_2</span>
+</pre>
+<p>可以用如下方式将其可视化为 AST:</p>
+<p>
+        <span class="inlinemediaobject"><img src="../../images/simple_ast.png"></span>
+      </p>
+<p>以动作来表述, 这意味着:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">匹配<code class="computeroutput"><span class="identifier">rule</span><span class="special">::</span><span class="identifier">plus</span></code> </li>
+<li class="listitem">求值左部:<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; "><li class="listitem">匹配<code class="computeroutput"><span class="identifier">rule</span><span class="special">::</span><span class="identifier">placeholder</span></code> </li></ul></div>
+          </li>
+<li class="listitem">求值右部:<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; "><li class="listitem">匹配<code class="computeroutput"><span class="identifier">rule</span><span class="special">::</span><span class="identifier">multiplies</span></code> <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: square; ">
+<li class="listitem">求值左部:<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">匹配<code class="computeroutput"><span class="identifier">rule</span><span class="special">::</span><span class="identifier">value</span></code> </li></ul></div>
+                      </li>
+<li class="listitem">求值右部:<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">匹配<code class="computeroutput"><span class="identifier">rule</span><span class="special">::</span><span class="identifier">placeholder</span></code> </li></ul></div>
+                      </li>
+</ul></div>
+                </li></ul></div>
+          </li>
+</ul></div>
+<p>每当一条规则被匹配, 就会调用一个动作. 动作决定了 Phoenix AST 的遍历方式.</p>
+<h5>
+<a name="phoenix.inside.actions.h0"></a>
+        <span class="phrase"><a name="phoenix.inside.actions.writing_an_action"></a></span><a class="link" href="actions.html#phoenix.inside.actions.writing_an_action">编写动作</a>
+      </h5>
+<p>如<a class="link" href="actor.html" title="Actor 详解">Actor 详解</a>所述, 动作是<a href="http://www.boost.org/doc/libs/release/doc/html/PrimitiveTransform.html" target="_top">Proto 原语变换 (Primitive Transform) </a>. 为方便起见, Phoenix 为此提供了一个抽象:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Fun</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">call</span><span class="special">;</span>
+</pre>
+<p>它类似于<a href="http://www.boost.org/doc/libs/release/doc/html/boost/proto/call.html" target="_top"><code class="computeroutput"><span class="identifier">proto</span><span class="special">::</span><span class="identifier">call</span></code></a>, 但做得更多. 它会调用作为模板参数传入的<code class="computeroutput"><span class="identifier">Fun</span></code> 函数对象, 传入<code class="computeroutput"><span class="identifier">Context</span></code> 以及与该规则相关联的表达式的子节点.</p>
+<p>让我们看一个 (简化的) 示例, 说明如何为<code class="computeroutput"><span class="identifier">rule</span><span class="special">::</span><span class="identifier">plus</span></code> 编写求值动作:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">plus_eval</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="keyword">int</span> <span class="identifier">result_type</span><span class="special">;</span>
+
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Lhs</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Rhs</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Context</span><span class="special">&gt;</span>
+    <span class="identifier">result_type</span> <span class="keyword">operator</span><span class="special">()(</span><span class="identifier">Lhs</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">lhs</span><span class="special">,</span> <span class="identifier">Rhs</span> <span class="keyword">const</span> <span class="special">&amp;</span><span class="identifier">rhs</span><span class="special">,</span> <span class="identifier">Context</span> <span class="special">&amp;</span> <span class="identifier">ctx</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">eval</span><span class="special">(</span><span class="identifier">lhs</span><span class="special">,</span> <span class="identifier">ctx</span><span class="special">)</span> <span class="special">+</span> <span class="identifier">eval</span><span class="special">(</span><span class="identifier">rhs</span><span class="special">,</span> <span class="identifier">ctx</span><span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="keyword">template</span> <span class="special">&lt;&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">default_actions</span><span class="special">::</span><span class="identifier">when</span><span class="special">&lt;</span><span class="identifier">rule</span><span class="special">::</span><span class="identifier">plus</span><span class="special">&gt;</span>
+    <span class="special">:</span> <span class="identifier">call</span><span class="special">&lt;</span><span class="identifier">plus_eval</span><span class="special">&gt;</span>
+<span class="special">{};</span>
+</pre>
+<p>就是这样. 对<code class="computeroutput"><span class="identifier">plus</span></code> 表达式求值时, <code class="computeroutput"><span class="identifier">plus_eval</span></code> 可调用体将以左侧表达式、右侧表达式以及关联的 Context 为参数被调用.</p>
+<p>
+        <span class="bold"><strong>但还有更多:</strong></span> 由于动作<span class="emphasis"><em>可以</em></span>是完整的<a href="http://www.boost.org/doc/libs/release/doc/html/Transform.html" target="_top">Proto 变换 (Transform) </a>, 你实际上可以使用任何你能想到的 proto 表达式作为动作. Phoenix 预定义了一组可调用体和变换来处理随行传递的 Context 信息, 当然, 每个 Phoenix 表达式都可以用作 Phoenix 文法或<a href="http://www.boost.org/doc/libs/release/doc/html/boost/proto/pass_through.html" target="_top">Proto 直通变换 (Pass Through Transform) </a>.</p>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term"><code class="computeroutput"><span class="identifier">functional</span><span class="special">::</span><span class="identifier">context</span><span class="special">(</span><span class="identifier">Env</span><span class="special">,</span> <span class="identifier">Actions</span><span class="special">)</span></code></span></dt>
+<dd><p>一个<a href="http://www.boost.org/doc/libs/release/doc/html/Callable.html" target="_top">Proto 可调用变换 (Callable Transform) </a>, 从<code class="computeroutput"><span class="identifier">Env</span></code> 和<code class="computeroutput"><span class="identifier">Actions</span></code> 参数创建新的上下文</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">functional</span><span class="special">::</span><span class="identifier">env</span><span class="special">(</span><span class="identifier">Context</span><span class="special">)</span></code></span></dt>
+<dd><p>一个<a href="http://www.boost.org/doc/libs/release/doc/html/Callable.html" target="_top">Proto 可调用变换 (Callable Transform) </a>, 从<code class="computeroutput"><span class="identifier">Context</span></code> 参数返回环境</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">functional</span><span class="special">::</span><span class="identifier">actions</span><span class="special">(</span><span class="identifier">Context</span><span class="special">)</span></code></span></dt>
+<dd><p>一个<a href="http://www.boost.org/doc/libs/release/doc/html/Callable.html" target="_top">Proto 可调用变换 (Callable Transform) </a>, 从<code class="computeroutput"><span class="identifier">Context</span></code> 参数返回动作</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">_context</span></code></span></dt>
+<dd><p>一个<a href="http://www.boost.org/doc/libs/release/doc/html/PrimitiveTransform.html" target="_top">Proto 原语变换 (Primitive Transform) </a>, 返回当前上下文</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">_env</span></code></span></dt>
+<dd><p>一个<a href="http://www.boost.org/doc/libs/release/doc/html/PrimitiveTransform.html" target="_top">Proto 原语变换 (Primitive Transform) </a>, 返回当前环境</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">_actions</span></code></span></dt>
+<dd><p>一个<a href="http://www.boost.org/doc/libs/release/doc/html/PrimitiveTransform.html" target="_top">Proto 原语变换 (Primitive Transform) </a>, 返回当前动作</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">context</span><span class="special">(</span><span class="identifier">env</span><span class="special">,</span> <span class="identifier">actions</span><span class="special">)</span></code></span></dt>
+<dd><p>一个创建上下文的普通函数</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">env</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">)</span></code></span></dt>
+<dd><p>一个从给定上下文返回环境的普通函数</p></dd>
+<dt><span class="term"><code class="computeroutput"><span class="identifier">actions</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">)</span></code></span></dt>
+<dd><p>一个从给定上下文返回动作的普通函数</p></dd>
+</dl>
+</div>
+<p>Phoenix 内置了一组预定义的表达式、规则和动作, 使你在<a class="link" href="../starter_kit.html" title="入门套件 (Starter Kit)">入门套件</a>和<a class="link" href="../modules.html" title="模块">模块</a>各节中学到的所有东西得以运转. 更多细节参见<a class="link" href="rules.html" title="预定义表达式与规则">下一节</a>!</p>
+</div>
+<div class="copyright-footer">版权所有 © 2002-2005, 2010, 2014, 2015 Joel de Guzman, Dan Marsden, Thomas Heller, John Fletcher<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="expression/boilerplate_macros.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../inside.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="rules.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

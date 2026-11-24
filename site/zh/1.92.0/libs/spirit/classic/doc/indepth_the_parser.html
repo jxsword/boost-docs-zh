@@ -1,0 +1,207 @@
+<html>
+<head>
+<title>深入: 解析器</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<link rel="stylesheet" href="theme/style.css" type="text/css">
+</head>
+
+<body>
+<table width="100%" border="0" background="theme/bkd2.gif" cellspacing="2">
+  <tr> 
+    <td width="10"> 
+    </td>
+    <td width="85%"> 
+      <font size="6" face="Verdana, Arial, Helvetica, sans-serif"><b>深入: 解析器</b></font>
+    </td>
+    <td width="112"><a href="http://spirit.sf.net"><img src="theme/spirit.gif" width="112" height="48" align="right" border="0"></a></td>
+  </tr>
+</table>
+<br>
+<table border="0">
+  <tr>
+    <td width="10"></td>
+    <td width="30"><a href="../index.html"><img src="theme/u_arr.gif" border="0"></a></td>
+    <td width="30"><a href="semantic_actions.html"><img src="theme/l_arr.gif" border="0"></a></td>
+    <td width="30"><a href="indepth_the_scanner.html"><img src="theme/r_arr.gif" border="0"></a></td>
+   </tr>
+</table>
+<p>是什么让 Spirit 运转起来? 现在来看看一些细节... parser 类是框架中最基本的实体. 解析器接受一个由 first-last 迭代器对组成的扫描器, 并返回一个匹配对象作为结果. 迭代器界定当前正在被解析的数据. 若解析成功, 匹配对象求值为 true, 此时输入相应地向前推进. 每个解析器可以表示一个特定的模式或算法, 也可以是由其他解析器组合而成的更复杂的解析器.</p>
+<p>所有解析器都继承自基模板类 parser:</p>
+<pre>
+<span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>DerivedT</span><span class=special>&gt;
+</span><span class=keyword>struct </span><span class=identifier>parser
+</span><span class=special>{
+    </span><span class=comment>/*...*/
+
+    </span><span class=identifier>DerivedT</span><span class=special>&amp; </span><span class=identifier>derived</span><span class=special>();
+    </span><span class=identifier>DerivedT </span><span class=keyword>const</span><span class=special>&amp; </span><span class=identifier>derived</span><span class=special>() </span><span class=keyword>const</span><span class=special>;
+</span><span class=special>};</span></pre>
+<p>该类是所有解析器的协议基类. parser 类本身并不真正知道如何解析任何东西, 而是依靠模板参数 <tt>DerivedT</tt> 来执行实际解析. 这一技术在模板元编程圈子里被称为 <a href="references.html#curious_recurring">"Curiously Recurring Template Pattern"</a>. 这种继承策略赋予我们多态的力量, 却没有虚函数的开销. 本质上, 这是实现 <a href="references.html#generic_patterns">编译期多态</a>的一种方式.</p>
+<h2> parser_category_t</h2>
+<p>每个派生解析器都有一个 typedef <tt>parser_category_t</tt> 来定义其类别. 默认情况下, 若未指定, 它将继承自基解析器类, 后者将其 parser_category_t typedef 为 <tt>plain_parser_category</tt>. 框架提供了一些模板类来区分不同类型的解析器. 以下类别是最通用的. 更具体的类型可以继承自它们.</p>
+<table width="90%" border="0" align="center">
+  <tr> 
+    <td colspan="2" class="table_title">解析器类别</td>
+  </tr>
+  <tr> 
+    <td class="table_cells" width="33%"><tt>plain_parser_category</tt></td>
+    <td class="table_cells" width="67%">普通的原生解析器</td>
+  </tr>
+  <tr> 
+    <td class="table_cells" width="33%"><tt>binary_parser_category</tt></td>
+    <td class="table_cells" width="67%">拥有主体 a 和 b 的解析器(如 alternative)</td>
+  </tr>
+  <tr> 
+    <td class="table_cells" width="33%"><tt>unary_parser_category</tt></td>
+    <td class="table_cells" width="67%">拥有单一主体的解析器(如 kleene 星)</td>
+  </tr>
+  <tr> 
+    <td class="table_cells" width="33%"><tt>action_parser_category</tt></td>
+    <td class="table_cells" width="67%">挂接了语义动作的解析器</td>
+  </tr>
+</table>
+<pre><span class=identifier>    </span><span class=keyword>struct </span><span class=identifier>plain_parser_category </span><span class=special>{};
+    </span><span class=keyword>struct </span><span class=identifier>binary_parser_category       </span><span class=special>: </span><span class=identifier>plain_parser_category </span><span class=special>{};
+    </span><span class=keyword>struct </span><span class=identifier>unary_parser_category        </span><span class=special>: </span><span class=identifier>plain_parser_category </span><span class=special>{};
+    </span><span class=keyword>struct </span><span class=identifier>action_parser_category       </span><span class=special>: </span><span class=identifier>unary_parser_category </span><span class=special>{};</span></pre>
+<h2>embed_t</h2>
+<p>每个解析器都有一个 typedef <tt>embed_t</tt>. 该 typedef 指定解析器如何被嵌入组合器中. 默认情况下, 若未指定, 解析器将按值嵌入. 也就是说, 解析器的一份拷贝被放置为组合器的成员变量. 大多数解析器按值嵌入. 但在某些情况下, 这不合意或不可行. 一个典型的例子是 <a href="rule.html">rule</a>. rule 与其他解析器不同, 是按引用嵌入的.</p>
+<h2><a name="match"></a>匹配</h2>
+<p>匹配(match)持有解析器的结果. 当找到成功匹配时, 匹配对象求值为 true, 否则为 false. 匹配的长度是成功匹配的字符(或记号)数. 这可以通过其 <tt>length()</tt> 成员函数查询. 负值表示匹配不成功.</p>
+<p>每个解析器可以有一个关联的属性. 解析成功时, 该属性也会通过匹配对象返回给使用者. 我们可以通过匹配的 <tt>value()</tt> 成员函数获取该属性. 不过要当心, 匹配的属性可能是无效的, 此时获取属性将导致异常. 可以查询成员函数 <tt>has_valid_attribute()</tt> 来获知获取匹配属性是否安全. 属性可以随时通过成员函数 <tt>value(v)</tt>设置, 其中 <tt>v</tt> 是新的属性值.<br>
+  <br> 匹配属性在以下情况下有效:</p>
+<ul>
+  <li>成功的匹配</li>
+  <li>当其值通过 <tt>value(val)</tt> 成员函数被设置时</li>
+  <li>当它从一个具有有效属性的兼容匹配对象(如 <tt>match&lt;double&gt;</tt> 得自 <tt>match&lt;int&gt;</tt>)时. 匹配对象 <tt>A</tt> 与另一个匹配对象 <tt>B</tt> 兼容, 当且仅当 <tt>A</tt> 的属性类型可以从 <tt></tt> <tt>B</tt> 的属性类型赋值(即 <tt>a = b;</tt> 必须能通过编译).</li>
+</ul>
+<p>匹配属性在以下情况下未定义:</p>
+<ul>
+  <li>不成功的匹配</li>
+  <li>当尝试从具有不兼容属性类型的另一个匹配对象拷贝或赋值时(如从 <tt>match&lt;int&gt;</tt> 得到 <tt>match&lt;std::string&gt;</tt>).</li>
+</ul>
+<h3>match 类:</h3>
+<pre><span class=keyword>    template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>T</span><span class=special>&gt;
+</span><span class=keyword>    class </span><span class=identifier>match
+</span><span class=keyword>    </span><span class=special>{
+</span><span class=keyword>    public</span><span class=special>:
+
+    </span><span class=keyword>    </span><span class=comment>/*...*/
+
+</span><span class=special>    </span><span class=keyword>    typedef</span><span class="identifier"> T attr_t</span><span class="special">;<br>
+             </span><span class=keyword>    </span><span class="special">   </span><span class=keyword>operator safe_bool</span><span class=special>() </span><span class=keyword>const</span>; <span class="comment">// convertible to a bool</span>
+    <span class=keyword>    int         </span><span class=identifier>length</span><span class=special>() </span><span class=keyword>const</span>;
+        <span class="keyword">bool</span>        has_valid_attribute<span class="special">()</span> <span class="keyword">const</span><span class="special">;</span>
+   <span class=keyword>    </span> <span class=identifier>void</span><span class=special>        </span><span class=identifier>value</span><span class=special>(</span><span class="identifier">T </span><span class="keyword">const</span><span class=special>&amp;) </span><span class=keyword>const;
+        </span><span class=identifier>T </span><span class=keyword>const</span><span class=special>&amp;    </span><span class=identifier>value</span><span class=special>();
+</span><span class=keyword>    </span><span class=special>};</span></pre>
+<h2>match_result</h2>
+<p>前文已反复提到, 解析器返回一个匹配对象作为其结果. 这是一种简化. 实际上, 出于泛型性的考虑, 解析器并非硬编码为返回匹配对象. 更准确地说, 解析器返回一个遵循某概念接口的对象, match 只是其中一个例子. 不过, 无论解析器的结果类型实际上是 match 类, 其派生类, 还是毫不相关的类型, 我们都将称其为匹配对象.</p>
+<table width="80%" border="0" align="center">
+  <tr> 
+    <td class="note_box"><img src="theme/lens.gif" width="15" height="16"> <b>元函数</b><br>
+      <br> 什么是元函数? 我们都知道函数长什么样. 简单地说, 函数接受一些实参并返回一个结果. 这是我们都钟爱的函数:<br>
+      <br>
+      <code><span class="keyword">int</span> identity_func<span class="special">(</span><span class="keyword">int</span> 
+      arg<span class="special">)</span><br>
+      <span class="special">{</span> <span class="keyword">return</span> arg<span class="special">; 
+      }</span> <span class="comment">// return the argument arg</span><br>
+      </code><br> 元函数本质上是同样的东西. 这些家伙同样接受实参并返回结果. 然而, 函数在运行期对值进行操作, 而元函数在编译期对类型进行操作(或常量, 但我们只讨论类型). 元函数是一个模板类(或结构体). 模板参数是元函数的实参, 类内的一个 typedef 则是元函数的返回类型. 下面是对应的元函数:<code><br>
+      <br>
+      <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> 
+      ArgT<span class="special">&gt;</span><br>
+      <span class="keyword">struct</span> identity_meta_func<br>
+      <span class="special">{</span> <span class="keyword">typedef</span> ArgT 
+      type<span class="special">; } </span><span class="comment">// return the 
+      argument ArgT</span><br>
+      <br>
+      </code>上面的元函数按如下方式调用:<br>
+      <br>
+      <code><span class="keyword">typename</span> identity_meta_func<span class="special">&lt;</span>ArgT<span class="special">&gt;::</span>type</code><br>
+      <br> 按照惯例, 元函数通过 typedef <tt>type</tt> 返回结果. 注意, <tt>typename</tt> 只在模板内部才需要.</td>
+  </tr>
+</table>
+<p>解析器实际使用的匹配类型取决于两个类型: 解析器的属性类型和扫描器类型. <tt>match_result</tt> 是这样一个元函数: 在给定属性类型和扫描器类型时, 返回所需的匹配类型.</p>
+<p>用法:</p>
+<pre>    <span class=keyword>typename </span><span class=identifier>match_result</span><span class=special>&lt;</span><span class=identifier>ScannerT</span><span class=special>, </span><span class=identifier>T</span><span class=special>&gt;::</span><span class=identifier>type</span></pre>
+<p>该元函数基本上回答了这样一个问题: "给定扫描器类型 <tt>ScannerT</tt> 和属性类型 <tt>T</tt>, 所需的匹配类型是什么?"[<img src="theme/note.gif" width="16" height="16"> <tt>typename</tt> 只在模板内部才需要 ].</p>
+<h2>parse 成员函数</h2>
+<p>继承自 parser 的具体子类必须拥有一个与概念接口兼容的对应成员函数 <tt>parse(...)</tt>:<br>
+</p>
+<pre><span class=identifier>    </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>ScannerT</span><span class=special>&gt;
+    </span><span class=identifier>RT
+    </span><span class=identifier>parse</span><span class=special>(</span><span class=identifier>ScannerT</span><span class=special></span> const<span class=special>&amp; </span>scan<span class=identifier></span><span class=special>) </span><span class=keyword>const</span><span class=special>;</span></pre>
+<p>其中 <tt>RT</tt> 是解析器所需的返回类型.</p>
+<h2>解析器结果</h2>
+<p>在大多数情况下, 继承自 parser 的具体子类需要拥有一个嵌套元函数 <tt>result</tt>, 在给定扫描器类型时, 返回解析器 parse 成员函数的结果 <tt>type</tt>. 该元函数的形式为:</p>
+<pre><span class=keyword>    template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>ScannerT</span><span class=special>&gt;
+    </span><span class=keyword>struct </span><span class=identifier>result
+    </span><span class=special>{
+        </span><span class=keyword>typedef </span>RT <span class=identifier></span><span class=identifier>type</span><span class=special>;
+    </span><span class=special>};</span></pre>
+<p>其中 <tt>RT</tt> 是解析器所需的返回类型. 它通常(但并非总是)依赖于模板参数 <tt>ScannerT</tt>. 例如, 给定属性类型 <tt>int</tt>, 我们可以使用 match_result 元函数:</p>
+<pre><span class=keyword>    template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>ScannerT</span><span class=special>&gt;
+    </span><span class=keyword>struct </span><span class=identifier>result
+    </span><span class=special>{
+        </span><span class=keyword>typedef typename </span><span class=identifier>match_result</span><span class=special>&lt;</span><span class=identifier>ScannerT</span><span class=special>, </span><span class="keyword">int</span><span class=special>&gt;::</span><span class=identifier>type type</span><span class=special>;
+    };</span></pre>
+<p>若解析器未提供 result 元函数, 基解析器类会提供一个默认版本.<span class=special> </span>默认版本声明为:</p>
+<pre><span class=keyword>    template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>ScannerT</span><span class=special>&gt;
+    </span><span class=keyword>struct </span><span class=identifier>result
+    </span><span class=special>{
+        </span><span class=keyword>typedef typename </span><span class=identifier>match_result</span><span class=special>&lt;</span><span class=identifier>ScannerT</span><span class=special>, </span><span class="identifier">nil_t</span><span class=special>&gt;::</span><span class=identifier>type type</span><span class=special>;
+    };</span></pre>
+<p>若没有 result 元函数, 请注意解析器的默认属性是 <tt>nil_t</tt>(即该解析器没有属性).</p>
+<h2><span class=special></span>parser_result</h2>
+<p>给定扫描器类型 <tt>ScannerT</tt> 和解析器类型 <tt>ParserT</tt>, 解析器的实际结果会是什么? <tt>parser_result</tt> 元函数为此问题提供答案.</p>
+<p>用法:</p>
+<pre>    <span class=keyword>typename </span><span class=identifier>parser_result</span><span class=special>&lt;</span><span class=identifier>ParserT, ScannerT</span><span class=special>&gt;::</span><span class=identifier>type</span></pre>
+<p>一般而言, 该元函数只是把调用转发给解析器的 result 元函数:</p>
+<pre><span class=identifier>    </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>ParserT</span><span class=special>, </span><span class=keyword>typename </span><span class=identifier>ScannerT</span><span class=special>&gt;
+    </span><span class=keyword>struct </span><span class=identifier>parser_result
+    </span><span class=special>{
+        </span><span class=keyword>typedef </span><span class=keyword>typename </span><span class=identifier>ParserT</span><span class=special>::</span><span class=keyword>template </span><span class=identifier>result</span><span class=special>&lt;</span><span class=identifier>ScannerT</span><span class=special>&gt;::</span><span class=identifier>type </span><span class=identifier>type</span><span class=special>;
+    </span><span class=special>};</span></pre>
+<p>这类似于全局函数调用成员函数. 大多数时候, 上面的用法等价于:</p>
+<pre><span class=keyword>    typename </span><span class=identifier>ParserT</span><span class=special>::</span><span class=keyword>template </span><span class=identifier>result</span><span class=special>&lt;</span><span class=identifier>ScannerT</span><span class=special>&gt;::</span><span class=identifier>type</span></pre>
+<p>然而, 不应指望这一点永远成立, 因为 parser_result 元函数可能会针对特定解析器和/或扫描器类型进行特化.</p>
+<p>parser_result 元函数使所需的 parse 成员函数的签名几乎成为规范形式:</p>
+<pre><span class=identifier>    </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>ScannerT</span><span class=special>&gt;
+    </span><span class=keyword>typename </span><span class=identifier>parser_result</span><span class=special>&lt;</span><span class=identifier>self_t, ScannerT</span><span class=special>&gt;::</span><span class=identifier>type</span><br>    <span class=identifier>parse</span><span class=special>(</span><span class=identifier>ScannerT</span><span class=special></span> const<span class=special>&amp; </span>scan<span class=identifier></span><span class=special>) </span><span class=keyword>const</span><span class=special>;</span></pre>
+<p>其中<span class=special></span> <tt>self_t</tt> 是指向该解析器的 typedef.</p>
+<h2>parser 类声明</h2>
+<pre><span class=identifier>    </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>DerivedT</span><span class=special>&gt;
+    </span><span class=keyword>struct </span><span class=identifier>parser
+    </span><span class=special>{
+        </span><span class=keyword>typedef </span><span class=identifier>DerivedT                embed_t</span><span class=special>;
+        </span><span class=keyword>typedef </span><span class=identifier>DerivedT                derived_t</span><span class=special>;
+        </span><span class=keyword>typedef </span><span class=identifier>plain_parser_category   parser_category_t</span><span class=special>;
+
+        </span><span class=keyword>template </span><span class=special>&lt;</span><span class="keyword">typename</span> ScannerT<span class=special>&gt;
+        </span><span class=keyword>struct </span><span class=identifier>result
+        </span><span class=special>{
+            </span><span class=keyword>typedef typename </span><span class=identifier>match_result</span><span class=special>&lt;</span><span class=identifier>ScannerT</span><span class=special>, </span><span class=identifier>nil_t</span><span class=special>&gt;::</span><span class=identifier>type type</span><span class=special>;
+        };
+
+        </span><span class=identifier>DerivedT</span><span class=special>&amp; </span><span class=identifier>derived</span><span class=special>();
+        </span><span class=identifier>DerivedT </span><span class=keyword>const</span><span class=special>&amp; </span><span class=identifier>derived</span><span class=special>() </span><span class=keyword>const</span><span class=special>;
+
+        </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>ActionT</span><span class=special>&gt;
+        </span><span class=identifier>action</span><span class=special>&lt;</span><span class=identifier>DerivedT</span><span class=special>, </span><span class=identifier>ActionT</span><span class=special>&gt;
+        </span><span class=keyword>operator</span><span class=special>[](</span><span class=identifier>ActionT </span><span class=keyword>const</span><span class=special>&amp; </span><span class=identifier>actor</span><span class=special>) </span><span class=keyword>const</span><span class=special>;
+    };</span></pre>
+<table border="0">
+  <tr> 
+    <td width="10"></td>
+    <td width="30"><a href="../index.html"><img src="theme/u_arr.gif" border="0"></a></td>
+    <td width="30"><a href="semantic_actions.html"><img src="theme/l_arr.gif" border="0"></a></td>
+    <td width="30"><a href="indepth_the_scanner.html"><img src="theme/r_arr.gif" border="0"></a></td>
+  </tr>
+</table>
+<br>
+<hr size="1">
+<p class="copyright">Copyright © 1998-2003 Joel de Guzman<br>
+  <br>
+<font size="2">使用、修改与分发受 Boost 软件许可 1.0 版(Boost Software License, Version 1.0)约束. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt) </font> </p>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>返回错误码</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Fiber">
+<link rel="up" href="../callbacks.html" title="将纤程与异步回调集成">
+<link rel="prev" href="overview.html" title="概述">
+<link rel="next" href="success_or_exception.html" title="成功或异常">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="overview.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../callbacks.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="success_or_exception.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="fiber.callbacks.return_errorcode"></a><a class="link" href="return_errorcode.html" title="返回错误码">返回错误码</a>
+</h3></div></div></div>
+<p> <code class="computeroutput"><span class="identifier">AsyncAPI</span><span class="special">::</span><span class="identifier">init_write</span><span class="special">()</span></code> 回调只传递一个 <code class="computeroutput"><span class="identifier">errorcode</span></code>. 如果我们只想让阻塞式封装返回该 <code class="computeroutput"><span class="identifier">errorcode</span></code>, 那么这只是 <a class="link" href="../synchronization/futures/promise.html#class_promise"><code class="computeroutput">promise&lt;&gt;</code></a> 和 <a class="link" href="../synchronization/futures/future.html#class_future"><code class="computeroutput">future&lt;&gt;</code></a> 极其简单直接的用法:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">AsyncAPI</span><span class="special">::</span><span class="identifier">errorcode</span> <span class="identifier">write_ec</span><span class="special">(</span> <span class="identifier">AsyncAPI</span> <span class="special">&amp;</span> <span class="identifier">api</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">data</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">promise</span><span class="special">&lt;</span> <span class="identifier">AsyncAPI</span><span class="special">::</span><span class="identifier">errorcode</span> <span class="special">&gt;</span> <span class="identifier">promise</span><span class="special">;</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">future</span><span class="special">&lt;</span> <span class="identifier">AsyncAPI</span><span class="special">::</span><span class="identifier">errorcode</span> <span class="special">&gt;</span> <span class="identifier">future</span><span class="special">(</span> <span class="identifier">promise</span><span class="special">.</span><span class="identifier">get_future</span><span class="special">()</span> <span class="special">);</span>
+    <span class="comment">// In general, even though we block waiting for future::get() and therefore</span>
+    <span class="comment">// won't destroy 'promise' until promise::set_value() has been called, we</span>
+    <span class="comment">// are advised that with threads it's possible for ~promise() to be</span>
+    <span class="comment">// entered before promise::set_value() has returned. While that shouldn't</span>
+    <span class="comment">// happen with fibers::promise, a robust way to deal with the lifespan</span>
+    <span class="comment">// issue is to bind 'promise' into our lambda. Since promise is move-only,</span>
+    <span class="comment">// use initialization capture.</span>
+<span class="preprocessor">#if</span> <span class="special">!</span> <span class="identifier">defined</span><span class="special">(</span><span class="identifier">BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES</span><span class="special">)</span>
+    <span class="identifier">api</span><span class="special">.</span><span class="identifier">init_write</span><span class="special">(</span>
+        <span class="identifier">data</span><span class="special">,</span>
+        <span class="special">[</span><span class="identifier">promise</span><span class="special">=</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span> <span class="identifier">promise</span><span class="special">)](</span> <span class="identifier">AsyncAPI</span><span class="special">::</span><span class="identifier">errorcode</span> <span class="identifier">ec</span><span class="special">)</span> <span class="keyword">mutable</span> <span class="special">{</span>
+                            <span class="identifier">promise</span><span class="special">.</span><span class="identifier">set_value</span><span class="special">(</span> <span class="identifier">ec</span><span class="special">);</span>
+                  <span class="special">});</span>
+
+<span class="preprocessor">#else</span> <span class="comment">// defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)</span>
+    <span class="identifier">api</span><span class="special">.</span><span class="identifier">init_write</span><span class="special">(</span>
+        <span class="identifier">data</span><span class="special">,</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">bind</span><span class="special">([](</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">promise</span><span class="special">&lt;</span> <span class="identifier">AsyncAPI</span><span class="special">::</span><span class="identifier">errorcode</span> <span class="special">&gt;</span> <span class="special">&amp;</span> <span class="identifier">promise</span><span class="special">,</span>
+                     <span class="identifier">AsyncAPI</span><span class="special">::</span><span class="identifier">errorcode</span> <span class="identifier">ec</span><span class="special">)</span> <span class="special">{</span>
+            <span class="identifier">promise</span><span class="special">.</span><span class="identifier">set_value</span><span class="special">(</span> <span class="identifier">ec</span><span class="special">);</span>
+        <span class="special">},</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span> <span class="identifier">promise</span><span class="special">),</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">placeholders</span><span class="special">::</span><span class="identifier">_1</span><span class="special">)</span> <span class="special">);</span>
+<span class="preprocessor">#endif</span> <span class="comment">// BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES</span>
+
+    <span class="keyword">return</span> <span class="identifier">future</span><span class="special">.</span><span class="identifier">get</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>我们需要做的只是:</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">实例化一个类型正确的 <code class="computeroutput"><span class="identifier">promise</span><span class="special">&lt;&gt;</span></code>.</li>
+<li class="listitem">获取其 <code class="computeroutput"><span class="identifier">future</span><span class="special">&lt;&gt;</span></code>.</li>
+<li class="listitem">安排回调去调用 <a class="link" href="../synchronization/futures/promise.html#promise_set_value"><code class="computeroutput">promise::set_value()</code></a>.</li>
+<li class="listitem">在 <a class="link" href="../synchronization/futures/future.html#future_get"><code class="computeroutput">future::get()</code></a> 上阻塞等待.</li>
+</ol></div>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>即使回调在与发起纤程所在线程不同的线程上被调用, 这种恢复挂起纤程的技巧也能奏效. 实际上, <a href="../../../../examples/adapt_callbacks.cpp" target="_top">示例程序</a>的哑 <code class="computeroutput"><span class="identifier">AsyncAPI</span></code> 实现正说明了这一点: 它通过启动一个短暂休眠后调用相关回调的新线程来模拟异步 I/O.</p></td></tr>
+</table></div>
+</div>
+<div class="copyright-footer">版权所有 © 2013 Oliver Kowalke<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="overview.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../callbacks.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="success_or_exception.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.6: http://docutils.sourceforge.net/" />
+<title>Parallel BGL Parallel BGL 进程组</title>
+<link rel="stylesheet" href="../../../../rst.css" type="text/css" />
+</head>
+<body>
+<div class="document" id="logo-parallel-bgl-process-groups">
+<h1 class="title"><a class="reference external" href="http://www.osl.iu.edu/research/pbgl"><img align="middle" alt="Parallel BGL" class="align-middle" src="pbgl-logo.png" /></a> Parallel BGL 进程组</h1>
+
+<!-- Copyright (C) 2004-2008 The Trustees of Indiana University.
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt) -->
+<div class="contents topic" id="contents">
+<p class="topic-title first">目录</p>
+<ul class="simple">
+<li><a class="reference internal" href="#introduction" id="id1">引言</a></li>
+<li><a class="reference internal" href="#communication-model" id="id2">通信模型</a><ul>
+<li><a class="reference internal" href="#distributed-data-structures" id="id3">分布式数据结构</a></li>
+<li><a class="reference internal" href="#asynchronous-receives" id="id4">异步接收</a></li>
+<li><a class="reference internal" href="#out-of-band-messaging" id="id5">带外消息传递</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#reference" id="id6">参考</a><ul>
+<li><a class="reference internal" href="#process-group-constructors" id="id7">进程组构造函数</a></li>
+<li><a class="reference internal" href="#triggers" id="id8">触发器</a></li>
+<li><a class="reference internal" href="#helper-operations" id="id9">辅助操作</a></li>
+<li><a class="reference internal" href="#process-query" id="id10">进程查询</a></li>
+<li><a class="reference internal" href="#message-transmission" id="id11">消息传输</a></li>
+<li><a class="reference internal" href="#synchronization" id="id12">同步</a></li>
+<li><a class="reference internal" href="#out-of-band-communication" id="id13">带外通信</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="introduction">
+<h1><a class="toc-backref" href="#id1">引言</a></h1>
+<p>进程组是对一组协同解决同一问题的通信进程的抽象. 进程组包含以下设施: 标识该组内的进程, 在该组内的进程之间发送与接收消息, 以及执行同时涉及组内所有进程的集合通信.</p>
+</div>
+<div class="section" id="communication-model">
+<h1><a class="toc-backref" href="#id2">通信模型</a></h1>
+<p>进程组基于整体同步并行 (Bulk Synchronous Parallel, BSP) 计算模型的一个扩展版本. BSP 模型中的并行计算被组织成 <em>超步</em>, 每个超步由一个计算阶段与其后的一个通信阶段组成. 在计算阶段, 进程组中的所有进程只在本地数据上工作, 进程之间没有通信. 在通信阶段, 所有进程相互交换消息. 在某个超步的通信阶段发送的消息将在下一个超步中被接收.</p>
+<p>Parallel BGL 中超步之间的边界对应于 <tt class="docutils literal"><span class="pre">synchronize</span></tt> 操作. 每当一个进程完成了其本地计算阶段并发送了该超步所需的所有消息, 它就在进程组上调用 <tt class="docutils literal"><span class="pre">synchronize</span></tt> 操作. 一旦进程组中的所有进程都进入了 <tt class="docutils literal"><span class="pre">synchronize</span></tt>, 它们就交换消息, 然后继续下一个超步.</p>
+<p>Parallel BGL 大幅放宽了 BSP 模型, 以提供一种更自然的编程模型, 同时相比严格的 BSP 模型还带来一些性能上的好处. 最主要的扩展是能够在同一超步内 "异步" 接收消息, 以释放消息缓冲区或响应紧急的信息请求. 对于特别非结构化的计算, 发送消息并立即获得回复的能力可以简化许多原本需要拆分为两个独立超步的计算. 此外, Parallel BGL 对 BSP 模型的增强还包括对多个分布式数据结构的支持: 每个数据结构被赋予不同的通信空间, 但它们的消息将全部并发同步.</p>
+<div class="section" id="distributed-data-structures">
+<h2><a class="toc-backref" href="#id3">分布式数据结构</a></h2>
+<p>使用 Parallel BGL 的典型计算涉及多个协同工作的分布式数据结构. 例如, 一次简单的广度优先搜索涉及: 包含图本身的分布式图数据结构、管理图中遍历的分布式队列, 以及跟踪搜索中哪些顶点已被访问的分布式属性映射.</p>
+<p>Parallel BGL 管理这些分布式数据结构的方式是: 允许每个数据结构把自身附加 (attach) 到进程组上. 当一个分布式数据结构附加到进程组时, 它会获得进程组自己的一个副本, 使该分布式数据结构能够在不与其他分布式数据结构的通信发生冲突的情况下进行通信. 当进程组被同步时, 附加到该进程组的所有分布式数据结构都会被自动同步, 从而使一次计算中的所有分布式数据结构保持同步.</p>
+<p>分布式数据结构通过创建进程组的一个副本并把 <tt class="docutils literal"><span class="pre">attach_distributed_object</span></tt> 标志传给进程组构造函数, 把自身附加到进程组上. 只要该进程组副本存在, 该分布式数据结构就附加在该进程组上. 因此, 大多数分布式数据结构都把进程组的一个副本保存为成员数据, 并用 <tt class="docutils literal"><span class="pre">attach_distributed_object</span></tt> 构造该成员, 例如:</p>
+<pre class="literal-block">
+template&lt;typename ProcessGroup&gt;
+struct distributed_data_structure
+{
+  explicit distributed_data_structure(const ProcessGroup&amp; pg)
+    : process_group(pg, boost::parallel::attach_distributed_object())
+  { }
+
+private:
+  ProcessGroup process_group;
+};
+</pre>
+</div>
+<div class="section" id="asynchronous-receives">
+<h2><a class="toc-backref" href="#id4">异步接收</a></h2>
+<p>Parallel BGL 中的分布式数据结构可以在 BSP 超步结束之前 "异步" 接收并处理消息. 只要进程处于进程组操作之内, 消息就可以在任何时刻被接收, 消息接收的调度完全由进程组管理.</p>
+<p>分布式数据结构通过 "触发器" (trigger) 接收消息. 触发器是负责处理已接收消息的函数对象. 每个触发器用特定的消息标签 (一个整数) 与该消息预期包含的数据类型, 通过进程组的 <tt class="docutils literal"><span class="pre">trigger</span></tt> 方法注册. 每当带有该标签的消息变为可用时, 进程组就会用消息来源、消息标签、消息中包含的数据以及消息的 "上下文" 来调用该触发器.</p>
+<p>大多数触发器没有返回值, 尽管触发器向来源进程发回消息的情况很常见. 在某些触发器以立即回复一个值为目的的情形中, 触发器应当用 <tt class="docutils literal"><span class="pre">trigger_with_reply</span></tt> 方法注册, 并应返回将回传给调用者的值. <tt class="docutils literal"><span class="pre">trigger_with_reply</span></tt> 机制只在结合带外消息传递 (下一节讨论) 时才有用.</p>
+</div>
+<div class="section" id="out-of-band-messaging">
+<h2><a class="toc-backref" href="#id5">带外消息传递</a></h2>
+<p>Parallel BGL 发送的大多数消息通过普通的发送操作发出, 在下一个超步中被接收, 或者某些情况下被触发器 "提前" 接收. 这些消息对时间不敏感, 因此进程组在处理它们时随时投递.</p>
+<p>然而, 有些消息需要立即响应. 例如, 如果一个进程需要确定与另一进程拥有的某个顶点相关联的当前值, 第一个进程必须向第二个进程发送请求并阻塞等待响应. 对于这类消息, Parallel BGL 的进程组提供带外消息传递机制. 带外消息被立即传输, 其优先级远高于其他消息. 带外消息的发送可以与一个接收操作耦合, 该操作一直等待, 直到远程进程已接收该消息并发出回复. 例如, 在下面的代码中, 该进程通过带外消息把包含字符串 <tt class="docutils literal"><span class="pre">name</span></tt> 的消息以标签 <tt class="docutils literal"><span class="pre">msg_get_descriptor_by_name</span></tt> 发送给进程 <tt class="docutils literal"><span class="pre">owner</span></tt>. 该消息的接收者会立即通过触发器投递消息, 触发器返回结果值——一个 <tt class="docutils literal"><span class="pre">vertex_descriptor</span></tt>——它将被传回发起通信的进程. 整个通信立即完成, 处于当前超步之内.</p>
+<pre class="literal-block">
+std::string name;
+vertex_descriptor descriptor;
+send_oob_with_reply(process_group, owner, msg_get_descriptor_by_name,
+                    name, descriptor);
+</pre>
+</div>
+</div>
+<div class="section" id="reference">
+<h1><a class="toc-backref" href="#id6">参考</a></h1>
+<p>Parallel BGL 进程组规定了一个可由各种通信子系统实现的接口. 在本参考章节中, 我们使用占位类型 <tt class="docutils literal"><span class="pre">ProcessGroup</span></tt> 来代表现有的各种进程组实现. 目前该进程组接口只有一个实现:</p>
+<blockquote>
+<ul class="simple">
+<li><a class="reference external" href="mpi_bsp_process_group.html">MPI BSP 进程组</a></li>
+</ul>
+</blockquote>
+<pre class="literal-block">
+enum trigger_receive_context {
+  trc_none,
+  trc_in_synchronization,
+  trc_early_receive,
+  trc_out_of_band
+};
+
+class ProcessGroup
+{
+  // Process group constructors
+  ProcessGroup();
+  ProcessGroup(const ProcessGroup&amp;, boost::parallel::attach_distributed_object);
+
+  // Triggers
+  template&lt;typename Type, typename Handler&gt;
+    void trigger(int tag, const Handler&amp; handler);
+
+  template&lt;typename Type, typename Handler&gt;
+    void trigger_with_reply(int tag, const Handler&amp; handler);
+
+  trigger_receive_context trigger_context() const;
+
+  // Helper operations
+  void poll();
+  ProcessGroup base() const;
+};
+
+// Process query
+int process_id(const ProcessGroup&amp;);
+int num_processes(const ProcessGroup&amp;);
+
+// Message transmission
+template&lt;typename T&gt;
+  void send(const ProcessGroup&amp; pg, int dest, int tag, const T&amp; value);
+
+template&lt;typename T&gt;
+  void receive(const ProcessGroup&amp; pg, int source, int tag, T&amp; value);
+
+optional&lt;std::pair&lt;int, int&gt; &gt; probe(const ProcessGroup&amp; pg);
+
+// Synchronization
+void synchronize(const ProcessGroup&amp; pg);
+
+// Out-of-band communication
+template&lt;typename T&gt;
+  void send_oob(const ProcessGroup&amp; pg, int dest, int tag, const T&amp; value);
+
+template&lt;typename T, typename U&gt;
+  void
+  send_oob_with_reply(const ProcessGroup&amp; pg, int dest, int
+                      tag, const T&amp; send_value, U&amp; receive_value);
+
+template&lt;typename T&gt;
+  void receive_oob(const ProcessGroup&amp; pg, int source, int tag, T&amp; value);
+</pre>
+<div class="section" id="process-group-constructors">
+<h2><a class="toc-backref" href="#id7">进程组构造函数</a></h2>
+<pre class="literal-block">
+ProcessGroup();
+</pre>
+<p>构造一个新的进程组, 其通信空间不同于任何其他进程组.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+ProcessGroup(const ProcessGroup&amp; pg, boost::parallel::attach_distributed_object);
+</pre>
+<p>把一个新的分布式数据结构附加到进程组 <tt class="docutils literal"><span class="pre">pg</span></tt> 上. 由此得到的进程组可用于该新分布式数据结构内部的通信. 当新构造的进程组最终被销毁时, 该分布式数据结构即从进程组上解除附加.</p>
+</div>
+<div class="section" id="triggers">
+<h2><a class="toc-backref" href="#id8">触发器</a></h2>
+<pre class="literal-block">
+template&lt;typename Type, typename Handler&gt;
+  void trigger(int tag, const Handler&amp; handler);
+</pre>
+<p>用给定的进程组注册一个触发器. 该触发器将监视带有给定 <tt class="docutils literal"><span class="pre">tag</span></tt> 的消息. 当这样的消息可用时, 它将被接收为 <tt class="docutils literal"><span class="pre">Type</span></tt> 类型的值, 并且函数对象 <tt class="docutils literal"><span class="pre">handler</span></tt> 将以四个参数被调用:</p>
+<dl class="docutils">
+<dt>source</dt>
+<dd>来源进程的秩 (一个 <tt class="docutils literal"><span class="pre">int</span></tt>)</dd>
+<dt>tag</dt>
+<dd>用于发送消息的标签 (也是一个 <tt class="docutils literal"><span class="pre">int</span></tt>)</dd>
+<dt>数据:</dt>
+<dd>随消息一起传输的数据. 该数据的类型为注册触发器时所指定的类型.</dd>
+<dt>上下文:</dt>
+<dd>触发器执行时所处的上下文. 它是一个 <tt class="docutils literal"><span class="pre">trigger_receive_context</span></tt> 类型的值, 标明触发器是在同步期间执行, 还是为响应 "提前" 接收而异步执行 (通常是为了释放通信缓冲区), 或是为响应 "带外" 消息而执行.</dd>
+</dl>
+<p>触发器只能由通过附加分布式数据结构而产生的进程组注册. 触发器可以因普通发送操作或带外发送操作而被调用. 还有一个用于在常见情形下定义触发器的 <a class="reference external" href="simple_trigger.html">简单触发器接口</a>.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template&lt;typename Type, typename Handler&gt;
+  void trigger_with_reply(int tag, const Handler&amp; handler);
+</pre>
+<p>与 <tt class="docutils literal"><span class="pre">trigger</span></tt> 方法类似, 用给定的进程组注册一个触发器. 该触发器将监视带有给定 <tt class="docutils literal"><span class="pre">tag</span></tt> 的消息. 当这样的消息可用时, 它将被接收为 <tt class="docutils literal"><span class="pre">Type</span></tt> 类型的值, 且 <tt class="docutils literal"><span class="pre">handler</span></tt> 将被调用, 与普通触发器一样. 但是, 用 <tt class="docutils literal"><span class="pre">trigger_with_reply</span></tt> 注册的触发器必须返回一个值, 该值将被立即回传给引发此触发器的发送操作所在的进程. 因此, <tt class="docutils literal"><span class="pre">trigger_with_reply</span></tt> 只应用于需要立即响应的消息. 这些触发器只能通过等待回复的带外发送 (经由 <tt class="docutils literal"><span class="pre">send_oob_with_reply</span></tt>) 来调用. 还有一个用于在常见情形下定义触发器的 <a class="reference external" href="simple_trigger.html">简单触发器接口</a>.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+trigger_receive_context trigger_context() const;
+</pre>
+<p>获取进程组相对于触发器调用的当前上下文. 当为 <tt class="docutils literal"><span class="pre">trc_none</span></tt> 时, 进程组当前未调用任何触发器. 否则, 该值描述当前正在执行的触发器是在什么上下文中被调用的.</p>
+</div>
+<div class="section" id="helper-operations">
+<h2><a class="toc-backref" href="#id9">辅助操作</a></h2>
+<pre class="literal-block">
+void poll();
+</pre>
+<p>允许进程组接收任何传入的消息, 并经由触发器处理它们. 如果你有一个长时间运行且不调用进程组任何通信例程的计算, 应当偶尔调用 <tt class="docutils literal"><span class="pre">poll</span></tt>, 以便让传入的消息得到处理.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+ProcessGroup base() const;
+</pre>
+<p>获取此进程组的 "基础" 进程组, 它是底层进程组的一个副本, 不引用任何特定的分布式数据结构.</p>
+</div>
+<div class="section" id="process-query">
+<h2><a class="toc-backref" href="#id10">进程查询</a></h2>
+<pre class="literal-block">
+int process_id(const ProcessGroup&amp; pg);
+</pre>
+<p>获取调用进程在进程组内的 ID (或 "秩"). 进程 ID 是 [0, <tt class="docutils literal"><span class="pre">num_processes(pg)</span></tt>) 范围内的值, 唯一地标识该进程. 进程 ID 可用于发起与另一进程的通信.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+int num_processes(const ProcessGroup&amp; pg);
+</pre>
+<p>返回进程组内的进程数量.</p>
+</div>
+<div class="section" id="message-transmission">
+<h2><a class="toc-backref" href="#id11">消息传输</a></h2>
+<pre class="literal-block">
+template&lt;typename T&gt;
+  void send(const ProcessGroup&amp; pg, int dest, int tag, const T&amp; value);
+</pre>
+<p>把带有给定 <tt class="docutils literal"><span class="pre">tag</span></tt>、携带给定 <tt class="docutils literal"><span class="pre">value</span></tt> 的消息发送给给定进程组中 ID 为 <tt class="docutils literal"><span class="pre">dest</span></tt> 的进程. 所有消息发送都是非阻塞的, 即此发送操作不会阻塞等待通信完成. 无法保证消息何时被接收, 唯一的保证是: 在超步结束时集合调用 <tt class="docutils literal"><span class="pre">synchronize</span></tt> 时, 目标进程可以取用该消息.</p>
+<p>任何类型的值都可以经由 <tt class="docutils literal"><span class="pre">send</span></tt> 传输, 只要它提供使用 Boost.Serialization 库进行序列化所需的适当功能.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template&lt;typename T&gt;
+  void receive(const ProcessGroup&amp; pg, int source, int tag, T&amp; value);
+</pre>
+<p>接收进程 <tt class="docutils literal"><span class="pre">source</span></tt> 发来的带有给定 <tt class="docutils literal"><span class="pre">tag</span></tt> 的消息, 并用消息负载更新 <tt class="docutils literal"><span class="pre">value</span></tt>. 此接收操作只能接收在前一超步中经由 <tt class="docutils literal"><span class="pre">send</span></tt> 操作发送的消息. 如果在调用 <tt class="docutils literal"><span class="pre">receive</span></tt> 时没有这样的消息可用, 则程序是不合规范的.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+optional&lt;std::pair&lt;int, int&gt; &gt; probe(const ProcessGroup&amp; pg);
+</pre>
+<p>判断是否有消息可用. 探测 (probe) 操作检查在前一超步中发送但尚未被接收的任何消息. 如果存在这样的消息, <tt class="docutils literal"><span class="pre">probe</span></tt> 返回一个描述该消息的 (来源, 标签) 对. 否则, <tt class="docutils literal"><span class="pre">probe</span></tt> 将返回一个空的 <tt class="docutils literal"><span class="pre">boost::optional</span></tt>.</p>
+<p> <tt class="docutils literal"><span class="pre">probe</span></tt> 的一个典型用法是在超步开始时不断探测消息, 接收并处理这些消息, 直到没有剩余消息.</p>
+</div>
+<div class="section" id="synchronization">
+<h2><a class="toc-backref" href="#id12">同步</a></h2>
+<pre class="literal-block">
+void synchronize(const ProcessGroup&amp; pg);
+</pre>
+<p> <tt class="docutils literal"><span class="pre">synchronize</span></tt> 函数是一个集合操作, 必须由进程组内的所有进程调用. 对 <tt class="docutils literal"><span class="pre">synchronize</span></tt> 的调用标志着并行计算中一个超步的结束. 在超步结束前发送的所有消息都会被接收进消息缓冲区, 程序可以在下一个超步中处理它们. 在所有进程都进入该函数并交换消息之前, 没有任何进程会离开 <tt class="docutils literal"><span class="pre">synchronize</span></tt> 函数, 因此所有进程始终处于同一超步.</p>
+</div>
+<div class="section" id="out-of-band-communication">
+<h2><a class="toc-backref" href="#id13">带外通信</a></h2>
+<pre class="literal-block">
+template&lt;typename T&gt;
+  void send_oob(const ProcessGroup&amp; pg, int dest, int tag, const T&amp; value);
+</pre>
+<p>发送一条带外消息. 此带外发送操作的行为类似普通 <tt class="docutils literal"><span class="pre">send</span></tt> 操作, 区别在于带外消息通过高优先级通道立即投递.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template&lt;typename T, typename U&gt;
+  void
+  send_oob_with_reply(const ProcessGroup&amp; pg, int dest, int
+                      tag, const T&amp; send_value, U&amp; receive_value);
+</pre>
+<p>发送一条带外消息并等待回复. <tt class="docutils literal"><span class="pre">send_oob_with_reply</span></tt> 函数只能使用与用 <tt class="docutils literal"><span class="pre">trigger_with_reply</span></tt> 注册的触发器相对应的消息标签来调用. 此操作将立即发送消息 (通过高优先级的带外通道), 然后等待远程进程发出回复. 回复中的数据存储到 <tt class="docutils literal"><span class="pre">receive_value</span></tt> 中.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template&lt;typename T&gt;
+  void receive_oob(const ProcessGroup&amp; pg, int source, int tag, T&amp; value);
+</pre>
+<p>接收具有给定 <tt class="docutils literal"><span class="pre">source</span></tt> 与 <tt class="docutils literal"><span class="pre">tag</span></tt> 的带外消息. 与普通 <tt class="docutils literal"><span class="pre">receive</span></tt> 操作一样, 如果没有与来源和标签匹配的消息可用, 调用 <tt class="docutils literal"><span class="pre">receive_oob</span></tt> 是错误的. 此例程很少使用; 在大多数情况下, 应使用 <tt class="docutils literal"><span class="pre">send_oob_with_reply</span></tt> 来执行带回复的即时发送.</p>
+<hr class="docutils" />
+<p>版权所有 (C) 2007 Douglas Gregor</p>
+<p>版权所有 (C) 2007 Matthias Troyer</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr class="footer" /> 生成时间: 2009-05-31 00:22 UTC. 由 <a class="reference external" href="http://docutils.sourceforge.net/">Docutils</a> 依据 <a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> 源生成.</div>
+</body>
+</html>

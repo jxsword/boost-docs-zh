@@ -1,0 +1,166 @@
+<!doctype HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!--
+(C) Copyright 2002-10 Robert Ramey - http://www.rrsd.com . 
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt)
+-->
+<head>
+<meta http-equiv="Content-Type" content="text/html; UTF-8">
+<link rel="stylesheet" type="text/css" href="../../../boost.css">
+<link rel="stylesheet" type="text/css" href="style.css">
+<title>Serialization - 档案详解</title>
+</head>
+<body link="#0000ff" vlink="#800080">
+<table border="0" cellpadding="7" cellspacing="0" width="100%" summary="header">
+  <tr> 
+    <td valign="top" width="300"> 
+      <h3><a href="../../../index.htm"><img height="86" width="277" alt="C++ Boost" src="../../../boost.png" border="0"></a></h3>
+    </td>
+    <td valign="top"> 
+      <h1 align="center">序列化</h1>
+      <h2 align="center">档案类参考</h2>
+    </td>
+  </tr>
+</table>
+<hr>
+<dl class="page-index">
+  <dt><a href="#trivial"> 简单档案 </a>
+  <dt><a href="#implementation"> 更实用的档案类 </a>
+  <dt><a href="#usage"> 用法 </a>
+  <dt><a href="#testing"> 测试 </a>
+  <dt><a href="#polymorphic"> 多态档案 </a>
+</dl>
+
+<h3><a name="trivial"> 简单档案 </a></h3> <a href="archives.html"><strong> Archive </strong></a> 概念规定了一个类为实现 <a href="serialization.html"><strong> Serializable </strong></a> 类型序列化而必须实现的函数. 我们的讨论将聚焦于用于保存的档案, 因为其层次结构与用于加载数据的档案完全类似. <h4>最低要求</h4> 建模 <a href="archives.html"><strong> Archive </strong></a> 概念的最简单的类, 其样子如下: <pre><code>
+#include &lt;cstddef&gt; // std::size_t
+//////////////////////////////////////////////////////////////
+// class trivial_oarchive
+class trivial_oarchive {
+public:
+    //////////////////////////////////////////////////////////
+    // public interface used by programs that use the
+    // serialization library
+    typedef boost::mpl::bool_&lt;true&gt; is_saving; 
+    typedef boost::mpl::bool_&lt;false&gt; is_loading;
+    template&lt;class T&gt; void register_type(){}
+    template&lt;class T&gt; trivial_oarchive &amp; operator&lt;&lt;(const T &amp; t){
+        return *this;
+    }
+    template&lt;class T&gt; trivial_oarchive &amp; operator&amp;(const T &amp; t){
+        return *this &lt;&lt; t;
+    }
+    void save_binary(void *address, std::size_t count){};
+};
+</code></pre> 最简单的输入档案类与上面的类似. 在下面的讨论中, 只讨论输出档案. 输入档案与输出档案完全对称. <p>该档案可以用任何实现了 <a href="serialization.html"><strong> Serializable </strong></a> 概念的类型编译并执行. 示例参见 <a href="../example/demo_trivial_archive.cpp" target="demo_trivial_archive">
+<code style="white-space: normal">demo_trivial_archive.cpp</code></a>. 当然, 这个程序按原样不会产生任何输出. 但它提供了一个简单类的起点, 可用于记录格式化输出. 参见 <a href="simple_log.html"> 简单日志档案 </a> 的实现以了解这是如何做到的.<h3><a name="implementation"> 更实用的档案类 </a></h3> 上面这个示例就其本身而言没有问题, 但它没有实现指针序列化、类版本控制等实用特性. 本库实现了一个适合多种用途的全功能档案类家族. <p>我们的档案已被分解为一棵类树, 以尽量减少代码重复. 这显示在随附的 <a target="class_diagram" href="class_diagram.html"> 类图 </a> 中. 任何满足以下要求的类都能融入这个层次结构, 并实现我们所要求的全部特性. 从基类 <a href="../../../boost/archive/detail/common_oarchive.hpp" target="common_oarchive_hpp"> common_oarchive.hpp </a> 派生可以提供我们想要的、而上面的 trivial_oarchive 所缺失的全部特性. <pre><code>
+<a href="../../../boost/archive/detail/common_oarchive.hpp" target="common_oarchive_hpp">
+#include &lt;cstddef&gt; // std::size_t
+#include &lt;boost/archive/detail/common_oarchive.hpp&gt;
+</a>
+/////////////////////////////////////////////////////////////////////////
+// class complete_oarchive
+class complete_oarchive : 
+    public boost::archive::detail::common_oarchive&lt;complete_oarchive&gt;
+{
+    // permit serialization system privileged access to permit
+    // implementation of inline templates for maximum speed.
+    friend class boost::archive::save_access;
+
+    // member template for saving primitive types.
+    // Specialize for any types/templates that require special treatment
+    template&lt;class T&gt;
+    void save(T &amp; t);
+
+public:
+    //////////////////////////////////////////////////////////
+    // public interface used by programs that use the
+    // serialization library
+
+    // archives are expected to support this function
+    void save_binary(void *address, std::size_t count);
+};
+</code></pre> 只要给出 <code style="white-space: normal">save</code> 和 <code style="white-space: normal">save_binary</code> 的适当定义, 任何使用序列化的程序在符合标准的 C++ 编译器上都应能以此档案类编译并运行.<h4>可选重写</h4> <code style="white-space: normal">detail::common_oarchive</code> 类包含许多函数, 序列化库的各个部分会用它们来帮助把档案渲染成特定形式. <dl>
+
+<dt><h4><code>void save_start(char const *)</code></h4></dt>
+<dd>
+<strong> 默认 </strong>: 什么也不做. <br>
+<strong> 目的 </strong>: 向档案注入/读取对象名. XML 档案用它来在数据之前注入 "&lt;name&gt;".</dd>
+<p>
+
+<dt><h4><code>void save_end(char const *)</code></h4></dt>
+<dd>
+<strong> 默认 </strong>: 什么也不做. <br>
+<strong> 目的 </strong>: 向档案注入/读取对象名. XML 档案用它来在数据之后注入 "&lt;/name&gt;".<dd>
+</dd>
+<p>
+<dt><h4><code>void end_preamble()</code></h4></dt>
+<dd>
+<strong> 默认 </strong>: 什么也不做. <br>
+<strong> 目的 </strong>: 在<strong>每次</strong>保存用户数据时被调用. 保存档案簿记数据时不被调用. XML 档案用它来确定何时在 XML 头的末尾注入 "&gt;" 字符. XML 输出档案维护自己的内部标志, 表明当前写出的数据是头数据. 写入对象起始标签时该内部标志被复位. 当调用 <code style="white-space: normal">void end_preamble()</code> 且该内部标志已设置时, 会向输出追加一个 "&gt;" 字符, 并复位该内部标志. <code style="white-space: normal">void end_preamble()</code> 的默认实现是空操作 (no-op) , 从而允许在不使用它的档案类中将其优化掉.</dd>
+<p>
+<dt><h4><code>
+template&lt;class T&gt;
+void save_override(T &amp; t, int);
+</code></h4></dt>
+<dd>
+<strong> 默认 </strong>: 调用 <code style="white-space: normal">archive::save(Archive &amp; ar, t)</code><br> 这是进入序列化库的主要入口. <br>
+<strong> 目的 </strong>: 当数据需要以某种特殊方式写入档案时, 可以对此进行特化. 例如, XML 档案通过为名值对重写此函数模板来实现对名值对的特殊处理. 这会取代默认的名值对处理 (默认处理只是丢弃名称) , 换成适合 XML 的处理方式, 即写出带有正确对象名的 XML 标签起始部分.</dd>
+
+</dl>
+
+<h4>序列化库使用的类型</h4> 序列化库向序列化档案注入簿记数据. 这些数据包括对象 id、版本号、类名等. 这些对象各自被包在一个 wrapper 中, 使档案类可以重写 <code style="white-space: normal">void save_override(T &amp; t, int);</code> 的实现. 例如, 在 XML 档案中, 该类型的重写会把等于 23 的 object_id 渲染为 "object_id=_23". 下表列出了序列化库内部使用的、定义于 <code style="white-space: normal">boost::archive namespace</code> 中的类型: <p>
+<table border>
+<tr><th align=left>类型</th><th align=left><code style="white-space: normal">default<br>serialized as</code></th>
+<tr><td><code style="white-space: normal">version_type</code></td><td><code style="white-space: normal">unsigned int</code></td>             
+<tr><td><code style="white-space: normal">object_id_type</code></td><td><code style="white-space: normal">unsigned int</code></td>   
+<tr><td><code style="white-space: normal">object_id_reference_type</code></td><td><code style="white-space: normal">unsigned int</code></td>   
+<tr><td><code style="white-space: normal">class_id_type</code></td><td><code style="white-space: normal">int</code></td>   
+<tr><td><code style="white-space: normal">class_id_optional_type</code></td><td><code style="white-space: normal">nothing</code></td>   
+<tr><td><code style="white-space: normal">class_id_reference_type</code></td><td><code style="white-space: normal">int</code></td>   
+<tr><td><code style="white-space: normal">tracking_type</code></td><td><code style="white-space: normal">bool</code></td>   
+<tr><td><code style="white-space: normal">classname_type</code></td><td><code style="white-space: normal">string</code></td>   
+</table>
+<p>所有这些类型都有以原始类型定义的默认序列化, 因此不要求为这些类型定义 <code style="white-space: normal">save_override</code>.<p>这些类型定义于 <a href="../../../boost/archive/basic_archive.hpp" target="basic_archive_hpp"><code style="white-space: normal">basic_archive.hpp</code></a>. 所有这些类型都被指定了 <a target="detail" href="traits.html#level"> 实现级别 </a> 为 <code style="white-space: normal">primitive</code>, 并可转换为 int、unsigned int 等类型, 因此它们有默认实现. <a href="../../../boost/archive/basic_text_iarchive.hpp" target="basic_text_iarchive_hpp"><code style="white-space: normal">basic_text_iarchive.hpp</code></a> 说明了这一点, 它依赖于默认实现. 不过在某些情况下, 必须为这些类型显式提供重写. 示例参见 <a href="../../../boost/archive/basic_xml_iarchive.hpp" target="basic_xml_iarchive_hpp"><code style="white-space: normal">basic_xml_iarchive.hpp</code></a>.<p>在实际操作中, 我们可能还没有完全完成. 可能需要解决以下一个或多个问题:<ul>
+    <li>即使使用符合标准的编译器, 我们可能也希望新的档案类可移植到不符合标准的编译器.<li>我们的档案格式可能需要在其中插入额外信息. 例如, XML 档案需要在所有数据对象周围加上 &lt;name ... &gt;...&lt;/name&gt;.<li>解决上述任何问题都可能产生更多有待解决的问题.<li>库中包含的档案都是模板, 使用 <code style="white-space: normal">stream</code> 或 <code style="white-space: normal">streambuf</code> 作为模板参数, 而不是简单的类. 结合上述情况, 在不符合标准的编译器上会出现更多问题.</ul> 随附的 <a target="class_diagram" href="class_diagram.html"> 类图 </a> 展示了用于实现序列化库的各类之间的关系. <p>仔细考察库中包含的档案, 可以了解制作一个覆盖所有数据类型的可移植档案需要些什么.<h3><a name="usage"> 用法 </a></h3> 新创建的档案通常存放在自己的头文件模块中. 只需包含该头文件并构造新档案的一个实例即可. 但有一个特例除外. <ul>
+    <li>派生类的实例通过基类指针序列化.<li>这些实例没有被"注册", 无论隐式还是显式都没有. 也就是说, 宏 <code style="white-space: normal">BOOST_CLASS_EXPORT</code> 用于为所包含的档案实例化序列化代码.</ul> 为使其生效, 应在档案类定义之后包含以下内容. <pre><code>
+BOOST_SERIALIZATION_REGISTER_ARCHIVE(Archive)
+</code></pre> 不这样做并不会妨碍程序正常编译、链接和执行——除了一种情况. 如果派生类的实例通过指向其基类的指针序列化, 程序将抛出 <a href="exceptions.html#unregistered_class"><code style="white-space: normal">unregistered_class</code></a> 异常. <p>
+
+<h4><a name="testing"> 测试</h4> 对库的彻底测试要求用每个档案测试对象序列化的不同方面. 有 46 个不同的测试可以在任何档案上运行. 系统包含 5 个"标准档案" (在不支持宽字符 i/o 的系统上是 3 个) . <p>此外, 还有 28 个与任何特定档案类无关的测试.<p>默认的 <code style="white-space: normal">bjam</code> 测试配置会运行上述所有测试. 这将产生多达 46 项档案测试 * 5 个标准档案 + 28 项通用测试 = 258 项测试. 注意, 对库的完整测试还要包括 DLL 与静态库、release 与 debug 的组合, 因此实际总数会更接近 1032 项测试.<p>对于每个档案, 测试目录中都有一个类似于下面的头文件. 通过把环境变量 <code style="white-space: normal">BOOST_ARCHIVE_TEST</code> 设置为该头文件的名称, 把档案名传给测试程序. 下面是头文件 <code style="white-space: normal">test_archive.hpp</code>. 其他档案的测试头文件类似. <pre><code>
+// text_archive test header
+// include output archive header
+#include &lt;boost/archive/text_oarchive.hpp&gt;
+// set name of test output archive
+typedef boost::archive::text_oarchive test_oarchive;
+// set name of test output stream
+typedef std::ofstream test_ostream;
+
+// repeat the above for input archive
+#include &lt;boost/archive/text_iarchive.hpp&gt;
+typedef boost::archive::text_iarchive test_iarchive;
+typedef std::ifstream test_istream;
+
+// define open mode for streams
+//   binary archives should use std::ios_base::binary
+#define TEST_STREAM_FLAGS (std::ios_base::openmode)0
+</code></pre> 要用 gcc 编译器测试一个新档案 (例如可移植二进制档案) , 创建一个头文件 <code style="white-space: normal">portable_binary_archive.hpp</code>, 并调用 <code style="white-space: normal">bjam</code> (用 <pre><code> 
+-sBOOST_ARCHIVE_LIST=portable_binary_archive.hpp
+</code></pre>) . 这个过程封装在 shell 或 cmd 脚本 <code style="white-space: normal">library_test</code> 中, 其命令行是 <pre><code>
+library_test --toolset=gcc -sBOOST_ARCHIVE_LIST=portable_binary_archive.hpp
+</code></pre>
+<h3><a name="polymorphic"> 多态档案 </a></h3>
+
+<h4>动机</h4> 到目前为止描述的所有档案都以模板实现. 向档案保存和加载数据的代码会为档案类与数据类型的每种组合重新生成. 在这种情况下, 一个能将 <code>inline</code> 函数内联到足够深度的优秀优化编译器会生成快速的代码. 但是: <ul>
+<li>大量内联代码可能被复制.<li>如果有多个档案类, 每个档案类都会重新生成代码.<li>如果序列化代码放在一个库里, 每次创建新的档案类都必须重新构建该库.<li>如果把序列化代码放进 DLL, <ul>
+  <li>DLL 将包含每个已知档案类型的代码版本. 这会导致加载包含大量未使用代码的 DLL——基本上违背了当初选择使用 DLL 的主要动机之一.<li>如果创建了新档案并发布应用程序, 所有 DLL 都必须重新构建, 并随使用新档案的应用程序一起重新发布. 这样, 使用 DLL 的另一个主要动机也被破坏了.</ul>
+</ul>
+
+<h4>实现</h4> 解决方案是 <code>polymorphic_oarchive</code> 与 <code>polymorphic_iarchive</code> 这一对. 它们提供一个由虚函数构成的公共接口——不含模板——等价于标准的模板化接口. 随附的 <a target="class_diagram" href="class_diagram.html"> 类图 </a> 展示了这一点. <p>文件 <a target=demo_polymorphic_cp href="../example/demo_polymorphic.cpp"><code style="white-space: normal">demo_polymorphic.cpp</code></a>、<a target=demo_polymorphic_A_hpp href="../example/demo_polymorphic_A.hpp"><code style="white-space: normal">demo_polymorphic_A.hpp</code></a> 和 <a target=demo_polymorphic_A_cpp href="../example/demo_polymorphic_A.cpp"><code style="white-space: normal">demo_polymorphic_A</code></a> 中随附的示例程序演示了如何使用多态档案. 注意以下几点:<ul>
+  <li><a target=demo_polymorphic_A_hpp href="../example/demo_polymorphic_A.hpp"><code style="white-space: normal">demo_polymorphic_A.hpp</code></a> 和 <a target=demo_polymorphic_A_cpp href="../example/demo_polymorphic_A.cpp"><code style="white-space: normal">demo_polymorphic_A.cpp</code></a> 不包含模板, 也不引用任何特定的档案实现. 也就是说, 它们只需为所有档案实现编译一次. 这甚至适用于将来创建的档案类.<li>主程序 <a target=demo_polymorphic_cp href="../example/demo_polymorphic.cpp"><code style="white-space: normal">demo_polymorphic.cpp</code></a> 指定一个特定的档案实现.</ul> 从 <a target="class_diagram" href="class_diagram.html"> 类图 </a> 和头文件可以看出, 这个实现只是多态接口与标准模板驱动实现的组合. 该组合由模板 <a target=polymorphic_iarchive_route_hpp href="../../../boost/archive/detail/polymorphic_iarchive_route.hpp"><code style="white-space: normal">polymorphic_iarchive_route.hpp</code></a> 和 <a target=polymorphic_oarchive_route_hpp href="../../../boost/archive/detail/polymorphic_oarchive_route.hpp"><code style="white-space: normal">polymorphic_oarchive_route.hpp</code></a> 完成, 它们把对多态档案的调用重定向到具体档案. 由于它们不包含特定于具体实现档案的代码, 因此可以用任何可正常工作的模板化档案实现来创建多态档案实现. <p>为方便起见, 本库包含了一些小头文件, 其中含有多态实现 (对应于各个模板化实现) 的 <code style="white-space: normal">typedef</code>. 例如, 头文件 <a target=polymorphic_text_iarchive_hpp href="../../../boost/archive/polymorphic_text_iarchive.hpp"><code style="white-space: normal">polymorphic_text_iarchive.hpp</code></a> 和 <a target=polymorphic_text_oarchive_hpp href="../../../boost/archive/polymorphic_text_oarchive.hpp"><code style="white-space: normal">polymorphic_text_oarchive.hpp</code></a> 分别包含 <code style="white-space: normal">typedef</code>, 用于标准文本档案类 <a target=text_iarchive_hpp href="../../../boost/archive/text_iarchive.hpp"><code style="white-space: normal">text_iarchive.hpp</code></a> 和 <a target=text_oarchive_hpp href="../../../boost/archive/text_oarchive.hpp"><code style="white-space: normal">text_oarchive.hpp</code></a> 的多态实现. 所有随附的多态档案都使用相同的命名方案.<h4>用法</h4> 多态档案解决了前面提出的有关模板化实现的问题: 即没有重复的代码, 也不需要为新档案重新编译. 这将使使用多种档案类型的程序获得更小的可执行文件和更小的 DLL. 通过虚函数分派表调用档案函数有性能代价, 而且编译器不可能 <code style="white-space: normal">inline</code> 档案函数. 这会导致保存和加载档案的性能出现可察觉的下降. <p>注意, 多态档案的概念与用户以如下方式标记为"primitive"的新类型的序列化在根本上不兼容: <pre><code> 
+BOOST_CLASS_IMPLEMENTATION(my_primitive_type, boost::serialization::primitive_type)
+</code></pre> 实现这些类型序列化的代码是在用户程序中"即时"实例化的. 但这与多态档案的全部目的相冲突. 尝试序列化这样的原始类型会导致编译错误, 因为公共多态接口是静态的, 无法为新类型实例化代码.<p>多态档案的主要用途是允许构建类 DLL, 其中包含针对现有及未来档案的序列化代码, 而无需冗余代码. <hr>
+<p><i> 版权所有 © <a href="http://www.rrsd.com"> Robert Ramey </a> 2002-2004. 按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt) </i></p>
+</body>
+</html>

@@ -1,0 +1,301 @@
+<html>
+<head>
+<title>技术</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<link rel="stylesheet" href="theme/style.css" type="text/css">
+</head>
+
+<body>
+<table width="100%" border="0" background="theme/bkd2.gif" cellspacing="2">
+  <tr> 
+    <td width="10"> 
+    </td>
+    <td width="85%"> <font size="6" face="Verdana, Arial, Helvetica, sans-serif"><b>技巧</b></font></td>
+    <td width="112"><a href="http://spirit.sf.net"><img src="theme/spirit.gif" width="112" height="48" align="right" border="0"></a></td>
+  </tr>
+</table>
+<br>
+<table border="0">
+  <tr>
+    <td width="10"></td>
+    <td width="30"><a href="../index.html"><img src="theme/u_arr.gif" border="0"></a></td>
+    <td width="30"><a href="style_guide.html"><img src="theme/l_arr.gif" border="0"></a></td>
+    <td width="30"><a href="faq.html"><img src="theme/r_arr.gif" border="0"></a></td>
+  </tr>
+</table>
+<ul>
+  <li><a href="#templatized_functors">模板化函数对象</a></li>
+  <li><a href="#multiple_scanner_support">多扫描器规则</a></li>
+  <li><a href="#no_rules">Look Ma' No Rules!</a></li>
+  <li><a href="#typeof">typeof</a></li>
+  <li><a href="#nabialek_trick">Nabialek 技巧</a></li>
+</ul>
+<h3><a name="templatized_functors"></a> 模板化函数对象</h3>
+<p>出于泛型性的考虑, 最好把函数对象的成员 <tt>operator()</tt> 做成模板. 这样, 只要行为合适, 我们就不必操心期望的实参类型. 例如, 与其把 <tt>char const*</tt> 硬编码为泛型语义动作的实参, 不如把它做成模板成员函数. 这样它可以接受任何类型的迭代器:</p>
+<pre><code><font color="#000000"><span class=special>    </span><span class=keyword>struct </span><span class=identifier>my_functor
+    </span><span class=special>{
+        </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>IteratorT</span><span class=special>&gt;
+        </span><span class=keyword>void </span><span class=keyword>operator</span><span class=special>()(</span><span class=identifier>IteratorT </span><span class=identifier>first</span><span class=special>, </span><span class=identifier>IteratorT </span><span class=identifier>last</span><span class=special>) </span><span class=keyword>const</span><span class=special>;
+    </span><span class=special>};</span></font></code></pre>
+<p>注意, 这只有函数对象才能做到. 模板函数无法作为语义动作传入, 除非把它转型为正确的函数签名; 那样的话, 你就 <em>单态化(monomorphize)</em>了该函数. 这清楚地表明函数对象优于普通函数.</p>
+<h3><b><a name="multiple_scanner_support" id="multiple_scanner_support"></a> 多扫描器规则</b></h3>
+<p>自 v1.8.0 起, 规则可以使用一个或多个扫描器类型. 例如, 有些情况下我们需要一条既能在短语层面又能在字符层面工作的规则. 规则/扫描器不匹配一直是令人困惑的根源, 是排名第一的 <a href="faq.html#scanner_business">FAQ</a>. 为解决这一问题, 我们现在有了 <a href="rule.html#multiple_scanner_support">多扫描器支持</a>.</p>
+<p>下面是一个文法示例, 其中规则 <tt>r</tt> 可以用 3 种扫描器调用(短语层面, lexeme 和小写). 更多信息见 <a href="rule.html">rule</a>, <a href="grammar.html">grammar</a>, <a href="scanner.html#lexeme_scanner">lexeme_scanner</a> 和 <a href="scanner.html#as_lower_scanner">as_lower_scanner </a>.</p>
+<p>下面是文法(见 <a href="../example/techniques/multiple_scanners.cpp">multiple_scanners.cpp</a>):</p>
+<pre><span class=special>    </span><span class=keyword>struct </span><span class=identifier>my_grammar </span><span class=special>: </span><span class=identifier>grammar</span><span class=special>&lt;</span><span class=identifier>my_grammar</span><span class=special>&gt;
+    </span><span class=special>{
+        </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>ScannerT</span><span class=special>&gt;
+        </span><span class=keyword>struct </span><span class=identifier>definition
+        </span><span class=special>{
+            </span><span class=identifier>definition</span><span class=special>(</span><span class=identifier>my_grammar </span><span class=keyword>const</span><span class=special>&amp; </span><span class=identifier>self</span><span class=special>)
+            </span><span class=special>{
+                </span><span class=identifier>r </span><span class=special>= </span><span class=identifier>lower_p</span><span class=special>;
+                </span><span class=identifier>rr </span><span class=special>= </span><span class=special>+(</span><span class=identifier>lexeme_d</span><span class=special>[</span><span class=identifier>r</span><span class=special>] </span><span class=special>&gt;&gt; </span><span class=identifier>as_lower_d</span><span class=special>[</span><span class=identifier>r</span><span class=special>] </span><span class=special>&gt;&gt; </span><span class=identifier>r</span><span class=special>);
+            </span><span class=special>}
+
+            </span><span class=keyword>typedef </span><span class=identifier>scanner_list</span><span class=special>&lt;
+                </span><span class=identifier>ScannerT
+              </span><span class=special>, </span><span class=keyword>typename </span><span class=identifier>lexeme_scanner</span><span class=special>&lt;</span><span class=identifier>ScannerT</span><span class=special>&gt;::</span><span class=identifier>type
+              </span><span class=special>, </span><span class=keyword>typename </span><span class=identifier>as_lower_scanner</span><span class=special>&lt;</span><span class=identifier>ScannerT</span><span class=special>&gt;::</span><span class=identifier>type
+            </span><span class=special>&gt; </span><span class=identifier>scanners</span><span class=special>;
+
+            </span><span class=identifier>rule</span><span class=special>&lt;</span><span class=identifier>scanners</span><span class=special>&gt; </span><span class=identifier>r</span><span class=special>;
+            </span><span class=identifier>rule</span><span class=special>&lt;</span><span class=identifier>ScannerT</span><span class=special>&gt; </span><span class=identifier>rr</span><span class=special>;
+            </span><span class=identifier>rule</span><span class=special>&lt;</span><span class=identifier>ScannerT</span><span class=special>&gt; </span><span class=keyword>const</span><span class=special>&amp; </span><span class=identifier>start</span><span class=special>() </span><span class=keyword>const </span><span class=special>{ </span><span class=keyword>return </span><span class=identifier>rr</span><span class=special>; </span><span class=special>}
+        </span><span class=special>};
+    </span><span class=special>};</span></pre>
+<p>默认情况下, 多扫描器支持是禁用的. 必须把宏 <tt>BOOST_SPIRIT_RULE_SCANNERTYPE_LIMIT</tt> 定义为 scanner_list 中允许的最大扫描器数. 该值必须大于 1 才能启用多扫描器. 以上面的示例为例, 要把列表的扫描器上限定义为三个, 必须在包含 Spirit 头文件之前把以下行插入源文件:</p>
+<pre><span class=special>    </span><span class=preprocessor>#define </span><span class=identifier>BOOST_SPIRIT_RULE_SCANNERTYPE_LIMIT</span> <span class=literal>3</span></pre>
+<h3><span class=special></span><b> <a name="no_rules" id="no_rules"></a> Look 
+  Ma' No Rules</b></h3>
+<p>你使用文法, 而且用得很多? 想要一个轻量, 无胆固醇, 超级优化的文法? 请继续阅读...</p>
+<p>我与规则之间有一种爱恨交加的关系. 我想你知道原因. 许多问题都源于规则的限制. C++ 中的动态多态与静态多态相处得并不好. C++ 中没有虚模板函数的概念; 至少目前还没有. 因此, <strong>规则绑定到特定扫描器类型</strong>. 这导致了诸如 <a href="faq.html#scanner_business">扫描器问题</a>这样的麻烦, 我们排名第一的 FAQ. 除此之外, 规则中的虚函数会拖慢解析, 杀死所有元信息, 并使内联失效, 从而让生成的代码膨胀, 尤其是对于像这样的极小规则:</p>
+<pre>    r <span class="special">=</span> ch_p<span class="special">(</span><span class="quotes">'x'</span><span class="special">) &gt;&gt;</span> uint_p<span class="special">;</span></pre>
+<p>规则的限制是文法按现在这种方式设计 —— 带有嵌套模板 definition 类 —— 的主要原因. 规则的限制也是子规则存在的原因. 但我们真的需要规则吗? 当然需要! 在 C++ 采纳某种 auto 类型推导之前, 例如 David Abrahams 在 clc++m 中提议的:</p>
+<pre>
+    <code><span class=keyword>auto </span><span class=identifier>r </span><span class=special>= ...</span><span class=identifier>definition </span><span class=special>...</span></code></pre>
+<p>我们只能依赖规则作为 RHS 占位符. 然而.... 在某些场合, 我们可以不用规则! 例如, 与其写:</p>
+<pre>
+    <code><span class=identifier>rule</span><span class=special>&lt;&gt; </span><span class=identifier>x </span><span class=special>= </span><span class=identifier>ch_p</span><span class=special>(</span><span class=literal>'x'</span><span class=special>);</span></code></pre>
+<p>不如这样写:</p>
+<pre>
+    <code><span class=identifier>chlit</span><span class=special>&lt;&gt; </span><span class=identifier>x </span><span class=special>= </span><span class=identifier>ch_p</span><span class=special>(</span><span class=literal>'x'</span><span class=special>);</span></code></pre>
+<p>这很琐碎. 但如果规则相当复杂呢? 好, 让我们循序渐进... 我将研究一个基于 Hartmut Kaiser 的 C 文法的简单 skip_parser. 基本上, 文法写为(见 <a href="../example/techniques/no_rules/no_rule1.cpp">no_rule1.cpp</a>):</p>
+<pre><code>    <span class=keyword>struct </span><span class=identifier>skip_grammar </span><span class=special>: </span><span class=identifier>grammar</span><span class=special>&lt;</span><span class=identifier>skip_grammar</span><span class=special>&gt;
+    {
+        </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>ScannerT</span><span class=special>&gt;
+        </span><span class=keyword>struct </span><span class=identifier>definition
+        </span><span class=special>{
+            </span><span class=identifier>definition</span><span class=special>(</span><span class=identifier>skip_grammar </span><span class=keyword>const</span><span class=special>&amp; /*</span><span class=identifier>self</span><span class=special>*/)
+            {
+                </span><span class=identifier>skip
+                    </span><span class=special>=   </span><span class=identifier>space_p
+                    </span><span class=special>|   </span><span class=string>&quot;//&quot; </span><span class=special>&gt;&gt; *(</span><span class=identifier>anychar_p </span><span class=special>- </span><span class=literal>'\n'</span><span class=special>) &gt;&gt; </span><span class=literal>'\n'
+                    </span><span class=special>|   </span><span class=string>&quot;/*&quot; </span><span class=special>&gt;&gt; *(</span><span class=identifier>anychar_p </span><span class=special>- </span><span class=string>&quot;*/&quot;</span><span class=special>) &gt;&gt; </span><span class=string>&quot;*/&quot;
+                    </span><span class=special>;
+            }
+
+            </span><span class=identifier>rule</span><span class=special>&lt;</span><span class=identifier>ScannerT</span><span class=special>&gt; </span><span class=identifier>skip</span><span class=special>;
+
+            </span><span class=identifier>rule</span><span class=special>&lt;</span><span class=identifier>ScannerT</span><span class=special>&gt; </span><span class=keyword>const</span><span class=special>&amp;
+            </span><span class=identifier>start</span><span class=special>() </span><span class=keyword>const </span><span class=special>{ </span><span class=keyword>return </span><span class=identifier>skip</span><span class=special>; }
+        };
+    };</span></code></pre>
+<p>好, 目前为止一切顺利. 我们能做得更好吗? 嗯... 由于那里没有递归规则(实际上只有一条规则), 你可以把规则的 RHS 的类型展开为规则类型(见 <a href="../example/techniques/no_rules/no_rule2.cpp">no_rule2.cpp</a>):</p>
+<pre><code><span class=special>    </span><span class=keyword>struct </span><span class=identifier>skip_grammar </span><span class=special>: </span><span class=identifier>grammar</span><span class=special>&lt;</span><span class=identifier>skip_grammar</span><span class=special>&gt;
+    {
+        </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>ScannerT</span><span class=special>&gt;
+        </span><span class=keyword>struct </span><span class=identifier>definition
+        </span><span class=special>{
+</span>            <span class=identifier>definition</span><span class=special>(</span><span class=identifier>skip_grammar </span><span class=keyword>const</span><span class=special>&amp; /*</span><span class=identifier>self</span><span class=special>*/)
+            : </span><span class=identifier>skip</span><span class=special>
+                (       </span><span class=identifier>space_p
+                    </span><span class=special>|   </span><span class=string>&quot;//&quot; </span><span class=special>&gt;&gt; *(</span><span class=identifier>anychar_p </span><span class=special>- </span><span class=literal>'\n'</span><span class=special>) &gt;&gt; </span><span class=literal>'\n'
+                    </span><span class=special>|   </span><span class=string>&quot;/*&quot; </span><span class=special>&gt;&gt; *(</span><span class=identifier>anychar_p </span><span class=special>- </span><span class=string>&quot;*/&quot;</span><span class=special>) &gt;&gt; </span><span class=string>&quot;*/&quot;
+                </span><span class=special>)
+            {
+            }
+
+            </span><span class=keyword>typedef
+               </span><span class=identifier>alternative</span><span class=special>&lt;</span><span class=identifier>alternative</span><span class=special>&lt;</span><span class=identifier>space_parser</span><span class=special>, </span><span class=identifier>sequence</span><span class=special>&lt;</span><span class=identifier>sequence</span><span class=special>&lt;
+               </span><span class=identifier>strlit</span><span class=special>&lt;</span><span class=keyword>const </span><span class=keyword>char</span><span class=special>*&gt;, </span><span class=identifier>kleene_star</span><span class=special>&lt;</span><span class=identifier>difference</span><span class=special>&lt;</span><span class=identifier>anychar_parser</span><span class=special>,
+               </span><span class=identifier>chlit</span><span class=special>&lt;</span><span class=keyword>char</span><span class=special>&gt; &gt; &gt; &gt;, </span><span class=identifier>chlit</span><span class=special>&lt;</span><span class=keyword>char</span><span class=special>&gt; &gt; &gt;, </span><span class=identifier>sequence</span><span class=special>&lt;</span><span class=identifier>sequence</span><span class=special>&lt;
+               </span><span class=identifier>strlit</span><span class=special>&lt;</span><span class=keyword>const </span><span class=keyword>char</span><span class=special>*&gt;, </span><span class=identifier>kleene_star</span><span class=special>&lt;</span><span class=identifier>difference</span><span class=special>&lt;</span><span class=identifier>anychar_parser</span><span class=special>,
+               </span><span class=identifier>strlit</span><span class=special>&lt;</span><span class=keyword>const </span><span class=keyword>char</span><span class=special>*&gt; &gt; &gt; &gt;, </span><span class=identifier>strlit</span><span class=special>&lt;</span><span class=keyword>const </span><span class=keyword>char</span><span class=special>*&gt; &gt; &gt;
+            </span><span class=identifier>skip_t</span><span class=special>;
+</span><span class=special>            </span><span class=identifier>skip_t </span><span class=identifier>skip</span><span class=special>;
+
+            </span><span class=identifier>skip_t </span><span class=keyword>const</span><span class=special>&amp;
+            </span><span class=identifier>start</span><span class=special>() </span><span class=keyword>const </span><span class=special>{ </span><span class=keyword>return </span><span class=identifier>skip</span><span class=special>; }
+        };
+    };</span></code></pre>
+<p>呃! 我是怎么做到的? 我是怎么拿到那个复杂的 typedef 的? 我疯了吗? 嗯, 并没有... 有个技巧! 你要做的是先把 typedef <tt>skip_t</tt> 定义为 int:</p>
+<pre>
+    <code><span class=keyword>typedef </span><span class=keyword>int </span><span class=identifier>skip_t</span><span class=special>;</span></code></pre>
+<p>尝试编译. 然后, 编译器会生成一条讨厌的错误消息, 如:</p>
+<pre>
+    <code><span class=string>&quot;cannot convert boost::spirit::alternative&lt;... blah blah...to int&quot;</span><span class=special>.</span></code></pre>
+<p> <strong>有了!</strong> 你得到了它的类型! 我只需复制粘贴正确的类型(如果愿意, 可去掉显式限定).</p>
+<p>我们还能更进一步吗? 可以. 记得文法是为规则而设计的. 嵌套模板 definition 类是为了绕过规则的限制而需要的. 没有规则的话, 我提议一个叫做 <tt>sub_grammar</tt> 的新类, 即文法的低脂版本:</p>
+<pre><code><span class=special>    </span><span class=keyword>namespace </span><span class=identifier>boost </span><span class=special>{ </span><span class=keyword>namespace </span><span class=identifier>spirit
+    </span><span class=special>{
+        </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>DerivedT</span><span class=special>&gt;
+        </span><span class=keyword>struct </span><span class=identifier>sub_grammar </span><span class=special>: </span><span class=identifier>parser</span><span class=special>&lt;</span><span class=identifier>DerivedT</span><span class=special>&gt;
+        {
+            </span><span class=keyword>typedef </span><span class=identifier>sub_grammar </span><span class=identifier>self_t</span><span class=special>;
+            </span><span class=keyword>typedef </span><span class=identifier>DerivedT </span><span class=keyword>const</span><span class=special>&amp; </span><span class=identifier>embed_t</span><span class=special>;
+
+            </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>ScannerT</span><span class=special>&gt;
+            </span><span class=keyword>struct </span><span class=identifier>result
+            </span><span class=special>{
+                </span><span class=keyword>typedef </span><span class=keyword>typename </span><span class=identifier>parser_result</span><span class=special>&lt;
+                    </span><span class=keyword>typename </span><span class=identifier>DerivedT</span><span class=special>::</span><span class=identifier>start_t</span><span class=special>, </span><span class=identifier>ScannerT</span><span class=special>&gt;::</span><span class=identifier>type
+                </span><span class=identifier>type</span><span class=special>;
+            };
+
+            </span><span class=identifier>DerivedT </span><span class=keyword>const</span><span class=special>&amp; </span><span class=identifier>derived</span><span class=special>() </span><span class=keyword>const
+            </span><span class=special>{ </span><span class=keyword>return </span><span class=special>*</span><span class=keyword>static_cast</span><span class=special>&lt;</span><span class=identifier>DerivedT </span><span class=keyword>const</span><span class=special>*&gt;(</span><span class=keyword>this</span><span class=special>); }
+
+            </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>ScannerT</span><span class=special>&gt;
+            </span><span class=keyword>typename </span><span class=identifier>parser_result</span><span class=special>&lt;</span><span class=identifier>self_t</span><span class=special>, </span><span class=identifier>ScannerT</span><span class=special>&gt;::</span><span class=identifier>type
+            </span><span class=identifier>parse</span><span class=special>(</span><span class=identifier>ScannerT </span><span class=keyword>const</span><span class=special>&amp; </span><span class=identifier>scan</span><span class=special>) </span><span class=keyword>const
+            </span><span class=special>{
+                </span><span class=keyword>return </span><span class=identifier>derived</span><span class=special>().</span><span class=identifier>start</span><span class=special>.</span><span class=identifier>parse</span><span class=special>(</span><span class=identifier>scan</span><span class=special>);
+            }
+        };
+    }}</span></code></pre>
+<p>有了 <tt>sub_grammar</tt> 类, 我们可以这样定义我们的跳过器文法(见 <a href="../example/techniques/no_rules/no_rule3.cpp">no_rule3.cpp</a>):</p>
+<pre><code><span class=special>    </span><span class=keyword>struct </span><span class=identifier>skip_grammar </span><span class=special>: </span><span class=identifier>sub_grammar</span><span class=special>&lt;</span><span class=identifier>skip_grammar</span><span class=special>&gt;
+    {
+        </span><span class=keyword>typedef
+           </span><span class=identifier>alternative</span><span class=special>&lt;</span><span class=identifier>alternative</span><span class=special>&lt;</span><span class=identifier>space_parser</span><span class=special>, </span><span class=identifier>sequence</span><span class=special>&lt;</span><span class=identifier>sequence</span><span class=special>&lt;
+           </span><span class=identifier>strlit</span><span class=special>&lt;</span><span class=keyword>const </span><span class=keyword>char</span><span class=special>*&gt;, </span><span class=identifier>kleene_star</span><span class=special>&lt;</span><span class=identifier>difference</span><span class=special>&lt;</span><span class=identifier>anychar_parser</span><span class=special>,
+           </span><span class=identifier>chlit</span><span class=special>&lt;</span><span class=keyword>char</span><span class=special>&gt; &gt; &gt; &gt;, </span><span class=identifier>chlit</span><span class=special>&lt;</span><span class=keyword>char</span><span class=special>&gt; &gt; &gt;, </span><span class=identifier>sequence</span><span class=special>&lt;</span><span class=identifier>sequence</span><span class=special>&lt;
+           </span><span class=identifier>strlit</span><span class=special>&lt;</span><span class=keyword>const </span><span class=keyword>char</span><span class=special>*&gt;, </span><span class=identifier>kleene_star</span><span class=special>&lt;</span><span class=identifier>difference</span><span class=special>&lt;</span><span class=identifier>anychar_parser</span><span class=special>,
+           </span><span class=identifier>strlit</span><span class=special>&lt;</span><span class=keyword>const </span><span class=keyword>char</span><span class=special>*&gt; &gt; &gt; &gt;, </span><span class=identifier>strlit</span><span class=special>&lt;</span><span class=keyword>const </span><span class=keyword>char</span><span class=special>*&gt; &gt; &gt;
+        </span><span class=identifier>start_t</span><span class=special>;
+
+        </span><span class=identifier>skip_grammar</span><span class=special>()
+        : </span><span class=identifier>start
+            </span><span class=special>(
+                </span><span class=identifier>space_p
+            </span><span class=special>|   </span><span class=string>&quot;//&quot; </span><span class=special>&gt;&gt; *(</span><span class=identifier>anychar_p </span><span class=special>- </span><span class=literal>'\n'</span><span class=special>) &gt;&gt; </span><span class=literal>'\n'
+            </span><span class=special>|   </span><span class=string>&quot;/*&quot; </span><span class=special>&gt;&gt; *(</span><span class=identifier>anychar_p </span><span class=special>- </span><span class=string>&quot;*/&quot;</span><span class=special>) &gt;&gt; </span><span class=string>&quot;*/&quot;
+            </span><span class=special>)
+        {}
+
+        </span><span class=identifier>start_t </span><span class=identifier>start</span><span class=special>;
+    };</span></code></pre>
+<p>但这是为什么呢, 你会问? 你可以简单地原样使用上面的 <tt>start_t</tt> 类型. 它已经是一个解析器了! 我们可以直接写:</p>
+<pre>
+    <code><span class=identifier>skipper_t </span><span class=identifier>skipper </span><span class=special>=
+        </span><span class=identifier>space_p
+        </span><span class=special>|   </span><span class=string>&quot;//&quot; </span><span class=special>&gt;&gt; *(</span><span class=identifier>anychar_p </span><span class=special>- </span><span class=literal>'\n'</span><span class=special>) &gt;&gt; </span><span class=literal>'\n'     </span><br>        <span class=special>|   </span><span class=string>&quot;/*&quot; </span><span class=special>&gt;&gt; *(</span><span class=identifier>anychar_p </span><span class=special>- </span><span class=string>&quot;*/&quot;</span><span class=special>) &gt;&gt; </span><span class=string>&quot;*/&quot;</span>
+    <span class=special>    ;</span></code></pre>
+<p>然后像使用任何解析器一样使用 <tt>skipper</tt>? 嗯, 一个微妙的区别是: 这样使用的 <tt>skipper</tt>, 在你用它组合更复杂的解析器时会按<strong>值</strong>嵌入<strong> 
+  </strong>. 也就是说, 若我们在另一个产生式中使用 <tt>skipper</tt>, 整个东西会被存储到组合器中. 太重了!</p>
+<p>而拟议的 <tt>sub_grammar</tt> 反之会以引用方式持有. 注意:</p>
+<pre><code>    <span class=keyword>typedef </span><span class=identifier>DerivedT </span><span class=keyword>const</span><span class=special>&amp; </span><span class=identifier>embed_t</span><span class=special>;</span></code></pre>
+<p>拟议的 <tt>sub_grammar</tt> 没有规则的固有局限, 非常轻量, 而且应当快如闪电(可以完全内联且不使用虚函数). 也许这个类会成为未来 spirit 发布的一部分.</p>
+<table width="80%" border="0" align="center">
+  <tr> 
+    <td class="note_box"><img src="theme/note.gif" width="16" height="16"> <strong>无规则的结果</strong><br> <br> 那么, 我们省了多少? 在 MSVCV7.1 上, 原始代码: <a href="../example/techniques/no_rules/no_rule1.cpp">no_rule1.cpp</a> 编译为 <strong>28k</strong>. 省去规则后, <a href="../example/techniques/no_rules/no_rule2.cpp">no_rule2.cpp</a>, 我们得到 <strong>24k</strong>. 不错, 我们削减了 4k, 相当于 14% 的缩减. 但你还会大吃一惊. 最后一个版本, 使用子文法的: <a href="../example/techniques/no_rules/no_rule3.cpp">no_rule3.cpp</a>, 编译为 <strong>5.5k</strong>! 这是高达 80% 的缩减.<br>
+      <br>
+      <table width="100%" border="1">
+        <tr> 
+          <td><a href="../example/techniques/no_rules/no_rule1.cpp">no_rule1.cpp</a></td>
+          <td><strong>28k</strong></td>
+          <td>标准 rule 与 grammar</td>
+        </tr>
+        <tr> 
+          <td><a href="../example/techniques/no_rules/no_rule2.cpp">no_rule2.cpp</a></td>
+          <td><strong>24k</strong></td>
+          <td>标准 grammar, 无 rule</td>
+        </tr>
+        <tr> 
+          <td><a href="../example/techniques/no_rules/no_rule3.cpp">no_rule3.cpp</a></td>
+          <td><strong>5.5k</strong></td>
+          <td>sub_grammar, 无 rule, 无 grammar</td>
+        </tr>
+      </table> </td>
+  </tr>
+</table>
+<h3><b> <a name="typeof" id="typeof"></a> typeof</b></h3>
+<p>一些编译器已经支持 <tt>typeof</tt> 关键字. 例如 g++ 与 Metrowerks CodeWarrior. 总有一天, <tt>typeof</tt> 会变得司空见惯. 值得注意的是, 我们可以使用 <tt>typeof</tt> 来定义非递归规则而不使用 rule 类. 举个例子, 我们将使用上面的跳过器示例; 这次使用 <tt>typeof</tt>. 首先, 为避免冗余, 我们引入一个宏 <tt>RULE</tt>:</p>
+<pre><code>    <span class=preprocessor>#define </span><span class=identifier>RULE</span><span class=special>(</span><span class=identifier>name</span><span class=special>, </span><span class=identifier>definition</span><span class=special>) </span><span class="keyword">typeof</span><span class=special>(</span><span class=identifier>definition</span><span class=special>) </span><span class=identifier>name </span><span class=special>= </span><span class=identifier>definition</span></code></pre>
+<p>然后, 只需:</p>
+<pre><code><span class=identifier>    </span><span class=identifier>RULE</span><span class=special>(
+        </span><span class=identifier>skipper</span><span class=special>,
+        (       </span><span class=identifier>space_p
+            </span><span class=special>|   </span><span class=string>&quot;//&quot; </span><span class=special>&gt;&gt; *(</span><span class=identifier>anychar_p </span><span class=special>- </span><span class=literal>'\n'</span><span class=special>) &gt;&gt; </span><span class=literal>'\n'
+            </span><span class=special>|   </span><span class=string>&quot;/*&quot; </span><span class=special>&gt;&gt; *(</span><span class=identifier>anychar_p </span><span class=special>- </span><span class=string>&quot;*/&quot;</span><span class=special>) &gt;&gt; </span><span class=string>&quot;*/&quot;
+        </span><span class=special>)
+    );</span></code></pre>
+<p>(见 <a href="../example/techniques/typeof.cpp">typeof.cpp</a>)</p>
+<p>就是这样! 现在你可以像使用任何解析器一样使用 skipper. 不过要提醒的是, 上面的 <tt>skipper</tt> 在你用它<strong> 
+  </strong>组合更复杂的解析器时会按值嵌入(见上文 <tt>sub_grammar</tt> 设计理由). 你可以使用 <tt>sub_grammar</tt> 类来避免这一问题.</p>
+<h3><a name="nabialek_trick"></a> Nabialek 技巧</h3>
+<p>这一技巧, 我称之为 <strong><em>"Nabialek 技巧" </em></strong>(以其发明者 Sam Nabialek 的名字命名), 能把规则分派从线性非确定性改进为确定性. 该技巧适用于在产生式之前出现关键字(运算符等)的文法. 有很多文法与此类似:</p>
+<pre>    <span class=identifier>r </span><span class=special>=
+            </span><span class=identifier>keyword1 </span><span class=special>&gt;&gt; </span><span class=identifier>production1
+        </span><span class=special>|   </span><span class=identifier>keyword2 </span><span class=special>&gt;&gt; </span><span class=identifier>production2
+        </span><span class=special>|   </span><span class=identifier>keyword3 </span><span class=special>&gt;&gt; </span><span class=identifier>production3
+        </span><span class=special>|   </span><span class=identifier>keyword4 </span><span class=special>&gt;&gt; </span><span class=identifier>production4
+        </span><span class=special>|   </span><span class=identifier>keyword5 </span><span class=special>&gt;&gt; </span><span class=identifier>production5
+        </span><span class=comment>/*** etc ***/
+        </span><span class=special>;</span></pre>
+<p>级联的候选分支通过反复试验逐一尝试, 直到某个东西匹配. Nabialek 技巧利用 <a href="symbols.html">符号表</a>的搜索特性来优化候选分支的分派. 示例见 <a href="../example/techniques/nabialek.cpp">nabialek.cpp</a>. 该文法的工作方式如下. 有两条规则(<tt>one</tt> 与 <tt>two</tt>). 当识别出 "one" 时, 调用规则 <tt>one</tt>. 当识别出 "two" 时, 调用规则 <tt>two</tt>. 下面是文法:</p>
+<pre><span class=special>    </span><span class=identifier>one </span><span class=special>= </span><span class=identifier>name</span><span class=special>;
+    </span><span class=identifier>two </span><span class=special>= </span><span class=identifier>name </span><span class=special>&gt;&gt; </span><span class=literal>',' </span><span class=special>&gt;&gt; </span><span class=identifier>name</span><span class=special>;
+    
+    </span><span class=identifier>continuations</span><span class=special>.</span><span class=identifier>add
+        </span><span class=special>(</span><span class=string>&quot;one&quot;</span><span class=special>, &amp;</span><span class=identifier>one</span><span class=special>)
+        </span><span class=special>(</span><span class=string>&quot;two&quot;</span><span class=special>, &amp;</span><span class=identifier>two</span><span class=special>)
+    </span><span class=special>;
+    
+    </span><span class=identifier>line </span><span class=special>= </span><span class=identifier>continuations</span><span class=special>[</span><span class=identifier>set_rest</span><span class=special>&lt;</span><span class=identifier>rule_t</span><span class=special>&gt;(</span><span class=identifier>rest</span><span class=special>)] </span><span class=special>&gt;&gt; </span><span class=identifier>rest</span><span class=special>;</span></pre>
+<p>其中 continuations 是一个 <a href="symbols.html">符号表</a>, 带有指向 rule_t 槽位的指针. one, two, name, line 与 rest 是规则:</p>
+<pre><span class=special>    </span><span class=identifier>rule_t </span><span class=identifier>name</span><span class=special>;
+    </span><span class=identifier>rule_t </span><span class=identifier>line</span><span class=special>;
+    </span><span class=identifier>rule_t </span><span class=identifier>rest</span><span class=special>;
+    </span><span class=identifier>rule_t </span><span class=identifier>one</span><span class=special>;
+    </span><span class=identifier>rule_t </span><span class=identifier>two</span><span class=special>;
+    
+    </span><span class=identifier>symbols</span><span class=special>&lt;</span><span class=identifier>rule_t</span><span class=special>*&gt; </span><span class=identifier>continuations</span><span class=special>;</span></pre>
+<p>set_rest 是挂接到 continuations 上的语义动作:</p>
+<pre><span class=special>    </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>Rule</span><span class=special>&gt;
+    </span><span class=keyword>struct </span><span class=identifier>set_rest
+    </span><span class=special>{
+        </span><span class=identifier>set_rest</span><span class=special>(</span><span class=identifier>Rule</span><span class=special>&amp; </span><span class=identifier>the_rule</span><span class=special>)
+        </span><span class=special>: </span><span class=identifier>the_rule</span><span class=special>(</span><span class=identifier>the_rule</span><span class=special>) </span><span class=special>{}
+
+        </span><span class=keyword>void </span><span class=keyword>operator</span><span class=special>()(</span><span class=identifier>Rule</span><span class=special>* </span><span class=identifier>newRule</span><span class=special>) </span><span class=keyword>const
+        </span><span class=special>{ </span><span class=identifier>m_theRule </span><span class=special>= </span><span class=special>*</span><span class=identifier>newRule</span><span class=special>; </span><span class=special>}
+
+        </span><span class=identifier>Rule</span><span class=special>&amp; </span><span class=identifier>the_rule</span><span class=special>;
+    </span><span class=special>};</span></pre>
+<p>注意, 当 set_rule 动作被调用时, rest <tt>rule</tt> 是如何被动态设置的. 该动态文法解析如下输入:</p>
+<p> &quot;one only&quot;<br>
+&quot;one again&quot;<br>
+&quot;two first, second&quot;</p>
+<p>最酷的部分在于 <tt>rest</tt> 规则是(由 <tt>set_rest</tt> 动作)根据符号表得到的内容来设置的. 若它得到的是 <em>"one"</em>, 则 rest = one. 若它得到的是 <em>"two"</em>, 则 rest = two. 非常精巧! 这一技术应当非常快, 尤其当关键字很多时. 若能添加特殊设施使它更易于使用就更好了. 我设想:</p>
+<pre><span class=special>    </span><span class=identifier>r </span><span class=special>= </span><span class=identifier>keywords </span><span class=special>&gt;&gt; </span><span class=identifier>rest</span><span class=special>;</span></pre>
+<p>其中 <tt>keywords</tt> 是一个特殊的解析器(基于符号表), 它根据获得的符号自动设置其 RHS(rest). 我觉得这太酷了! 也许某一天...</p>
+<p><img src="theme/note.gif" width="16" height="16">另外, 关于针对字符/记号前缀的另一种确定性解析技巧, 参见 <a href="switch_parser.html">switch 解析器</a>.</p>
+<span class=special></span>
+<table border="0">
+  <tr> 
+    <td width="10"></td>
+    <td width="30"><a href="../index.html"><img src="theme/u_arr.gif" border="0"></a></td>
+    <td width="30"><a href="style_guide.html"><img src="theme/l_arr.gif" border="0"></a></td>
+    <td width="30"><a href="faq.html"><img src="theme/r_arr.gif" border="0"></a></td>
+  </tr>
+</table>
+<br>
+<hr size="1">
+<p class="copyright">Copyright © 1998-2003 Joel de Guzman<br>
+  <br>
+<font size="2">使用、修改与分发受 Boost 软件许可 1.0 版(Boost Software License, Version 1.0)约束. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt)</font></p>
+<p class="copyright">&nbsp;</p>
+</body>
+</html>

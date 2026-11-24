@@ -1,0 +1,209 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+<HEAD>
+    <TITLE>Tutorial</TITLE>
+    <LINK REL="stylesheet" HREF="../../../../boost.css">
+    <LINK REL="stylesheet" HREF="../theme/iostreams.css">
+</HEAD>
+<BODY>
+
+<!-- Begin Banner -->
+
+    <H1 CLASS="title">Tutorial</H1>
+    <HR CLASS="banner">
+
+<!-- End Banner -->
+
+<!-- Begin Nav -->
+
+<DIV CLASS='nav'>
+    <A HREF='dictionary_filters.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/prev.png'></A>
+    <A HREF='tutorial.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/up.png'></A>
+    <A HREF='multichar_filters.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/next.png'></A>
+</DIV>
+
+<!-- End Nav -->
+
+<A NAME="unix2dos"></A>
+<H2>2.2.7. UNIX 到 DOS 过滤器</H2>
+
+<P>假设你想编写一个将 <CODE>UNIX</CODE> 行尾转换为 <CODE>DOS</CODE> 行尾的过滤器. 基本思想很简单: 你逐个处理序列中的字符, 每当遇到字符 <CODE>'\n'</CODE> 就用两字符序列 <CODE>'\r'</CODE>、<CODE>'\n'</CODE> 替换它. 在下面几节中, 我将把这一算法实现为一个 <CODE>stdio_filter</CODE>、一个 InputFilter 和一个 OutputFilter. 源代码可在头文件 <A HREF="../../example/unix2dos_filter.hpp">&lt;<CODE>libs/iostreams/example/unix2dos_filter.hpp</CODE>&gt;</A></P>
+
+<A NAME="unix2dos_stdio_filter"></A>
+<H4><CODE>unix2dos_stdio_filter</CODE></H4>
+
+<P>你可以将 <CODE>UNIX</CODE> 到 <CODE>DOS</CODE> 过滤器表述为一个 <CODE>stdio_filter</CODE> — 通过从 <CODE>stdio_filter</CODE> 派生并覆写 <CODE>private</CODE> <CODE>virtual</CODE> 函数 do_filter, 如下:</P>
+
+<PRE CLASS="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <SPAN CLASS='literal'>&lt;cstdio&gt;</SPAN>    <SPAN CLASS='comment'>// EOF</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <SPAN CLASS='literal'>&lt;iostream&gt;</SPAN>  <SPAN CLASS='comment'>// cin, cout</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/filter/stdio.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/filter/stdio.hpp&gt;</SPAN></A>
+
+<SPAN CLASS='keyword'>namespace</SPAN> boost { <SPAN CLASS='keyword'>namespace</SPAN> iostreams { <SPAN CLASS='keyword'>namespace</SPAN> example {
+
+<SPAN CLASS="keyword">class</SPAN> unix2dos_stdio_filter : <SPAN CLASS="keyword">public</SPAN> stdio_filter {
+<SPAN CLASS="keyword">private</SPAN>:
+    <SPAN CLASS="keyword">void</SPAN> do_filter()
+    {
+        <SPAN CLASS="keyword">int</SPAN> c;
+        <SPAN CLASS="keyword">while</SPAN> ((c = std::cin.get()) != <SPAN CLASS='numeric_literal'>EOF</SPAN>) {
+            <SPAN CLASS="keyword">if</SPAN> (c == <SPAN CLASS='literal'>'\n'</SPAN>)
+                std::cout.put(<SPAN CLASS='literal'>'\r'</SPAN>);
+            std::cout.put(c);
+        }
+    }
+};
+
+} } } <SPAN CLASS='comment'>// End namespace boost::iostreams:example</SPAN></PRE>
+
+<P>函数 <CODE>do_filter</CODE> 是对我上述算法的直接实现: 它从标准输入读取字符并原样写入标准输出, 唯一例外是遇到 <CODE>'\n'</CODE> 时写入 <CODE>'\r'</CODE>、<CODE>'\n'</CODE>. <A NAME="unix2dos_input_filter"></A>
+<H4><CODE>unix2dos_input_filter</CODE></H4>
+
+<P>现在, 我们把 <CODE>UNIX</CODE> 到 <CODE>DOS</CODE> 过滤器表述为一个 <A HREF="../concepts/input_filter.html">InputFilter</A>. <PRE CLASS="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/categories.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/categories.hpp&gt;</SPAN></A> <SPAN CLASS='comment'>// input_filter_tag</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/operations.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/operations.hpp&gt;</SPAN></A> <SPAN CLASS='comment'>// get</SPAN>
+
+<SPAN CLASS='keyword'>namespace</SPAN> boost { <SPAN CLASS='keyword'>namespace</SPAN> iostreams { <SPAN CLASS='keyword'>namespace</SPAN> example {
+
+<SPAN CLASS="keyword">class</SPAN> unix2dos_input_filter {
+<SPAN CLASS="keyword">public</SPAN>:
+    <SPAN CLASS='keyword'>typedef</SPAN> <SPAN CLASS='keyword'>char</SPAN>              char_type;
+    <SPAN CLASS='keyword'>typedef</SPAN> input_filter_tag  category;
+
+    unix2dos_input_filter() : has_linefeed_(<SPAN CLASS='keyword'>false</SPAN>) { }
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS="keyword">int</SPAN> get(Source&amp; src)
+    {
+        <SPAN CLASS='comment'>// Handle unfinished business</SPAN>
+        <SPAN CLASS="keyword">if</SPAN> (has_linefeed_) {
+            has_linefeed_ = <SPAN CLASS="keyword">false</SPAN>;
+            <SPAN CLASS="keyword">return</SPAN> <SPAN CLASS="literal">'\n'</SPAN>;
+        }
+
+        <SPAN CLASS='comment'>// Forward all characters except '\n'</SPAN>
+        <SPAN CLASS="keyword">int</SPAN> c;
+        if ((c = iostreams::get(src)) == <SPAN CLASS='literal'>'\n'</SPAN>) {
+            has_linefeed_ = true;
+            <SPAN CLASS="keyword">return</SPAN> <SPAN CLASS='literal'>'\r'</SPAN>;
+        }
+
+        <SPAN CLASS="keyword">return</SPAN> c;
+    }
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS="keyword">void</SPAN> close(Source&amp;);
+<SPAN CLASS="keyword">private</SPAN>:
+    <SPAN CLASS="keyword">bool</SPAN> has_linefeed_;
+};
+
+} } } <SPAN CLASS='comment'>// End namespace boost::iostreams:example</SPAN></PRE>
+
+<P> <CODE>get</CODE> 的实现可描述如下. 大多数时候, 你只需从 <CODE>src</CODE> 读取一个字符并返回它. 特殊值 <CODE>EOF</CODE> 与 <CODE>WOULD_BLOCK</CODE> 以相同方式处理: 它们只是被<I>原样</I>转发. 例外情况是 <CODE>iostreams::get</CODE> 返回 <CODE>'\n'</CODE> 时. 此时, 你改为返回 <CODE>'\r'</CODE>, 并记下要返回 <CODE>'\n'</CODE> — 在下次调用 <CODE>get</CODE> 时.</P>
+
+<P>照例, 成员函数 <CODE>close</CODE> 重置过滤器的状态:</P>
+
+<PRE CLASS="broken_ie">    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS="keyword">void</SPAN> close(Source&amp;) { skip_ = <SPAN CLASS="keyword">false</SPAN>; }</PRE>
+
+<A NAME="unix2dos_output_filter"></A>
+<H4><CODE>unix2dos_output_filter</CODE></H4>
+
+<P>你可以将 <CODE>UNIX</CODE> 到 <CODE>DOS</CODE> 过滤器表述为一个 <A HREF="../concepts/output_filter.html">OutputFilter</A>, 如下:</P>
+
+<PRE CLASS="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/concepts.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/concepts.hpp&gt;</SPAN></A>   <SPAN CLASS='comment'>// output_filter</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/operations.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/operations.hpp&gt;</SPAN></A> <SPAN CLASS='comment'>// put</SPAN>
+
+<SPAN CLASS='keyword'>namespace</SPAN> boost { <SPAN CLASS='keyword'>namespace</SPAN> iostreams { <SPAN CLASS='keyword'>namespace</SPAN> example {
+
+<SPAN CLASS="keyword">class</SPAN> unix2dos_output_filter : <SPAN CLASS="keyword">public</SPAN> output_filter {
+<SPAN CLASS="keyword">public</SPAN>:
+    unix2dos_output_filter() : has_linefeed_(<SPAN CLASS="keyword">false</SPAN>) { }
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS="keyword">bool</SPAN> put(Sink&amp; dest, <SPAN CLASS="keyword">int</SPAN> c);
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS="keyword">void</SPAN> close(Sink&amp;) { has_linefeed_ = <SPAN CLASS="keyword">false</SPAN>; }
+<SPAN CLASS="keyword">private</SPAN>:
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS="keyword">bool</SPAN> put_char(Sink&amp; dest, <SPAN CLASS="keyword">int</SPAN> c);
+
+    <SPAN CLASS="keyword">bool</SPAN> has_linefeed_;
+};
+
+} } } <SPAN CLASS='comment'>// End namespace boost::iostreams:example</SPAN></PRE>
+
+<P>此处我从辅助类 <A HREF="../classes/filter.html#synopsis"><CODE>output_filter</CODE></A> 派生, 它提供成员类型 <CODE>char_type</CODE> — 等于 <CODE>char</CODE> — 以及可转换为 <A HREF="../guide/traits.html#category_tags"><CODE>output_filter_tag</CODE></A> 与 <A HREF="../guide/traits.html#category_tags"><CODE>closable_tag</CODE></A> 的类别标签.</P>
+
+<P>我们先看辅助函数 <CODE>put_char</CODE>:</P>
+
+<PRE CLASS='broken_ie'>    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS="keyword">bool</SPAN> put_char(Sink&amp; dest, <SPAN CLASS="keyword">int</SPAN> c)
+    {
+        <SPAN CLASS="keyword">bool</SPAN> result;
+        <SPAN CLASS="keyword">if</SPAN> ((result = iostreams::put(dest, c)) == <SPAN CLASS="keyword">true</SPAN>) {
+            has_linefeed_ =
+                c == <SPAN CLASS="literal">'\r'</SPAN> ?
+                    <SPAN CLASS="keyword">true</SPAN> : 
+                    c == <SPAN CLASS="literal">'\n'</SPAN> ? 
+                        <SPAN CLASS="keyword">false</SPAN> :
+                        has_linefeed_;
+        }
+        <SPAN CLASS="keyword">return</SPAN> result;
+    }</PRE>
+
+<P>此函数尝试向汇 dest 写入单个字符, 成功时返回 <CODE>true</CODE>. 若成功, 它更新标志 <CODE>has_linefeed_</CODE> — 该标志指示写入 <CODE>DOS</CODE> 行尾序列的尝试在第一个字符写入之后失败了.</P>
+
+<P>使用 <CODE>put_char</CODE>, 你可以按如下方式实现 <CODE>put</CODE>:</P>
+
+<PRE CLASS='broken_ie'>    <SPAN CLASS="keyword">bool</SPAN> put(Sink&amp; dest, <SPAN CLASS="keyword">int</SPAN> c)
+    {
+        <SPAN CLASS="keyword">if</SPAN> (c == <SPAN CLASS="literal">'\n'</SPAN>) 
+            <SPAN CLASS="keyword">return</SPAN> has_linefeed_ ?
+                put_char(dest, <SPAN CLASS="literal">'\n'</SPAN>) :
+                put_char(dest, <SPAN CLASS="literal">'\r'</SPAN>) ?
+                    this-&gt;put(dest, <SPAN CLASS="literal">'\n'</SPAN>) :
+                    <SPAN CLASS="keyword">false</SPAN>;
+        <SPAN CLASS="keyword">return</SPAN> iostreams::put(dest, c);
+    }</PRE>
+
+<P>该实现的工作方式如下:</P>
+
+<OL>
+<LI>如果你处于 <CODE>DOS</CODE> 行尾序列的开头 — 即 <CODE>c</CODE> 为 <CODE>'n'</CODE> 且 <CODE>has_line_feed_</CODE> 为 <CODE>false</CODE> — 则尝试写入 <CODE>'\r'</CODE> 然后 <CODE>'\n'</CODE> 到 <CODE>dest</CODE>.</LI>
+<LI>如果你处于 <CODE>DOS</CODE> 行尾序列的中间 — 即 <CODE>c</CODE> 为 <CODE>'n'</CODE> 且 <CODE>has_line_feed_</CODE> 为 <CODE>true</CODE> — 则尝试通过写入 <CODE>'\n'</CODE> 来完成它.</LI>
+<LI>否则, 你尝试将 <CODE>c</CODE> 写入 <CODE>dest</CODE>.</LI>
+</OL>
+
+<P>有两个微妙之处. 其一, 为什么 <CODE>c == 'n'</CODE> 与 <CODE>has_line_feed_ == true</CODE> 意味着你处于 <CODE>DOS</CODE> 行尾序列的中间? 因为当你尝试写入 <CODE>'\r'</CODE>、<CODE>'\n'</CODE> 但只有第一个字符成功时, 你设置 <CODE>has_line_feed_</CODE> 并返回 <CODE>false</CODE>. 这会使过滤器的用户<I>重发</I>触发行尾序列的字符 <CODE>'\n'</CODE>. 其二, 注意写入行尾序列的第二个字符时, 你递归调用 <CODE>put</CODE> 而不是调用 <CODE>put_char</CODE>.</P>
+
+<P>比较 <CODE>unix2dos_input_filter</CODE> 与 <CODE>unix2dos_output_filter</CODE> 的实现, 你可以看出: 这是一个过滤算法作为 Input 表述比作为 OutputFilter 容易得多的例子. 如果想避免上述定义的复杂性, 你可以使用类模板 <A HREF="../functions/invert.html#invert"><CODE>inverse</CODE></A> 从 <CODE>unix2dos_input_filter</CODE> 构造一个 OutputFilter:</P>
+
+<PRE CLASS="broken_ie"><SPAN CLASS='literal'>#include</SPAN></SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/concepts.hpp"><SPAN CLASS='literal'>&lt;boost/iostreams/invert.hpp&gt;</SPAN></A>   <SPAN CLASS='comment'>// inverse</SPAN>   
+
+<SPAN CLASS='keyword'>namespace</SPAN> io = boost::iostreams;
+<SPAN CLASS='keyword'>namespace</SPAN> ex = boost::iostreams::example;
+
+<SPAN CLASS="keyword">typedef</SPAN> io::inverse&lt;ex::unix2dos_input_filter&gt; unix2dos_output_filter;</PRE>
+
+<P>不过, 即便如此仍比必要的做法费事, 因为行尾转换可以用内置组件 <A HREF="../classes/newline_filter.html#newline_filter"><CODE>newline_filter</CODE></A> 轻松处理.</P>
+
+<!-- Begin Nav -->
+
+<DIV CLASS='nav'>
+    <A HREF='dictionary_filters.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/prev.png'></A>
+    <A HREF='tutorial.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/up.png'></A>
+    <A HREF='multichar_filters.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/next.png'></A>
+</DIV>
+
+<!-- End Nav -->
+
+<!-- Begin Footer -->
+
+<HR>
+
+
+<P CLASS="copyright">© 版权所有 2008 <a href="http://www.coderage.com/" target="_top">CodeRage, LLC</a><br/>© 版权所有 2004-2007 <a href="https://www.boost.org/users/people/jonathan_turkanis.html" target="_top">Jonathan Turkanis</a></P>
+<P CLASS="copyright">使用、修改与分发受 Boost 软件许可 2.0 版约束. (随附文件 <A HREF="../../../../LICENSE_1_0.txt">LICENSE_1_0.txt</A> 或复制于 <A HREF="http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</A>)</P>
+<!-- End Footer -->
+
+</BODY>

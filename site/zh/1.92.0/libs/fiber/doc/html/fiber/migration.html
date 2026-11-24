@@ -1,0 +1,238 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>跨线程迁移纤程</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Fiber">
+<link rel="up" href="../index.html" title="第 1 章 Fiber">
+<link rel="prev" href="fls.html" title="纤程局部存储">
+<link rel="next" href="callbacks.html" title="将纤程与异步回调集成">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="fls.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="callbacks.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="fiber.migration"></a><a name="migration"></a><a class="link" href="migration.html" title="跨线程迁移纤程">跨线程迁移纤程</a>
+</h2></div></div></div>
+<h4>
+<a name="fiber.migration.h0"></a>
+      <span class="phrase"><a name="fiber.migration.overview"></a></span><a class="link" href="migration.html#fiber.migration.overview"> 概述 </a>
+    </h4>
+<p>每个纤程拥有一个栈并管理其执行状态, 包括所有寄存器和 CPU 标志位、指令指针和栈指针. 这意味着, 一般来说, 纤程并不绑定到特定线程.<a href="#ftn.fiber.migration.f0" class="footnote" name="fiber.migration.f0"><sup class="footnote">[3]</sup></a><sup>,</sup><a href="#ftn.fiber.migration.f1" class="footnote" name="fiber.migration.f1"><sup class="footnote">[4]</sup></a>
+    </p>
+<p>把纤程从工作负载繁重的逻辑 CPU 迁移到工作负载较轻的另一个逻辑 CPU 可能会加快整体执行. 注意, 对于 NUMA 架构, 在线程之间迁移数据并不总是可取的. 假设纤程 <span class="emphasis"><em>f</em></span> 正在逻辑 CPU <span class="emphasis"><em>cpu0</em></span> 上运行, 该 CPU 属于 NUMA 节点 <span class="emphasis"><em>node0</em></span>. <span class="emphasis"><em>f</em></span> 的数据分配在位于 <span class="emphasis"><em>node0</em></span> 的物理内存上. 把纤程从 <span class="emphasis"><em>cpu0</em></span> 迁移到属于另一个 NUMA 节点 <span class="emphasis"><em>nodeX</em></span> 的逻辑 CPU <span class="emphasis"><em>cpuX</em></span>, 可能会因内存访问延迟增加而降低应用程序的性能.</p>
+<p>只有包含在 <a class="link" href="scheduling.html#class_algorithm"><code class="computeroutput">algorithm</code></a> 的就绪队列中的纤程才能在线程之间迁移. 你不能迁移正在运行的纤程, 也不能迁移 <a class="link" href="overview.html#blocking"><span class="emphasis"><em>blocked</em></span></a> 的纤程. 你也不能迁移其 <a class="link" href="scheduling.html#context_is_context"><code class="computeroutput">context::is_context()</code></a> 方法返回 <code class="computeroutput"><span class="keyword">true</span></code> (针对 <code class="computeroutput"><span class="identifier">pinned_context</span></code>) 的纤程.</p>
+<p>在 <span class="bold"><strong>Boost.Fiber</strong></span> 中, 纤程迁移通过在纤程迁出的线程上调用 <a class="link" href="scheduling.html#context_detach"><code class="computeroutput">context::detach()</code></a>, 并在纤程迁入的线程上调用 <a class="link" href="scheduling.html#context_attach"><code class="computeroutput">context::attach()</code></a> 来完成.</p>
+<p>因此, 纤程迁移是通过在不同线程上运行的、用户编写的 <a class="link" href="scheduling.html#class_algorithm"><code class="computeroutput">algorithm</code></a> 实现的各实例之间共享状态来完成的. 纤程的原始线程调用 <a class="link" href="scheduling.html#algorithm_awakened"><code class="computeroutput">algorithm::awakened()</code></a>, 并传入该纤程的 <a class="link" href="scheduling.html#class_context"><code class="computeroutput">context</code></a><code class="literal">*</code>. <code class="computeroutput"><span class="identifier">awakened</span><span class="special">()</span></code> 实现会调用 <a class="link" href="scheduling.html#context_detach"><code class="computeroutput">context::detach()</code></a>.</p>
+<p>稍后的某个时刻, 当同一个或另一个线程调用 <a class="link" href="scheduling.html#algorithm_pick_next"><code class="computeroutput">algorithm::pick_next()</code></a> 时, <code class="computeroutput"><span class="identifier">pick_next</span><span class="special">()</span></code> 实现会选取一个就绪纤程, 并在返回它之前对其调用 <a class="link" href="scheduling.html#context_attach"><code class="computeroutput">context::attach()</code></a>.</p>
+<p>如上所述, 一个 <code class="computeroutput"><span class="identifier">context</span></code>——若其满足 <code class="computeroutput"><span class="identifier">is_context</span><span class="special">(</span><span class="identifier">pinned_context</span><span class="special">)</span>
+      <span class="special">==</span> <span class="keyword">true</span></code>——绝不能传给 <a class="link" href="scheduling.html#context_detach"><code class="computeroutput">context::detach()</code></a> 或 <a class="link" href="scheduling.html#context_attach"><code class="computeroutput">context::attach()</code></a>. 它只能从 <code class="computeroutput"><span class="identifier">pick_next</span><span class="special">()</span></code> 返回, 且只能由 <span class="emphasis"><em>相同</em></span> 的线程返回——即把该上下文传给 <code class="computeroutput"><span class="identifier">awakened</span><span class="special">()</span></code> 的那个线程.</p>
+<h4>
+<a name="fiber.migration.h1"></a>
+      <span class="phrase"><a name="fiber.migration.example_of_work_sharing"></a></span><a class="link" href="migration.html#fiber.migration.example_of_work_sharing">工作共享示例</a>
+    </h4>
+<p>在示例 <a href="../../../examples/work_sharing.cpp" target="_top">work_sharing.cpp</a> 中, 多个工作纤程在主线程上创建. 每个纤程在构造时获得一个字符作为参数. 该字符会被打印十次. 在每次迭代之间, 纤程会调用 <a class="link" href="fiber_mgmt/this_fiber.html#this_fiber_yield"><code class="computeroutput">this_fiber::yield()</code></a>. 这会把该纤程放入当前线程上运行的纤程调度器 <span class="emphasis"><em>shared_ready_queue</em></span> 的就绪队列. 下一个就绪待执行的纤程会从共享就绪队列中出队, 并由运行在 <span class="emphasis"><em>任何参与线程</em></span> 上的 <span class="emphasis"><em>shared_ready_queue</em></span> 恢复.</p>
+<p> <span class="emphasis"><em>shared_ready_queue</em></span> 的所有实例共享一个用作就绪队列的全局并发队列. 这一机制在 <span class="emphasis"><em>shared_ready_queue</em></span> 的所有实例之间——也就是所有参与线程之间——共享所有工作纤程.</p>
+<h4>
+<a name="fiber.migration.h2"></a>
+      <span class="phrase"><a name="fiber.migration.setup_of_threads_and_fibers"></a></span><a class="link" href="migration.html#fiber.migration.setup_of_threads_and_fibers">线程与纤程的设置</a>
+    </h4>
+<p>在 <code class="computeroutput"><span class="identifier">main</span><span class="special">()</span></code> 中安装纤程调度器, 并启动工作纤程和线程.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">use_scheduling_algorithm</span><span class="special">&lt;</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">algo</span><span class="special">::</span><span class="identifier">shared_work</span> <span class="special">&gt;();</span> <a class="co" name="fiber.migration.c0" href="migration.html#fiber.migration.c1"><img src="../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a>
+
+<span class="keyword">for</span> <span class="special">(</span> <span class="keyword">char</span> <span class="identifier">c</span> <span class="special">:</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">(</span><span class="string">"abcdefghijklmnopqrstuvwxyz"</span><span class="special">))</span> <span class="special">{</span> <a class="co" name="fiber.migration.c2" href="migration.html#fiber.migration.c3"><img src="../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">fiber</span><span class="special">([</span><span class="identifier">c</span><span class="special">](){</span> <span class="identifier">whatevah</span><span class="special">(</span> <span class="identifier">c</span><span class="special">);</span> <span class="special">}).</span><span class="identifier">detach</span><span class="special">();</span>
+    <span class="special">++</span><span class="identifier">fiber_count</span><span class="special">;</span> <a class="co" name="fiber.migration.c4" href="migration.html#fiber.migration.c5"><img src="../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a>
+<span class="special">}</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">thread_barrier</span> <span class="identifier">b</span><span class="special">(</span> <span class="number">4</span><span class="special">);</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">thread</span> <span class="identifier">threads</span><span class="special">[]</span> <span class="special">=</span> <span class="special">{</span> <a class="co" name="fiber.migration.c6" href="migration.html#fiber.migration.c7"><img src="../../../../../doc/src/images/callouts/4.png" alt="4" border="0"></a>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">thread</span><span class="special">(</span> <span class="identifier">thread</span><span class="special">,</span> <span class="special">&amp;</span> <span class="identifier">b</span><span class="special">),</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">thread</span><span class="special">(</span> <span class="identifier">thread</span><span class="special">,</span> <span class="special">&amp;</span> <span class="identifier">b</span><span class="special">),</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">thread</span><span class="special">(</span> <span class="identifier">thread</span><span class="special">,</span> <span class="special">&amp;</span> <span class="identifier">b</span><span class="special">)</span>
+<span class="special">};</span>
+<span class="identifier">b</span><span class="special">.</span><span class="identifier">wait</span><span class="special">();</span> <a class="co" name="fiber.migration.c8" href="migration.html#fiber.migration.c9"><img src="../../../../../doc/src/images/callouts/5.png" alt="5" border="0"></a>
+<span class="special">{</span>
+    <span class="identifier">lock_type</span><a class="co" name="fiber.migration.c10" href="migration.html#fiber.migration.c11"><img src="../../../../../doc/src/images/callouts/6.png" alt="6" border="0"></a> <span class="identifier">lk</span><span class="special">(</span> <span class="identifier">mtx_count</span><span class="special">);</span>
+    <span class="identifier">cnd_count</span><span class="special">.</span><span class="identifier">wait</span><span class="special">(</span> <span class="identifier">lk</span><span class="special">,</span> <span class="special">[](){</span> <span class="keyword">return</span> <span class="number">0</span> <span class="special">==</span> <span class="identifier">fiber_count</span><span class="special">;</span> <span class="special">}</span> <span class="special">);</span> <a class="co" name="fiber.migration.c12" href="migration.html#fiber.migration.c13"><img src="../../../../../doc/src/images/callouts/7.png" alt="7" border="0"></a>
+<span class="special">}</span> <a class="co" name="fiber.migration.c14" href="migration.html#fiber.migration.c15"><img src="../../../../../doc/src/images/callouts/8.png" alt="8" border="0"></a>
+<span class="identifier">BOOST_ASSERT</span><span class="special">(</span> <span class="number">0</span> <span class="special">==</span> <span class="identifier">fiber_count</span><span class="special">);</span>
+<span class="keyword">for</span> <span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">thread</span> <span class="special">&amp;</span> <span class="identifier">t</span> <span class="special">:</span> <span class="identifier">threads</span><span class="special">)</span> <span class="special">{</span> <a class="co" name="fiber.migration.c16" href="migration.html#fiber.migration.c17"><img src="../../../../../doc/src/images/callouts/9.png" alt="9" border="0"></a>
+    <span class="identifier">t</span><span class="special">.</span><span class="identifier">join</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<p>
+    </p>
+<div class="calloutlist"><table border="0" summary="Callout list">
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c1"></a><a href="#fiber.migration.c0"><img src="../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a> </p></td>
+<td valign="top" align="left"><p>在主线程中也安装调度算法 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">algo</span><span class="special">::</span><span class="identifier">shared_work</span></code>, 使每个新纤程都被启动到共享池中.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c3"></a><a href="#fiber.migration.c2"><img src="../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a> </p></td>
+<td valign="top" align="left"><p>启动若干工作纤程; 每个工作纤程获取一个作为参数传给纤程函数 <code class="computeroutput"><span class="identifier">whatevah</span></code> 的字符. 每个工作纤程都被分离.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c5"></a><a href="#fiber.migration.c4"><img src="../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a> </p></td>
+<td valign="top" align="left"><p>为每个新纤程递增纤程计数器.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c7"></a><a href="#fiber.migration.c6"><img src="../../../../../doc/src/images/callouts/4.png" alt="4" border="0"></a> </p></td>
+<td valign="top" align="left"><p>启动几个加入工作共享的线程.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c9"></a><a href="#fiber.migration.c8"><img src="../../../../../doc/src/images/callouts/5.png" alt="5" border="0"></a> </p></td>
+<td valign="top" align="left"><p>与其他线程同步: 允许它们开始处理</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c11"></a><a href="#fiber.migration.c10"><img src="../../../../../doc/src/images/callouts/6.png" alt="6" border="0"></a> </p></td>
+<td valign="top" align="left"><p>
+          <code class="computeroutput"><span class="identifier">lock_type</span></code> 被 typedef 为 <a href="http://en.cppreference.com/w/cpp/thread/unique_lock" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_lock</span></code></a>&lt; <a href="http://en.cppreference.com/w/cpp/thread/mutex" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">mutex</span></code></a> &gt;</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c13"></a><a href="#fiber.migration.c12"><img src="../../../../../doc/src/images/callouts/7.png" alt="7" border="0"></a> </p></td>
+<td valign="top" align="left"><p>挂起主纤程, 同时恢复工作纤程. 当所有工作纤程都完成时, 主纤程被恢复 (例如从 <code class="computeroutput"><span class="identifier">condition_variable_any</span><span class="special">::</span><span class="identifier">wait</span><span class="special">()</span></code> 返回).</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c15"></a><a href="#fiber.migration.c14"><img src="../../../../../doc/src/images/callouts/8.png" alt="8" border="0"></a> </p></td>
+<td valign="top" align="left"><p>在汇合 (join) 线程之前必须释放 mtx_count 的锁, 否则其他线程会阻塞在 condition_variable::wait() 内, 永远不会返回 (死锁).</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c17"></a><a href="#fiber.migration.c16"><img src="../../../../../doc/src/images/callouts/9.png" alt="9" border="0"></a> </p></td>
+<td valign="top" align="left"><p>等待线程终止</p></td>
+</tr>
+</table></div>
+<p>线程的启动由一个屏障同步. 每个线程 (包括主线程) 的主纤程会被挂起, 直到所有工作纤程都完成. 当主纤程从 <a class="link" href="synchronization/conditions.html#condition_variable_wait"><code class="computeroutput">condition_variable::wait()</code></a> 返回时, 该线程终止: 主线程汇合所有其他线程.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">thread</span><span class="special">(</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">detail</span><span class="special">::</span><span class="identifier">thread_barrier</span> <span class="special">*</span> <span class="identifier">b</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">ostringstream</span> <span class="identifier">buffer</span><span class="special">;</span>
+    <span class="identifier">buffer</span> <span class="special">&lt;&lt;</span> <span class="string">"thread started "</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">this_thread</span><span class="special">::</span><span class="identifier">get_id</span><span class="special">()</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">buffer</span><span class="special">.</span><span class="identifier">str</span><span class="special">()</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">flush</span><span class="special">;</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">use_scheduling_algorithm</span><span class="special">&lt;</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">algo</span><span class="special">::</span><span class="identifier">shared_work</span> <span class="special">&gt;();</span> <a class="co" name="fiber.migration.c18" href="migration.html#fiber.migration.c19"><img src="../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a>
+    <span class="identifier">b</span><span class="special">-&gt;</span><span class="identifier">wait</span><span class="special">();</span> <a class="co" name="fiber.migration.c20" href="migration.html#fiber.migration.c21"><img src="../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a>
+    <span class="identifier">lock_type</span> <span class="identifier">lk</span><span class="special">(</span> <span class="identifier">mtx_count</span><span class="special">);</span>
+    <span class="identifier">cnd_count</span><span class="special">.</span><span class="identifier">wait</span><span class="special">(</span> <span class="identifier">lk</span><span class="special">,</span> <span class="special">[](){</span> <span class="keyword">return</span> <span class="number">0</span> <span class="special">==</span> <span class="identifier">fiber_count</span><span class="special">;</span> <span class="special">}</span> <span class="special">);</span> <a class="co" name="fiber.migration.c22" href="migration.html#fiber.migration.c23"><img src="../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a>
+    <span class="identifier">BOOST_ASSERT</span><span class="special">(</span> <span class="number">0</span> <span class="special">==</span> <span class="identifier">fiber_count</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>
+    </p>
+<div class="calloutlist"><table border="0" summary="Callout list">
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c19"></a><a href="#fiber.migration.c18"><img src="../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a> </p></td>
+<td valign="top" align="left"><p>安装调度算法 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">algo</span><span class="special">::</span><span class="identifier">shared_work</span></code> 以加入工作共享.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c21"></a><a href="#fiber.migration.c20"><img src="../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a> </p></td>
+<td valign="top" align="left"><p>与其他线程同步: 允许它们开始处理</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c23"></a><a href="#fiber.migration.c22"><img src="../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a> </p></td>
+<td valign="top" align="left"><p>挂起主纤程, 同时恢复工作纤程. 当所有工作纤程都完成时, 主纤程被恢复 (例如从 <code class="computeroutput"><span class="identifier">condition_variable_any</span><span class="special">::</span><span class="identifier">wait</span><span class="special">()</span></code> 返回).</p></td>
+</tr>
+</table></div>
+<p>每个工作纤程执行函数 <code class="computeroutput"><span class="identifier">whatevah</span><span class="special">()</span></code>, 以字符 <code class="computeroutput"><span class="identifier">me</span></code> 作为参数. 纤程在循环中让出, 并且如果它被迁移到另一个线程则打印一条消息.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">whatevah</span><span class="special">(</span> <span class="keyword">char</span> <span class="identifier">me</span><span class="special">)</span> <span class="special">{</span>
+    <span class="keyword">try</span> <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">thread</span><span class="special">::</span><span class="identifier">id</span> <span class="identifier">my_thread</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">this_thread</span><span class="special">::</span><span class="identifier">get_id</span><span class="special">();</span> <a class="co" name="fiber.migration.c24" href="migration.html#fiber.migration.c25"><img src="../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a>
+        <span class="special">{</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">ostringstream</span> <span class="identifier">buffer</span><span class="special">;</span>
+            <span class="identifier">buffer</span> <span class="special">&lt;&lt;</span> <span class="string">"fiber "</span> <span class="special">&lt;&lt;</span> <span class="identifier">me</span> <span class="special">&lt;&lt;</span> <span class="string">" started on thread "</span> <span class="special">&lt;&lt;</span> <span class="identifier">my_thread</span> <span class="special">&lt;&lt;</span> <span class="char">'\n'</span><span class="special">;</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">buffer</span><span class="special">.</span><span class="identifier">str</span><span class="special">()</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">flush</span><span class="special">;</span>
+        <span class="special">}</span>
+        <span class="keyword">for</span> <span class="special">(</span> <span class="keyword">unsigned</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="number">10</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span> <span class="special">{</span> <a class="co" name="fiber.migration.c26" href="migration.html#fiber.migration.c27"><img src="../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a>
+            <span class="identifier">boost</span><span class="special">::</span><span class="identifier">this_fiber</span><span class="special">::</span><span class="identifier">yield</span><span class="special">();</span> <a class="co" name="fiber.migration.c28" href="migration.html#fiber.migration.c29"><img src="../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">thread</span><span class="special">::</span><span class="identifier">id</span> <span class="identifier">new_thread</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">this_thread</span><span class="special">::</span><span class="identifier">get_id</span><span class="special">();</span> <a class="co" name="fiber.migration.c30" href="migration.html#fiber.migration.c31"><img src="../../../../../doc/src/images/callouts/4.png" alt="4" border="0"></a>
+            <span class="keyword">if</span> <span class="special">(</span> <span class="identifier">new_thread</span> <span class="special">!=</span> <span class="identifier">my_thread</span><span class="special">)</span> <span class="special">{</span> <a class="co" name="fiber.migration.c32" href="migration.html#fiber.migration.c33"><img src="../../../../../doc/src/images/callouts/5.png" alt="5" border="0"></a>
+                <span class="identifier">my_thread</span> <span class="special">=</span> <span class="identifier">new_thread</span><span class="special">;</span>
+                <span class="identifier">std</span><span class="special">::</span><span class="identifier">ostringstream</span> <span class="identifier">buffer</span><span class="special">;</span>
+                <span class="identifier">buffer</span> <span class="special">&lt;&lt;</span> <span class="string">"fiber "</span> <span class="special">&lt;&lt;</span> <span class="identifier">me</span> <span class="special">&lt;&lt;</span> <span class="string">" switched to thread "</span> <span class="special">&lt;&lt;</span> <span class="identifier">my_thread</span> <span class="special">&lt;&lt;</span> <span class="char">'\n'</span><span class="special">;</span>
+                <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">buffer</span><span class="special">.</span><span class="identifier">str</span><span class="special">()</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">flush</span><span class="special">;</span>
+            <span class="special">}</span>
+        <span class="special">}</span>
+    <span class="special">}</span> <span class="keyword">catch</span> <span class="special">(</span> <span class="special">...</span> <span class="special">)</span> <span class="special">{</span>
+    <span class="special">}</span>
+    <span class="identifier">lock_type</span> <span class="identifier">lk</span><span class="special">(</span> <span class="identifier">mtx_count</span><span class="special">);</span>
+    <span class="keyword">if</span> <span class="special">(</span> <span class="number">0</span> <span class="special">==</span> <span class="special">--</span><span class="identifier">fiber_count</span><span class="special">)</span> <span class="special">{</span> <a class="co" name="fiber.migration.c34" href="migration.html#fiber.migration.c35"><img src="../../../../../doc/src/images/callouts/6.png" alt="6" border="0"></a>
+        <span class="identifier">lk</span><span class="special">.</span><span class="identifier">unlock</span><span class="special">();</span>
+        <span class="identifier">cnd_count</span><span class="special">.</span><span class="identifier">notify_all</span><span class="special">();</span> <a class="co" name="fiber.migration.c36" href="migration.html#fiber.migration.c37"><img src="../../../../../doc/src/images/callouts/7.png" alt="7" border="0"></a>
+    <span class="special">}</span>
+<span class="special">}</span>
+</pre>
+<p>
+    </p>
+<div class="calloutlist"><table border="0" summary="Callout list">
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c25"></a><a href="#fiber.migration.c24"><img src="../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a> </p></td>
+<td valign="top" align="left"><p>获取初始线程的 ID</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c27"></a><a href="#fiber.migration.c26"><img src="../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a> </p></td>
+<td valign="top" align="left"><p>循环十次</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c29"></a><a href="#fiber.migration.c28"><img src="../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a> </p></td>
+<td valign="top" align="left"><p>让出给其他纤程</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c31"></a><a href="#fiber.migration.c30"><img src="../../../../../doc/src/images/callouts/4.png" alt="4" border="0"></a> </p></td>
+<td valign="top" align="left"><p>获取当前线程的 ID</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c33"></a><a href="#fiber.migration.c32"><img src="../../../../../doc/src/images/callouts/5.png" alt="5" border="0"></a> </p></td>
+<td valign="top" align="left"><p>测试纤程是否被迁移到了另一个线程</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c35"></a><a href="#fiber.migration.c34"><img src="../../../../../doc/src/images/callouts/6.png" alt="6" border="0"></a> </p></td>
+<td valign="top" align="left"><p>为每个完成的纤程递减纤程计数器.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.migration.c37"></a><a href="#fiber.migration.c36"><img src="../../../../../doc/src/images/callouts/7.png" alt="7" border="0"></a> </p></td>
+<td valign="top" align="left"><p>通知所有在 <code class="computeroutput"><span class="identifier">cnd_count</span></code> 上等待的纤程.</p></td>
+</tr>
+</table></div>
+<h4>
+<a name="fiber.migration.h3"></a>
+      <span class="phrase"><a name="fiber.migration.scheduling_fibers"></a></span><a class="link" href="migration.html#fiber.migration.scheduling_fibers">调度纤程</a>
+    </h4>
+<p>纤程调度器 <code class="computeroutput"><span class="identifier">shared_ready_queue</span></code> 类似于 <code class="computeroutput"><span class="identifier">round_robin</span></code>, 区别在于它在所有参与线程之间共享一个公共就绪队列. 线程通过执行 <a class="link" href="fiber_mgmt/fiber.html#use_scheduling_algorithm"><code class="computeroutput">use_scheduling_algorithm()</code></a> 来加入该池, 这要在任何其他 <span class="bold"><strong>Boost.Fiber</strong></span> 操作之前进行.</p>
+<p>关于就绪队列的重点是, 它是一个类静态成员, 为 shared_ready_queue 的所有实例所共有. 因此, 经由 <a class="link" href="scheduling.html#algorithm_awakened"><code class="computeroutput">algorithm::awakened()</code></a> 入队的纤程 (就绪待恢复的纤程) 对所有线程都可用. 必须为线程的主纤程和分派纤程保留一个单独的、调度器特定的队列: 这些纤程 <span class="emphasis"><em>不得</em></span> 在线程之间共享! 当我们收到这两种纤程之一时, 应把它推入那里而不是共享队列: 让线程 B 取回并尝试执行线程 A 的主纤程将是一件糟糕的事.</p>
+<p>
+      [awakened_ws]
+    </p>
+<p>当 <a class="link" href="scheduling.html#algorithm_pick_next"><code class="computeroutput">algorithm::pick_next()</code></a> 在某个线程内被调用时, 一个纤程会从 <span class="emphasis"><em>rqueue_</em></span> 出队, 并将在该线程中被恢复.</p>
+<p>
+      [pick_next_ws]
+    </p>
+<p>上述源代码位于 <a href="../../../examples/work_sharing.cpp" target="_top">work_sharing.cpp</a> 中.</p>
+<div class="footnotes">
+<br><hr style="width:100; text-align:left;margin-left: 0">
+<div id="ftn.fiber.migration.f0" class="footnote"><p><a href="#fiber.migration.f0" class="para"><sup class="para">[3] </sup></a> 每个线程上的 <span class="quote">"<span class="quote">main</span>"</span> 纤程——即线程启动时所在的纤程——不能迁移到任何其他线程. 另外 <span class="bold"><strong>Boost.Fiber</strong></span> 会为每个线程隐式创建一个分派纤程——它同样不能迁移.</p></div>
+<div id="ftn.fiber.migration.f1" class="footnote"><p><a href="#fiber.migration.f1" class="para"><sup class="para">[4] </sup></a> 当然, 迁移依赖 <a class="link" href="overview.html#thread_local_storage">线程局部存储</a> 的纤程会有问题.</p></div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2013 Oliver Kowalke<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="fls.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="callbacks.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

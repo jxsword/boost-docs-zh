@@ -1,0 +1,69 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>设计概述</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.Log v2">
+<link rel="up" href="../index.html" title="第 1 章 Boost.Log v2">
+<link rel="prev" href="installation/config.html" title="库的配置与构建">
+<link rel="next" href="tutorial.html" title="Tutorial">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr><td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td></tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="installation/config.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="tutorial.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="log.design"></a><a class="link" href="design.html" title="设计概述">设计概述</a>
+</h2></div></div></div>
+<p>Boost.Log 的设计非常模块化且可扩展. 它同时支持窄字符和宽字符日志. 窄字符和宽字符日志器提供相似的能力, 因此本文档大部分内容只描述窄字符接口.</p>
+<p>库由三个主要层组成: 日志数据收集层、收集数据处理层, 以及互联前两层的中心枢纽. 该设计如下图所示.</p>
+<p>
+      <span class="inlinemediaobject"><img src="../images/log/Design.png" alt="设计"></span>
+    </p>
+<p>箭头表示日志信息流的方向 —— 从左侧的应用程序各部分, 流向右侧的最终存储 (如果有的话). 存储是可选的, 因为日志处理的结果可以包含某些动作而不实际将信息存储到任何地方. 例如, 如果应用程序处于危急状态, 它可以发出一条特殊的日志记录, 该记录被处理后, 用户会在系统托盘的应用程序图标上方看到一条错误消息的工具提示通知, 并听到警报声. 这是库的一个非常重要的特性: 它与收集和处理日志数据, 以及日志记录实际由什么数据构成, 都是正交的. 这使得库不仅可用于经典日志, 还可用于向应用程序用户指示重要事件以及累积统计数据.</p>
+<h4>
+<a name="log.design.h0"></a>
+      <span class="phrase"><a name="log.design.logging_sources"></a></span><a class="link" href="design.html#log.design.logging_sources">日志源</a>
+    </h4>
+<p>回到图中, 左侧是您的应用程序借助日志器发出日志记录 —— 日志器是特殊的对象, 提供用于格式化消息的流, 这些消息最终会被写入日志. 库提供了多种不同的日志器类型, 您也可以通过扩展现有类型自行制作更多. 日志器被设计为多个独立特性的组合体, 这些特性可以任意组合. 您可以轻松开发自己的特性并加入其中. 构造出的日志器可以像其他日志器一样使用 —— 嵌入到您的应用程序类中, 或创建并使用日志器的全局实例. 两种方式各有好处. 将日志器嵌入某个类, 可以区分该类不同实例产生的日志. 另一方面, 在函数式编程风格中, 在某处保留一个全局日志器并简单访问它通常更方便.</p>
+<p>一般而言, 库并不要求使用日志器来写日志. 更通用的术语 "日志源" 指通过构造日志记录来发起日志的实体. 其他日志源可能包括捕获的子应用程序控制台输出或从网络接收的数据. 不过, 日志器是最常见的日志源.</p>
+<h4>
+<a name="log.design.h1"></a>
+      <span class="phrase"><a name="log.design.attributes_and_attribute_values"></a></span><a class="link" href="design.html#log.design.attributes_and_attribute_values">属性与属性值</a>
+    </h4>
+<p>为了发起日志, 日志源必须将与日志记录关联的所有数据传递给日志核心. 这些数据, 或者更准确地说, 获取数据的逻辑, 由一组命名属性表示. 每个属性基本上是一个函数, 其结果称为 "属性值", 并在后续阶段实际处理. 属性的一个例子是返回当前时间的函数. 其结果 —— 特定的时间点 —— 就是属性值.</p>
+<p>属性集有三类:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">全局</li>
+<li class="listitem">线程专属</li>
+<li class="listitem">日志源专属</li>
+</ul></div>
+<p>从图中可以看到, 前两类属性集由日志核心维护, 因此日志源发起日志时无需传递它们. 参与全局属性集的属性会附加到所创建的每条日志记录上. 显然, 线程专属属性只附加到在注册它们的线程中所创建的记录上. 日志源专属属性集由发起日志的日志源维护, 这些属性只附加到通过该特定日志源创建的记录上.</p>
+<p>当日志源发起日志时, 属性值从所有三类属性集的属性中获取. 这些属性值随后组成一个单一的命名属性值集, 供后续处理. 您可以向该集合添加更多属性值; 这些值只附加到特定日志记录上, 不会与日志源或日志核心关联. 您可能注意到, 同名属性可能出现在多个属性集中. 此类冲突按优先级解决: 全局属性优先级最低, 日志源专属属性优先级最高; 冲突时优先级较低的属性被忽略.</p>
+<h4>
+<a name="log.design.h2"></a>
+      <span class="phrase"><a name="log.design.logging_core_and_filtering"></a></span><a class="link" href="design.html#log.design.logging_core_and_filtering">日志核心与过滤</a>
+    </h4>
+<p>当属性值集组成完毕后, 日志核心决定该日志记录是否会在接收器中被处理. 这称为过滤. 有两层过滤可用: 首先在日志核心内部应用全局过滤, 可快速清除不需要的日志记录; 其次应用接收器专属过滤, 对每个接收器分别进行. 接收器专属过滤允许将日志记录定向到特定接收器. 注意, 此时记录由哪个日志源发出并不重要, 过滤仅依赖于记录附带的属性值集.</p>
+<p>必须说明, 对给定的日志记录, 过滤只执行一次. 显然, 只有在过滤开始之前附加到记录上的属性值才能参与过滤. 某些属性值 (例如日志记录消息) 通常在过滤完成后才附加到记录上; 这些值不能用于过滤器, 只能被格式化器和接收器本身使用.</p>
+<h4>
+<a name="log.design.h3"></a>
+      <span class="phrase"><a name="log.design.sinks_and_formatting"></a></span><a class="link" href="design.html#log.design.sinks_and_formatting">接收器与格式化</a>
+    </h4>
+<p>如果日志记录通过了至少一个接收器的过滤, 该记录被视为可消费. 如果接收器支持格式化输出, 此时就会进行日志消息格式化. 格式化后的消息连同组成的属性值集一起被传递给接受该记录的接收器. 注意, 格式化按接收器逐一进行, 因此每个接收器都可以按自己的特定格式输出日志记录.</p>
+<p>您可能已经在上图中注意到, 接收器由两部分组成: 前端和后端. 这样划分是为了将接收器的公共功能 (例如过滤、格式化和线程同步) 提取为独立的实体 (前端). 接收器前端由库提供, 用户大概率无需重新实现它们. 而后端则是扩展库最合适的地方之一. 实际处理日志记录的正是接收器后端. 可以有将日志记录存储到文件中的接收器; 可以有通过网络将日志记录发送到远程日志处理节点的接收器; 也可以有前文所述将记录消息放入工具提示通知的接收器 —— 等等. 最常用的接收器后端已由库提供.</p>
+<p>除上述主要设施外, 库还提供了各种各样的辅助工具, 例如属性、以 lambda 表达式表示的格式化器和过滤器支持, 甚至还有用于库初始化的基础辅助工具. 您可以在 <a class="link" href="detailed.html" title="功能详解">功能详解</a> 一节中找到它们的描述. 不过, 建议新用户从 <a class="link" href="tutorial.html" title="Tutorial">教程</a> 一节开始探索该库.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2007-2024 Andrey Semashev<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>) .</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="installation/config.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="tutorial.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

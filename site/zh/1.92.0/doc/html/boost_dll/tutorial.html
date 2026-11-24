@@ -1,0 +1,1030 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>教程</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../boost_dll.html" title="第 11 章. Boost.DLL">
+<link rel="prev" href="getting_started.html" title="入门">
+<link rel="next" href="mangled_import.html" title="修饰名导入">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="getting_started.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../boost_dll.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="mangled_import.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="boost_dll.tutorial"></a><a class="link" href="tutorial.html" title="Tutorial">教程</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="tutorial.html#boost_dll.tutorial.plugin_basics">插件基础</a></span></dt>
+<dt><span class="section"><a href="tutorial.html#boost_dll.tutorial.factory_method_in_plugin">插件中的工厂方法</a></span></dt>
+<dt><span class="section"><a href="tutorial.html#boost_dll.tutorial.searching_for_a_symbol_in_multiple_plugins">在多个插件中搜索符号</a></span></dt>
+<dt><span class="section"><a href="tutorial.html#boost_dll.tutorial.linking_plugin_into_the_executable">把插件链接进可执行文件</a></span></dt>
+<dt><span class="section"><a href="tutorial.html#boost_dll.tutorial.symbol_shadowing_problem__linux_">符号遮蔽问题 (Linux)</a></span></dt>
+<dt><span class="section"><a href="tutorial.html#boost_dll.tutorial.executing_callbacks_on_library_unload">在库卸载时执行回调</a></span></dt>
+<dt><span class="section"><a href="tutorial.html#boost_dll.tutorial.querying_libraries_for_symbols">查询库中的符号</a></span></dt>
+<dt><span class="section"><a href="tutorial.html#boost_dll.tutorial.advanced_library_reference_counting">库引用计数的高级用法</a></span></dt>
+<dt><span class="section"><a href="tutorial.html#boost_dll.tutorial.importing_a_c_function_from_windows_dll">从 Windows dll 导入 C 函数</a></span></dt>
+</dl></div>
+<p>本教程旨在让你了解如何创建和使用插件.</p>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_dll.tutorial.plugin_basics"></a><a class="link" href="tutorial.html#boost_dll.tutorial.plugin_basics" title="插件基础">插件基础</a>
+</h3></div></div></div>
+<p>创建自己的插件时, 首先要做的是定义插件接口. 下面是一个抽象类的例子, 它将作为我们的插件 API:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">config</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">string</span><span class="special">&gt;</span>
+
+<span class="keyword">class</span> <span class="identifier">BOOST_SYMBOL_VISIBLE</span> <span class="identifier">my_plugin_api</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+   <span class="keyword">virtual</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">name</span><span class="special">()</span> <span class="keyword">const</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+   <span class="keyword">virtual</span> <span class="keyword">float</span> <span class="identifier">calculate</span><span class="special">(</span><span class="keyword">float</span> <span class="identifier">x</span><span class="special">,</span> <span class="keyword">float</span> <span class="identifier">y</span><span class="special">)</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+
+   <span class="keyword">virtual</span> <span class="special">~</span><span class="identifier">my_plugin_api</span><span class="special">()</span> <span class="special">=</span> <span class="keyword">default</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<p>现在我们来编写一个 DLL/DSO 库, 它承载插件接口的实现, 并使用 <code class="computeroutput"><span class="keyword">extern</span>
+        <span class="string">"C"</span></code> 与 <code class="computeroutput">BOOST_SYMBOL_EXPORT</code> 导出:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">config</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span> <span class="comment">// for BOOST_SYMBOL_EXPORT</span>
+<span class="preprocessor">#include</span> <span class="string">"../tutorial_common/my_plugin_api.hpp"</span>
+
+<span class="keyword">namespace</span> <span class="identifier">my_namespace</span> <span class="special">{</span>
+
+<span class="keyword">class</span> <span class="identifier">my_plugin_sum</span> <span class="identifier">final</span><span class="special">:</span> <span class="keyword">public</span> <span class="identifier">my_plugin_api</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">my_plugin_sum</span><span class="special">()</span> <span class="special">=</span> <span class="keyword">default</span><span class="special">;</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">name</span><span class="special">()</span> <span class="keyword">const</span> <span class="identifier">override</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="string">"sum"</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">float</span> <span class="identifier">calculate</span><span class="special">(</span><span class="keyword">float</span> <span class="identifier">x</span><span class="special">,</span> <span class="keyword">float</span> <span class="identifier">y</span><span class="special">)</span> <span class="identifier">override</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">x</span> <span class="special">+</span> <span class="identifier">y</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="special">~</span><span class="identifier">my_plugin_sum</span><span class="special">()</span> <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Destructing my_plugin_sum ;o)"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="comment">// Exporting `my_namespace::plugin` variable with name `plugin`</span>
+<span class="keyword">extern</span> <span class="string">"C"</span> <span class="identifier">BOOST_SYMBOL_EXPORT</span> <span class="identifier">my_plugin_sum</span> <span class="identifier">plugin</span><span class="special">;</span>
+<span class="comment">/*constinit*/</span> <span class="identifier">my_plugin_sum</span> <span class="identifier">plugin</span><span class="special">;</span>
+
+<span class="special">}</span> <span class="comment">// namespace my_namespace</span>
+</pre>
+<p>
+      </p>
+<p>使用 <code class="computeroutput"><a class="link" href="../doxygen/shared_library_refcountable_reference/import_8hpp_1a080854cd692c712c5e0d425df481b7ab.html" title="函数模板 import_symbol">boost::dll::import_symbol</a></code> 与 <code class="computeroutput"><a class="link" href="../doxygen/shared_library_reference/shared__library__load__mode_8hpp_1a7aead736a07eaf25623ad7bfa1f0ee2d.html" title="类型 type">append_decorations</a></code> 加载插件的简单应用程序:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">import</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span> <span class="comment">// for import_alias</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="string">"../tutorial_common/my_plugin_api.hpp"</span>
+
+<span class="keyword">namespace</span> <span class="identifier">dll</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">argc</span><span class="special">,</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">argv</span><span class="special">[])</span> <span class="special">{</span>
+
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">fs</span><span class="special">::</span><span class="identifier">path</span> <span class="identifier">lib_path</span><span class="special">(</span><span class="identifier">argv</span><span class="special">[</span><span class="number">1</span><span class="special">]);</span>             <span class="comment">// argv[1] contains path to directory with our plugin library</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Loading the plugin"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+
+    <span class="keyword">auto</span> <span class="identifier">plugin</span> <span class="special">=</span> <span class="identifier">dll</span><span class="special">::</span><span class="identifier">import_symbol</span><span class="special">&lt;</span><span class="identifier">my_plugin_api</span><span class="special">&gt;(</span>    <span class="comment">// type of imported symbol is located between `&lt;` and `&gt;`</span>
+        <span class="identifier">lib_path</span> <span class="special">/</span> <span class="string">"my_plugin_sum"</span><span class="special">,</span>                     <span class="comment">// path to the library and library name</span>
+        <span class="string">"plugin"</span><span class="special">,</span>                                       <span class="comment">// name of the symbol to import</span>
+        <span class="identifier">dll</span><span class="special">::</span><span class="identifier">load_mode</span><span class="special">::</span><span class="identifier">append_decorations</span>              <span class="comment">// makes `libmy_plugin_sum.so` or `my_plugin_sum.dll` from `my_plugin_sum`</span>
+    <span class="special">);</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"plugin-&gt;calculate(1.5, 1.5) call:  "</span> <span class="special">&lt;&lt;</span> <span class="identifier">plugin</span><span class="special">-&gt;</span><span class="identifier">calculate</span><span class="special">(</span><span class="number">1.5</span><span class="special">,</span> <span class="number">1.5</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>该应用程序将输出:</p>
+<pre class="programlisting">Loading the plugin
+Constructing my_plugin_sum
+plugin-&gt;calculate(1.5, 1.5) call:  3
+Destructing my_plugin_sum ;o)
+</pre>
+<p>
+        <span class="bold"><strong>完整源码:</strong></span>
+      </p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial_common/my_plugin_api.hpp" target="_top">example/tutorial_common/my_plugin_api.hpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial1/my_plugin_sum.cpp" target="_top">example/tutorial1/my_plugin_sum.cpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial1/tutorial1.cpp" target="_top">example/tutorial1/tutorial1.cpp</a>
+          </li>
+</ul></div>
+<p>
+        <a class="link" href="tutorial.html" title="Tutorial">返回顶部</a>
+      </p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_dll.tutorial.factory_method_in_plugin"></a><a class="link" href="tutorial.html#boost_dll.tutorial.factory_method_in_plugin" title="插件中的工厂方法">插件中的工厂方法</a>
+</h3></div></div></div>
+<p>在前面的示例中, 我们从插件导入了单个变量. 现在来编写一个使用我们插件 API 的类, 它持有一些状态:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">alias</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span> <span class="comment">// for BOOST_DLL_ALIAS   </span>
+<span class="preprocessor">#include</span> <span class="string">"../tutorial_common/my_plugin_api.hpp"</span>
+
+<span class="keyword">namespace</span> <span class="identifier">my_namespace</span> <span class="special">{</span>
+
+<span class="keyword">class</span> <span class="identifier">my_plugin_aggregator</span> <span class="identifier">final</span><span class="special">:</span> <span class="keyword">public</span> <span class="identifier">my_plugin_api</span> <span class="special">{</span>
+    <span class="keyword">float</span> <span class="identifier">aggr_</span><span class="special">;</span>
+    <span class="identifier">my_plugin_aggregator</span><span class="special">()</span> <span class="special">:</span> <span class="identifier">aggr_</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">{}</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">name</span><span class="special">()</span> <span class="keyword">const</span> <span class="identifier">override</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="string">"aggregator"</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">float</span> <span class="identifier">calculate</span><span class="special">(</span><span class="keyword">float</span> <span class="identifier">x</span><span class="special">,</span> <span class="keyword">float</span> <span class="identifier">y</span><span class="special">)</span> <span class="identifier">override</span> <span class="special">{</span>
+        <span class="identifier">aggr_</span> <span class="special">+=</span> <span class="identifier">x</span> <span class="special">+</span> <span class="identifier">y</span><span class="special">;</span>
+        <span class="keyword">return</span> <span class="identifier">aggr_</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="comment">// Factory method</span>
+    <span class="keyword">static</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span><span class="identifier">my_plugin_api</span><span class="special">&gt;</span> <span class="identifier">create</span><span class="special">()</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span><span class="identifier">my_plugin_aggregator</span><span class="special">&gt;(</span>
+            <span class="keyword">new</span> <span class="identifier">my_plugin_aggregator</span><span class="special">()</span>
+        <span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+
+<span class="identifier">BOOST_DLL_ALIAS</span><span class="special">(</span>
+    <span class="identifier">my_namespace</span><span class="special">::</span><span class="identifier">my_plugin_aggregator</span><span class="special">::</span><span class="identifier">create</span><span class="special">,</span> <span class="comment">// &lt;-- this function is exported with...</span>
+    <span class="identifier">create_plugin</span>                               <span class="comment">// &lt;-- ...this alias name</span>
+<span class="special">)</span>
+
+<span class="special">}</span> <span class="comment">// namespace my_namespace</span>
+</pre>
+<p>
+      </p>
+<p>如你所见, <code class="computeroutput"><span class="identifier">my_namespace</span><span class="special">::</span><span class="identifier">create_plugin</span></code> 是一个工厂方法, 用于创建 <code class="computeroutput"><span class="identifier">my_namespace</span><span class="special">::</span><span class="identifier">my_plugin_aggregator</span></code> 的实例. 我们使用 <code class="computeroutput"><a class="link" href="../doxygen/shared_library_reference/alias_8hpp_1ad9f8b1de81ae3b24cd938c7bacb27eef.html" title="宏 BOOST_DLL_ALIAS">BOOST_DLL_ALIAS</a></code> 以 "create_plugin" 名称导出该方法.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">import</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span> <span class="comment">// for import_alias</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="string">"../tutorial_common/my_plugin_api.hpp"</span>
+
+<span class="keyword">namespace</span> <span class="identifier">dll</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">argc</span><span class="special">,</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">argv</span><span class="special">[])</span> <span class="special">{</span>
+
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">fs</span><span class="special">::</span><span class="identifier">path</span> <span class="identifier">shared_library_path</span><span class="special">(</span><span class="identifier">argv</span><span class="special">[</span><span class="number">1</span><span class="special">]);</span>                  <span class="comment">// argv[1] contains path to directory with our plugin library</span>
+    <span class="identifier">shared_library_path</span> <span class="special">/=</span> <span class="string">"my_plugin_aggregator"</span><span class="special">;</span>
+
+    <span class="keyword">using</span> <span class="identifier">pluginapi_create_t</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span><span class="identifier">my_plugin_api</span><span class="special">&gt;();</span>
+    <span class="keyword">auto</span> <span class="identifier">creator</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">import_alias</span><span class="special">&lt;</span><span class="identifier">pluginapi_create_t</span><span class="special">&gt;(</span>        <span class="comment">// type of imported symbol must be explicitly specified</span>
+        <span class="identifier">shared_library_path</span><span class="special">,</span>                                            <span class="comment">// path to library</span>
+        <span class="string">"create_plugin"</span><span class="special">,</span>                                                <span class="comment">// symbol to import</span>
+        <span class="identifier">dll</span><span class="special">::</span><span class="identifier">load_mode</span><span class="special">::</span><span class="identifier">append_decorations</span>                              <span class="comment">// do append extensions and prefixes</span>
+    <span class="special">);</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span><span class="identifier">my_plugin_api</span><span class="special">&gt;</span> <span class="identifier">plugin</span> <span class="special">=</span> <span class="identifier">creator</span><span class="special">();</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"plugin-&gt;calculate(1.5, 1.5) call:  "</span> <span class="special">&lt;&lt;</span> <span class="identifier">plugin</span><span class="special">-&gt;</span><span class="identifier">calculate</span><span class="special">(</span><span class="number">1.5</span><span class="special">,</span> <span class="number">1.5</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"plugin-&gt;calculate(1.5, 1.5) second call:  "</span> <span class="special">&lt;&lt;</span> <span class="identifier">plugin</span><span class="special">-&gt;</span><span class="identifier">calculate</span><span class="special">(</span><span class="number">1.5</span><span class="special">,</span> <span class="number">1.5</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Plugin Name:  "</span> <span class="special">&lt;&lt;</span> <span class="identifier">plugin</span><span class="special">-&gt;</span><span class="identifier">name</span><span class="special">()</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>在该应用程序中, 我们使用 <code class="computeroutput"><a class="link" href="../doxygen/shared_library_refcountable_reference/import_8hpp_1a7ea7e10c20f83517dcc0acb6a64efa11.html" title="函数模板 import_alias">boost::dll::import_alias</a></code> 导入了工厂方法.</p>
+<div class="caution"><table border="0" summary="Caution">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注意]" src="../../../doc/src/images/caution.png"></td>
+<th align="left">注意</th>
+</tr>
+<tr><td align="left" valign="top"><p>注意: <code class="computeroutput"><span class="identifier">creator</span></code> 变量持有对已加载共享库的引用. 若该变量离开作用域或被重置, 则 <span class="bold"><strong>DLL/DSO 将被卸载</strong></span>, 任何解引用 <code class="computeroutput"><span class="identifier">plugin</span></code> 变量的尝试都会导致 <span class="bold"><strong>未定义行为</strong></span>.</p></td></tr>
+</table></div>
+<p>应用程序的输出如下:</p>
+<pre class="programlisting">plugin-&gt;calculate(1.5, 1.5) call:  3
+plugin-&gt;calculate(1.5, 1.5) second call:  6
+Plugin Name:  aggregator
+</pre>
+<p>
+        <span class="bold"><strong>完整源码:</strong></span>
+      </p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial2/my_plugin_aggregator.cpp" target="_top">example/tutorial2/my_plugin_aggregator.cpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial2/tutorial2.cpp" target="_top">example/tutorial2/tutorial2.cpp</a>
+          </li>
+</ul></div>
+<p>
+        <a class="link" href="tutorial.html" title="Tutorial">返回顶部</a>
+      </p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_dll.tutorial.searching_for_a_symbol_in_multiple_plugins"></a><a class="link" href="tutorial.html#boost_dll.tutorial.searching_for_a_symbol_in_multiple_plugins" title="在多个插件中搜索符号">在多个插件中搜索符号</a>
+</h3></div></div></div>
+<p>考虑这样一种情形: 我们有多个插件, 但只有其中一部分具有我们需要的符号. 我们来编写一个函数, 遍历插件列表并尝试查找 <code class="computeroutput"><span class="string">"create_plugin"</span></code> 方法.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">import</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span> <span class="comment">// for import_alias</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">memory</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="string">"../tutorial_common/my_plugin_api.hpp"</span>
+
+<span class="keyword">namespace</span> <span class="identifier">dll</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">;</span>
+
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">search_for_symbols</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">fs</span><span class="special">::</span><span class="identifier">path</span><span class="special">&gt;&amp;</span> <span class="identifier">plugins</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">plugins_found</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+
+    <span class="keyword">for</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">plugins</span><span class="special">.</span><span class="identifier">size</span><span class="special">();</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span> <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Loading plugin: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">plugins</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">&lt;&lt;</span> <span class="char">'\n'</span><span class="special">;</span>
+        <span class="identifier">dll</span><span class="special">::</span><span class="identifier">shared_library</span> <span class="identifier">lib</span><span class="special">(</span><span class="identifier">plugins</span><span class="special">[</span><span class="identifier">i</span><span class="special">],</span> <span class="identifier">dll</span><span class="special">::</span><span class="identifier">load_mode</span><span class="special">::</span><span class="identifier">append_decorations</span><span class="special">);</span>
+        <span class="keyword">if</span> <span class="special">(!</span><span class="identifier">lib</span><span class="special">.</span><span class="identifier">has</span><span class="special">(</span><span class="string">"create_plugin"</span><span class="special">))</span> <span class="special">{</span>
+            <span class="comment">// no such symbol</span>
+            <span class="keyword">continue</span><span class="special">;</span>
+        <span class="special">}</span>
+
+        <span class="comment">// library has symbol, importing...</span>
+        <span class="keyword">using</span> <span class="identifier">pluginapi_create_t</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span><span class="identifier">my_plugin_api</span><span class="special">&gt;();</span>
+        <span class="keyword">auto</span> <span class="identifier">creator</span> <span class="special">=</span> <span class="identifier">dll</span><span class="special">::</span><span class="identifier">import_alias</span><span class="special">&lt;</span><span class="identifier">pluginapi_create_t</span><span class="special">&gt;(</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">lib</span><span class="special">),</span> <span class="string">"create_plugin"</span>
+        <span class="special">);</span>
+
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Matching plugin name: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">creator</span><span class="special">()-&gt;</span><span class="identifier">name</span><span class="special">()</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+        <span class="special">++</span> <span class="identifier">plugins_found</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">return</span> <span class="identifier">plugins_found</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>如果对所有插件调用该方法, 会得到如下输出:</p>
+<pre class="programlisting">Loading plugin: "/test/libmy_plugin_aggregator.so"
+Matching plugin name: aggregator
+Loading plugin: "/test/libmy_plugin_sum.so"
+Constructing my_plugin_sum
+Destructing my_plugin_sum ;o)
+</pre>
+<p>
+        <span class="bold"><strong>完整源码:</strong></span>
+      </p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial3/tutorial3.cpp" target="_top">example/tutorial3/tutorial3.cpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial2/my_plugin_aggregator.cpp" target="_top">example/tutorial2/my_plugin_aggregator.cpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial1/my_plugin_sum.cpp" target="_top">example/tutorial1/my_plugin_sum.cpp</a>
+          </li>
+</ul></div>
+<p>
+        <a class="link" href="tutorial.html" title="Tutorial">返回顶部</a>
+      </p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_dll.tutorial.linking_plugin_into_the_executable"></a><a class="link" href="tutorial.html#boost_dll.tutorial.linking_plugin_into_the_executable" title="把插件链接进可执行文件">把插件链接进可执行文件</a>
+</h3></div></div></div>
+<p>把插件链接进可执行文件有以下优点:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">减小发行包的总大小</li>
+<li class="listitem">简化发行包的安装</li>
+<li class="listitem">更快的插件加载</li>
+</ul></div>
+<p>我们从创建一个可链接的插件开始. 这样的插件会有一个头文件, 由插件库本身和可执行文件共用:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">memory</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="string">"../tutorial_common/my_plugin_api.hpp"</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">alias</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>                          <span class="comment">// for BOOST_DLL_ALIAS</span>
+
+<span class="keyword">namespace</span> <span class="identifier">my_namespace</span> <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span><span class="identifier">my_plugin_api</span><span class="special">&gt;</span> <span class="identifier">create_plugin</span><span class="special">();</span>   <span class="comment">// Forward declaration</span>
+<span class="special">}</span> <span class="comment">// namespace my_namespace</span>
+
+<span class="identifier">BOOST_DLL_ALIAS</span><span class="special">(</span>
+    <span class="identifier">my_namespace</span><span class="special">::</span><span class="identifier">create_plugin</span><span class="special">,</span>                        <span class="comment">// &lt;-- this function is exported with...</span>
+    <span class="identifier">create_plugin</span>                                       <span class="comment">// &lt;-- ...this alias name</span>
+<span class="special">)</span>
+</pre>
+<p>
+      </p>
+<p>这里的关键是别名的定义. 把插件链接进可执行文件时, 别名 <span class="bold"><strong>必须</strong></span> 在可执行文件的某个源文件中实例化. 否则链接器会把我们的插件优化掉.</p>
+<p>插件的实现如下所示:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="string">"static_plugin.hpp"</span> <span class="comment">// this is essential, BOOST_SYMBOL_ALIAS must be seen in this file</span>
+
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">memory</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">my_namespace</span> <span class="special">{</span>
+
+<span class="keyword">class</span> <span class="identifier">my_plugin_static</span> <span class="identifier">final</span> <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">my_plugin_api</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">my_plugin_static</span><span class="special">()</span> <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Constructing my_plugin_static"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">name</span><span class="special">()</span> <span class="keyword">const</span> <span class="identifier">override</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="string">"static"</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">float</span> <span class="identifier">calculate</span><span class="special">(</span><span class="keyword">float</span> <span class="identifier">x</span><span class="special">,</span> <span class="keyword">float</span> <span class="identifier">y</span><span class="special">)</span> <span class="identifier">override</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">x</span> <span class="special">-</span> <span class="identifier">y</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="special">~</span><span class="identifier">my_plugin_static</span><span class="special">()</span> <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Destructing my_plugin_static"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span><span class="identifier">my_plugin_api</span><span class="special">&gt;</span> <span class="identifier">create_plugin</span><span class="special">()</span> <span class="special">{</span>
+    <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">make_shared</span><span class="special">&lt;</span><span class="identifier">my_plugin_static</span><span class="special">&gt;();</span>
+<span class="special">}</span>
+
+<span class="special">}</span> <span class="comment">// namespace my_namespace</span>
+</pre>
+<p>
+      </p>
+<p>现在, 如果我们从源文件生成一个静态库, 并把该静态库与下面的代码链接, 就能从插件导入符号:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="string">"static_plugin.hpp"</span>                    <span class="comment">// without this headers some compilers may optimize out the `create_plugin` symbol</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">memory</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">shared_library</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>         <span class="comment">// for shared_library</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">runtime_symbol_info</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>    <span class="comment">// for program_location()</span>
+
+<span class="keyword">namespace</span> <span class="identifier">dll</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">()</span> <span class="special">{</span>
+    <span class="identifier">dll</span><span class="special">::</span><span class="identifier">shared_library</span> <span class="identifier">self</span><span class="special">(</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">program_location</span><span class="special">());</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Call function"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="keyword">auto</span> <span class="identifier">creator</span> <span class="special">=</span> <span class="identifier">self</span><span class="special">.</span><span class="identifier">get_alias</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span><span class="identifier">my_plugin_api</span><span class="special">&gt;()&gt;(</span><span class="string">"create_plugin"</span><span class="special">);</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Computed Value: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">creator</span><span class="special">()-&gt;</span><span class="identifier">calculate</span><span class="special">(</span><span class="number">2</span><span class="special">,</span> <span class="number">2</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>在 Linux 上把插件链接进可执行文件时必须使用 '-rdynamic' 标志. 否则从自身加载符号 <span class="bold"><strong>将失败</strong></span>.</p></td></tr>
+</table></div>
+<p>运行程序会输出以下内容:</p>
+<pre class="programlisting">Call function
+Constructing my_plugin_static
+Computed Value: 0
+Destructing my_plugin_static
+</pre>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>如果想制作位于单独共享库中的传统插件, 只需删除 <code class="computeroutput"><span class="preprocessor">#include</span>
+          <span class="string">"static_plugin.hpp"</span></code> 行, 并把 <code class="computeroutput"><span class="identifier">dll</span><span class="special">::</span><span class="identifier">program_location</span><span class="special">()</span></code> 替换为插件的位置与名称.</p></td></tr>
+</table></div>
+<p>
+        <span class="bold"><strong>完整源码:</strong></span>
+      </p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial4/static_plugin.hpp" target="_top">example/tutorial4/static_plugin.hpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial4/static_plugin.cpp" target="_top">example/tutorial4/static_plugin.cpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial4/load_self.cpp" target="_top">example/tutorial4/load_self.cpp</a>
+          </li>
+</ul></div>
+<p>
+        <a class="link" href="tutorial.html" title="Tutorial">返回顶部</a>
+      </p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_dll.tutorial.symbol_shadowing_problem__linux_"></a><a class="link" href="tutorial.html#boost_dll.tutorial.symbol_shadowing_problem__linux_" title="符号遮蔽问题 (Linux)">符号遮蔽问题 (Linux)</a>
+</h3></div></div></div>
+<p>我们来生成一个可执行文件, 把一个插件链接进去, 然后尝试加载所有现有的插件:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">dll</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">;</span>
+
+<span class="keyword">class</span> <span class="identifier">plugins_collector</span> <span class="special">{</span>
+    <span class="comment">// Name =&gt; plugin</span>
+    <span class="keyword">using</span> <span class="identifier">plugins_t</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">map</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">,</span> <span class="identifier">dll</span><span class="special">::</span><span class="identifier">shared_library</span><span class="special">&gt;;</span>
+
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">fs</span><span class="special">::</span><span class="identifier">path</span>            <span class="identifier">plugins_directory_</span><span class="special">;</span>
+    <span class="identifier">plugins_t</span>                       <span class="identifier">plugins_</span><span class="special">;</span>
+
+    <span class="comment">// loads all plugins in plugins_directory_</span>
+    <span class="keyword">void</span> <span class="identifier">load_all</span><span class="special">();</span>
+
+    <span class="comment">// Gets `my_plugin_api` instance using "create_plugin" or "plugin" imports,</span>
+    <span class="comment">// stores plugin with its name in the `plugins_` map.</span>
+    <span class="keyword">void</span> <span class="identifier">insert_plugin</span><span class="special">(</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">shared_library</span><span class="special">&amp;&amp;</span> <span class="identifier">lib</span><span class="special">);</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">plugins_collector</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">fs</span><span class="special">::</span><span class="identifier">path</span><span class="special">&amp;</span> <span class="identifier">plugins_directory</span><span class="special">)</span>
+        <span class="special">:</span> <span class="identifier">plugins_directory_</span><span class="special">(</span><span class="identifier">plugins_directory</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">load_all</span><span class="special">();</span>
+    <span class="special">}</span>
+
+    <span class="keyword">void</span> <span class="identifier">print_plugins</span><span class="special">()</span> <span class="keyword">const</span><span class="special">;</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">count</span><span class="special">()</span> <span class="keyword">const</span><span class="special">;</span>
+    <span class="comment">// ...</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">argc</span><span class="special">,</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">argv</span><span class="special">[])</span> <span class="special">{</span>
+
+    <span class="identifier">plugins_collector</span> <span class="identifier">plugins</span><span class="special">(</span><span class="identifier">argv</span><span class="special">[</span><span class="number">1</span><span class="special">]);</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"\n\nUnique plugins "</span> <span class="special">&lt;&lt;</span> <span class="identifier">plugins</span><span class="special">.</span><span class="identifier">count</span><span class="special">()</span> <span class="special">&lt;&lt;</span> <span class="string">":\n"</span><span class="special">;</span>
+    <span class="identifier">plugins</span><span class="special">.</span><span class="identifier">print_plugins</span><span class="special">();</span>
+    <span class="comment">// ...</span>
+</pre>
+<p>
+      </p>
+<p>使用默认标志时, 会得到非常奇怪的输出:</p>
+<pre class="programlisting">Loaded (0x180db60):"/libs/dll/test/libmy_plugin_aggregator.so"
+Constructing my_plugin_static
+Destructing my_plugin_static
+...
+
+Unique plugins 2:
+(0x180db60): static
+(0x180e3b0): sum
+Destructing my_plugin_sum ;o)
+</pre>
+<p>为什么 <code class="computeroutput"><span class="identifier">my_plugin_static</span></code> 在我们加载 <code class="computeroutput"><span class="identifier">my_plugin_aggregator</span></code> 时被构造了?</p>
+<p>这是因为 <code class="computeroutput"><span class="identifier">create_plugin</span></code> 函数 (来自 <code class="computeroutput"><span class="identifier">libmy_plugin_aggregator</span><span class="special">.</span><span class="identifier">so</span></code>) 被其他插件的 <code class="computeroutput"><span class="identifier">create_plugin</span></code> 函数遮蔽了. 动态链接器认为 <code class="computeroutput"><span class="identifier">create_plugin</span></code> 已经加载, 无需再次加载.</p>
+<div class="warning"><table border="0" summary="Warning">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[警告]" src="../../../doc/src/images/warning.png"></td>
+<th align="left">警告</th>
+</tr>
+<tr><td align="left" valign="top"><p>在为 POSIX 平台编译时使用 "-fvisibility=hidden" 标志 (至少对插件如此). 该标志使代码更具可移植性 (在 Windows 下 "-fvisibility=hidden" 是默认行为), 减小二进制文件的大小并缩短二进制加载时间.</p></td></tr>
+</table></div>
+<p>现在如果用 "-fvisibility=hidden" 重新编译该示例, 会得到如下输出:</p>
+<pre class="programlisting">Loaded (0x2406b60):"/libs/dll/test/libmy_plugin_aggregator.so"
+Loaded (0x2407410):"/libs/dll/test/libgetting_started_library.so"
+Constructing my_plugin_sum
+...
+
+Unique plugins 3:
+(0x2406b60): aggregator
+(0x7fd1cadce2c8): static
+(0x24073b0): sum
+Destructing my_plugin_sum ;o)
+</pre>
+<p>
+        <span class="bold"><strong>完整源码:</strong></span>
+      </p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial5/load_all.cpp" target="_top">example/tutorial5/load_all.cpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial4/static_plugin.cpp" target="_top">example/tutorial4/static_plugin.cpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial2/my_plugin_aggregator.cpp" target="_top">example/tutorial2/my_plugin_aggregator.cpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial1/my_plugin_sum.cpp" target="_top">example/tutorial1/my_plugin_sum.cpp</a>
+          </li>
+</ul></div>
+<p>
+        <a class="link" href="tutorial.html" title="Tutorial">返回顶部</a>
+      </p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_dll.tutorial.executing_callbacks_on_library_unload"></a><a class="link" href="tutorial.html#boost_dll.tutorial.executing_callbacks_on_library_unload" title="库卸载时执行回调">库卸载时执行回调</a>
+</h3></div></div></div>
+<p>Boost.DLL 没有提供捕获库卸载的开箱即用机制. 不过这一任务很容易实现.</p>
+<p>你要做的只是编写一个简单的类, 它保存回调并在析构时调用它们:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">functional</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">vector</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">alias</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span> <span class="comment">// for BOOST_DLL_ALIAS</span>
+
+<span class="keyword">namespace</span> <span class="identifier">my_namespace</span> <span class="special">{</span>
+
+<span class="keyword">struct</span> <span class="identifier">on_unload</span> <span class="special">{</span>
+    <span class="keyword">using</span> <span class="identifier">callback_t</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">function</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">()&gt;</span> <span class="special">;</span>
+    <span class="keyword">using</span> <span class="identifier">this_type</span> <span class="special">=</span> <span class="identifier">on_unload</span><span class="special">;</span>
+
+    <span class="special">~</span><span class="identifier">on_unload</span><span class="special">()</span> <span class="special">{</span>
+        <span class="keyword">for</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">callbacks_</span><span class="special">.</span><span class="identifier">size</span><span class="special">();</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span> <span class="special">{</span>
+            <span class="identifier">callback_t</span><span class="special">&amp;</span> <span class="identifier">function</span> <span class="special">=</span> <span class="identifier">callbacks_</span><span class="special">[</span><span class="identifier">i</span><span class="special">];</span>
+            <span class="identifier">function</span><span class="special">();</span> <span class="comment">// calling the callback</span>
+        <span class="special">}</span>
+    <span class="special">}</span>
+
+    <span class="comment">// not thread safe</span>
+    <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">add</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">callback_t</span><span class="special">&amp;</span> <span class="identifier">function</span><span class="special">)</span> <span class="special">{</span>
+        <span class="keyword">static</span> <span class="identifier">this_type</span> <span class="identifier">instance</span><span class="special">;</span>
+        <span class="identifier">instance</span><span class="special">.</span><span class="identifier">callbacks_</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">function</span><span class="special">);</span>
+    <span class="special">}</span>
+
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">callback_t</span><span class="special">&gt;</span> <span class="identifier">callbacks_</span><span class="special">;</span>
+    <span class="identifier">on_unload</span><span class="special">()</span> <span class="special">{}</span> <span class="comment">// prohibit construction outside of the `add` function</span>
+<span class="special">};</span>
+
+<span class="comment">// Exporting the static "add" function with name "on_unload"</span>
+<span class="identifier">BOOST_DLL_ALIAS</span><span class="special">(</span><span class="identifier">my_namespace</span><span class="special">::</span><span class="identifier">on_unload</span><span class="special">::</span><span class="identifier">add</span><span class="special">,</span> <span class="identifier">on_unload</span><span class="special">)</span>
+
+<span class="special">}</span> <span class="comment">// namespace my_namespace</span>
+</pre>
+<p>
+      </p>
+<p>在上面的示例中, <code class="computeroutput"><span class="identifier">my_namespace</span><span class="special">::</span><span class="identifier">on_unload</span></code> 是一个单例结构, 它保存回调的 vector 并在析构时调用所有回调.</p>
+<p>现在我们可以加载该库并提供回调:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">import</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">functional</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+
+<span class="keyword">using</span> <span class="identifier">callback_t</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">function</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">()&gt;</span> <span class="special">;</span>
+
+<span class="keyword">void</span> <span class="identifier">print_unloaded</span><span class="special">()</span> <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"unloaded"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">argc</span><span class="special">,</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">argv</span><span class="special">[])</span> <span class="special">{</span>
+    <span class="comment">// argv[1] contains full path to our plugin library</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">fs</span><span class="special">::</span><span class="identifier">path</span> <span class="identifier">shared_library_path</span> <span class="special">=</span>  <span class="identifier">argv</span><span class="special">[</span><span class="number">1</span><span class="special">];</span>
+
+    <span class="comment">// loading library and getting a function from it</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">function</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">callback_t</span><span class="special">&amp;)&gt;</span> <span class="identifier">on_unload</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">import_alias</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">callback_t</span><span class="special">&amp;)&gt;(</span>
+        <span class="identifier">shared_library_path</span><span class="special">,</span> <span class="string">"on_unload"</span>
+    <span class="special">);</span>
+
+    <span class="identifier">on_unload</span><span class="special">(&amp;</span><span class="identifier">print_unloaded</span><span class="special">);</span> <span class="comment">// adding a callback</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Before library unload."</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+
+    <span class="comment">// Releasing last reference to the library, so that it gets unloaded</span>
+    <span class="identifier">on_unload</span> <span class="special">=</span> <span class="special">{};</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"After library unload."</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>如果运行该示例, 会得到如下输出:</p>
+<pre class="programlisting">Before library unload.
+unloaded
+After library unload.
+</pre>
+<p>
+        <span class="bold"><strong>完整源码:</strong></span>
+      </p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial6/on_unload_lib.cpp" target="_top">example/tutorial6/on_unload_lib.cpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial6/tutorial6.cpp" target="_top">example/tutorial6/tutorial6.cpp</a>
+          </li>
+</ul></div>
+<p>
+        <a class="link" href="tutorial.html" title="Tutorial">返回顶部</a>
+      </p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_dll.tutorial.querying_libraries_for_symbols"></a><a class="link" href="tutorial.html#boost_dll.tutorial.querying_libraries_for_symbols" title="查询库中的符号">查询库中的符号</a>
+</h3></div></div></div>
+<p>有时会出现我们不知道插件中函数名称的情况. 此时查询库就很有用.</p>
+<p>设想这样一个场景: 我们有一个名为 'Anna' 的项目, 它能够加载并使用包含 <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="keyword">const</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;)</span></code> 签名函数的插件. 我们不知道函数名, 但希望设法找出它们.</p>
+<p>解决方案相当简单. 我们与插件开发者约定: 他们可以随意命名函数, 但所有插件函数的别名必须位于名为 'Anna' 的节中:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">string</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">alias</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span> <span class="comment">// for BOOST_DLL_ALIAS_SECTIONED</span>
+
+<span class="keyword">void</span> <span class="identifier">print</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;</span> <span class="identifier">s</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Hello, "</span> <span class="special">&lt;&lt;</span> <span class="identifier">s</span> <span class="special">&lt;&lt;</span> <span class="char">'!'</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+
+<span class="identifier">BOOST_DLL_ALIAS_SECTIONED</span><span class="special">(</span><span class="identifier">print</span><span class="special">,</span> <span class="identifier">print_hello</span><span class="special">,</span> <span class="identifier">Anna</span><span class="special">)</span>
+</pre>
+<p>
+      </p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">string</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">alias</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span> <span class="comment">// for BOOST_DLL_ALIAS_SECTIONED</span>
+
+<span class="keyword">void</span> <span class="identifier">print_howdy</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;</span> <span class="identifier">s</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"How're you doing, "</span> <span class="special">&lt;&lt;</span> <span class="identifier">s</span> <span class="special">&lt;&lt;</span> <span class="char">'?'</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+
+<span class="keyword">void</span> <span class="identifier">print_bored</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;</span> <span class="identifier">s</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Are you bored, "</span> <span class="special">&lt;&lt;</span> <span class="identifier">s</span> <span class="special">&lt;&lt;</span> <span class="char">'?'</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+
+<span class="identifier">BOOST_DLL_ALIAS_SECTIONED</span><span class="special">(</span><span class="identifier">print_howdy</span><span class="special">,</span> <span class="identifier">howdy</span><span class="special">,</span> <span class="identifier">Anna</span><span class="special">)</span>
+<span class="identifier">BOOST_DLL_ALIAS_SECTIONED</span><span class="special">(</span><span class="identifier">print_bored</span><span class="special">,</span> <span class="identifier">are_you_bored</span><span class="special">,</span> <span class="identifier">Anna</span><span class="special">)</span>
+</pre>
+<p>
+      </p>
+<p>现在可以使用 <code class="computeroutput"><a class="link" href="../doxygen/shared_library_reference/classboost_1_1dll_1_1library__info.html" title="类 library_info">boost::dll::library_info</a></code> 方便地获取这些函数:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">shared_library</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">library_info</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+
+<span class="keyword">void</span> <span class="identifier">load_and_execute</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">fs</span><span class="special">::</span><span class="identifier">path</span> <span class="identifier">libraries</span><span class="special">[],</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">libs_count</span><span class="special">)</span> <span class="special">{</span>
+    <span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">username</span> <span class="special">=</span> <span class="string">"User"</span><span class="special">;</span>
+
+    <span class="keyword">for</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">libs_count</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span> <span class="special">{</span>
+        <span class="comment">// Class `library_info` can extract information from a library</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">library_info</span> <span class="identifier">inf</span><span class="special">(</span><span class="identifier">libraries</span><span class="special">[</span><span class="identifier">i</span><span class="special">]);</span>
+
+        <span class="comment">// Getting symbols exported from 'Anna' section</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;</span> <span class="identifier">exports</span> <span class="special">=</span> <span class="identifier">inf</span><span class="special">.</span><span class="identifier">symbols</span><span class="special">(</span><span class="string">"Anna"</span><span class="special">);</span>
+
+        <span class="comment">// Loading library and importing symbols from it</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">shared_library</span> <span class="identifier">lib</span><span class="special">(</span><span class="identifier">libraries</span><span class="special">[</span><span class="identifier">i</span><span class="special">]);</span>
+        <span class="keyword">for</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">j</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">j</span> <span class="special">&lt;</span> <span class="identifier">exports</span><span class="special">.</span><span class="identifier">size</span><span class="special">();</span> <span class="special">++</span><span class="identifier">j</span><span class="special">)</span> <span class="special">{</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"\nFunction '"</span> <span class="special">&lt;&lt;</span> <span class="identifier">exports</span><span class="special">[</span><span class="identifier">j</span><span class="special">]</span> <span class="special">&lt;&lt;</span> <span class="string">"' prints:\n\t"</span><span class="special">;</span>
+            <span class="identifier">lib</span><span class="special">.</span><span class="identifier">get_alias</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;)&gt;(</span><span class="identifier">exports</span><span class="special">[</span><span class="identifier">j</span><span class="special">])</span> <span class="comment">// importing function</span>
+                <span class="special">(</span><span class="identifier">username</span><span class="special">);</span>                                     <span class="comment">// calling function</span>
+        <span class="special">}</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>如果运行该示例, 会得到如下输出:</p>
+<pre class="programlisting">Function 'print_hello' prints:
+	Hello, User!
+
+Function 'are_you_bored' prints:
+	Are you bored, User?
+
+Function 'howdy' prints:
+	How're you doing, User?
+</pre>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>
+          <code class="computeroutput"><span class="identifier">BOOST_DLL_ALIAS</span></code> 宏默认把所有别名放入 "boostdll" 节.</p></td></tr>
+</table></div>
+<p>
+        <span class="bold"><strong>完整源码:</strong></span>
+      </p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial7/library1.cpp" target="_top">example/tutorial7/library1.cpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial7/library2.cpp" target="_top">example/tutorial7/library2.cpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial7/tutorial7.cpp" target="_top">example/tutorial7/tutorial7.cpp</a>
+          </li>
+</ul></div>
+<p>
+        <a class="link" href="tutorial.html" title="Tutorial">返回顶部</a>
+      </p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_dll.tutorial.advanced_library_reference_counting"></a><a class="link" href="tutorial.html#boost_dll.tutorial.advanced_library_reference_counting" title="库引用计数进阶">库引用计数进阶</a>
+</h3></div></div></div>
+<p>正如 <code class="computeroutput"><a class="link" href="../doxygen/shared_library_refcountable_reference/import_8hpp_1a080854cd692c712c5e0d425df481b7ab.html" title="函数模板 import_symbol">boost::dll::import_symbol</a></code> 的文档所述, 这些函数返回的变量和函数持有对共享库的引用. 然而, 嵌套对象以及由 <code class="computeroutput"><span class="identifier">import</span><span class="special">*</span></code> 函数返回的对象并不持有对共享库的引用. 在 Boost.DLL 库层面无法解决这一问题, 但你可以自行处理. 下面是一个如何做到的示例.</p>
+<p>在本示例中, 我们将导入一个构造插件实例的函数, 并把该实例绑定到 shared_library.</p>
+<p>首先需要定义新的插件 API:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="string">"../tutorial_common/my_plugin_api.hpp"</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">memory</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">config</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">class</span> <span class="identifier">my_refcounting_api</span><span class="special">:</span> <span class="keyword">public</span> <span class="identifier">my_plugin_api</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="comment">// Returns path to shared object that holds a plugin.</span>
+    <span class="comment">// Must be instantiated in plugin.</span>
+    <span class="keyword">virtual</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">fs</span><span class="special">::</span><span class="identifier">path</span> <span class="identifier">location</span><span class="special">()</span> <span class="keyword">const</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<p>该 API 与上一个差别不大, 只新增了一个抽象方法.</p>
+<p>现在来定义插件:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="string">"refcounting_plugin.hpp"</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">runtime_symbol_info</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span> <span class="comment">// for this_line_location()</span>
+
+<span class="keyword">namespace</span> <span class="identifier">my_namespace</span> <span class="special">{</span>
+
+<span class="keyword">class</span> <span class="identifier">my_plugin_refcounting</span> <span class="identifier">final</span><span class="special">:</span> <span class="keyword">public</span> <span class="identifier">my_refcounting_api</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="comment">// Must be instantiated in plugin</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">fs</span><span class="special">::</span><span class="identifier">path</span> <span class="identifier">location</span><span class="special">()</span> <span class="keyword">const</span> <span class="identifier">override</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">this_line_location</span><span class="special">();</span> <span class="comment">// location of this plugin</span>
+    <span class="special">}</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">name</span><span class="special">()</span> <span class="keyword">const</span> <span class="identifier">override</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="string">"refcounting"</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="comment">// ...</span>
+<span class="special">};</span>
+
+<span class="special">}</span> <span class="comment">// namespace my_namespace</span>
+
+<span class="comment">// Factory method. Returns *simple pointer*!</span>
+<span class="identifier">my_refcounting_api</span><span class="special">*</span> <span class="identifier">create</span><span class="special">()</span> <span class="special">{</span>
+    <span class="keyword">return</span> <span class="keyword">new</span> <span class="identifier">my_namespace</span><span class="special">::</span><span class="identifier">my_plugin_refcounting</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>该插件与我们之前的示例差别不大, 只是新增了调用 <code class="computeroutput"><a class="link" href="../doxygen/shared_library_reference/runtime__symbol__info_8hpp_1a276250d0518256cf5f180a1cfeee1a6c.html" title="函数 this_line_location">boost::dll::this_line_location</a></code> 的方法, 以及 <code class="computeroutput"><span class="identifier">create</span><span class="special">()</span></code> 函数 - 它返回简单指针而非 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span></code>.</p>
+<p>现在编写一个函数, 把新建的 <code class="computeroutput"><span class="identifier">my_refcounting_api</span></code> 实例绑定到共享库:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">shared_library</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">struct</span> <span class="identifier">library_holding_deleter</span> <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">shared_library</span><span class="special">&gt;</span> <span class="identifier">lib_</span><span class="special">;</span>
+
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span><span class="identifier">my_refcounting_api</span><span class="special">*</span> <span class="identifier">p</span><span class="special">)</span> <span class="keyword">const</span> <span class="special">{</span>
+        <span class="keyword">delete</span> <span class="identifier">p</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="keyword">inline</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span><span class="identifier">my_refcounting_api</span><span class="special">&gt;</span> <span class="identifier">bind</span><span class="special">(</span><span class="identifier">my_refcounting_api</span><span class="special">*</span> <span class="identifier">plugin</span><span class="special">)</span> <span class="special">{</span>
+    <span class="comment">// getting location of the shared library that holds the plugin</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">fs</span><span class="special">::</span><span class="identifier">path</span> <span class="identifier">location</span> <span class="special">=</span> <span class="identifier">plugin</span><span class="special">-&gt;</span><span class="identifier">location</span><span class="special">();</span>
+
+    <span class="comment">// `make_shared` is an efficient way to create a shared pointer</span>
+    <span class="keyword">auto</span> <span class="identifier">lib</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">make_shared</span><span class="special">&lt;</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">shared_library</span><span class="special">&gt;(</span><span class="identifier">location</span><span class="special">);</span>
+
+    <span class="identifier">library_holding_deleter</span> <span class="identifier">deleter</span><span class="special">;</span>
+    <span class="identifier">deleter</span><span class="special">.</span><span class="identifier">lib_</span> <span class="special">=</span> <span class="identifier">lib</span><span class="special">;</span>
+
+    <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span><span class="identifier">my_refcounting_api</span><span class="special">&gt;(</span>
+        <span class="identifier">plugin</span><span class="special">,</span> <span class="identifier">deleter</span>
+    <span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>在 <code class="computeroutput"><span class="identifier">bind</span></code> 方法中我们调用 <code class="computeroutput"><span class="identifier">plugin</span><span class="special">-&gt;</span><span class="identifier">location</span><span class="special">()</span></code>. 这次调用会导致调用 <code class="computeroutput"><a class="link" href="../doxygen/shared_library_reference/runtime__symbol__info_8hpp_1a276250d0518256cf5f180a1cfeee1a6c.html" title="函数 this_line_location">boost::dll::this_line_location</a></code> 并返回插件位置. 然后创建一个 <code class="computeroutput"><span class="identifier">shared_ptr</span></code> (它持有 <code class="computeroutput"><span class="identifier">shared_library</span></code>), 所用的调用是 <code class="computeroutput"><span class="identifier">make_shared</span></code>.</p>
+<p>之后我们构造一个 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span><span class="identifier">my_refcounting_api</span><span class="special">&gt;</span></code>, 并带有一个 <code class="computeroutput"><span class="identifier">library_holding_deleter</span></code> (保存共享库的实例).</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>在生产代码中用 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_ptr</span><span class="special">&lt;</span><span class="identifier">my_refcounting_api</span><span class="special">&gt;</span></code> 取代 <code class="computeroutput"><span class="identifier">my_refcounting_api</span><span class="special">*</span></code>, 以避免在 <code class="computeroutput"><span class="identifier">plugin</span><span class="special">-&gt;</span><span class="identifier">location</span><span class="special">()</span></code> 抛出异常或其他类抛出异常时发生内存泄漏.</p></td></tr>
+</table></div>
+<p>就是这样, 现在我们可以取得插件的实例:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">import</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="keyword">inline</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span><span class="identifier">my_refcounting_api</span><span class="special">&gt;</span> <span class="identifier">get_plugin</span><span class="special">(</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">fs</span><span class="special">::</span><span class="identifier">path</span> <span class="identifier">path</span><span class="special">,</span> <span class="keyword">const</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">func_name</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">using</span> <span class="identifier">func_t</span> <span class="special">=</span> <span class="identifier">my_refcounting_api</span><span class="special">*();</span>
+    <span class="keyword">auto</span> <span class="identifier">creator</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">import_alias</span><span class="special">&lt;</span><span class="identifier">func_t</span><span class="special">&gt;(</span>
+        <span class="identifier">path</span><span class="special">,</span>
+        <span class="identifier">func_name</span><span class="special">,</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">load_mode</span><span class="special">::</span><span class="identifier">append_decorations</span>   <span class="comment">// will be ignored for executable</span>
+    <span class="special">);</span>
+
+    <span class="comment">// `plugin` does not hold a reference to shared library. If `creator` will go out of scope, </span>
+    <span class="comment">// then `plugin` can not be used.</span>
+    <span class="identifier">my_refcounting_api</span><span class="special">*</span> <span class="identifier">plugin</span> <span class="special">=</span> <span class="identifier">creator</span><span class="special">();</span>
+
+    <span class="comment">// Returned variable holds a reference to </span>
+    <span class="comment">// shared_library and it is safe to use it.</span>
+    <span class="keyword">return</span> <span class="identifier">bind</span><span class="special">(</span> <span class="identifier">plugin</span> <span class="special">);</span>
+
+    <span class="comment">// `creator` goes out of scope here and will be destroyed.</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>其 <code class="computeroutput"><span class="identifier">main</span><span class="special">()</span></code> 函数如下所示:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+              </th>
+<th>
+                <p>运行期插件加载</p>
+              </th>
+<th>
+                <p>插件已被链接进来</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>代码</p>
+              </td>
+<td>
+                <p>
+</p>
+<pre class="table-programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="string">"refcounting_api.hpp"</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">argc</span><span class="special">,</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">argv</span><span class="special">[])</span> <span class="special">{</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span><span class="identifier">my_refcounting_api</span><span class="special">&gt;</span> <span class="identifier">plugin</span> <span class="special">=</span> <span class="identifier">get_plugin</span><span class="special">(</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">fs</span><span class="special">::</span><span class="identifier">path</span><span class="special">(</span><span class="identifier">argv</span><span class="special">[</span><span class="number">1</span><span class="special">])</span> <span class="special">/</span> <span class="string">"refcounting_plugin"</span><span class="special">,</span>
+        <span class="string">"create_refc_plugin"</span>
+    <span class="special">);</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Plugin name: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">plugin</span><span class="special">-&gt;</span><span class="identifier">name</span><span class="special">()</span>
+              <span class="special">&lt;&lt;</span> <span class="string">", \nlocation: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">plugin</span><span class="special">-&gt;</span><span class="identifier">location</span><span class="special">()</span>
+              <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+                </p>
+              </td>
+<td>
+                <p>
+</p>
+<pre class="table-programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="string">"refcounting_plugin.hpp"</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">runtime_symbol_info</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span> <span class="comment">// program_location()</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">()</span> <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">shared_ptr</span><span class="special">&lt;</span><span class="identifier">my_refcounting_api</span><span class="special">&gt;</span> <span class="identifier">plugin</span> <span class="special">=</span> <span class="identifier">get_plugin</span><span class="special">(</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">program_location</span><span class="special">(),</span>
+        <span class="string">"create_refc_plugin"</span>
+    <span class="special">);</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Plugin name: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">plugin</span><span class="special">-&gt;</span><span class="identifier">name</span><span class="special">()</span>
+              <span class="special">&lt;&lt;</span> <span class="string">", \nlocation: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">plugin</span><span class="special">-&gt;</span><span class="identifier">location</span><span class="special">()</span>
+              <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>输出</p>
+              </td>
+<td>
+<pre class="table-programlisting">Plugin name: refcounting,
+location: "/libs/dll/librefcounting_plugin.so"</pre>
+              </td>
+<td>
+<pre class="table-programlisting">Plugin name: refcounting,
+location: "/tutorial8_static"</pre>
+              </td>
+</tr>
+</tbody>
+</table></div>
+<p>
+        <span class="bold"><strong>完整源码:</strong></span>
+      </p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial8/refcounting_api.hpp" target="_top">example/tutorial8/refcounting_api.hpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial8/refcounting_plugin.hpp" target="_top">example/tutorial8/refcounting_plugin.hpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial8/refcounting_plugin.cpp" target="_top">example/tutorial8/refcounting_plugin.cpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial8/tutorial8.cpp" target="_top">example/tutorial8/tutorial8.cpp</a>
+          </li>
+<li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial8/tutorial8_static.cpp" target="_top">example/tutorial8/tutorial8_static.cpp</a>
+          </li>
+</ul></div>
+<p>
+        <a class="link" href="tutorial.html" title="Tutorial">返回顶部</a>
+      </p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_dll.tutorial.importing_a_c_function_from_windows_dll"></a><a class="link" href="tutorial.html#boost_dll.tutorial.importing_a_c_function_from_windows_dll" title="从 Windows dll 导入 C 函数">从 Windows dll 导入 C 函数</a>
+</h3></div></div></div>
+<p>这是一个简单的例子, 但其中有一个棘手之处. 按 <span class="bold"><strong>名称</strong></span> 导入 C 函数时, 必须使用 <code class="computeroutput"><a class="link" href="../doxygen/shared_library_refcountable_reference/import_8hpp_1a080854cd692c712c5e0d425df481b7ab.html" title="函数模板 import_symbol">boost::dll::import_symbol</a></code> 而非 <code class="computeroutput"><a class="link" href="../doxygen/shared_library_refcountable_reference/import_8hpp_1a7ea7e10c20f83517dcc0acb6a64efa11.html" title="函数模板 import_alias">boost::dll::import_alias</a></code>:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">import</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>         <span class="comment">// for dll::import</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">dll</span><span class="special">/</span><span class="identifier">shared_library</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span> <span class="comment">// for dll::shared_library</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">functional</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">windows</span><span class="special">.</span><span class="identifier">h</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">dll</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">()</span> <span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="identifier">HANDLE</span><span class="special">(</span><span class="identifier">__stdcall</span> <span class="identifier">GetStdHandle_t</span><span class="special">)(</span><span class="identifier">DWORD</span> <span class="special">);</span>       <span class="comment">// function signature with calling convention</span>
+
+    <span class="comment">// OPTION #0, requires C++11 compatible compiler that understands GetStdHandle_t signature.</span>
+    <span class="keyword">auto</span> <span class="identifier">get_std_handle</span> <span class="special">=</span> <span class="identifier">dll</span><span class="special">::</span><span class="identifier">import_symbol</span><span class="special">&lt;</span><span class="identifier">GetStdHandle_t</span><span class="special">&gt;(</span>
+        <span class="string">"Kernel32.dll"</span><span class="special">,</span>
+        <span class="string">"GetStdHandle"</span><span class="special">,</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">dll</span><span class="special">::</span><span class="identifier">load_mode</span><span class="special">::</span><span class="identifier">search_system_folders</span>
+    <span class="special">);</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"0.0 GetStdHandle() returned "</span> <span class="special">&lt;&lt;</span> <span class="identifier">get_std_handle</span><span class="special">(</span><span class="identifier">STD_OUTPUT_HANDLE</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+
+    <span class="comment">// You may put the `get_std_handle` into std::function&lt;&gt;. But std::function&lt;Signature&gt; may not compile with</span>
+    <span class="comment">// Signature template parameter that contains calling conventions, so you'll have to remove the calling convention.</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">function</span><span class="special">&lt;</span><span class="identifier">HANDLE</span><span class="special">(</span><span class="identifier">DWORD</span><span class="special">)&gt;</span> <span class="identifier">get_std_handle2</span> <span class="special">=</span> <span class="identifier">get_std_handle</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"0.1 GetStdHandle() returned "</span> <span class="special">&lt;&lt;</span> <span class="identifier">get_std_handle2</span><span class="special">(</span><span class="identifier">STD_OUTPUT_HANDLE</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+
+    <span class="comment">// OPTION #1, hand write the import.</span>
+    <span class="identifier">dll</span><span class="special">::</span><span class="identifier">shared_library</span> <span class="identifier">lib</span><span class="special">(</span><span class="string">"Kernel32.dll"</span><span class="special">,</span> <span class="identifier">dll</span><span class="special">::</span><span class="identifier">load_mode</span><span class="special">::</span><span class="identifier">search_system_folders</span><span class="special">);</span>
+    <span class="identifier">GetStdHandle_t</span><span class="special">&amp;</span> <span class="identifier">func</span> <span class="special">=</span> <span class="identifier">lib</span><span class="special">.</span><span class="identifier">get</span><span class="special">&lt;</span><span class="identifier">GetStdHandle_t</span><span class="special">&gt;(</span><span class="string">"GetStdHandle"</span><span class="special">);</span>
+
+    <span class="comment">// Here `func` does not keep a reference to `lib`, you'll have to deal with that on your own.</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"1.0 GetStdHandle() returned "</span> <span class="special">&lt;&lt;</span> <span class="identifier">func</span><span class="special">(</span><span class="identifier">STD_OUTPUT_HANDLE</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+
+    <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>
+        <span class="bold"><strong>完整源码:</strong></span>
+      </p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">
+            <a href="https://github.com/apolukhin/Boost.DLL/blob/develop/example/tutorial9/tutorial9.cpp" target="_top">example/tutorial9/tutorial9.cpp</a>
+          </li></ul></div>
+<p>
+        <a class="link" href="tutorial.html" title="Tutorial">返回顶部</a>
+      </p>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2014 Renato Tegon Forti, Antony Polukhin<br>版权所有 © 2015 Antony Polukhin<br>版权所有 © 2016 Antony Polukhin, Klemens Morgenstern<br>版权所有 © 2017-2026 Antony Polukhin<p>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 LICENSE_1_0.txt, 或复制于 http://www.boost.org/LICENSE_1_0.txt)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="getting_started.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../boost_dll.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="mangled_import.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

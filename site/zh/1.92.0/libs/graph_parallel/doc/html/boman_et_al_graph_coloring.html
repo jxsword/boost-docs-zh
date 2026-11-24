@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.6: http://docutils.sourceforge.net/" />
+<title>Parallel BGL Boman 等人的图着色</title>
+<link rel="stylesheet" href="../../../../rst.css" type="text/css" />
+</head>
+<body>
+<div class="document" id="logo-boman-et-al-graph-coloring">
+<h1 class="title"><a class="reference external" href="http://www.osl.iu.edu/research/pbgl"><img align="middle" alt="Parallel BGL" class="align-middle" src="pbgl-logo.png" /></a> Boman 等人的图着色</h1>
+
+<!-- Copyright (C) 2004-2008 The Trustees of Indiana University.
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt) -->
+<pre class="literal-block">
+namespace graph {
+  template&lt;typename DistributedGraph, typename ColorMap&gt;
+  typename property_traits&lt;ColorMap&gt;::value_type
+  boman_et_al_graph_coloring
+    (const DistributedGraph&amp; g,
+     ColorMap color,
+     typename graph_traits&lt;DistributedGraph&gt;::vertices_size_type s = 100);
+
+  template&lt;typename DistributedGraph, typename ColorMap, typename ChooseColor&gt;
+  typename property_traits&lt;ColorMap&gt;::value_type
+  boman_et_al_graph_coloring
+    (const DistributedGraph&amp; g,
+     ColorMap color,
+     typename graph_traits&lt;DistributedGraph&gt;::vertices_size_type s,
+     ChooseColor choose_color);
+
+  template&lt;typename DistributedGraph, typename ColorMap, typename ChooseColor,
+           typename VertexOrdering&gt;
+  typename property_traits&lt;ColorMap&gt;::value_type
+  boman_et_al_graph_coloring
+    (const DistributedGraph&amp; g, ColorMap color,
+     typename graph_traits&lt;DistributedGraph&gt;::vertices_size_type s,
+     ChooseColor choose_color, VertexOrdering ordering);
+
+  template&lt;typename DistributedGraph, typename ColorMap, typename ChooseColor,
+           typename VertexOrdering, typename VertexIndexMap&gt;
+  typename property_traits&lt;ColorMap&gt;::value_type
+  boman_et_al_graph_coloring
+    (const DistributedGraph&amp; g,
+     ColorMap color,
+     typename graph_traits&lt;DistributedGraph&gt;::vertices_size_type s,
+     ChooseColor choose_color,
+     VertexOrdering ordering, VertexIndexMap vertex_index);
+}
+</pre>
+<p> <tt class="docutils literal"><span class="pre">boman_et_al_graph_coloring</span></tt> 函数对无向分布图的顶点着色, 使得任何两个相邻顶点都不具有相同颜色. 给定颜色的所有顶点构成图中的一个独立集. 图着色已被用于解决各类问题, 包括编译器中的寄存器分配、优化问题以及调度问题.</p>
+<img align="right" alt="顶点着色示例" class="align-right" src="../vertex_coloring.png" style="width: 462px; height: 269px;" />
+<p>用尽可能少的颜色为图着色的问题是 NP 完全的, 因此许多算法 (包括此处实现的算法) 都是启发式算法, 它们试图使颜色数量最少, 但不保证给出最优解. 本算法 <a class="citation-reference" href="#bbc05" id="id1">[BBC05]</a> 与 <tt class="docutils literal"><span class="pre">sequential_vertex_coloring</span></tt> 算法类似, 后者对顶点进行一次遍历, 并为当前顶点选择可用的编号最小的颜色. 因此在顺序情形下, 着色结果与颜色数量取决于顶点的排列顺序.</p>
+<p>分布式 <tt class="docutils literal"><span class="pre">boman_et_al_graph_coloring</span></tt> 算法所产生的着色结果会随顶点的排列与分布、以及协同执行着色的并行进程数量而有所不同.</p>
+<p>该算法返回为图着色所使用的颜色数量 <tt class="docutils literal"><span class="pre">num_colors</span></tt>.</p>
+<div class="contents topic" id="contents">
+<p class="topic-title first">目录</p>
+<ul class="simple">
+<li><a class="reference internal" href="#where-defined" id="id2">定义位置</a></li>
+<li><a class="reference internal" href="#parameters" id="id3">参数</a></li>
+<li><a class="reference internal" href="#complexity" id="id4">复杂度</a></li>
+<li><a class="reference internal" href="#performance" id="id5">性能</a></li>
+</ul>
+</div>
+<div class="section" id="where-defined">
+<h1><a class="toc-backref" href="#id2">定义位置</a></h1>
+<p>&lt;<tt class="docutils literal"><span class="pre">boost/graph/distributed/boman_et_al_graph_coloring.hpp</span></tt>&gt;</p>
+</div>
+<div class="section" id="parameters">
+<h1><a class="toc-backref" href="#id3">参数</a></h1>
+<dl class="docutils">
+<dt>IN: <tt class="docutils literal"><span class="pre">Graph&amp;</span> <span class="pre">g</span></tt></dt>
+<dd>图类型必须是 <a class="reference external" href="DistributedVertexListGraph.html">分布式顶点列表图</a> 与 <a class="reference external" href="DistributedEdgeListGraph.html">分布式边列表图</a> 的模型.</dd>
+<dt>UTIL/OUT: <tt class="docutils literal"><span class="pre">ColorMap</span> <span class="pre">color</span></tt></dt>
+<dd>保存每个顶点的颜色, 颜色为 [0, <tt class="docutils literal"><span class="pre">num_colors</span></tt>) 范围内的值. <tt class="docutils literal"><span class="pre">ColorMap</span></tt> 类型必须对 <a class="reference external" href="http://www.boost.org/libs/property_map/ReadWritePropertyMap.html">读/写属性映射</a> 概念建模, 并且必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a>.</dd>
+<dt>IN: <tt class="docutils literal"><span class="pre">vertices_size_type</span> <span class="pre">s</span></tt></dt>
+<dd><p class="first">每个超步 (superstep) 内着色的顶点数量. 在 <tt class="docutils literal"><span class="pre">s</span></tt> 个顶点被着色后, 边界顶点的颜色将被发送给其进程外的邻居. 较小的值通信更频繁, 但可能降低冲突风险; 较大的值在通信步骤之间完成更多工作, 但可能产生许多冲突.</p>
+<p class="last"><strong>默认</strong>: 100</p>
+</dd>
+<dt>IN: <tt class="docutils literal"><span class="pre">ChooseColor</span> <span class="pre">choose_color</span></tt></dt>
+<dd><p class="first">在给定邻居颜色的情况下为顶点选择颜色的函数对象. 该函数对象会接收一个值向量 (<tt class="docutils literal"><span class="pre">marked</span></tt>) 与一个 <tt class="docutils literal"><span class="pre">marked_true</span></tt> 值, 并应返回一个 <tt class="docutils literal"><span class="pre">color</span></tt> 值, 使得 <tt class="docutils literal"><span class="pre">color</span> <span class="pre">&gt;=</span> <span class="pre">marked.size()</span></tt> 或 <tt class="docutils literal"><span class="pre">marked[color]</span> <span class="pre">!=</span> <span class="pre">marked_true</span></tt>.</p>
+<p class="last"><strong>默认</strong>: <tt class="docutils literal"><span class="pre">boost::graph::distributed::first_fit_color&lt;color_type&gt;()</span></tt>, 其中 <tt class="docutils literal"><span class="pre">color_type</span></tt> 是 <tt class="docutils literal"><span class="pre">ColorMap</span></tt> 属性映射的值类型.</p>
+</dd>
+<dt>IN: <tt class="docutils literal"><span class="pre">VertexOrdering</span> <span class="pre">ordering</span></tt></dt>
+<dd><p class="first">对图中顶点提供全序的一个二元谓词函数对象. 每当发生冲突时, 相关进程之中只有一个会在下一轮为该顶点重新着色, 而此排序决定哪个顶点被视为冲突顶点 (随后由其属主进程处理该冲突). 理想情况下, 该谓词对顶点的排序应使冲突顶点均匀分布在各进程之间. 但是, 该谓词 <em>必须</em> 在两个处理器上以相同方式求解.</p>
+<p class="last"><strong>默认</strong>: <em>未指定</em></p>
+</dd>
+<dt>IN: <tt class="docutils literal"><span class="pre">VertexIndexMap</span> <span class="pre">index</span></tt></dt>
+<dd><p class="first">从顶点描述符到 <em>[0, num_vertices(g))</em> 范围内索引的一个映射. 它必须是 <a class="reference external" href="http://www.boost.org/libs/property_map/ReadablePropertyMap.html">可读属性映射</a>, 其键类型为顶点描述符, 值类型为整数类型, 通常是图的 <tt class="docutils literal"><span class="pre">vertices_size_type</span></tt>.</p>
+<p class="last"><strong>默认:</strong> <tt class="docutils literal"><span class="pre">get(vertex_index,</span> <span class="pre">g)</span></tt></p>
+</dd>
+</dl>
+</div>
+<div class="section" id="complexity">
+<h1><a class="toc-backref" href="#id4">复杂度</a></h1>
+<p>该算法的复杂度难以刻画, 因为它很大程度上取决于算法执行期间发生的 <em>冲突</em> 数量. 当一个 <em>边界顶点</em> (即与存储在不同处理器上的顶点相邻的顶点) 与与之相邻的另一个边界顶点 (但在另一处理器上) 被赋予相同颜色时, 就会发生冲突. 发生冲突的顶点必须被赋予新颜色, 这需要额外的工作与通信. 为冲突顶点重新分配颜色所需的工作量为 <em>O(d)</em>, 其中 <em>d</em> 是该顶点的度, 并且需要 <em>O(1)</em> 条大小为 <em>O(1)</em> 的消息来解决冲突. 注意, 冲突数量会随 (1) 进程数量和 (2) 进程间边的数量而增长.</p>
+</div>
+<div class="section" id="performance">
+<h1><a class="toc-backref" href="#id5">性能</a></h1>
+<p>以下图表展示了 Boman 等人的图着色算法此实现的性能. 对于我们尝试过的所有图, 扩展性与性能都是合理的.</p>
+<img align="left" alt="chart_php_generator_ER_SF_SW_dataset_TimeSparse_cluster_Odin_columns_11.png" class="align-left" src="chart_php_generator_ER_SF_SW_dataset_TimeSparse_cluster_Odin_columns_11.png" />
+<img alt="chart_php_generator_ER_SF_SW_dataset_TimeSparse_cluster_Odin_columns_11_speedup_1.png" src="chart_php_generator_ER_SF_SW_dataset_TimeSparse_cluster_Odin_columns_11_speedup_1.png" />
+<img align="left" alt="chart_php_generator_ER_SF_SW_dataset_TimeDense_cluster_Odin_columns_11.png" class="align-left" src="chart_php_generator_ER_SF_SW_dataset_TimeDense_cluster_Odin_columns_11.png" />
+<img alt="chart_php_generator_ER_SF_SW_dataset_TimeDense_cluster_Odin_columns_11_speedup_1.png" src="chart_php_generator_ER_SF_SW_dataset_TimeDense_cluster_Odin_columns_11_speedup_1.png" />
+<hr class="docutils" />
+<p>版权所有 (C) 2005 The Trustees of Indiana University.</p>
+<p>作者: Douglas Gregor 和 Andrew Lumsdaine</p>
+<table class="docutils citation" frame="void" id="bbc05" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[BBC05]</a></td><td>Erik G. Boman, Doruk Bozdag, Umit Catalyurek, Assefaw
+H. Gebremedhin, and Fredrik Manne. A Scalable Parallel Graph Coloring
+Algorithm for Distributed Memory Computers. [preprint]</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="footer">
+<hr class="footer" /> 生成时间: 2009-05-31 00:21 UTC. 由 <a class="reference external" href="http://docutils.sourceforge.net/">Docutils</a> 依据 <a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> 源生成.</div>
+</body>
+</html>

@@ -1,0 +1,545 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.6: http://docutils.sourceforge.net/" />
+<title>Parallel BGL 分布式邻接表</title>
+<link rel="stylesheet" href="../../../../rst.css" type="text/css" />
+</head>
+<body>
+<div class="document" id="logo-distributed-adjacency-list">
+<h1 class="title"><a class="reference external" href="http://www.osl.iu.edu/research/pbgl"><img align="middle" alt="Parallel BGL" class="align-middle" src="pbgl-logo.png" /></a> 分布式邻接表</h1>
+
+<!-- Copyright (C) 2004-2008 The Trustees of Indiana University.
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt) -->
+<div class="contents topic" id="contents">
+<p class="topic-title first">目录</p>
+<ul class="simple">
+<li><a class="reference internal" href="#introduction" id="id1">引言</a><ul>
+<li><a class="reference internal" href="#defining-a-distributed-adjacency-list" id="id2">定义分布式邻接表</a></li>
+<li><a class="reference internal" href="#distributed-vertex-and-edge-properties" id="id3">分布式顶点与边属性</a></li>
+<li><a class="reference internal" href="#named-vertices" id="id4">命名顶点</a></li>
+<li><a class="reference internal" href="#building-a-distributed-graph" id="id5">构建分布式图</a></li>
+<li><a class="reference internal" href="#graph-concepts" id="id6">图概念</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#reference" id="id7">参考</a><ul>
+<li><a class="reference internal" href="#where-defined" id="id8">定义位置</a></li>
+<li><a class="reference internal" href="#associated-types" id="id9">关联类型</a></li>
+<li><a class="reference internal" href="#member-functions" id="id10"> 成员函数 </a></li>
+<li><a class="reference internal" href="#non-member-functions" id="id11">非成员函数</a></li>
+<li><a class="reference internal" href="#structure-modification" id="id12">结构修改</a></li>
+<li><a class="reference internal" href="#property-map-accessors" id="id13">属性映射访问器</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="introduction">
+<h1><a class="toc-backref" href="#id1">引言</a></h1>
+<p>分布式邻接表以邻接表表示实现了一种图数据结构. 其接口与行为大致等价于 Boost Graph Library 的 <a class="reference external" href="http://www.boost.org/libs/graph/doc/adjacency_list.html">adjacency_list</a> 类模板. 然而, 分布式邻接表把图的顶点划分到多个进程上 (这些进程无需共享地址空间). 从任一顶点出发的边同样存储在存储该顶点的进程上, 但无向图例外, 此时源点或目标点之一可存储该边.</p>
+<pre class="literal-block">
+template&lt;typename OutEdgeListS, typename ProcessGroup, typename VertexListS,
+         typename DirectedS, typename VertexProperty, typename EdgeProperty,
+         typename GraphProperty, typename EdgeListS&gt;
+class adjacency_list&lt;OutEdgeListS,
+                     distributedS&lt;ProcessGroup, VertexListS&gt;,
+                     DirectedS, VertexProperty,
+                     EdgeProperty, GraphProperty, EdgeListS&gt;;
+</pre>
+<div class="section" id="defining-a-distributed-adjacency-list">
+<h2><a class="toc-backref" href="#id2">定义分布式邻接表</a></h2>
+<p>要创建分布式邻接表, 首先按照这些 <a class="reference external" href="http://www.boost.org/libs/graph/doc/using_adjacency_list.html">指南</a> 确定图在单一地址空间中的表示. 然后, 把顶点列表选择器 (<tt class="docutils literal"><span class="pre">VertexListS</span></tt>) 替换为 <a class="reference external" href="distributedS.html">distributedS</a> 的实例化, 其中包括:</p>
+<ul class="simple">
+<li>选择一个 <a class="reference external" href="process_group.html">进程组</a> 类型, 用于表示将要存储该分布式图的各个协作进程, 例如 <a class="reference external" href="process_group.html">MPI 进程组</a>.</li>
+<li>一个选择器, 指示每个进程中的顶点列表将如何存储. 目前只有 <tt class="docutils literal"><span class="pre">vecS</span></tt> 与 <tt class="docutils literal"><span class="pre">listS</span></tt> 选择器得到良好支持.</li>
+</ul>
+<p>下面的 <tt class="docutils literal"><span class="pre">typedef</span></tt> 定义了一个包含有向边的分布式邻接表. 图的顶点将分布在多个进程上, 并使用 MPI 进程组进行通信. 在每个进程中, 顶点与出边将存储在 STL 向量中. 图的顶点或边未附加任何属性.</p>
+<pre class="literal-block">
+using namespace boost;
+typedef adjacency_list&lt;vecS,
+                       distributedS&lt;graph::distributed::mpi_process_group, vecS&gt;,
+                       directedS&gt;
+  Graph;
+</pre>
+</div>
+<div class="section" id="distributed-vertex-and-edge-properties">
+<h2><a class="toc-backref" href="#id3">分布式顶点与边属性</a></h2>
+<p>分布式图的顶点与边属性与其在非分布式图中的对应物类似. 但对于分布式图, 顶点与边属性只存储在拥有该顶点或边的进程中.</p>
+<p>把属性附加到分布式图上最直接的方式, 是创建一个将附加到图的每个顶点与边上的结构. 例如, 如果我们希望对一个简单的美国州际公路系统地图建模, 可以声明图的顶点是城市、边是公路, 然后定义我们为每个城市和公路所维护的信息:</p>
+<pre class="literal-block">
+struct City {
+  City() { }
+  City(const std::string&amp; name, const std::string&amp; mayor = &quot;Unknown&quot;, int population = 0)
+    : name(name), mayor(mayor), population(population) { }
+
+  std::string name;
+  std::string mayor;
+  int population;
+
+  // Serialization support is required!
+  template&lt;typename Archiver&gt;
+  void serialize(Archiver&amp; ar, const unsigned int /*version*/) {
+    ar &amp; name &amp; mayor &amp; population;
+  }
+};
+
+struct Highway {
+  Highway() { }
+  Highway(const std::string&amp; name, int lanes, int miles_per_hour, int length)
+    : name(name), lanes(lanes), miles_per_hour(miles_per_hour), length(length) { }
+
+  std::string name;
+  int lanes;
+  int miles_per_hour;
+  int length;
+
+  // Serialization support is required!
+  template&lt;typename Archiver&gt;
+  void serialize(Archiver&amp; ar, const unsigned int /*version*/) {
+    ar &amp; name &amp; lanes &amp; miles_per_hour &amp; length;
+  }
+};
+</pre>
+<p>为了创建公路地图的分布式图, 我们把 <tt class="docutils literal"><span class="pre">City</span></tt> 与 <tt class="docutils literal"><span class="pre">Highway</span></tt> 分别作为第四与第五个参数提供给 <tt class="docutils literal"><span class="pre">adjacency_list</span></tt>:</p>
+<pre class="literal-block">
+typedef adjacency_list&lt;vecS,
+                       distributedS&lt;graph::distributed::mpi_process_group, vecS&gt;,
+                       directedS,
+                       City, Highway&gt;
+  RoadMap;
+</pre>
+<p>内部属性的属性映射借助 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a> 在分布式图上保持其原有行为, 后者自动完成进程间的通信, 使得 <tt class="docutils literal"><span class="pre">put</span></tt> 与 <tt class="docutils literal"><span class="pre">get</span></tt> 操作可以施加于非本地顶点与边. 然而, 对于把顶点存储在向量中的分布式邻接表 (<tt class="docutils literal"><span class="pre">VertexListS</span></tt> 为 <tt class="docutils literal"><span class="pre">vecS</span></tt>), 自动的 <tt class="docutils literal"><span class="pre">vertex_index</span></tt> 属性映射把 <tt class="docutils literal"><span class="pre">put</span></tt> 与 <tt class="docutils literal"><span class="pre">get</span></tt> 操作的定义域限制为执行该操作的进程本地的顶点. 例如, 我们可以如下创建一个访问每条公路长度的属性映射:</p>
+<pre class="literal-block">
+RoadMap map; // distributed graph instance
+
+typedef property_map&lt;RoadMap, int Highway::*&gt;::type
+  road_length = get(&amp;Highway::length, map);
+</pre>
+<p>此时, 基于边描述符 <tt class="docutils literal"><span class="pre">e</span></tt>, 可以用表达式 <tt class="docutils literal"><span class="pre">get(road_length,</span> <span class="pre">e)</span></tt> 访问任意一条路的长度, 而无论边 <tt class="docutils literal"><span class="pre">e</span></tt> 存储在哪个进程中.</p>
+</div>
+<div class="section" id="named-vertices">
+<h2><a class="toc-backref" href="#id4">命名顶点</a></h2>
+<p>图的顶点通常与应用领域中的命名实体相对应. 在上一节的公路地图示例中, 图中的顶点表示城市. 分布式邻接表支持命名顶点, 它提供了从应用领域中顶点名称 (例如城市名, 如 "Bloomington") 到分布式图内实际存储的顶点描述符 (例如处理器 1 上的第三个顶点) 的隐式映射. 通过启用对命名顶点的支持, 在操作图时可以按名称引用顶点. 例如, 可以添加一条从 Indianapolis 到 Chicago 的公路:</p>
+<pre class="literal-block">
+add_edge(&quot;Indianapolis&quot;, &quot;Chicago&quot;, Highway(&quot;I-65&quot;, 4, 65, 151), map);
+</pre>
+<p>分布式邻接表会查找与名称 "Indianapolis" 和 "Chicago" 相关联的顶点, 然后在这两个顶点之间添加一条表示 I-65 的边. 这些顶点可以存储在任何处理器上, 本地或远程均可.</p>
+<p>要启用命名顶点, 请为附加到图中顶点上的结构特化 <tt class="docutils literal"><span class="pre">internal_vertex_name</span></tt> 属性. <tt class="docutils literal"><span class="pre">internal_vertex_name</span></tt> 包含唯一一个成员 <tt class="docutils literal"><span class="pre">type</span></tt>, 它是函数对象的类型, 该函数对象接受一个顶点属性并返回存储在该顶点属性中的名称. 在我们的公路地图中, <tt class="docutils literal"><span class="pre">name</span></tt> 字段包含每个城市的名称, 因此我们使用 <tt class="docutils literal"><span class="pre">member</span></tt> 函数对象 (来自 <a class="reference external" href="http://www.boost.org/libs/multi_index/doc/index.html">Boost.MultiIndex</a> 库) 来提取名称, 例如:</p>
+<pre class="literal-block">
+namespace boost { namespace graph {
+
+template&lt;&gt;
+struct internal_vertex_name&lt;City&gt;
+{
+  typedef multi_index::member&lt;City, std::string, &amp;City::name&gt; type;
+};
+
+} }
+</pre>
+<p>就这样! 现在在与分布式邻接表交互时, 可以按名称引用顶点.</p>
+<p>当使用一个不存在的顶点名称时会发生什么? 例如, 在上面的 <tt class="docutils literal"><span class="pre">add_edge</span></tt> 调用中, 如果名为 "Indianapolis" 的顶点尚未添加到图中, 会发生什么? 默认情况下, 如果命名顶点尚不存在, 分布式邻接表将抛出异常. 不过, 可以通过指定一个仅凭顶点名称构造顶点属性实例 (例如 <tt class="docutils literal"><span class="pre">City</span></tt>) 的函数对象来自定义这一行为. 该自定义通过 <tt class="docutils literal"><span class="pre">internal_vertex_constructor</span></tt> 特征实现. 例如, 使用 <tt class="docutils literal"><span class="pre">vertex_from_name</span></tt> 模板 (由 Parallel BGL 提供), 我们可以声明 <tt class="docutils literal"><span class="pre">City</span></tt> 可以通过其第二个构造函数直接从城市名称构造:</p>
+<pre class="literal-block">
+namespace boost { namespace graph {
+
+template&lt;&gt;
+struct internal_vertex_constructor&lt;City&gt;
+{
+  typedef vertex_from_name&lt;City&gt; type;
+};
+
+} }
+</pre>
+<p>现在, 可以自由地按顶点名称添加边, 无需担心顶点的显式添加. <tt class="docutils literal"><span class="pre">mayor</span></tt> 与 <tt class="docutils literal"><span class="pre">population</span></tt> 字段将具有默认值, 但图结构将是正确的.</p>
+</div>
+<div class="section" id="building-a-distributed-graph">
+<h2><a class="toc-backref" href="#id5">构建分布式图</a></h2>
+<p>在确定了图类型的布局 (包括具体的数据结构与属性) 之后, 就该通过添加适当的顶点与边来构造图实例了. 分布式图的构造可能比普通非分布式图数据结构的构造稍微复杂, 因为必须同时考虑顶点与边的分布以及多个并发执行的进程. 构造分布式图有三种主要方式:</p>
+<p>1. <em>序列构造器</em>: 如果你的数据可以容易地由一对产生 (源点, 目标点) 对的迭代器生成, 就可以使用序列构造器并行地构建分布式图. 在创建基准测试时通常首选此方法, 因为 <a class="reference external" href="http://www.boost.org/libs/graph/doc/sorted_erdos_renyi_gen.html">sorted_erdos_renyi_iterator</a> 之类的随机图生成器会创建适当的输入序列. 注意, 必须在所有进程上提供相同的输入迭代器序列. 该方法的优点是: 顺序建图代码与并行建图代码完全相同. 以下是以这种方式构造随机图的示例:</p>
+<blockquote>
+<pre class="literal-block">
+typedef boost::sorted_erdos_renyi_iterator&lt;boost::minstd_rand, Graph&gt; ERIter;
+boost::minstd_rand gen;
+unsigned long n = 1000000; // 1M vertices
+Graph g(ERIter(gen, n, 0.00005), ERIter(), n);
+</pre>
+</blockquote>
+<p>2. <em>按顶点编号添加边</em>: 如果你能够把顶点映射到随机 [0, <em>n</em>) 中的值, 其中 <em>n</em> 是分布式图中顶点的数量. 当你的算法不容易改造为输入迭代器, 或者无法复制输入序列时, 请使用此方法而非序列构造器. 例如, 你可能正在从输入文件读取图:</p>
+<blockquote>
+<pre class="literal-block">
+Graph g(n); // initialize with the total number of vertices, n
+if (process_id(g.process_group()) == 0) {
+  // Only process 0 loads the graph, which is distributed automatically
+  int source, target;
+  for (std::cin &gt;&gt; source &gt;&gt; target)
+    add_edge(vertex(source, g), vertex(target, g), g);
+}
+
+// All processes synchronize at this point, then the graph is complete
+synchronize(g.process_group());
+</pre>
+</blockquote>
+<p>3. <em>按名称添加边</em>: 如果你使用命名顶点, 只需以源顶点与目标顶点的名称调用 <tt class="docutils literal"><span class="pre">add_edge</span></tt> 即可构造图. 注意确保每条边只由一个进程添加 (是哪个进程无关紧要), 否则最终会得到多重边. 例如, 在下面的程序中, 我们从进程 0 的标准输入读取边, 并按名称添加这些边. 顶点与边将被自动创建并分布.</p>
+<blockquote>
+<pre class="literal-block">
+Graph g;
+if (process_id(g.process_group()) == 0) {
+  // Only process 0 loads the graph, which is distributed automatically
+  std:string source, target;
+  for(std::cin &gt;&gt; source &gt;&gt; target)
+    add_edge(source, target, g);
+}
+
+// All processes synchronize at this point, then the graph is complete
+synchronize(g.process_group());
+</pre>
+</blockquote>
+</div>
+<div class="section" id="graph-concepts">
+<h2><a class="toc-backref" href="#id6">图概念</a></h2>
+<p>分布式邻接表对 <a class="reference external" href="http://www.boost.org/libs/graph/doc/Graph.html">图</a> 概念建模, 尤其是对 <a class="reference external" href="DistributedGraph.html">分布图</a> 概念建模. 它还对 <a class="reference external" href="http://www.boost.org/libs/graph/doc/IncidenceGraph.html">关联图</a> 与 <a class="reference external" href="http://www.boost.org/libs/graph/doc/AdjacencyGraph.html">邻接图</a> 概念建模, 但把操作的输入定义域限制为仅本地顶点. 例如, 只有当某个顶点存储在本进程中时, 进程才能访问其出边. 无向与双向分布式邻接表对 <a class="reference external" href="http://www.boost.org/libs/graph/doc/BidirectionalGraph.html">双向图</a> 概念建模, 具有相同的定义域限制. 分布式邻接表还对 <a class="reference external" href="http://www.boost.org/libs/graph/doc/MutableGraph.html">可变图</a> 概念 (有定义域限制; 参见 <a class="reference internal" href="#reference">参考</a> 一节)、<a class="reference external" href="http://www.boost.org/libs/graph/doc/PropertyGraph.html">属性图</a> 概念与 <a class="reference external" href="http://www.boost.org/libs/graph/doc/MutablePropertyGraph.html">可变属性图</a> 概念建模.</p>
+<p>与非分布式的对应物不同, 分布式邻接表 <strong>不</strong> 对 <a class="reference external" href="http://www.boost.org/libs/graph/doc/VertexListGraph.html">顶点列表图</a> 或 <a class="reference external" href="http://www.boost.org/libs/graph/doc/EdgeListGraph.html">边列表图</a> 概念建模, 因为无法在分布式图中枚举所有顶点或边. 相反, 它对较弱的 <a class="reference external" href="DistributedVertexListGraph.html">分布式顶点列表图</a> 与 <a class="reference external" href="DistributedEdgeListGraph.html">分布式边列表图</a> 概念建模, 后者允许访问每个处理器上的本地边与顶点. 注意, 如果分布式图所在进程组中的所有进程都对其各自的顶点或边列表进行迭代, 则所有顶点与边都将被覆盖一次.</p>
+</div>
+</div>
+<div class="section" id="reference">
+<h1><a class="toc-backref" href="#id7">参考</a></h1>
+<p>由于分布式邻接表紧密跟随非分布式的 <a class="reference external" href="http://www.boost.org/libs/graph/doc/adjacency_list.html">adjacency_list</a>, 本参考文档只描述两种实现不同的地方.</p>
+<div class="section" id="where-defined">
+<h2><a class="toc-backref" href="#id8">定义位置</a></h2>
+<p>&lt;boost/graph/distributed/adjacency_list.hpp&gt;</p>
+</div>
+<div class="section" id="associated-types">
+<h2><a class="toc-backref" href="#id9">关联类型</a></h2>
+<pre class="literal-block">
+adjacency_list::process_group_type
+</pre>
+<p>图将分布其上的进程组的类型.</p>
+<hr class="docutils" />
+<blockquote>
+adjacency_list::distribution_type</blockquote>
+<p>用于划分图中顶点的分布类型.</p>
+<hr class="docutils" />
+<blockquote>
+adjacency_list::vertex_name_type</blockquote>
+<p>如果图支持命名顶点, 这是用于命名顶点的类型. 否则, 该类型不存在于分布式邻接表中.</p>
+</div>
+<div class="section" id="member-functions">
+<h2><a class="toc-backref" href="#id10"> 成员函数 </a></h2>
+<pre class="literal-block">
+adjacency_list(const ProcessGroup&amp; pg = ProcessGroup());
+
+adjacency_list(const GraphProperty&amp; g,
+               const ProcessGroup&amp; pg = ProcessGroup());
+</pre>
+<p>以给定的进程组 (或默认值) 与图属性 (或默认值) 构造一个空的分布式邻接表.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+adjacency_list(vertices_size_type n, const GraphProperty&amp; p,
+               const ProcessGroup&amp; pg, const Distribution&amp; distribution);
+
+adjacency_list(vertices_size_type n, const ProcessGroup&amp; pg,
+               const Distribution&amp; distribution);
+
+adjacency_list(vertices_size_type n, const GraphProperty&amp; p,
+               const ProcessGroup&amp; pg = ProcessGroup());
+
+adjacency_list(vertices_size_type n,
+               const ProcessGroup&amp; pg = ProcessGroup());
+</pre>
+<p>构造一个具有 <tt class="docutils literal"><span class="pre">n</span></tt> 个顶点的分布式邻接表, 可选地提供图属性、进程组或分布. 这 <tt class="docutils literal"><span class="pre">n</span></tt> 个顶点将通过给定的 (或默认构造的) 分布进行分布. 该操作是集合 (collective) 操作, 要求进程组中的所有进程并发执行它.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template &lt;class EdgeIterator&gt;
+adjacency_list(EdgeIterator first, EdgeIterator last,
+               vertices_size_type n,
+               const ProcessGroup&amp; pg = ProcessGroup(),
+               const GraphProperty&amp; p = GraphProperty());
+
+template &lt;class EdgeIterator, class EdgePropertyIterator&gt;
+adjacency_list(EdgeIterator first, EdgeIterator last,
+               EdgePropertyIterator ep_iter,
+               vertices_size_type n,
+               const ProcessGroup&amp; pg = ProcessGroup(),
+               const GraphProperty&amp; p = GraphProperty());
+
+template &lt;class EdgeIterator&gt;
+adjacency_list(EdgeIterator first, EdgeIterator last,
+               vertices_size_type n,
+               const ProcessGroup&amp; process_group,
+               const Distribution&amp; distribution,
+               const GraphProperty&amp; p = GraphProperty());
+
+template &lt;class EdgeIterator, class EdgePropertyIterator&gt;
+adjacency_list(EdgeIterator first, EdgeIterator last,
+               EdgePropertyIterator ep_iter,
+               vertices_size_type n,
+               const ProcessGroup&amp; process_group,
+               const Distribution&amp; distribution,
+               const GraphProperty&amp; p = GraphProperty());
+</pre>
+<p>构造一个具有 <tt class="docutils literal"><span class="pre">n</span></tt> 个顶点、且边由范围 <tt class="docutils literal"><span class="pre">[first,</span> <span class="pre">last)</span></tt> 给出的边列表指定的分布式邻接表. <tt class="docutils literal"><span class="pre">EdgeIterator</span></tt> 必须是 <a class="reference external" href="http://www.boost.org/doc/html/InputIterator.html">输入迭代器</a> 的模型. <tt class="docutils literal"><span class="pre">EdgeIterator</span></tt> 的值类型必须是 <tt class="docutils literal"><span class="pre">std::pair</span></tt>, 其中 pair 中的类型为整数类型. 这些整数对应于顶点, 并且都必须落在 <tt class="docutils literal"><span class="pre">[0,</span> <span class="pre">n)</span></tt> 范围内. 当提供 <tt class="docutils literal"><span class="pre">ep_iter</span></tt> 时, 它指向一个边属性列表 <tt class="docutils literal"><span class="pre">[ep_iter,</span> <span class="pre">ep_iter</span> <span class="pre">+</span> <span class="pre">m)</span></tt>, 其中包含每条边的属性.</p>
+<p>此构造函数是集合操作, 必须由每个进程以相同的参数列表并发执行. 最重要的是, 提供给每个进程中构造函数的边列表应当等价. 顶点将按照 <tt class="docutils literal"><span class="pre">distribution</span></tt> 划分到各进程, 边放置在拥有该边源点的进程上. 注意, 这一行为允许顺序建图代码自动并行化, 而与底层分布无关.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void clear()
+</pre>
+<p>从本地图中移除所有边与顶点. 要消除图中的所有顶点与边, 该例程必须在所有进程中执行.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+process_group_type&amp; process_group();
+const process_group_type&amp; process_group() const;
+</pre>
+<p>返回该图所分布其上的进程组.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+distribution_type&amp;       distribution();
+const distribution_type&amp; distribution() const;
+</pre>
+<p>返回用于顶点初始放置的分布.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template&lt;typename VertexProcessorMap&gt;
+  void redistribute(VertexProcessorMap vertex_to_processor);
+</pre>
+<p>重新分布图的顶点 (因而也包括边). 属性映射 <tt class="docutils literal"><span class="pre">vertex_to_processor</span></tt> 为每个顶点提供指示该顶点应移动到何处的进程标识符. 一旦该集合例程完成, 分布式图将反映新的分布. 所有顶点与边描述符以及内部与外部属性映射都会被此操作失效.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template&lt;typename OStreamConstructibleArchive&gt;
+  void save(std::string const&amp; filename) const;
+
+template&lt;typename IStreamConstructibleArchive&gt;
+  void load(std::string const&amp; filename);
+</pre>
+<p>把图序列化到 Boost.Serialization 档案中. <tt class="docutils literal"><span class="pre">OStreamConstructibleArchive</span></tt> 与 <tt class="docutils literal"><span class="pre">IStreamConstructibleArchive</span></tt> 是 Boost.Serialization <em>Archive</em> 的模型, 并带有额外要求: 它们可以从 <tt class="docutils literal"><span class="pre">std::ostream</span></tt> 与 <tt class="docutils literal"><span class="pre">std::istream</span></tt> 构造. <tt class="docutils literal"><span class="pre">filename</span></tt> 命名一个目录, 该目录将保存各不同进程的文件.</p>
+</div>
+<div class="section" id="non-member-functions">
+<h2><a class="toc-backref" href="#id11">非成员函数</a></h2>
+<pre class="literal-block">
+std::pair&lt;vertex_iterator, vertex_iterator&gt;
+vertices(const adjacency_list&amp; g);
+</pre>
+<p>返回一个迭代器范围, 提供对本进程中存储的图 <tt class="docutils literal"><span class="pre">g</span></tt> 的顶点集的访问. 包含 <tt class="docutils literal"><span class="pre">g</span></tt> 的每个进程将获得互不相交的顶点集.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+std::pair&lt;edge_iterator, edge_iterator&gt;
+edges(const adjacency_list&amp; g);
+</pre>
+<p>返回一个迭代器范围, 提供对本进程中存储的图 <tt class="docutils literal"><span class="pre">g</span></tt> 的边集的访问.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+std::pair&lt;adjacency_iterator, adjacency_iterator&gt;
+adjacent_vertices(vertex_descriptor u, const adjacency_list&amp; g);
+</pre>
+<p>返回一个迭代器范围, 提供对图 <tt class="docutils literal"><span class="pre">g</span></tt> 中与顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 相邻的顶点的访问. 顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 必须对本进程是本地的.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+std::pair&lt;out_edge_iterator, out_edge_iterator&gt;
+out_edges(vertex_descriptor u, const adjacency_list&amp; g);
+</pre>
+<p>返回一个迭代器范围, 提供对图 <tt class="docutils literal"><span class="pre">g</span></tt> 中顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 的出边的访问. 如果图是无向的, 该迭代器范围提供对与顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 关联的所有边的访问. 对于有向图与无向图, 对任一出边 <tt class="docutils literal"><span class="pre">e</span></tt>, 有 <tt class="docutils literal"><span class="pre">source(e,</span> <span class="pre">g)</span>
+<span class="pre">==</span> <span class="pre">u</span></tt> 且 <tt class="docutils literal"><span class="pre">target(e,</span> <span class="pre">g)</span> <span class="pre">==</span> <span class="pre">v</span></tt>, 其中 <tt class="docutils literal"><span class="pre">v</span></tt> 是与 <tt class="docutils literal"><span class="pre">u</span></tt> 相邻的一个顶点. 顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 必须对本进程是本地的.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+std::pair&lt;in_edge_iterator, in_edge_iterator&gt;
+in_edges(vertex_descriptor v, const adjacency_list&amp; g);
+</pre>
+<p>返回一个迭代器范围, 提供对图 <tt class="docutils literal"><span class="pre">g</span></tt> 中顶点 <tt class="docutils literal"><span class="pre">v</span></tt> 的入边的访问. 仅当 <tt class="docutils literal"><span class="pre">Directed</span></tt> 模板参数指定为 <tt class="docutils literal"><span class="pre">bidirectionalS</span></tt> 时, 此操作才可用. 对任一入边 <tt class="docutils literal"><span class="pre">e</span></tt>, 无论图是有向还是无向, 都有 <tt class="docutils literal"><span class="pre">target(e,</span> <span class="pre">g)</span> <span class="pre">==</span> <span class="pre">v</span></tt> 且 <tt class="docutils literal"><span class="pre">source(e,</span>
+<span class="pre">g)</span> <span class="pre">==</span> <span class="pre">u</span></tt>, 其中 <tt class="docutils literal"><span class="pre">u</span></tt> 是与 <tt class="docutils literal"><span class="pre">v</span></tt> 相邻的某个顶点. 顶点 <tt class="docutils literal"><span class="pre">v</span></tt> 必须对本进程是本地的.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+degree_size_type
+out_degree(vertex_descriptor u, const adjacency_list&amp; g);
+</pre>
+<p>返回从顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 出发的边的数量. 顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 必须对执行进程是本地的.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+degree_size_type
+in_degree(vertex_descriptor u, const adjacency_list&amp; g);
+</pre>
+<p>返回进入顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 的边的数量. 仅当 <tt class="docutils literal"><span class="pre">Directed</span></tt> 模板参数指定为 <tt class="docutils literal"><span class="pre">bidirectionalS</span></tt> 时, 此操作才可用. 顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 必须对执行进程是本地的.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+vertices_size_type
+num_vertices(const adjacency_list&amp; g);
+</pre>
+<p>返回图 <tt class="docutils literal"><span class="pre">g</span></tt> 中存储在执行进程内的顶点数量.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+edges_size_type
+num_edges(const adjacency_list&amp; g);
+</pre>
+<p>返回图 <tt class="docutils literal"><span class="pre">g</span></tt> 中存储在执行进程内的边数量.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+vertex_descriptor
+vertex(vertices_size_type n, const adjacency_list&amp; g);
+</pre>
+<p>返回 <tt class="docutils literal"><span class="pre">第 n``th</span> <span class="pre">个顶点 (位于图的顶点列表中, 按照用于划分图的分布确定)</span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span>
+<span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre"> </span> <span class="pre">``n</span></tt> 必须是零与每个进程中 <tt class="docutils literal"><span class="pre">num_vertices(g)</span></tt> 之和减一之间的一个值. 注意, <tt class="docutils literal"><span class="pre">vertex(0,</span> <span class="pre">g)</span> <span class="pre">==</span>
+<span class="pre">*num_vertices(g).first</span></tt> 未必成立. 仅当图在初始构造之后未添加或移除任何顶点时, 才保证此函数准确.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+std::pair&lt;edge_descriptor, bool&gt;
+edge(vertex_descriptor u, vertex_descriptor v,
+     const adjacency_list&amp; g);
+</pre>
+<p>返回图 <tt class="docutils literal"><span class="pre">g</span></tt> 中连接顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 与顶点 <tt class="docutils literal"><span class="pre">v</span></tt> 的边. 对于双向图与无向图, 顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 或顶点 <tt class="docutils literal"><span class="pre">v</span></tt> 之一必须是本地的; 对于有向图, 顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 必须是本地的.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+std::pair&lt;out_edge_iterator, out_edge_iterator&gt;
+edge_range(vertex_descriptor u, vertex_descriptor v,
+           const adjacency_list&amp; g);
+</pre>
+<p>TODO: 未实现. 返回一对出边迭代器, 给出从 <tt class="docutils literal"><span class="pre">u</span></tt> 到 <tt class="docutils literal"><span class="pre">v</span></tt> 的所有平行边的范围. 该函数仅在 <tt class="docutils literal"><span class="pre">adjacency_list</span></tt> 的 <tt class="docutils literal"><span class="pre">OutEdgeList</span></tt> 是按目标顶点对出边排序且允许平行边的容器时才有效. <tt class="docutils literal"><span class="pre">multisetS</span></tt> 选择器会选择这样的容器. 顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 必须存储在执行进程中.</p>
+</div>
+<div class="section" id="structure-modification">
+<h2><a class="toc-backref" href="#id12">结构修改</a></h2>
+<pre class="literal-block">
+unspecified add_edge(vertex_descriptor u, vertex_descriptor v, adjacency_list&amp; g);
+unspecified add_edge(vertex_name_type u, vertex_descriptor v, adjacency_list&amp; g);
+unspecified add_edge(vertex_descriptor u, vertex_name_type v, adjacency_list&amp; g);
+unspecified add_edge(vertex_name_type u, vertex_name_type v, adjacency_list&amp; g);
+</pre>
+<p>把边 <tt class="docutils literal"><span class="pre">(u,v)</span></tt> 添加到图中. 返回类型本身未指定, 但该类型可拷贝构造并可隐式转换为 <tt class="docutils literal"><span class="pre">std::pair&lt;edge_descriptor,bool&gt;</span></tt>. 边描述符描述所添加 (或找到) 的边. 对于不允许平行边的图, 如果该边已在图中, 则不会添加重复边, 且 <tt class="docutils literal"><span class="pre">bool</span></tt> 标志将为 <tt class="docutils literal"><span class="pre">false</span></tt>. 此外, 如果 u 和 v 是同一顶点的描述符 (构成自环) 且图是无向的, 则不会添加该边, 且标志将为 <tt class="docutils literal"><span class="pre">false</span></tt>. 当标志为 <tt class="docutils literal"><span class="pre">false</span></tt> 时, 返回的边描述符指向已存在的边.</p>
+<p>参数 <tt class="docutils literal"><span class="pre">u</span></tt> 与 <tt class="docutils literal"><span class="pre">v</span></tt> 既可以是顶点描述符, 也可以 (在图使用命名顶点时) 是顶点的名称. 如果具有给定名称的顶点不存在, 将调用内部顶点构造器来创建新的顶点属性, 并把具有该属性的顶点隐式添加到图中. 默认的内部顶点构造器会抛出异常.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+unspecified add_edge(vertex_descriptor u, vertex_descriptor v, const EdgeProperties&amp; p, adjacency_list&amp; g);
+unspecified add_edge(vertex_name_type u, vertex_descriptor v, const EdgeProperties&amp; p, adjacency_list&amp; g);
+unspecified add_edge(vertex_descriptor u, vertex_name_type v, const EdgeProperties&amp; p, adjacency_list&amp; g);
+unspecified add_edge(vertex_name_type u, vertex_name_type v, const EdgeProperties&amp; p, adjacency_list&amp; g);
+</pre>
+<p>把边 <tt class="docutils literal"><span class="pre">(u,v)</span></tt> 添加到图中, 并把 <tt class="docutils literal"><span class="pre">p</span></tt> 附加为该边内部属性存储的值. 更多细节参见前一个 <tt class="docutils literal"><span class="pre">add_edge()</span></tt> 成员函数.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void
+remove_edge(vertex_descriptor u, vertex_descriptor v,
+            adjacency_list&amp; g);
+</pre>
+<p>从图中移除边 <tt class="docutils literal"><span class="pre">(u,v)</span></tt>. 如果有向选择器为 <tt class="docutils literal"><span class="pre">bidirectionalS</span></tt> 或 <tt class="docutils literal"><span class="pre">undirectedS</span></tt>, 则图的源顶点或目标顶点之一必须是本地的. 如果有向选择器为 <tt class="docutils literal"><span class="pre">directedS</span></tt>, 则源顶点必须是本地的.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void
+remove_edge(edge_descriptor e, adjacency_list&amp; g);
+</pre>
+<p>从图中移除边 <tt class="docutils literal"><span class="pre">e</span></tt>. 如果有向选择器为 <tt class="docutils literal"><span class="pre">bidirectionalS</span></tt> 或 <tt class="docutils literal"><span class="pre">undirectedS</span></tt>, 则图的源顶点或目标顶点之一必须是本地的. 如果有向选择器为 <tt class="docutils literal"><span class="pre">directedS</span></tt>, 则源顶点必须是本地的.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void remove_edge(out_edge_iterator iter, adjacency_list&amp; g);
+</pre>
+<p>这与 <tt class="docutils literal"><span class="pre">remove_edge(*iter,</span> <span class="pre">g)</span></tt> 具有相同的效果. 对于有向 (但非双向) 图, 这会比 <tt class="docutils literal"><span class="pre">remove_edge(*iter,</span> <span class="pre">g)</span></tt> 更高效.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template &lt;class Predicate &gt;
+void remove_out_edge_if(vertex_descriptor u, Predicate predicate,
+                        adjacency_list&amp; g);
+</pre>
+<p>从图中移除顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 的所有满足谓词的出边. 即, 如果谓词作用于某边描述符时返回 <tt class="docutils literal"><span class="pre">true</span></tt>, 则该边被移除. 顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 必须是本地的.</p>
+<p>对描述符与迭代器稳定性的影响与对每条被移除的边调用 remove_edge() 相同.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template &lt;class Predicate &gt;
+void remove_in_edge_if(vertex_descriptor v, Predicate predicate,
+                       adjacency_list&amp; g);
+</pre>
+<p>从图中移除顶点 <tt class="docutils literal"><span class="pre">v</span></tt> 的所有满足谓词的入边. 即, 如果谓词作用于某边描述符时返回 true, 则该边被移除. 顶点 <tt class="docutils literal"><span class="pre">v</span></tt> 必须是本地的.</p>
+<p>对描述符与迭代器稳定性的影响与对每条被移除的边调用 <tt class="docutils literal"><span class="pre">remove_edge()</span></tt> 相同.</p>
+<p>此操作可用于无向与双向 adjacency_list 图, 但不适用于有向图.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template &lt;class Predicate&gt;
+void remove_edge_if(Predicate predicate, adjacency_list&amp; g);
+</pre>
+<p>从图中移除所有满足谓词的边. 即, 如果谓词作用于某边描述符时返回 true, 则该边被移除.</p>
+<p>对描述符与迭代器稳定性的影响与对每条被移除的边调用 <tt class="docutils literal"><span class="pre">remove_edge()</span></tt> 相同.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+vertex_descriptor add_vertex(adjacency_list&amp; g);
+</pre>
+<p>向图中添加一个顶点并返回新顶点的顶点描述符. 该顶点将存储在本地进程中. 使用命名顶点时此函数不可用.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+unspecified add_vertex(const VertexProperties&amp; p, adjacency_list&amp; g);
+unspecified add_vertex(const vertex_name_type&amp; p, adjacency_list&amp; g);
+</pre>
+<p>向图中添加一个具有指定属性的顶点. 如果图使用顶点名称, 该顶点将被添加到 "拥有" 该名称的进程上. 否则, 该顶点将存储在本地进程中. 注意, 第二个构造函数会调用用户可定制的内部顶点构造器, 后者 (默认情况下) 在遇到未知顶点时抛出异常.</p>
+<p>返回类型未指定, 但可拷贝构造, 并可隐式转换为顶点描述符.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void clear_vertex(vertex_descriptor u, adjacency_list&amp; g);
+</pre>
+<p>移除所有与顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 相连 (作为源点或目标点) 的边. 该顶点仍会出现在图的顶点集中.</p>
+<p>对描述符与迭代器稳定性的影响与对所有以 <tt class="docutils literal"><span class="pre">u</span></tt> 为源点或目标点的边调用 <tt class="docutils literal"><span class="pre">remove_edge()</span></tt> 相同.</p>
+<p>此操作不适用于有向图, 因为顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 的入边是未知的.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void clear_out_edges(vertex_descriptor u, adjacency_list&amp; g);
+</pre>
+<p>移除顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 的所有出边. 该顶点仍会出现在图的顶点集中.</p>
+<p>对描述符与迭代器稳定性的影响与对所有以 <tt class="docutils literal"><span class="pre">u</span></tt> 为源点的边调用 <tt class="docutils literal"><span class="pre">remove_edge()</span></tt> 相同.</p>
+<p>此操作不适用于无向图 (应改用 <tt class="docutils literal"><span class="pre">clear_vertex()</span></tt>).</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void clear_in_edges(vertex_descriptor u, adjacency_list&amp; g);
+</pre>
+<p>移除顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 的所有入边. 该顶点仍会出现在图的顶点集中.</p>
+<p>对描述符与迭代器稳定性的影响与对所有以 <tt class="docutils literal"><span class="pre">u</span></tt> 为目标点的边调用 <tt class="docutils literal"><span class="pre">remove_edge()</span></tt> 相同.</p>
+<p>此操作仅适用于双向图.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void remove_vertex(vertex_descriptor u, adjacency_list&amp; g);
+</pre>
+<p>从图的顶点集中移除顶点 <tt class="docutils literal"><span class="pre">u</span></tt>. 假定在移除时不存在与顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 相连的边. 确保这一点的一种方式是事先调用 <tt class="docutils literal"><span class="pre">clear_vertex()</span></tt>. 顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 必须本地存储.</p>
+</div>
+<div class="section" id="property-map-accessors">
+<h2><a class="toc-backref" href="#id13">属性映射访问器</a></h2>
+<pre class="literal-block">
+template &lt;class PropertyTag&gt;
+property_map&lt;adjacency_list, PropertyTag&gt;::type
+get(PropertyTag, adjacency_list&amp; g);
+
+template &lt;class PropertyTag&gt;
+property_map&lt;adjacency_list, Tag&gt;::const_type
+get(PropertyTag, const adjacency_list&amp; g);
+</pre>
+<p>返回由 <tt class="docutils literal"><span class="pre">PropertyTag</span></tt> 指定的顶点属性的属性映射对象. <tt class="docutils literal"><span class="pre">PropertyTag</span></tt> 必须匹配图的 <tt class="docutils literal"><span class="pre">VertexProperty</span></tt> 模板参数中指定的属性之一. 返回的属性映射将是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a>.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template &lt;class PropertyTag , class X&gt;
+typename property_traits&lt;property_map&lt;adjacency_list, PropertyTag&gt;::const_type&gt;::value_type
+get(PropertyTag, const adjacency_list&amp; g, X x);
+</pre>
+<p>此函数返回 <tt class="docutils literal"><span class="pre">x</span></tt> 的属性值, 其中 <tt class="docutils literal"><span class="pre">x</span></tt> 是顶点描述符或边描述符. 描述符 <tt class="docutils literal"><span class="pre">x</span></tt> 所引用的实体必须存储在本地进程中.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template &lt;class PropertyTag , class X, class Value&gt;
+void put(PropertyTag, const adjacency_list&amp; g, X x, const Value&amp; value);
+</pre>
+<p>此函数把 <tt class="docutils literal"><span class="pre">x</span></tt> 的属性值设为 value. <tt class="docutils literal"><span class="pre">x</span></tt> 是顶点描述符或边描述符. <tt class="docutils literal"><span class="pre">Value</span></tt> 必须可转换为 <tt class="docutils literal"><span class="pre">typename</span>
+<span class="pre">property_traits&lt;property_map&lt;adjacency_list,</span>
+<span class="pre">PropertyTag&gt;::type&gt;::value_type</span></tt>.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+template &lt;class GraphProperties, class GraphPropertyTag&gt;
+typename graph_property&lt;adjacency_list, GraphPropertyTag&gt;::type&amp;
+get_property(adjacency_list&amp; g, GraphPropertyTag);
+
+template &lt;class GraphProperties, class GraphPropertyTag &gt;
+const typename graph_property&lt;adjacency_list, GraphPropertyTag&gt;::type&amp;
+get_property(const adjacency_list&amp; g, GraphPropertyTag);
+</pre>
+<p>TODO: 未实现.</p>
+<p>返回附加到图对象 <tt class="docutils literal"><span class="pre">g</span></tt> 上、由 <tt class="docutils literal"><span class="pre">GraphPropertyTag</span></tt> 指定的属性. <tt class="docutils literal"><span class="pre">graph_property</span></tt> 特征类定义于 <tt class="docutils literal"><span class="pre">boost/graph/adjacency_list.hpp</span></tt>.</p>
+<hr class="docutils" />
+<p>版权所有 (C) 2004 The Trustees of Indiana University.</p>
+<p>版权所有 (C) 2007 Douglas Gregor</p>
+<p>作者: Douglas Gregor 和 Andrew Lumsdaine</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr class="footer" /> 生成时间: 2009-05-31 00:21 UTC. 由 <a class="reference external" href="http://docutils.sourceforge.net/">Docutils</a> 依据 <a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> 源生成.</div>
+</body>
+</html>

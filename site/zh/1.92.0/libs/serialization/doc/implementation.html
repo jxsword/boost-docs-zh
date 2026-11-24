@@ -1,0 +1,87 @@
+<!doctype HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!--
+(C) Copyright 2002-4 Robert Ramey - http://www.rrsd.com . 
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt)
+-->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<link rel="stylesheet" type="text/css" href="../../../boost.css">
+<link rel="stylesheet" type="text/css" href="style.css">
+<title>Serialization - 实现说明</title>
+</head>
+<body link="#0000ff" vlink="#800080">
+<table border="0" cellpadding="7" cellspacing="0" width="100%" summary="header">
+  <tr> 
+    <td valign="top" width="300"> 
+      <h3><a href="../../../index.htm"><img height="86" width="277" alt="C++ Boost" src="../../../boost.png" border="0"></a></h3>
+    </td>
+    <td valign="top"> 
+      <h1 align="center">序列化</h1>
+      <h2 align="center">实现说明</h2>
+    </td>
+  </tr>
+</table>
+<hr>
+<dl class="page-index">
+  <dt><a href="#charencoding"> 字符编码 </a>
+  <dt><a href="#othercompilerissues"> 特定编译器/库问题 </a>
+  <dl class="page-index">
+    <dt><a href="#gcc4x"> 44.X </a>
+    <dt><a href="#intel80"> Intel 8.0 </a>
+    <dt><a href="#vc80"> Visual C++ 8.0 </a>
+    <dt><a href="#vc71"> Visual C++ 7.1 </a>
+    <dt><a href="#comeau"> Comeau 4.3.3 </a>
+    <dt><a href="#codewarrior9"> Code Warrior 9.x </a>
+    <dt><a href="#codewarrior"> Code Warrior 8.3 </a>
+    <dt><a href="#tru64"> TRU64 </a>
+    <dt><a href="#dinkumware"> Dinkumware 库 </a>
+    <dt><a href="#stlport"> STLPort 4.5.3 </a>
+  </dl>
+</dl>
+
+<h3><a name="charencoding"> 字符编码 </a></h3> 字符编码与宽字符相结合的整个问题比看起来复杂得多. 当前的库定义了 3 种格式 (文本、二进制和 XML) 、宽字符与窄字符, 并尝试在编译器库之间保持可移植性. 对所有这些因素进行相当长时间的考虑之后, 得出了按以下规则设置默认编码的结果. <ul>
+  <li>所有文本档案 (即 <code style="white-space: normal">text_?archive</code>) 都会按当前流的 <code style="white-space: normal">locale</code> 产生文本输出. 一般来说这不会改变字符串数据.<li>要用 Microsoft 编译器产生二进制输出, 必须以 <code style="white-space: normal">ios::binary</code> 模式打开流. 若不这样做, 当 0x0d 字符 (回车) 后面跟着 0x0a 字符 (换行) 时, 它们会被从输入流中删除. 这可能损坏输入并使文件不可读. 在 UNIX 系统上不需要 <code style="white-space: normal">ios::binary</code>, 即使使用也会被忽略.<li>字符 XML 档案 (即 xml_oarchive) 会产生按当前流 <code style="white-space: normal">locale</code> 编码字符的 XML 输出.<li>宽字符 XML 档案 (即 xml_woarchive) 会产生以 UTF-8 编码的文件.</ul> 这种字符编码的实现方式是: 在构造档案时更改档案所用 i/o 流的 <code style="white-space: normal">locale</code>; 当流 locale 被改回其原始值时——这一行为可以通过在打开档案时指定 <code style="white-space: normal">boost::archive::no_codecvt</code> 来禁止. 在这种情况下, 流 <code style="white-space: normal">locale</code> 不会被序列化库更改. <p>注意, 为宽字符文本和 XML 档案包含的代码转换可能改变档案中存储的 <code style="white-space: normal">std::string</code> 数据. 假设把一个普通 (多字节) 字符串写入宽字符流. 我们的系统在写出之前使用当前 <code style="white-space: normal">locale</code> 把它转换为宽字符串. 读取时再转换回 (多字节) 字符串. 如果读取档案平台上的 <code style="white-space: normal">locale</code> 与写出该流平台上的 <code style="white-space: normal">locale</code> 不同, 实际字符串数据可能被序列化过程改变. 为避免这一点, 要么避免使用依赖 <code style="white-space: normal">locale</code> 的多字节字符串, 要么确保在读取档案之前正确设置 <code style="white-space: normal">locale</code>.<p>要产生宽字符文本输出 (即 Win32 系统上的 16 位字符) , 请按以下步骤操作.<ul>
+  <li>打开一个宽字符流.<li>把流 <code style="white-space: normal">locale</code> 改为使用 <code style="white-space: normal">boost::archive::codecvt_null&lt;OStream::char_type&gt;</code>
+  <li>以 <code style="white-space: normal">no_codecvt</code> 标志创建档案.</ul> 自然, 输入过程必须是对称的. <h3><a name="othercompilerissues"> 特定编译器/库问题 </a></h3>
+<h4><a name="gcc4x"> GCC 4.X </a></h4>
+<ul>
+    <li>Cygwin 和 MinGW 的 GCC 版本不支持宽字符 I/O. 因此所有使用宽字符 I/O 的测试都会失败. 注意, 如果通过 STLPort 加入宽字符 I/O 支持, 则所有测试都能成功完成.<li>该编译器会生成与多态类中使用非虚析构函数相关的长篇警告消息. 这些警告已被仔细考虑, 产生这些警告的代码保持未变. 在这种情况下应当忽略这些警告, 因为在本库的某些用法中, 把析构函数设为虚函数可能导致问题. 作为替代, 基类析构函数已被设为"protected", 以回应促成这些警告消息的顾虑. 用 bjam 构建序列化库和测试时, 这些警告被抑制. 构建自己的应用程序时, 可以通过在编译器命令行加入以下内容来抑制这些警告: <pre><code>
+    -Wno-non-virtual-dtor
+    -Wno-ctor-dtor-privacy
+    </code></pre>
+</ul>
+<h4><a name="intel80"> Intel C++ 8.0 </a></h4> 没有已知问题. 所有测试都能在 debug 和 release 模式下编译并运行. <h4><a name="vc80"> Visual C++ 8.0 </a></h4> 该编译器会对调用被视为安全风险的标准库函数发出警告. 序列化依赖于进行其中一些调用, 因此使用序列化库的程序会收到警告消息. 这些消息可以在命令行通过包含以下开关来抑制: <pre><code>
+    /wd4996
+    </code></pre>
+
+<h4><a name="vc71"> Visual C++ 7.1 </a></h4> 如……中所描述的、从定义在 DLL 中的档案类派生将无法工作. 这是由于 VC++ 处理带有 __decl(dllexport) 和 __decl(dllimport) 说明的模板化代码的方式. 基本上, 该编译器要求所有实例化都具有相同的说明——即使它们有不同的模板实参. 示例 <code style="white-space: normal">
+demo_portable_iarchive.cpp</code> 必须改写成类似预定义档案那样的库或 dll 才能工作. <p>该编译器默认不开启 RTTI 和异常处理. 虽然使用序列化包并不严格需要它们, 但示例和测试程序假定它们已启用. 因此, 如果想构建并运行这些程序, 请确保你的命令行或 IDE 设置启用了这些特性.<p>该编译器可以把 <code style="white-space: normal">wchar_t</code> 当作短整数或内建类型. 如果在编译命令行指定 <code style="white-space: normal">/Zc:wchar_t</code>, <code style="white-space: normal">wchar_t</code> 将被视为内建类型——否则它会被当作 16 位整数的同义词. 库可以任一方式使用——<strong> 但是 </strong>——库<strong> 和 </strong>应用程序都必须用相同的开关设置编译. 注意 <code style="white-space: normal">BJAM</code> 默认包含此开关. 因此如果想使用 <code style="white-space: normal">BJAM</code> 构建的库, 编译自己的应用程序时应当包含此开关.<h5>使用 Visual C++ IDE</h5> 本库包含一个 VC++ 7.1 "Solution"——<code style="white-space: normal">BoostSerializationLibrary</code>, 以及一组工程文件——每个示例和测试各一个. 如果决定使用这些配置, 请考虑以下几点. <ul>
+    <li>这些工程假定测试已经用 bjam 以默认位置构建. 这会在你的 boost 主目录下产生一个 <code style="white-space: normal">bin</code> 子目录. 其下有一整套结构, 按构建类型维护对象文件和库文件. 最简单的构建方法是调用 runtest 脚本, 它使用 bjam (见下文) . 如果库不在这些位置, 就必须相应修改这些工程.<li>boost 支持的所有构建变体组合都有对应的工程配置. 即 release、debug、静态、静态多线程等.<li>如果想使用/调试 DLL 版本的库及相应测试, 请修改工程文件以定义 <code style="white-space: normal">BOOST_ALL_DYN_LINK=1</code>. 注意, 要运行可执行文件, <code style="white-space: normal">PATH</code> 环境变量必须包含包含 boost 库 DLL 版本的目录.<li>如果在构建自己的项目并与 boost 库链接时遇到困难, 请把自己项目的工程设置与这里的设置比较. VC 有时要求项目与其使用的库之间设置一致才能正确链接. 特别要检查对异常、运行期类型 (RTTI) 以及宽字符内建支持的情况. 本库的标准版本假定这些设施已启用. IDE 向导生成的项目默认不启用这些特性.<li>在尝试构建项目或查看项目属性时, 经常会弹出一个消息为"未指定错误"的消息框. 这似乎发生在更改构建配置选择时. 事实证明, 可以"修复"它: 转到"Build"菜单项, 选择"Configuration Manager", 并为你正在处理的项目选择一个构建配置.<li>要测试 boost 库是否构建正确, 可以按我们的方式构建并测试它们. 这包括: <ol>
+        <li>下载一份 bjam.exe<li>构建 process_jam_log<li>构建 compiler_status<li>调用 runtest.bat</ol> 这将构建序列化库并在你的系统上运行测试. 如果有不止几个测试失败, 你很可能无法让自己的项目正常工作. 如果大多数测试通过, 你就可以确信, 一旦把项目设置与这里包含的设置同步, 你自己的项目就能正常工作.</ul>
+
+<h4><a name="comeau"> Comeau 4.3.3 </a></h4>
+<ul>
+    <li>该编译器无法在 Windows 下构建带导出的 DLL.<li>相关的库——libcomo 在使用 codecvt facet 时失败. 这导致所有宽字符档案失败.<li>test_set 因陷入无限的内存泄漏而失败.</ul>
+
+<h4><a name="codewarrior9"> Code Warrior 9.x </a></h4>
+<ul>
+    <li>一些测试和示例失败——仍在调查中</ul>
+
+<h4><a name="codewarrior"> Code Warrior 8.3 </a></h4> Code Warrior 9.x 的上述所有问题, 外加: <ul>
+    <li>该编译器只对静态库版本支持模板化流.<li>上述问题阻碍了 DLL 版本库的构建.<li>一些示例失败——仍在调查中</ul>
+
+<h4><a name="tru64"> TRU64 </a></h4> 除 test_variant 外, 所有测试和示例都通过. Boost Variant 在该编译器上无法工作 <h4><a name="dinkumware"> Dinkumware 库 </a></h4> 多个编译器 (包括 Visual C++ 6.0) 使用较旧的 dinkumware 库. 这些平台有几个问题: <ul>
+    <li>该编译器附带的 dinkumware 库在流打开之前未调用 <code style="white-space: normal">imbue</code> 函数时, 不会更改 i/o 流的 locale facet. 要在这种环境下使用本库生成 UTF-8 文件, 不能依赖档案实现的"自动" locale 设置. 必须在流上打开档案之前显式设置流 locale. 档案应以 <code style="white-space: normal">no_codecvt</code> 标志打开. 注意, 所有附带该库的编译器都会出现此问题.<li>其他问题已在文件中变通解决. <a href="../../../boost/archive/dinkumware.hpp" target="dinkumware_hpp"> dinkumware.hpp </a>
+</ul>
+
+<h4><a name="stlport"> STLPort 4.5.3 </a></h4>
+<ul>
+    <li>当构建为使用 C++ 运行时代码的动态链接版本 (<runtime-link>dynamic) 时, 所有测试都无法链接. 这是由于 stlport 库中缺少与自定义 codecvt facet 相关的符号.<li>test_set 无法正确运行. 似乎哈希 set 迭代器没有正确实现 ++ 运算符. 这导致测试耗尽所有可用内存而失败. 鉴于此, 该测试已被注释掉.</ul>
+
+<hr>
+<p>2004 年 11 月 1 日修订<p><i> 版权所有 © <a href="http://www.rrsd.com"> Robert Ramey </a> 2002-2015. 按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt) </i></p>
+</body>
+</html>

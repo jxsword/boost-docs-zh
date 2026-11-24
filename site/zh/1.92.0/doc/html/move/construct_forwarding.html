@@ -1,0 +1,144 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>构造函数转发</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../move.html" title="第 22 章 Boost.Move">
+<link rel="prev" href="move_and_containers.html" title="容器与移动语义">
+<link rel="next" href="move_return.html" title="返回局部对象时的隐式移动">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="move_and_containers.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../move.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="move_return.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="move.construct_forwarding"></a><a class="link" href="construct_forwarding.html" title="构造函数转发">构造函数转发</a>
+</h2></div></div></div>
+<p>考虑编写一个泛型工厂函数, 它为一个新构造的泛型类型返回对象. 这样的工厂函数对于封装和局部化资源分配非常有价值. 显然, 工厂函数必须接受与所构造对象类型的构造函数完全相同的实参集合:</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">&gt;</span> <span class="identifier">T</span><span class="special">*</span> <span class="identifier">factory_new</span><span class="special">()</span>
+<span class="special">{</span>  <span class="keyword">return</span> <span class="keyword">new</span> <span class="identifier">T</span><span class="special">();</span>  <span class="special">}</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">&gt;</span> <span class="identifier">T</span><span class="special">*</span> <span class="identifier">factory_new</span><span class="special">(</span><span class="identifier">a1</span><span class="special">)</span>
+<span class="special">{</span>  <span class="keyword">return</span> <span class="keyword">new</span> <span class="identifier">T</span><span class="special">(</span><span class="identifier">a1</span><span class="special">);</span>  <span class="special">}</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">&gt;</span> <span class="identifier">T</span><span class="special">*</span> <span class="identifier">factory_new</span><span class="special">(</span><span class="identifier">a1</span><span class="special">,</span> <span class="identifier">a2</span><span class="special">)</span>
+<span class="special">{</span>  <span class="keyword">return</span> <span class="keyword">new</span> <span class="identifier">T</span><span class="special">(</span><span class="identifier">a1</span><span class="special">,</span> <span class="identifier">a2</span><span class="special">);</span>  <span class="special">}</span>
+</pre>
+<p>遗憾的是, 在 C++03 中, 这种方法更大的问题在于 N 个实参的情形需要 2^N 个重载, 这使其立刻失去了作为通用解决方案的资格. 所幸, 大多数构造函数按值, 按 const 引用或按右值引用接受实参. 如果接受这些限制, N 个实参情形的转发模拟只需要 N 个重载. 借助 <code class="computeroutput"><span class="identifier">BOOST_FWD_REF</span></code> 和 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">forward</span></code>, 本库使这种模拟变得容易:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">move</span><span class="special">/</span><span class="identifier">utility_core</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+
+<span class="keyword">class</span> <span class="identifier">copyable_only_tester</span>
+<span class="special">{</span>
+   <span class="keyword">public</span><span class="special">:</span>
+   <span class="identifier">copyable_only_tester</span><span class="special">()</span>
+   <span class="special">{</span>  <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"copyable_only_tester()"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>   <span class="special">}</span>
+
+   <span class="identifier">copyable_only_tester</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">copyable_only_tester</span><span class="special">&amp;)</span>
+   <span class="special">{</span>  <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"copyable_only_tester(const copyable_only_tester&amp;)"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>   <span class="special">}</span>
+
+   <span class="identifier">copyable_only_tester</span><span class="special">(</span><span class="keyword">int</span><span class="special">)</span>
+   <span class="special">{</span>  <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"copyable_only_tester(int)"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>   <span class="special">}</span>
+
+   <span class="identifier">copyable_only_tester</span><span class="special">(</span><span class="keyword">int</span><span class="special">,</span> <span class="keyword">double</span><span class="special">)</span>
+   <span class="special">{</span>  <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"copyable_only_tester(int, double)"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>   <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="keyword">class</span> <span class="identifier">copyable_movable_tester</span>
+<span class="special">{</span>
+   <span class="comment">// move semantics</span>
+   <span class="identifier">BOOST_COPYABLE_AND_MOVABLE</span><span class="special">(</span><span class="identifier">copyable_movable_tester</span><span class="special">)</span>
+   <span class="keyword">public</span><span class="special">:</span>
+
+   <span class="identifier">copyable_movable_tester</span><span class="special">()</span>
+   <span class="special">{</span>  <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"copyable_movable_tester()"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>   <span class="special">}</span>
+
+   <span class="identifier">copyable_movable_tester</span><span class="special">(</span><span class="keyword">int</span><span class="special">)</span>
+   <span class="special">{</span>  <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"copyable_movable_tester(int)"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>   <span class="special">}</span>
+
+   <span class="identifier">copyable_movable_tester</span><span class="special">(</span><span class="identifier">BOOST_RV_REF</span><span class="special">(</span><span class="identifier">copyable_movable_tester</span><span class="special">))</span>
+   <span class="special">{</span>  <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"copyable_movable_tester(BOOST_RV_REF(copyable_movable_tester))"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>   <span class="special">}</span>
+
+   <span class="identifier">copyable_movable_tester</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">copyable_movable_tester</span> <span class="special">&amp;)</span>
+   <span class="special">{</span>  <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"copyable_movable_tester(const copyable_movable_tester &amp;)"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>   <span class="special">}</span>
+
+   <span class="identifier">copyable_movable_tester</span><span class="special">(</span><span class="identifier">BOOST_RV_REF</span><span class="special">(</span><span class="identifier">copyable_movable_tester</span><span class="special">),</span> <span class="identifier">BOOST_RV_REF</span><span class="special">(</span><span class="identifier">copyable_movable_tester</span><span class="special">))</span>
+   <span class="special">{</span>  <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"copyable_movable_tester(BOOST_RV_REF(copyable_movable_tester), BOOST_RV_REF(copyable_movable_tester))"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>   <span class="special">}</span>
+
+   <span class="identifier">copyable_movable_tester</span> <span class="special">&amp;</span><span class="keyword">operator</span><span class="special">=(</span><span class="identifier">BOOST_RV_REF</span><span class="special">(</span><span class="identifier">copyable_movable_tester</span><span class="special">))</span>
+   <span class="special">{</span>  <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"copyable_movable_tester &amp; operator=(BOOST_RV_REF(copyable_movable_tester))"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+      <span class="keyword">return</span> <span class="special">*</span><span class="keyword">this</span><span class="special">;</span>  <span class="special">}</span>
+
+   <span class="identifier">copyable_movable_tester</span> <span class="special">&amp;</span><span class="keyword">operator</span><span class="special">=(</span><span class="identifier">BOOST_COPY_ASSIGN_REF</span><span class="special">(</span><span class="identifier">copyable_movable_tester</span><span class="special">))</span>
+   <span class="special">{</span>  <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"copyable_movable_tester &amp; operator=(BOOST_COPY_ASSIGN_REF(copyable_movable_tester))"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+      <span class="keyword">return</span> <span class="special">*</span><span class="keyword">this</span><span class="special">;</span>  <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="comment">//1 argument</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">MaybeMovable</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">MaybeRv</span><span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">function_construct</span><span class="special">(</span><span class="identifier">BOOST_FWD_REF</span><span class="special">(</span><span class="identifier">MaybeRv</span><span class="special">)</span> <span class="identifier">x</span><span class="special">)</span>
+<span class="special">{</span>  <span class="identifier">MaybeMovable</span> <span class="identifier">m</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">forward</span><span class="special">&lt;</span><span class="identifier">MaybeRv</span><span class="special">&gt;(</span><span class="identifier">x</span><span class="special">));</span>   <span class="special">}</span>
+
+<span class="comment">//2 argument</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">MaybeMovable</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">MaybeRv</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">MaybeRv2</span><span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">function_construct</span><span class="special">(</span><span class="identifier">BOOST_FWD_REF</span><span class="special">(</span><span class="identifier">MaybeRv</span><span class="special">)</span> <span class="identifier">x</span><span class="special">,</span> <span class="identifier">BOOST_FWD_REF</span><span class="special">(</span><span class="identifier">MaybeRv2</span><span class="special">)</span> <span class="identifier">x2</span><span class="special">)</span>
+<span class="special">{</span>  <span class="identifier">MaybeMovable</span> <span class="identifier">m</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">forward</span><span class="special">&lt;</span><span class="identifier">MaybeRv</span><span class="special">&gt;(</span><span class="identifier">x</span><span class="special">),</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">forward</span><span class="special">&lt;</span><span class="identifier">MaybeRv2</span><span class="special">&gt;(</span><span class="identifier">x2</span><span class="special">));</span>  <span class="special">}</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">()</span>
+<span class="special">{</span>
+   <span class="identifier">copyable_movable_tester</span> <span class="identifier">m</span><span class="special">;</span>
+   <span class="comment">//move constructor</span>
+   <span class="identifier">function_construct</span><span class="special">&lt;</span><span class="identifier">copyable_movable_tester</span><span class="special">&gt;(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">m</span><span class="special">));</span>
+   <span class="comment">//copy constructor</span>
+   <span class="identifier">function_construct</span><span class="special">&lt;</span><span class="identifier">copyable_movable_tester</span><span class="special">&gt;(</span><span class="identifier">copyable_movable_tester</span><span class="special">());</span>
+   <span class="comment">//two rvalue constructor</span>
+   <span class="identifier">function_construct</span><span class="special">&lt;</span><span class="identifier">copyable_movable_tester</span><span class="special">&gt;(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">m</span><span class="special">),</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">m</span><span class="special">));</span>
+
+   <span class="identifier">copyable_only_tester</span> <span class="identifier">nm</span><span class="special">;</span>
+   <span class="comment">//copy constructor (copyable_only_tester has no move ctor.)</span>
+   <span class="identifier">function_construct</span><span class="special">&lt;</span><span class="identifier">copyable_only_tester</span><span class="special">&gt;(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">nm</span><span class="special">));</span>
+   <span class="comment">//copy constructor</span>
+   <span class="identifier">function_construct</span><span class="special">&lt;</span><span class="identifier">copyable_only_tester</span><span class="special">&gt;(</span><span class="identifier">nm</span><span class="special">);</span>
+   <span class="comment">//int constructor</span>
+   <span class="identifier">function_construct</span><span class="special">&lt;</span><span class="identifier">copyable_only_tester</span><span class="special">&gt;(</span><span class="keyword">int</span><span class="special">(</span><span class="number">0</span><span class="special">));</span>
+   <span class="comment">//int, double constructor</span>
+   <span class="identifier">function_construct</span><span class="special">&lt;</span><span class="identifier">copyable_only_tester</span><span class="special">&gt;(</span><span class="keyword">int</span><span class="special">(</span><span class="number">0</span><span class="special">),</span> <span class="keyword">double</span><span class="special">(</span><span class="number">0.0</span><span class="special">));</span>
+
+   <span class="comment">//Output is:</span>
+   <span class="comment">//copyable_movable_tester()</span>
+   <span class="comment">//copyable_movable_tester(BOOST_RV_REF(copyable_movable_tester))</span>
+   <span class="comment">//copyable_movable_tester()</span>
+   <span class="comment">//copyable_movable_tester(const copyable_movable_tester &amp;)</span>
+   <span class="comment">//copyable_movable_tester(BOOST_RV_REF(copyable_movable_tester), BOOST_RV_REF(copyable_movable_tester))</span>
+   <span class="comment">//copyable_only_tester()</span>
+   <span class="comment">//copyable_only_tester(const copyable_only_tester&amp;)</span>
+   <span class="comment">//copyable_only_tester(const copyable_only_tester&amp;)</span>
+   <span class="comment">//copyable_only_tester(int)</span>
+   <span class="comment">//copyable_only_tester(int, double)</span>
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>如果实现者接受这种转发方式在 C++03 编译器上的限制, 构造函数转发可以派上用场, 只用 N 个重载就能在容器中实现就地插入. 在支持右值引用的编译器上则可以实现完美转发.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2008-2024 Ion Gaztanaga<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="move_and_containers.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../move.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="move_return.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

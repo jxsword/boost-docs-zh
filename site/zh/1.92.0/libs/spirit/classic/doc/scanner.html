@@ -1,0 +1,196 @@
+<html>
+<head>
+<title>扫描器与解析</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<link rel="stylesheet" href="theme/style.css" type="text/css">
+</head>
+
+<body>
+<table width="100%" border="0" background="theme/bkd2.gif" cellspacing="2">
+  <tr> 
+    <td width="10"> 
+    </td>
+    <td width="85%"> 
+      <font size="6" face="Verdana, Arial, Helvetica, sans-serif"><b>扫描器与解析</b></font>
+    </td>
+    <td width="112"><a href="http://spirit.sf.net"><img src="theme/spirit.gif" width="112" height="48" align="right" border="0"></a></td>
+  </tr>
+</table>
+<br>
+<table border="0">
+  <tr>
+    <td width="10"></td>
+    <td width="30"><a href="../index.html"><img src="theme/u_arr.gif" border="0"></a></td>
+    <td width="30"><a href="directives.html"><img src="theme/l_arr.gif" border="0"></a></td>
+    <td width="30"><a href="grammar.html"><img src="theme/r_arr.gif" border="0"></a></td>
+  </tr>
+</table>
+<p> <b>扫描器</b>的任务是把顺序输入数据流喂给解析器. 扫描器从输入中提取数据, 分块, 可能进行修改或过滤, 最后按需把结果交给各个解析器元素, 直至输入耗尽. 扫描器由两个符合 STL 规范的前向迭代器 first 与 last 组成, 其中 first 以引用方式持有, last 以值方式持有. first 以引用持有是为了允许重新定位. 下图展示了正在发生的事情:</p>
+<table width="62%" border="0" align="center">
+  <tr>
+    <td><img src="theme/scanner1.png"></td>
+  </tr>
+</table>
+<p>扫描器通过一组策略管理解析过程的各个方面. 有三组策略分别支配:</p>
+<blockquote>
+  <p><img src="theme/bullet.gif" width="12" height="12">迭代与过滤<br>
+    <img src="theme/bullet.gif" width="12" height="12"> 识别与匹配<br>
+    <img src="theme/bullet.gif" width="12" height="12"> 语义动作的处理</p>
+</blockquote>
+<p>这些策略大多隐藏在幕后, 使用者通常无需了解它们. 不过, 高级用户可以提供自己的策略来覆盖已有策略, 从而微调解析过程以适应自身需要. 我们将看到如何做到这一点. 稍后会进一步详述.</p>
+<p> <tt>scanner</tt> 是一个期望两个参数的模板类: <tt>IteratorT</tt>, 迭代器类型; 以及 <tt>PoliciesT</tt>, 其策略集. <tt>IteratorT</tt> 默认为 <tt>char const*</tt>, 而 <tt>PoliciesT</tt> 默认为 <tt>scanner_policies&lt;&gt;</tt>, 一套可以开箱即用的预定义扫描器策略.</p>
+<pre><code><font color="#000000"><span class=keyword>    template</span><span class=special>&lt;
+        </span><span class=keyword>typename </span><span class=identifier>IteratorT  </span><span class=special>= </span><span class=keyword>char </span><span class=keyword>const</span><span class=special>*,
+        </span><span class=keyword>typename </span><span class=identifier>PoliciesT  </span><span class=special>= </span><span class=identifier>scanner_policies</span><span class=special>&lt;&gt; </span><span class=special>&gt;
+    </span><span class=keyword>class </span><span class=identifier>scanner</span><span class=special>;</span></font></code></pre>
+<p>Spirit 使用与 C++ 标准模板库(STL)正式定义的相同的迭代器概念与接口. 我们可以原样使用 STL 容器(如 <tt>list</tt>, <tt>vector</tt>, <tt>string</tt> 等)提供的迭代器, 或者也可以编写自己的迭代器. 迭代器可以简单如一个指针(如 <tt>char const<span class="operators">*</span></tt>). 在光谱的另一端, 迭代器也可以相当复杂; 例如, 包装词法分析器(如 LEX)的迭代器适配器.</p>
+<h2>自由 parse 函数</h2>
+<p>框架提供了几个自由函数, 让解析变得轻而易举. 这些解析函数有两种形式. 第一种形式作用于<b>字符层面</b>. 第二种作用于<b>短语层面</b>, 并要求提供一个 <b>跳过解析器</b>.</p>
+<p> <b>跳过解析器</b>几乎可以是任何解析器原语或组合器. 其目的是通过跳过空白把扫描器的 <tt>first</tt> 迭代器移到有效记号上. 例如在 C 中, 制表符 <tt class="quotes">'\t'</tt>, 换行符 <tt class="quotes">'\n'</tt>, 回车 <tt><span class="quotes">'\r'</span></tt>, 空格 <tt class="quotes">' '</tt> 以及注释 <tt class="quotes">/*...*/</tt> 内的字符都被视为空白.</p>
+<p><b>字符层面解析</b></p>
+<pre><code><font color="#000000"><span class=special>    </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>IteratorT</span><span class=special>, </span><span class=keyword>typename </span><span class=identifier>DerivedT</span><span class=special>&gt;
+    </span><span class=identifier>parse_info</span><span class=special>&lt;</span><span class=identifier>IteratorT</span><span class=special>&gt;
+    </span><span class=identifier>parse
+    </span><span class=special>(
+        </span><span class=identifier>IteratorT </span><span class=keyword>const</span><span class=special>&        </span><span class=identifier>first</span><span class=special>,
+        </span><span class=identifier>IteratorT </span><span class=keyword>const</span><span class=special>&        </span><span class=identifier>last</span><span class=special>,
+        </span><span class=identifier>parser</span><span class=special>&lt;</span><span class=identifier>DerivedT</span><span class=special>&gt; </span><span class=keyword>const</span><span class=special>& </span><span class=identifier>p
+    </span><span class=special>);</span></font></code></pre>
+<pre><code><font color="#000000"><span class=special>    </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>CharT</span><span class=special>, </span><span class=keyword>typename </span><span class=identifier>DerivedT</span><span class=special>&gt;
+    </span><span class=identifier>parse_info</span><span class=special>&lt;</span><span class=identifier>CharT </span><span class=keyword>const</span><span class=special>*&gt;
+    </span><span class=identifier>parse
+    </span><span class=special>(
+        </span><span class=identifier>CharT </span><span class=keyword>const</span><span class=special>*            </span><span class=identifier>str</span><span class=special>,
+        </span><span class=identifier>parser</span><span class=special>&lt;</span><span class=identifier>DerivedT</span><span class=special>&gt; </span><span class=keyword>const</span><span class=special>& </span><span class=identifier>p
+    </span><span class=special>);</span></font></code></pre>
+<p>有两个变体. 第一个变体接受一个 <tt>first</tt>, <tt>last</tt> 迭代器对, 就像使用 STL 算法那样. 第二个变体接受一个以空字符结尾的字符串. 最后一个实参是解析器 <tt>p</tt>, 它将用于解析输入.</p>
+<p><b>短语层面解析</b></p>
+<pre><code><font color="#000000"><span class=special>    </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>IteratorT</span><span class=special>, </span><span class=keyword>typename </span><span class=identifier>ParserT</span><span class=special>, </span><span class=keyword>typename </span><span class=identifier>SkipT</span><span class=special>&gt;
+    </span><span class=identifier>parse_info</span><span class=special>&lt;</span><span class=identifier>IteratorT</span><span class=special>&gt;
+    </span><span class=identifier>parse
+    </span><span class=special>(
+        </span><span class=identifier>IteratorT </span><span class=keyword>const</span><span class=special>&        </span><span class=identifier>first</span><span class=special>,
+        </span><span class=identifier>IteratorT </span><span class=keyword>const</span><span class=special>&        </span><span class=identifier>last</span><span class=special>,
+        </span><span class=identifier>parser</span><span class=special>&lt;</span><span class=identifier>ParserT</span><span class=special>&gt; </span><span class=keyword>const</span><span class=special>&  </span><span class=identifier>p</span><span class=special>,
+        </span><span class=identifier>parser</span><span class=special>&lt;</span><span class=identifier>SkipT</span><span class=special>&gt; </span><span class=keyword>const</span><span class=special>&    </span><span class=identifier>skip
+    </span><span class=special>);</span></font></code></pre>
+<pre><code><font color="#000000"><span class=special>    </span><span class=keyword>template </span><span class=special>&lt;</span><span class=keyword>typename </span><span class=identifier>CharT</span><span class=special>, </span><span class=keyword>typename </span><span class=identifier>ParserT</span><span class=special>, </span><span class=keyword>typename </span><span class=identifier>SkipT</span><span class=special>&gt;
+    </span><span class=identifier>parse_info</span><span class=special>&lt;</span><span class=identifier>CharT </span><span class=keyword>const</span><span class=special>*&gt;
+    </span><span class=identifier>parse
+    </span><span class=special>(
+        </span><span class=identifier>CharT </span><span class=keyword>const</span><span class=special>*            </span><span class=identifier>str</span><span class=special>,
+        </span><span class=identifier>parser</span><span class=special>&lt;</span><span class=identifier>ParserT</span><span class=special>&gt; </span><span class=keyword>const</span><span class=special>&  </span><span class=identifier>p</span><span class=special>,
+        </span><span class=identifier>parser</span><span class=special>&lt;</span><span class=identifier>SkipT</span><span class=special>&gt; </span><span class=keyword>const</span><span class=special>&    </span><span class=identifier>skip
+    </span><span class=special>);</span></font></code></pre>
+<p>与上面一样, 有两个变体. 第一个变体接受一个 <tt>first</tt>, <tt>last</tt> 迭代器对, 就像使用 STL 算法那样. 第二个变体接受一个以空字符结尾的字符串. 实参 <tt>p</tt> 是将用于解析输入的解析器. 最后一个实参 <tt>skip</tt> 是跳过解析器.</p>
+<p><b>parse_info 结构体</b></p>
+<p>上面的函数返回一个以传入的迭代器类型参数化的 <tt>parse_info</tt> 结构体. parse_info 结构体有这些成员:</p>
+<table width="90%" border="0" align="center">
+  <tr> 
+    <td colspan="2" class="table_title"><b>parse_info</b></td>
+  </tr>
+  <tr> 
+    <td width="14%" class="table_cells"><b>stop</b></td>
+    <td width="86%" class="table_cells">指向最终解析位置(即解析器识别并处理输入到此处)</td>
+  </tr>
+  <tr> 
+    <td width="14%" class="table_cells"><b>hit</b></td>
+    <td width="86%" class="table_cells">解析成功时为 true. 这可以是完全的: 解析器消耗了全部输入; 也可以是部分的: 解析器只消耗了输入的一部分.</td>
+  </tr>
+  <tr> 
+    <td width="14%" class="table_cells"><b>full</b></td>
+    <td width="86%" class="table_cells">当我们获得完全匹配时为 true(即解析器消耗了全部输入).</td>
+  </tr>
+  <tr> 
+    <td width="14%" class="table_cells"><b>length</b></td>
+    <td width="86%" class="table_cells">解析器消耗的字符数. 仅当我们有成功匹配(部分或完全)时该值才有效.</td>
+  </tr>
+</table>
+<h2><a name="phrase_scanner_t" id="phrase_scanner_t"></a><img src="theme/lens.gif" width="15" height="16"> phrase_scanner_t 与 wide_phrase_scanner_t</h2>
+<p>为方便起见, Spirit 声明了这些 typedef:</p>
+<pre>
+    <span class="keyword">typedef</span> scanner<span class="special">&lt;</span><span class="keyword">char const</span><span class="special">*,</span> unspecified<span class="special">&gt;</span> phrase_scanner_t<span class="special">;</span>
+    <span class="keyword">typedef</span> scanner<span class="special">&lt;</span><span class="keyword">wchar_t const</span><span class="special">*,</span> <span class="identifier">unspecified</span><span class="special">&gt;</span> wide_phrase_scanner_t<span class="special">;</span>
+</pre>
+<p>这些正是 Spirit 在对 parse 函数的调用中, 以 <tt>char const*</tt>(C 字符串)或 <tt>wchar_t const*</tt>(宽字符串)作为第一个实参, 并以 <tt>space_p</tt> 作为跳过解析器(第三个参数)时所使用的扫描器类型. 例如, 我们可以用这些 typedef 声明一些规则. 示例:</p>
+<pre>    rule<span class="special">&lt;</span>phrase_scanner_t<span class="special">&gt; </span><span class="identifier">my_rule</span><span class="special">;
+    </span><span class="identifier">parse</span><span class="special">(</span><span class="string">&quot;abrakadabra&quot;</span><span class="special">, </span><span class="identifier">my_rule</span><span class="special">,</span> <span class="identifier">space_p</span><span class="special">);</span></pre>
+<h2><img src="theme/lens.gif" width="15" height="16">用迭代器直接解析</h2>
+<p>自由 parse 函数让我们省心. 使用它们, 我们无需理会扫描器的复杂细节. 自由 parse 函数把肮脏的细节藏了起来. 然而, 将来的某个时候, 我们会需要深入底层. 好在当这种需要来临时, 我们知道自己面对的是什么. 我们将需要深入低层, 直接调用解析器的 parse 成员函数.</p>
+<p>如果我们希望在<b>字符层面</b>工作, 步骤相当简单:</p>
+<pre><span class=identifier>    </span><span class=identifier>scanner</span><span class=special>&lt;</span><span class=identifier>IteratorT</span><span class=special>&gt; </span><span class=identifier>scan</span><span class=special>(</span><span class=identifier>first</span><span class=special>, </span><span class=identifier>last</span><span class=special>);
+
+    </span><span class=keyword>if </span><span class=special>(</span><span class=identifier>p</span><span class=special>.</span><span class=identifier>parse</span><span class=special>(</span><span class=identifier>scan</span><span class=special>))
+    </span><span class=special>{
+        </span><span class=comment>//  Parsed successfully. If first == last, then we have
+        //  a full parse, the parser recognized the input in whole.
+    </span><span class=special>}
+    </span><span class=keyword>else
+    </span><span class=special>{
+        </span><span class=comment>//  Parsing failure. The parser failed to recognize the input
+    </span><span class=special>}</span></pre>
+<table width="80%" border="0" align="center">
+  <tr> 
+    <td class="note_box"><img src="theme/alert.gif" width="16" height="16"> <strong>不成功匹配时的扫描器位置</strong><br> <br> 成功匹配时, 输入相应地向前推进. 但不成功匹配时会怎样? 要当心. 直觉上也许会认为扫描器位置会被重置到解析之前的初始位置. 不, 位置不会重置. 不成功匹配时, 扫描器的位置是 <strong>未定义</strong>的! 通常, 它位于递归下降中某处发现错误的最远点. 若不希望这种行为, 你可能需要自己摆放扫描器位置. <a href="numerics.html#scanner_save">numerics 一章中的示例</a>展示了如何保存并随后恢复扫描器位置.</td>
+  </tr>
+</table>
+<p>其中 <tt>p</tt> 是我们想要使用的解析器, <tt>first</tt>/<tt>last</tt> 是指向输入的迭代器对. 我们只需根据迭代器创建一个扫描器. 我们在此将使用的扫描器类型使用默认的 <tt>scanner_policies&lt;&gt;</tt>.</p>
+<p>当我们希望在<b>短语层面</b>工作时, 情况要复杂一些:</p>
+<pre><span class=special>    </span><span class=keyword>typedef </span><span class=identifier>skip_parser_iteration_policy</span><span class=special>&lt;</span><span class=identifier>SkipT</span><span class=special>&gt; </span><span class=identifier>iter_policy_t</span><span class=special>;
+    </span><span class=keyword>typedef </span><span class=identifier>scanner_policies</span><span class=special>&lt;</span><span class=identifier>iter_policy_t</span><span class=special>&gt; </span><span class=identifier>scanner_policies_t</span><span class=special>;
+    </span><span class=keyword>typedef </span><span class=identifier>scanner</span><span class=special>&lt;</span><span class=identifier>IteratorT</span><span class=special>, </span><span class=identifier>scanner_policies_t</span><span class=special>&gt; </span><span class=identifier>scanner_t</span><span class=special>;
+
+</span><span class=special>    </span><span class=identifier>iter_policy_t </span><span class=identifier>iter_policy</span><span class=special>(</span><span class=identifier>skip</span><span class=special>);
+    </span><span class=identifier>scanner_policies_t </span><span class=identifier>policies</span><span class=special>(</span><span class=identifier>iter_policy</span><span class=special>);
+    </span><span class=identifier>scanner_t </span><span class=identifier>scan</span><span class=special>(</span><span class=identifier>first</span><span class=special>, </span><span class=identifier>last</span><span class=special>, </span><span class=identifier>policies</span><span class=special>);
+</span>
+    <span class=keyword>if </span><span class=special>(</span><span class=identifier>p</span><span class=special>.</span><span class=identifier>parse</span><span class=special>(</span><span class=identifier>scan</span><span class=special>))
+    </span><span class=special>{
+        </span><span class=comment>//  Parsed successfully. If first == last, then we have
+        //  a full parse, the parser recognized the input in whole.
+    </span><span class=special>}
+    </span><span class=keyword>else
+    </span><span class=special>{
+        </span><span class=comment>//  Parsing failure. The parser failed to recognize the input
+    </span><span class=special>}</span></pre>
+<p>其中 <tt>SkipT</tt> 是跳过解析器 <tt>skip</tt> 的类型. 同样, <tt>p</tt> 是我们想要使用的解析器, <tt>first</tt>/<tt>last</tt> 是指向输入的迭代器对. 给定跳过解析器类型 <tt>SkipT</tt>, <span class=identifier><tt>skip_parser_iteration_policy</tt></span> 会创建一个扫描器迭代策略, 它跳过被跳过解析器识别的部分. 随后可以用它来创建扫描器. <tt>scanner_policies</tt> 类包装所有与扫描器相关的策略, 包括迭代策略.</p>
+<h2><a name="lexeme_scanner"></a>lexeme_scanner</h2>
+<p>从短语层面解析切换到字符层面解析时, <tt>lexeme_d</tt>(见 <a href="directives.html">directives.html</a>)通过禁用空白跳过来施展魔法. 这是通过调整 <a href="scanner.html">扫描器</a>实现的. 然而, 这样做之后, lexeme 内的所有解析器都会得到一个变换后的扫描器类型. 在大多数情况下这不应成为问题. 然而, 当在 <tt>lexeme_d</tt> 内部调用规则时, 若规则不具有正确的扫描器类型, 编译器会卡住. 若必须在 <tt>lexeme_d</tt> 内使用规则, 则规则的类型必须是:</p>
+<pre>    <span class=identifier>rule</span><span class=special>&lt;</span><span class=identifier>lexeme_scanner</span><span class="special">&lt;</span><span class=identifier>ScannerT</span><span class=special>&gt;::</span><span class="identifier">type</span><span class=special>&gt; </span>r<span class=special>;</span></pre>
+<p>其中 <span class=identifier><tt>ScannerT</tt></span> 是所用扫描器的实际类型. 注意, <tt>lexeme_scanner</tt> 只对短语层面的扫描器有效.</p>
+<h2><a name="as_lower_scanner"></a>as_lower_scanner</h2>
+<p>类似地, <tt>as_lower_d</tt> 通过过滤并把从扫描器接收的所有字符转换为小写来完成其工作. 这同样是通过调整 <a href="scanner.html">扫描器</a>实现的. 于是, <tt>as_lower_d</tt> 内部的所有解析器同样会得到一个变换后的扫描器类型. 若必须在 <tt>as_lower_d</tt> 内使用规则, 则规则的类型必须是:</p>
+<pre>    <span class=identifier>rule</span><span class=special>&lt;</span><span class=identifier>as_lower_scanner</span><span class="special">&lt;</span><span class=identifier>ScannerT</span><span class=special>&gt;::</span><span class="identifier">type</span><span class=special>&gt; </span>r<span class=special>;</span></pre>
+<p>其中 <span class=identifier><tt>ScannerT</tt></span> 是所用扫描器的实际类型.</p>
+<table width="80%" border="0" align="center">
+  <tr> 
+    <td class="note_box"><img src="theme/bulb.gif" width="13" height="18">techniques 一节给出了一个 <a href="techniques.html#multiple_scanner_support">示例</a>, 其中的 <a href="grammar.html">文法</a> 使用了 <a href="rule.html#multiple_scanner_support">启用多扫描器的规则</a>, <a href="scanner.html#lexeme_scanner">lexeme_scanner</a> 与 <a href="scanner.html#as_lower_scanner">as_lower_scanner.</a></td>
+  </tr>
+</table>
+<h3><a name="no_actions_scanner"></a>no_actions_scanner</h3>
+<p>同样, <tt>no_actions_d</tt> 指令调整扫描器以禁用语义动作的触发. 与之前一样, <tt>no_actions_d</tt> 内部的所有解析器都会得到一个变换后的扫描器类型. 若必须在 <tt>no_actions_d</tt> 内使用规则, 则规则的类型必须是:</p>
+<pre>    <span class=identifier>rule</span><span class=special>&lt;</span>no_actions_scanner<span class="special">&lt;</span><span class=identifier>ScannerT</span><span class=special>&gt;::</span><span class="identifier">type</span><span class=special>&gt; </span>r<span class=special>;</span></pre>
+<p>其中 <tt>ScannerT</tt> 是所用扫描器的实际类型. <span class=special></span></p>
+<table width="80%" border="0" align="center">
+  <tr> 
+    <td class="note_box"><img src="theme/note.gif" width="16" height="16">务必把 "<tt>typename</tt>" 加在 <tt><span class=identifier><tt>lexeme_scanner</tt>, <tt>as_lower_scanner</tt></span></tt> 与 <tt>no_actions_scanner</tt> 之前 —— 当它们被用在模板类或函数内部时.</td>
+  </tr>
+</table>
+<p><img src="theme/lens.gif" width="15" height="16">见 <a href="../example/fundamental/no_actions.cpp">no_actions.cpp</a>. 它是 Spirit 发行包的一部分.</p>
+<table border="0">
+  <tr> 
+    <td width="10"></td>
+    <td width="30"><a href="../index.html"><img src="theme/u_arr.gif" border="0"></a></td>
+    <td width="30"><a href="directives.html"><img src="theme/l_arr.gif" border="0"></a></td>
+    <td width="30"><a href="grammar.html"><img src="theme/r_arr.gif" border="0"></a></td>
+  </tr>
+</table>
+<br>
+<hr size="1">
+<p class="copyright">Copyright © 1998-2003 Joel de Guzman<br>
+  <br>
+  <font size="2">使用、修改与分发受 Boost 软件许可 1.0 版(Boost Software License, Version 1.0)约束. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt)</font></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+</body>
+</html>

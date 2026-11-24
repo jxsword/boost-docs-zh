@@ -1,0 +1,289 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>定制</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Fiber">
+<link rel="up" href="../index.html" title="第 1 章 Fiber">
+<link rel="prev" href="tuning.html" title="调优">
+<link rel="next" href="rationale.html" title="设计理由">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="tuning.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="rationale.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="fiber.custom"></a><a name="custom"></a><a class="link" href="custom.html" title="定制">定制</a>
+</h2></div></div></div>
+<h4>
+<a name="fiber.custom.h0"></a>
+      <span class="phrase"><a name="fiber.custom.overview"></a></span><a class="link" href="custom.html#fiber.custom.overview"> 概述 </a>
+    </h4>
+<p>如 <a class="link" href="scheduling.html#scheduling">调度</a> 一节所述, 默认情况下 <span class="bold"><strong>Boost.Fiber</strong></span> 会为每个线程使用其自身的 <a class="link" href="scheduling.html#class_round_robin"><code class="computeroutput">round_robin</code></a> 调度器. 要控制 <span class="bold"><strong>Boost.Fiber</strong></span> 在特定线程上调度就绪纤程的方式, 通常必须遵循若干步骤. 本节讨论这些步骤, 而 <a class="link" href="scheduling.html#scheduling">调度</a> 一节则可作为所涉类的参考.</p>
+<p>库的纤程管理器会跟踪被挂起 (阻塞) 的纤程. 只有当纤程变为可运行时才会被传递给调度器. 当然, 如果就绪纤程少于两个, 调度器的工作无关紧要. 只有两个或更多就绪纤程时, 特定的调度器实现才会开始影响纤程执行的整体顺序.</p>
+<p>本节将演示一个遵循整数纤程优先级的简单自定义调度器. 我们将把它实现为: 优先级较高的纤程优先于优先级较低的纤程; 优先级值相同的纤程则按轮转方式获得服务.</p>
+<p>下面示例的完整源代码位于 <a href="../../../examples/priority.cpp" target="_top">priority.cpp</a> 中.</p>
+<h4>
+<a name="fiber.custom.h1"></a>
+      <span class="phrase"><a name="fiber.custom.custom_property_class"></a></span><a class="link" href="custom.html#fiber.custom.custom_property_class">自定义属性类</a>
+    </h4>
+<p>第一个要点是, 我们必须为每个纤程关联一个整数优先级.<a href="#ftn.fiber.custom.f0" class="footnote" name="fiber.custom.f0"><sup class="footnote">[11]</sup></a>
+    </p>
+<p>有人可能会建议派生一个自定义的 <a class="link" href="fiber_mgmt/fiber.html#class_fiber"><code class="computeroutput">fiber</code></a> 子类来存储这类属性. 采用现行机制有以下几个原因.</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">
+          <span class="bold"><strong>Boost.Fiber</strong></span> 提供了多种不同的方式来启动纤程. (参见 <a class="link" href="synchronization/futures/future.html#fibers_async"><code class="computeroutput">fibers::async()</code></a>.) 更上层的库可能会引入其他这类封装函数. 自定义调度器必须把其自定义属性与线程中的 <span class="emphasis"><em>每一个</em></span> 纤程关联起来, 而不仅仅是那些通过实例化自定义 <code class="computeroutput"><span class="identifier">fiber</span></code> 子类显式启动的纤程.</li>
+<li class="listitem">设想一个大型现有程序, 它在代码中许多不同的地方启动纤程. 我们发现需要为某个特定线程引入自定义调度器. 如果支持该调度器的自定义属性需要某个特定的 <code class="computeroutput"><span class="identifier">fiber</span></code> 子类, 我们将不得不找出并修改该线程上启动纤程的每一处代码.</li>
+<li class="listitem"> <a class="link" href="fiber_mgmt/fiber.html#class_fiber"><code class="computeroutput">fiber</code></a> 类实际上只是内部 <a class="link" href="scheduling.html#class_context"><code class="computeroutput">context</code></a> 数据的一个句柄. <code class="computeroutput"><span class="identifier">fiber</span></code> 的子类不会给 <code class="computeroutput"><span class="identifier">context</span></code> 添加数据.</li>
+</ol></div>
+<p>现行机制允许你 <span class="quote">"<span class="quote">直接插入</span>"</span> 一个自定义调度器及其配套的自定义属性, 而 <span class="emphasis"><em>无需</em></span> 更改应用程序的其余部分.</p>
+<p>自定义调度器纤程属性子类不应从 <a class="link" href="fiber_mgmt/fiber.html#class_fiber"><code class="computeroutput">fiber</code></a> 派生, 而必须改为从 <a class="link" href="scheduling.html#class_fiber_properties"><code class="computeroutput">fiber_properties</code></a> 派生.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">priority_props</span> <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">fiber_properties</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">priority_props</span><span class="special">(</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">context</span> <span class="special">*</span> <span class="identifier">ctx</span><span class="special">):</span>
+        <span class="identifier">fiber_properties</span><span class="special">(</span> <span class="identifier">ctx</span><span class="special">),</span> <a class="co" name="fiber.custom.c0" href="custom.html#fiber.custom.c1"><img src="../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a>
+        <span class="identifier">priority_</span><span class="special">(</span> <span class="number">0</span><span class="special">)</span> <span class="special">{</span>
+    <span class="special">}</span>
+
+    <span class="keyword">int</span> <span class="identifier">get_priority</span><span class="special">()</span> <span class="keyword">const</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">priority_</span><span class="special">;</span> <a class="co" name="fiber.custom.c2" href="custom.html#fiber.custom.c3"><img src="../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a>
+    <span class="special">}</span>
+
+    <span class="comment">// Call this method to alter priority, because we must notify</span>
+    <span class="comment">// priority_scheduler of any change.</span>
+    <span class="keyword">void</span> <span class="identifier">set_priority</span><span class="special">(</span> <span class="keyword">int</span> <span class="identifier">p</span><span class="special">)</span> <span class="special">{</span> <a class="co" name="fiber.custom.c4" href="custom.html#fiber.custom.c5"><img src="../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a>
+        <span class="comment">// Of course, it's only worth reshuffling the queue and all if we're</span>
+        <span class="comment">// actually changing the priority.</span>
+        <span class="keyword">if</span> <span class="special">(</span> <span class="identifier">p</span> <span class="special">!=</span> <span class="identifier">priority_</span><span class="special">)</span> <span class="special">{</span>
+            <span class="identifier">priority_</span> <span class="special">=</span> <span class="identifier">p</span><span class="special">;</span>
+            <span class="identifier">notify</span><span class="special">();</span>
+        <span class="special">}</span>
+    <span class="special">}</span>
+
+    <span class="comment">// The fiber name of course is solely for purposes of this example</span>
+    <span class="comment">// program; it has nothing to do with implementing scheduler priority.</span>
+    <span class="comment">// This is a public data member -- not requiring set/get access methods --</span>
+    <span class="comment">// because we need not inform the scheduler of any change.</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">name</span><span class="special">;</span> <a class="co" name="fiber.custom.c6" href="custom.html#fiber.custom.c7"><img src="../../../../../doc/src/images/callouts/4.png" alt="4" border="0"></a>
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="keyword">int</span> <span class="identifier">priority_</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>
+    </p>
+<div class="calloutlist"><table border="0" summary="Callout list">
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.custom.c1"></a><a href="#fiber.custom.c0"><img src="../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a> </p></td>
+<td valign="top" align="left"><p>你的子类构造函数必须接受一个 <code class="literal"><a class="link" href="scheduling.html#class_context"><code class="computeroutput">context</code></a>*</code>, 并把它传给 <code class="computeroutput"><span class="identifier">fiber_properties</span></code> 构造函数.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.custom.c3"></a><a href="#fiber.custom.c2"><img src="../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a> </p></td>
+<td valign="top" align="left"><p>可自行决定是否提供读取访问方法.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.custom.c5"></a><a href="#fiber.custom.c4"><img src="../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a> </p></td>
+<td valign="top" align="left"><p>对任何可能影响调度器行为的属性做出更改时, 都要调用 <code class="computeroutput"><span class="identifier">notify</span><span class="special">()</span></code>, 这一点很重要. 因此, 此类修改只应通过访问方法进行.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.custom.c7"></a><a href="#fiber.custom.c6"><img src="../../../../../doc/src/images/callouts/4.png" alt="4" border="0"></a> </p></td>
+<td valign="top" align="left"><p>不影响调度器的属性无需访问方法.</p></td>
+</tr>
+</table></div>
+<h4>
+<a name="fiber.custom.h2"></a>
+      <span class="phrase"><a name="fiber.custom.custom_scheduler_class"></a></span><a class="link" href="custom.html#fiber.custom.custom_scheduler_class">自定义调度器类</a>
+    </h4>
+<p>现在我们可以从 <a class="link" href="scheduling.html#class_algorithm_with_properties"><code class="computeroutput">algorithm_with_properties&lt;&gt;</code></a> 派生一个自定义调度器, 并把我们的自定义属性类 <code class="computeroutput"><span class="identifier">priority_props</span></code> 指定为模板参数.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">priority_scheduler</span> <span class="special">:</span>
+    <span class="keyword">public</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">algo</span><span class="special">::</span><span class="identifier">algorithm_with_properties</span><span class="special">&lt;</span> <span class="identifier">priority_props</span> <span class="special">&gt;</span> <span class="special">{</span>
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">scheduler</span><span class="special">::</span><span class="identifier">ready_queue_type</span><a class="co" name="fiber.custom.c8" href="custom.html#fiber.custom.c9"><img src="../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a>   <span class="identifier">rqueue_t</span><span class="special">;</span>
+
+    <span class="identifier">rqueue_t</span>                                <span class="identifier">rqueue_</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">mutex</span>                  <span class="identifier">mtx_</span><span class="special">{};</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">condition_variable</span>     <span class="identifier">cnd_</span><span class="special">{};</span>
+    <span class="keyword">bool</span>                        <span class="identifier">flag_</span><span class="special">{</span> <span class="keyword">false</span> <span class="special">};</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">priority_scheduler</span><span class="special">()</span> <span class="special">:</span>
+        <span class="identifier">rqueue_</span><span class="special">()</span> <span class="special">{</span>
+    <span class="special">}</span>
+
+    <span class="comment">// For a subclass of algorithm_with_properties&lt;&gt;, it's important to</span>
+    <span class="comment">// override the correct awakened() overload.</span>
+    <a class="co" name="fiber.custom.c10" href="custom.html#fiber.custom.c11"><img src="../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">awakened</span><span class="special">(</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">context</span> <span class="special">*</span> <span class="identifier">ctx</span><span class="special">,</span> <span class="identifier">priority_props</span> <span class="special">&amp;</span> <span class="identifier">props</span><span class="special">)</span> <span class="keyword">noexcept</span> <span class="special">{</span>
+        <span class="keyword">int</span> <span class="identifier">ctx_priority</span> <span class="special">=</span> <span class="identifier">props</span><span class="special">.</span><span class="identifier">get_priority</span><span class="special">();</span> <a class="co" name="fiber.custom.c12" href="custom.html#fiber.custom.c13"><img src="../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a>
+        <span class="comment">// With this scheduler, fibers with higher priority values are</span>
+        <span class="comment">// preferred over fibers with lower priority values. But fibers with</span>
+        <span class="comment">// equal priority values are processed in round-robin fashion. So when</span>
+        <span class="comment">// we're handed a new context*, put it at the end of the fibers</span>
+        <span class="comment">// with that same priority. In other words: search for the first fiber</span>
+        <span class="comment">// in the queue with LOWER priority, and insert before that one.</span>
+        <span class="identifier">rqueue_t</span><span class="special">::</span><span class="identifier">iterator</span> <span class="identifier">i</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">find_if</span><span class="special">(</span> <span class="identifier">rqueue_</span><span class="special">.</span><span class="identifier">begin</span><span class="special">(),</span> <span class="identifier">rqueue_</span><span class="special">.</span><span class="identifier">end</span><span class="special">(),</span>
+            <span class="special">[</span><span class="identifier">ctx_priority</span><span class="special">,</span><span class="keyword">this</span><span class="special">](</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">context</span> <span class="special">&amp;</span> <span class="identifier">c</span><span class="special">)</span>
+            <span class="special">{</span> <span class="keyword">return</span> <span class="identifier">properties</span><span class="special">(</span> <span class="special">&amp;</span><span class="identifier">c</span> <span class="special">).</span><span class="identifier">get_priority</span><span class="special">()</span> <span class="special">&lt;</span> <span class="identifier">ctx_priority</span><span class="special">;</span> <span class="special">}));</span>
+        <span class="comment">// Now, whether or not we found a fiber with lower priority,</span>
+        <span class="comment">// insert this new fiber here.</span>
+        <span class="identifier">rqueue_</span><span class="special">.</span><span class="identifier">insert</span><span class="special">(</span> <span class="identifier">i</span><span class="special">,</span> <span class="special">*</span> <span class="identifier">ctx</span><span class="special">);</span>
+    <span class="special">}</span>
+
+    <a class="co" name="fiber.custom.c14" href="custom.html#fiber.custom.c15"><img src="../../../../../doc/src/images/callouts/4.png" alt="4" border="0"></a><span class="keyword">virtual</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">context</span> <span class="special">*</span> <span class="identifier">pick_next</span><span class="special">()</span> <span class="keyword">noexcept</span> <span class="special">{</span>
+        <span class="comment">// if ready queue is empty, just tell caller</span>
+        <span class="keyword">if</span> <span class="special">(</span> <span class="identifier">rqueue_</span><span class="special">.</span><span class="identifier">empty</span><span class="special">()</span> <span class="special">)</span> <span class="special">{</span>
+            <span class="keyword">return</span> <span class="keyword">nullptr</span><span class="special">;</span>
+        <span class="special">}</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">context</span> <span class="special">*</span> <span class="identifier">ctx</span><span class="special">(</span> <span class="special">&amp;</span> <span class="identifier">rqueue_</span><span class="special">.</span><span class="identifier">front</span><span class="special">()</span> <span class="special">);</span>
+        <span class="identifier">rqueue_</span><span class="special">.</span><span class="identifier">pop_front</span><span class="special">();</span>
+        <span class="keyword">return</span> <span class="identifier">ctx</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <a class="co" name="fiber.custom.c16" href="custom.html#fiber.custom.c17"><img src="../../../../../doc/src/images/callouts/5.png" alt="5" border="0"></a><span class="keyword">virtual</span> <span class="keyword">bool</span> <span class="identifier">has_ready_fibers</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="special">!</span> <span class="identifier">rqueue_</span><span class="special">.</span><span class="identifier">empty</span><span class="special">();</span>
+    <span class="special">}</span>
+
+    <a class="co" name="fiber.custom.c18" href="custom.html#fiber.custom.c19"><img src="../../../../../doc/src/images/callouts/6.png" alt="6" border="0"></a><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">property_change</span><span class="special">(</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">context</span> <span class="special">*</span> <span class="identifier">ctx</span><span class="special">,</span> <span class="identifier">priority_props</span> <span class="special">&amp;</span> <span class="identifier">props</span><span class="special">)</span> <span class="keyword">noexcept</span> <span class="special">{</span>
+        <span class="comment">// Although our priority_props class defines multiple properties, only</span>
+        <span class="comment">// one of them (priority) actually calls notify() when changed. The</span>
+        <span class="comment">// point of a property_change() override is to reshuffle the ready</span>
+        <span class="comment">// queue according to the updated priority value.</span>
+
+        <span class="comment">// 'ctx' might not be in our queue at all, if caller is changing the</span>
+        <span class="comment">// priority of (say) the running fiber. If it's not there, no need to</span>
+        <span class="comment">// move it: we'll handle it next time it hits awakened().</span>
+        <span class="keyword">if</span> <span class="special">(</span> <span class="special">!</span> <span class="identifier">ctx</span><span class="special">-&gt;</span><span class="identifier">ready_is_linked</span><span class="special">())</span> <span class="special">{</span> <a class="co" name="fiber.custom.c20" href="custom.html#fiber.custom.c21"><img src="../../../../../doc/src/images/callouts/7.png" alt="7" border="0"></a>
+            <span class="keyword">return</span><span class="special">;</span>
+        <span class="special">}</span>
+
+        <span class="comment">// Found ctx: unlink it</span>
+        <span class="identifier">ctx</span><span class="special">-&gt;</span><span class="identifier">ready_unlink</span><span class="special">();</span>
+
+        <span class="comment">// Here we know that ctx was in our ready queue, but we've unlinked</span>
+        <span class="comment">// it. We happen to have a method that will (re-)add a context* to the</span>
+        <span class="comment">// right place in the ready queue.</span>
+        <span class="identifier">awakened</span><span class="special">(</span> <span class="identifier">ctx</span><span class="special">,</span> <span class="identifier">props</span><span class="special">);</span>
+    <span class="special">}</span>
+
+    <span class="keyword">void</span> <span class="identifier">suspend_until</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">steady_clock</span><span class="special">::</span><span class="identifier">time_point</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">time_point</span><span class="special">)</span> <span class="keyword">noexcept</span> <span class="special">{</span>
+        <span class="keyword">if</span> <span class="special">(</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">steady_clock</span><span class="special">::</span><span class="identifier">time_point</span><span class="special">::</span><span class="identifier">max</span><span class="special">)()</span> <span class="special">==</span> <span class="identifier">time_point</span><span class="special">)</span> <span class="special">{</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_lock</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">mutex</span> <span class="special">&gt;</span> <span class="identifier">lk</span><span class="special">(</span> <span class="identifier">mtx_</span><span class="special">);</span>
+            <span class="identifier">cnd_</span><span class="special">.</span><span class="identifier">wait</span><span class="special">(</span> <span class="identifier">lk</span><span class="special">,</span> <span class="special">[</span><span class="keyword">this</span><span class="special">](){</span> <span class="keyword">return</span> <span class="identifier">flag_</span><span class="special">;</span> <span class="special">});</span>
+            <span class="identifier">flag_</span> <span class="special">=</span> <span class="keyword">false</span><span class="special">;</span>
+        <span class="special">}</span> <span class="keyword">else</span> <span class="special">{</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_lock</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">mutex</span> <span class="special">&gt;</span> <span class="identifier">lk</span><span class="special">(</span> <span class="identifier">mtx_</span><span class="special">);</span>
+            <span class="identifier">cnd_</span><span class="special">.</span><span class="identifier">wait_until</span><span class="special">(</span> <span class="identifier">lk</span><span class="special">,</span> <span class="identifier">time_point</span><span class="special">,</span> <span class="special">[</span><span class="keyword">this</span><span class="special">](){</span> <span class="keyword">return</span> <span class="identifier">flag_</span><span class="special">;</span> <span class="special">});</span>
+            <span class="identifier">flag_</span> <span class="special">=</span> <span class="keyword">false</span><span class="special">;</span>
+        <span class="special">}</span>
+    <span class="special">}</span>
+
+    <span class="keyword">void</span> <span class="identifier">notify</span><span class="special">()</span> <span class="keyword">noexcept</span> <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_lock</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">mutex</span> <span class="special">&gt;</span> <span class="identifier">lk</span><span class="special">(</span> <span class="identifier">mtx_</span><span class="special">);</span>
+        <span class="identifier">flag_</span> <span class="special">=</span> <span class="keyword">true</span><span class="special">;</span>
+        <span class="identifier">lk</span><span class="special">.</span><span class="identifier">unlock</span><span class="special">();</span>
+        <span class="identifier">cnd_</span><span class="special">.</span><span class="identifier">notify_all</span><span class="special">();</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+    </p>
+<div class="calloutlist"><table border="0" summary="Callout list">
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.custom.c9"></a><a href="#fiber.custom.c8"><img src="../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a> </p></td>
+<td valign="top" align="left"><p>参见 <a class="link" href="scheduling.html#ready_queue_t">ready_queue_t</a>.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.custom.c11"></a><a href="#fiber.custom.c10"><img src="../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a> </p></td>
+<td valign="top" align="left"><p>你必须重写 <a class="link" href="scheduling.html#algorithm_with_properties_awakened"><code class="computeroutput">algorithm_with_properties::awakened()</code></a> 方法. 你的调度器正是通过它接收纤程变为可运行的通知的.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.custom.c13"></a><a href="#fiber.custom.c12"><img src="../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a> </p></td>
+<td valign="top" align="left"><p>
+          <code class="computeroutput"><span class="identifier">props</span></code> 是与传入纤程 <code class="computeroutput"><span class="identifier">ctx</span></code> 关联的 priority_props 实例.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.custom.c15"></a><a href="#fiber.custom.c14"><img src="../../../../../doc/src/images/callouts/4.png" alt="4" border="0"></a> </p></td>
+<td valign="top" align="left"><p>你必须重写 <a class="link" href="scheduling.html#algorithm_with_properties_pick_next"><code class="computeroutput">algorithm_with_properties::pick_next()</code></a> 方法. 你的调度器正是通过它实际告知纤程管理器下一个要运行的纤程.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.custom.c17"></a><a href="#fiber.custom.c16"><img src="../../../../../doc/src/images/callouts/5.png" alt="5" border="0"></a> </p></td>
+<td valign="top" align="left"><p>你必须重写 <a class="link" href="scheduling.html#algorithm_with_properties_has_ready_fibers"><code class="computeroutput">algorithm_with_properties::has_ready_fibers()</code></a>, 以便向纤程管理器告知你的就绪队列的状态.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.custom.c19"></a><a href="#fiber.custom.c18"><img src="../../../../../doc/src/images/callouts/6.png" alt="6" border="0"></a> </p></td>
+<td valign="top" align="left"><p>重写 <a class="link" href="scheduling.html#algorithm_with_properties_property_change"><code class="computeroutput">algorithm_with_properties::property_change()</code></a> 是可选的. 该重写处理运行中纤程更改另一个就绪纤程优先级的情况: 即已在队列中的纤程. 此时, 应在队列内移动被更新的纤程.</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="fiber.custom.c21"></a><a href="#fiber.custom.c20"><img src="../../../../../doc/src/images/callouts/7.png" alt="7" border="0"></a> </p></td>
+<td valign="top" align="left"><p>你的 <code class="computeroutput"><span class="identifier">property_change</span><span class="special">()</span></code> 重写必须能够处理传入的 <code class="computeroutput"><span class="identifier">ctx</span></code> 不在你的就绪队列中的情况. 它可能正在运行, 也可能已被阻塞.</p></td>
+</tr>
+</table></div>
+<p>我们的示例 <code class="computeroutput"><span class="identifier">priority_scheduler</span></code> 没有重写 <a class="link" href="scheduling.html#algorithm_with_properties_new_properties"><code class="computeroutput">algorithm_with_properties::new_properties()</code></a>: 我们满足于在堆上分配 <code class="computeroutput"><span class="identifier">priority_props</span></code> 实例.</p>
+<h4>
+<a name="fiber.custom.h3"></a>
+      <span class="phrase"><a name="fiber.custom.replace_default_scheduler"></a></span><a class="link" href="custom.html#fiber.custom.replace_default_scheduler">替换默认调度器</a>
+    </h4>
+<p>你必须在每个线程的开始处调用 <a class="link" href="fiber_mgmt/fiber.html#use_scheduling_algorithm"><code class="computeroutput">use_scheduling_algorithm()</code></a>, 只要你希望 <span class="bold"><strong>Boost.Fiber</strong></span> 在该线程上使用你的自定义调度器而非其自身默认的 <a class="link" href="scheduling.html#class_round_robin"><code class="computeroutput">round_robin</code></a>. 具体而言, 你必须先调用 <code class="computeroutput"><span class="identifier">use_scheduling_algorithm</span><span class="special">()</span></code>, 然后才能在该线程上执行任何其他 <span class="bold"><strong>Boost.Fiber</strong></span> 操作.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span> <span class="keyword">int</span> <span class="identifier">argc</span><span class="special">,</span> <span class="keyword">char</span> <span class="special">*</span><span class="identifier">argv</span><span class="special">[])</span> <span class="special">{</span>
+    <span class="comment">// make sure we use our priority_scheduler rather than default round_robin</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">use_scheduling_algorithm</span><span class="special">&lt;</span> <span class="identifier">priority_scheduler</span> <span class="special">&gt;();</span>
+    <span class="special">...</span>
+<span class="special">}</span>
+</pre>
+<p>
+    </p>
+<h4>
+<a name="fiber.custom.h4"></a>
+      <span class="phrase"><a name="fiber.custom.use_properties"></a></span><a class="link" href="custom.html#fiber.custom.use_properties">使用属性</a>
+    </h4>
+<p>运行中的纤程能够访问其自身的 <a class="link" href="scheduling.html#class_fiber_properties"><code class="computeroutput">fiber_properties</code></a> 子类实例, 方法是调用 <a class="link" href="fiber_mgmt/this_fiber.html#this_fiber_properties"><code class="computeroutput">this_fiber::properties()</code></a>. 尽管 <code class="computeroutput"><span class="identifier">properties</span><span class="special">&lt;&gt;()</span></code> 是一个无参函数, 你仍必须以模板参数的形式传入 <code class="computeroutput"><span class="identifier">fiber_properties</span></code> 子类.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">this_fiber</span><span class="special">::</span><span class="identifier">properties</span><span class="special">&lt;</span> <span class="identifier">priority_props</span> <span class="special">&gt;().</span><span class="identifier">name</span> <span class="special">=</span> <span class="string">"main"</span><span class="special">;</span>
+</pre>
+<p>
+    </p>
+<p>对于一个仍与运行中纤程关联的 <a class="link" href="fiber_mgmt/fiber.html#class_fiber"><code class="computeroutput">fiber</code></a> 实例 (即尚未被 <a class="link" href="fiber_mgmt/fiber.html#fiber_detach"><code class="computeroutput">fiber::detach()</code></a>), 你可以使用 <a class="link" href="fiber_mgmt/fiber.html#fiber_properties"><code class="computeroutput">fiber::properties()</code></a> 访问该纤程的属性. 与 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">this_fiber</span><span class="special">::</span><span class="identifier">properties</span><span class="special">&lt;&gt;()</span></code> 一样, 你必须把你的 <code class="computeroutput"><span class="identifier">fiber_properties</span></code> 子类作为模板参数传入.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">Fn</span> <span class="special">&gt;</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">fiber</span> <span class="identifier">launch</span><span class="special">(</span> <span class="identifier">Fn</span> <span class="special">&amp;&amp;</span> <span class="identifier">func</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">name</span><span class="special">,</span> <span class="keyword">int</span> <span class="identifier">priority</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">fiber</span> <span class="identifier">fiber</span><span class="special">(</span> <span class="identifier">func</span><span class="special">);</span>
+    <span class="identifier">priority_props</span> <span class="special">&amp;</span> <span class="identifier">props</span><span class="special">(</span> <span class="identifier">fiber</span><span class="special">.</span><span class="identifier">properties</span><span class="special">&lt;</span> <span class="identifier">priority_props</span> <span class="special">&gt;()</span> <span class="special">);</span>
+    <span class="identifier">props</span><span class="special">.</span><span class="identifier">name</span> <span class="special">=</span> <span class="identifier">name</span><span class="special">;</span>
+    <span class="identifier">props</span><span class="special">.</span><span class="identifier">set_priority</span><span class="special">(</span> <span class="identifier">priority</span><span class="special">);</span>
+    <span class="keyword">return</span> <span class="identifier">fiber</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+    </p>
+<p>启动新纤程会把它按就绪状态调度, 但 <span class="emphasis"><em>不会</em></span> 立即进入其 <span class="emphasis"><em>纤程函数</em></span>. 当前纤程会保持控制权, 直到它因其他原因阻塞 (或让出, 或终止). 如上面的 <code class="computeroutput"><span class="identifier">launch</span><span class="special">()</span></code> 函数所示, 启动纤程后立即设置相关属性是合理的——例如设置其优先级. 下次纤程管理器调用 <a class="link" href="scheduling.html#algorithm_with_properties_pick_next"><code class="computeroutput">algorithm_with_properties::pick_next()</code></a> 时, 你的自定义调度器便可利用这一信息.</p>
+<div class="footnotes">
+<br><hr style="width:100; text-align:left;margin-left: 0">
+<div id="ftn.fiber.custom.f0" class="footnote"><p><a href="#fiber.custom.f0" class="para"><sup class="para">[11] </sup></a> Fiber 库的先前版本会为每个纤程隐式跟踪一个 int 优先级, 尽管默认调度器忽略了它. 由于该库现在支持任意的调度器特定纤程属性, 这一做法已被取消.</p></div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2013 Oliver Kowalke<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="tuning.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="rationale.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

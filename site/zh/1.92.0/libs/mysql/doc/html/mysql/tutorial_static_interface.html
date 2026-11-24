@@ -1,0 +1,135 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>教程 4: 静态接口</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="up" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="prev" href="tutorial_with_params.html" title="教程 3: 带参数的查询">
+<link rel="next" href="tutorial_updates_transactions.html" title="教程 5: UPDATE、事务与分号分隔的查询">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="tutorial_with_params.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="tutorial_updates_transactions.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="mysql.tutorial_static_interface"></a><a class="link" href="tutorial_static_interface.html" title="教程 4: 静态接口">教程 4: 静态接口</a>
+</h2></div></div></div>
+<p>到目前为止, 我们都是将查询生成的行读入 <a class="link" href="ref/boost__mysql__results.html" title="results"><code class="literal">results</code></a> 对象. 如前所述, <code class="computeroutput"><span class="identifier">results</span></code> 是一个包含类似 variant 值的二维结构. 在整个文档中, 这些基于 variant 的 API 称为 <a class="link" href="dynamic_interface.html" title="动态接口">动态接口</a>.</p>
+<h4>
+<a name="mysql.tutorial_static_interface.h0"></a>
+      <span class="phrase"><a name="mysql.tutorial_static_interface.dynamic_interface_limitations"></a></span><a class="link" href="tutorial_static_interface.html#mysql.tutorial_static_interface.dynamic_interface_limitations"> </a>动态接口的局限</h4>
+<p>使用类似 variant 的对象可能很繁琐. 回顾上一个教程中使用检索到的行的以下几行代码:</p>
+<pre class="programlisting"><span class="comment">// Did we find an employee with that ID?</span>
+<span class="keyword">if</span> <span class="special">(</span><span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">empty</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Employee not found"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+<span class="keyword">else</span>
+<span class="special">{</span>
+    <span class="comment">// Print the retrieved details. The first field is the first name,</span>
+    <span class="comment">// and the second, the last name.</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">row_view</span> <span class="identifier">employee</span> <span class="special">=</span> <span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">);</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Employee's name is: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">employee</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="char">' '</span> <span class="special">&lt;&lt;</span> <span class="identifier">employee</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">1</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>员工在这里由 <a class="link" href="ref/boost__mysql__row_view.html" title="row_view"><code class="literal">row_view</code></a> 表示, 它是 <a class="link" href="ref/boost__mysql__field_view.html" title="field_view"><code class="literal">field_view</code></a> 对象的集合. <code class="computeroutput"><span class="identifier">field_view</span></code> 是一个类似 variant 的类型, 可表示 MySQL 支持的所有类型.</p>
+<p>由于 <code class="computeroutput"><span class="identifier">field_view</span></code> 支持流输出, 此代码不需要任何类型转换. 然而, 考虑重构代码, 将打印逻辑拆分到独立函数:</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">print_employee</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span> <span class="identifier">first_name</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span> <span class="identifier">last_name</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Employee's name is: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">first_name</span> <span class="special">&lt;&lt;</span> <span class="char">' '</span> <span class="special">&lt;&lt;</span> <span class="identifier">last_name</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>查看我们的数据库 schema, 可知这两个值都是字符串. 可以使用 <a class="link" href="ref/boost__mysql__field_view/as_string.html" title="field_view::as_string"><code class="literal">field_view::as_string</code></a> 执行转换:</p>
+<pre class="programlisting"><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">row_view</span> <span class="identifier">employee</span> <span class="special">=</span> <span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">);</span>
+<span class="identifier">print_employee</span><span class="special">(</span><span class="identifier">employee</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">).</span><span class="identifier">as_string</span><span class="special">(),</span> <span class="identifier">employee</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">1</span><span class="special">).</span><span class="identifier">as_string</span><span class="special">());</span>
+</pre>
+<p>虽然此代码可以工作, 但可能造成维护问题:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">我们按位置检索字段. 也就是说, 我们知道 <code class="computeroutput"><span class="identifier">employee</span><span class="special">.</span><span class="identifier">at</span><span class="special">(</span><span class="number">0</span><span class="special">)</span></code> 持有员工的 <code class="computeroutput"><span class="identifier">first_name</span></code>. 然而, 若我们重构查询, 可能会忘记更新索引.</li>
+<li class="listitem">基于类似的理由, 这些类型转换也容易出错.</li>
+<li class="listitem"> <code class="computeroutput"><span class="identifier">at</span></code> 和 <code class="computeroutput"><span class="identifier">as_string</span></code> 在出错时都会抛出异常. 在仍执行所需安全检查的前提下避免异常很快会变得难以管理.</li>
+</ul></div>
+<p>若我们在编译期就知道查询返回的类型, 可以改用静态接口. 该接口可以将查询返回的行解析为我们定义的 C++ 结构体实例.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>静态接口需要 C++14 或更高版本.</p></td></tr>
+</table></div>
+<h4>
+<a name="mysql.tutorial_static_interface.h1"></a>
+      <span class="phrase"><a name="mysql.tutorial_static_interface.using_static_results_with_boost_"></a></span><a class="link" href="tutorial_static_interface.html#mysql.tutorial_static_interface.using_static_results_with_boost_"> </a>配合 Boost.PFR 使用 static_results</h4>
+<p>在 C++20 及更高版本中, 可以使用 <a href="../../../../../libs/pfr/index.html" target="_top">Boost.Pfr</a> 和 <a class="link" href="ref/boost__mysql__static_results.html" title="static_results"><code class="literal">static_results</code></a> 类来解析行. 第一步是定义一个普通的 C++ 结构体, 包含我们期望在查询中出现的字段:</p>
+<pre class="programlisting"><span class="comment">// Should contain a member for each field of interest present in our query.</span>
+<span class="comment">// Declaration order doesn't need to match field order in the query.</span>
+<span class="comment">// Field names should match the ones in our query</span>
+<span class="keyword">struct</span> <span class="identifier">employee</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">first_name</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">last_name</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>现在, 我们把 <a class="link" href="ref/boost__mysql__results.html" title="results"><code class="literal">results</code></a> 对象替换为一个 <a class="link" href="ref/boost__mysql__static_results.html" title="static_results"><code class="literal">static_results</code></a>. 标记类型 <a class="link" href="ref/boost__mysql__pfr_by_name.html" title="pfr_by_name"><code class="literal">pfr_by_name</code></a> 表明 Boost.MySQL 应使用 Boost.Pfr 进行反射.</p>
+<pre class="programlisting"><span class="comment">// Using static_results will parse the result of our query</span>
+<span class="comment">// into instances of the employee type. Fields will be matched</span>
+<span class="comment">// by name, instead of by position.</span>
+<span class="comment">// pfr_by_name tells the library to use Boost.Pfr for reflection,</span>
+<span class="comment">// and to match fields by name.</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">static_results</span><span class="special">&lt;</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pfr_by_name</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;&gt;</span> <span class="identifier">result</span><span class="special">;</span>
+
+<span class="comment">// Execute the query with the given parameters, performing the required</span>
+<span class="comment">// escaping to prevent SQL injection.</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"SELECT first_name, last_name FROM employee WHERE id = {}"</span><span class="special">,</span> <span class="identifier">employee_id</span><span class="special">),</span>
+    <span class="identifier">result</span>
+<span class="special">);</span>
+</pre>
+<p>现在, 使用检索到的数据要容易得多, 因为 <a class="link" href="ref/boost__mysql__static_results/rows.html" title="static_results::rows"><code class="literal">static_results::rows</code></a> 返回一个 <code class="computeroutput"><span class="identifier">span</span><span class="special">&lt;</span><span class="keyword">const</span> <span class="identifier">employee</span><span class="special">&gt;</span></code>:</p>
+<pre class="programlisting"><span class="comment">// Did we find an employee with that ID?</span>
+<span class="keyword">if</span> <span class="special">(</span><span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">empty</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Employee not found"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+<span class="keyword">else</span>
+<span class="special">{</span>
+    <span class="comment">// Print the retrieved details</span>
+    <span class="keyword">const</span> <span class="identifier">employee</span><span class="special">&amp;</span> <span class="identifier">emp</span> <span class="special">=</span> <span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">()[</span><span class="number">0</span><span class="special">];</span>
+    <span class="identifier">print_employee</span><span class="special">(</span><span class="identifier">emp</span><span class="special">.</span><span class="identifier">first_name</span><span class="special">,</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">last_name</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>使用静态接口时, <code class="computeroutput"><span class="identifier">async_execute</span></code> 将对查询结果执行一组检查, 以确保 C++ 类型与 MySQL 返回的内容兼容. 这些检查旨在尽早发现潜在问题, 称为<a class="link" href="static_interface.html#mysql.static_interface.meta_checks">元数据检查</a>.</p>
+<h4>
+<a name="mysql.tutorial_static_interface.h2"></a>
+      <span class="phrase"><a name="mysql.tutorial_static_interface.using_the_static_interface_in_c_"></a></span><a class="link" href="tutorial_static_interface.html#mysql.tutorial_static_interface.using_the_static_interface_in_c_">在 C++14 中使用静态接口</a>
+    </h4>
+<p>C++20 使得可以像这里描述的那样使用 Boost.Pfr, 这是最简单的选择. Boost.MySQL 还支持 <a href="../../../../../libs/describe/index.html" target="_top">Boost.Describe</a> 和 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">tuple</span></code> 方式, 它们可用于 C++14. 其机制与此处所述的非常相似.</p>
+<h4>
+<a name="mysql.tutorial_static_interface.h3"></a>
+      <span class="phrase"><a name="mysql.tutorial_static_interface.wrapping_up"></a></span><a class="link" href="tutorial_static_interface.html#mysql.tutorial_static_interface.wrapping_up"> </a>收尾</h4>
+<p>
+      <a class="link" href="static_interface.html" title="静态接口">本节</a> 包含关于静态接口的更多信息.</p>
+<p>本教程的完整程序清单见 <a class="link" href="examples/tutorial_static_interface.html" title="教程 4 清单: 静态接口">此处</a>.</p>
+<p>现在可以继续阅读 <a class="link" href="tutorial_updates_transactions.html" title="教程 5: UPDATE、事务与分号分隔的查询">下一个教程</a>.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2019-2024 Ruben Perez<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="tutorial_with_params.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="tutorial_updates_transactions.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

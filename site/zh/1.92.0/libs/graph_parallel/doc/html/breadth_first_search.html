@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.6: http://docutils.sourceforge.net/" />
+<title>Parallel BGL 广度优先搜索</title>
+<link rel="stylesheet" href="../../../../rst.css" type="text/css" />
+</head>
+<body>
+<div class="document" id="logo-breadth-first-search">
+<h1 class="title"><a class="reference external" href="http://www.osl.iu.edu/research/pbgl"><img align="middle" alt="Parallel BGL" class="align-middle" src="pbgl-logo.png" /></a> 广度优先搜索</h1>
+
+<!-- Copyright (C) 2004-2008 The Trustees of Indiana University.
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt) -->
+<pre class="literal-block">
+// named parameter version
+template &lt;class Graph, class P, class T, class R&gt;
+void breadth_first_search(Graph&amp; G,
+  typename graph_traits&lt;Graph&gt;::vertex_descriptor s,
+  const bgl_named_params&lt;P, T, R&gt;&amp; params);
+
+// non-named parameter version
+template &lt;class Graph, class Buffer, class BFSVisitor,
+          class ColorMap&gt;
+void breadth_first_search(const Graph&amp; g,
+   typename graph_traits&lt;Graph&gt;::vertex_descriptor s,
+   Buffer&amp; Q, BFSVisitor vis, ColorMap color);
+</pre>
+<p> <tt class="docutils literal"><span class="pre">breadth_first_search()</span></tt> 函数对有向图或无向图执行分布式广度优先遍历. 分布式 BFS 在语法上等价于其 <a class="reference external" href="http://www.boost.org/libs/graph/doc/breadth_first_search.html">顺序版本</a>, 后者提供了更多背景与讨论. 本文重点说明语义上的差异, 其余细节请读者参阅 <a class="reference external" href="http://www.boost.org/libs/graph/doc/breadth_first_search.html">顺序广度优先搜索</a> 的文档.</p>
+<p>该分布式广度优先搜索算法实现了一种 <em>层同步</em> (level-synchronized) 的广度优先搜索, 即 BFS 树中给定层的所有顶点都会在处理树的后续任何层的顶点之前被处理 (可能并行处理). 分布式广度优先搜索访问器应考虑这一行为, 该主题在 <a class="reference internal" href="#visitor-event-points">访问器事件点</a> 中进一步讨论.</p>
+<div class="contents topic" id="contents">
+<p class="topic-title first">目录</p>
+<ul class="simple">
+<li><a class="reference internal" href="#where-defined" id="id1">定义位置</a></li>
+<li><a class="reference internal" href="#parameter-defaults" id="id2">参数默认值</a></li>
+<li><a class="reference internal" href="#complexity" id="id3">复杂度</a></li>
+<li><a class="reference internal" href="#visitor-event-points" id="id4">访问器事件点</a><ul>
+<li><a class="reference internal" href="#making-visitors-safe-for-distributed-bfs" id="id5">使访问器对分布式 BFS 安全</a></li>
+<li><a class="reference internal" href="#distributed-bfs-visitor-example" id="id6">分布式 BFS 访问器示例</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#performance" id="id7">性能</a></li>
+</ul>
+</div>
+<div class="section" id="where-defined">
+<h1><a class="toc-backref" href="#id1">定义位置</a></h1>
+<p>&lt;<tt class="docutils literal"><span class="pre">boost/graph/breadth_first_search.hpp</span></tt>&gt;</p>
+</div>
+<div class="section" id="parameter-defaults">
+<h1><a class="toc-backref" href="#id2">参数默认值</a></h1>
+<p> <a class="reference external" href="http://www.boost.org/libs/graph/doc/breadth_first_search.html">顺序广度优先搜索</a> 的所有参数都受支持, 且含义基本相同. 此处仅记录差异部分.</p>
+<dl class="docutils">
+<dt>IN: <tt class="docutils literal"><span class="pre">Graph&amp;</span> <span class="pre">g</span></tt></dt>
+<dd>图类型必须是 <a class="reference external" href="DistributedGraph.html">分布图</a> 的模型.</dd>
+<dt>IN: <tt class="docutils literal"><span class="pre">vertex_descriptor</span> <span class="pre">s</span></tt></dt>
+<dd>起始顶点在每个进程中必须相同.</dd>
+<dt>IN: <tt class="docutils literal"><span class="pre">visitor(BFSVisitor</span> <span class="pre">vis)</span></tt></dt>
+<dd>访问器必须是分布式 BFS 访问器. 顺序与分布式 BFS 访问器之间的细微差别在 <a class="reference internal" href="#visitor-event-points">访问器事件点</a> 一节中讨论.</dd>
+<dt>UTIL/OUT: <tt class="docutils literal"><span class="pre">color_map(ColorMap</span> <span class="pre">color)</span></tt></dt>
+<dd>颜色映射必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a>, 其进程组与图 <tt class="docutils literal"><span class="pre">g</span></tt> 相同, 且其颜色必须单调加深 (white -&gt; gray -&gt; black). 默认值是由 <tt class="docutils literal"><span class="pre">default_color_type</span></tt> 的 <tt class="docutils literal"><span class="pre">std::vector</span></tt> 创建的分布式 <tt class="docutils literal"><span class="pre">iterator_property_map</span></tt>.</dd>
+<dt>UTIL: <tt class="docutils literal"><span class="pre">buffer(Buffer&amp;</span> <span class="pre">Q)</span></tt></dt>
+<dd><p class="first">队列必须是分布式队列, 它把顶点传递给其属主进程. 如果已访问的顶点不应被再次访问 (BFS 的典型情形), 该队列必须自行过滤重复项. 队列控制算法内的同步: 其 <tt class="docutils literal"><span class="pre">empty()</span></tt> 方法在所有本地队列为空之前不得返回 <tt class="docutils literal"><span class="pre">true</span></tt>.</p>
+<dl class="last docutils">
+<dt><strong>默认:</strong> 一个 <tt class="docutils literal"><span class="pre">distributed_queue</span></tt>, 其封装了 <tt class="docutils literal"><span class="pre">filtered_queue</span></tt>, 而后者包覆于</dt>
+<dd>标准 <tt class="docutils literal"><span class="pre">boost::queue</span></tt> 之上. 该队列过滤重复顶点并恰当地分发顶点.</dd>
+</dl>
+</dd>
+</dl>
+</div>
+<div class="section" id="complexity">
+<h1><a class="toc-backref" href="#id3">复杂度</a></h1>
+<p>该算法在 <em>d + 1</em> 个 BSP 超步中执行 <em>O(V + E)</em> 的工作量, 其中 <em>d</em> 是被搜索连通分量的直径. 在所有超步中, 共传输 <em>O(E)</em> 条恒定大小的消息.</p>
+</div>
+<div class="section" id="visitor-event-points">
+<h1><a class="toc-backref" href="#id4">访问器事件点</a></h1>
+<p> <a class="reference external" href="http://www.boost.org/libs/graph/doc/BFSVisitor.html">BFS 访问器</a> 概念定义了 9 个事件点, 它们将由 <a class="reference external" href="http://www.boost.org/libs/graph/doc/breadth_first_search.html">顺序广度优先搜索</a> 触发. 分布式 BFS 保留这九个事件点, 但所触发事件的序列以及每个事件发生的进程会随图的分布而变化.</p>
+<dl class="docutils">
+<dt><tt class="docutils literal"><span class="pre">initialize_vertex(s,</span> <span class="pre">g)</span></tt></dt>
+<dd>每个进程都会为其每个本地顶点调用此事件.</dd>
+<dt><tt class="docutils literal"><span class="pre">discover_vertex(u,</span> <span class="pre">g)</span></tt></dt>
+<dd>每当一个进程发现新顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 时都会调用此事件. 由于分布式属性映射中的信息不完整, 同一顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 可能多次触发此事件.</dd>
+<dt><tt class="docutils literal"><span class="pre">examine_vertex(u,</span> <span class="pre">g)</span></tt></dt>
+<dd>此事件由拥有顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 的进程调用. 如果分布式队列阻止重复项, 则对特定顶点 <tt class="docutils literal"><span class="pre">u</span></tt> 只会调用一次.</dd>
+<dt><tt class="docutils literal"><span class="pre">examine_edge(e,</span> <span class="pre">g)</span></tt></dt>
+<dd>此事件由拥有 <tt class="docutils literal"><span class="pre">e</span></tt> 的源顶点的进程调用. 如果分布式队列阻止重复项, 则对特定边 <tt class="docutils literal"><span class="pre">e</span></tt> 只会调用一次.</dd>
+<dt><tt class="docutils literal"><span class="pre">tree_edge(e,</span> <span class="pre">g)</span></tt></dt>
+<dd>与 <tt class="docutils literal"><span class="pre">examine_edge</span></tt> 类似, 此事件由拥有源顶点的进程调用, 并且可能只调用一次. 与顺序 BFS 不同, 即使目标顶点已被发现 (但由不同进程发现), 此事件也可能被触发. 因此, 顺序 BFS 中的某些 <tt class="docutils literal"><span class="pre">non_tree_edge</span></tt> 事件在分布式 BFS 中可能变为 <tt class="docutils literal"><span class="pre">tree_edge</span></tt>.</dd>
+<dt><tt class="docutils literal"><span class="pre">non_tree_edge(e,</span> <span class="pre">g)</span></tt></dt>
+<dd>顺序 BFS 中的某些 <tt class="docutils literal"><span class="pre">non_tree_edge</span></tt> 事件在分布式 BFS 中可能变为 <tt class="docutils literal"><span class="pre">tree_edge</span></tt> 事件. 更多细节参见 <tt class="docutils literal"><span class="pre">tree_edge</span></tt> 的说明.</dd>
+<dt><tt class="docutils literal"><span class="pre">gray_target(e,</span> <span class="pre">g)</span></tt></dt>
+<dd>与 <tt class="docutils literal"><span class="pre">tree_edge</span></tt> 一样, 在不知道另一进程何时已发现某顶点的情况下, 由于给定处理器上信息的缺乏, 当顺序 BFS 中可能发生 <tt class="docutils literal"><span class="pre">black_target</span></tt> 事件时, 分布式 BFS 中却可能发生 <tt class="docutils literal"><span class="pre">gray_target</span></tt> 事件. 边 <tt class="docutils literal"><span class="pre">e</span></tt> 的源顶点对执行此事件的进程而言是本地的.</dd>
+<dt><tt class="docutils literal"><span class="pre">black_target(e,</span> <span class="pre">g)</span></tt></dt>
+<dd>参见 <tt class="docutils literal"><span class="pre">gray_target</span></tt></dd>
+<dt><tt class="docutils literal"><span class="pre">finish_vertex(e,</span> <span class="pre">g)</span></tt></dt>
+<dd>参见 <tt class="docutils literal"><span class="pre">examine_vertex</span></tt> 的文档.</dd>
+</dl>
+<div class="section" id="making-visitors-safe-for-distributed-bfs">
+<h2><a class="toc-backref" href="#id5">使访问器对分布式 BFS 安全</a></h2>
+<p>为分布式 BFS 更新既有 BFS 访问器或编写新的分布式 BFS 访问器时, 要记住的三件最重要的事情是:</p>
+<ol class="arabic simple">
+<li>确保所有状态要么完全是本地的, 要么位于与图使用相同进程组的分布式数据结构 (很可能是属性映射!) 中.</li>
+<li>确保访问器不要求分布式 BFS 无法保证的精确事件序列, 例如要求 <tt class="docutils literal"><span class="pre">tree_edge</span></tt> 与 <tt class="docutils literal"><span class="pre">non_tree_edge</span></tt> 事件完全区分开.</li>
+<li>确保访问器能够在信息不完整的情况下运作. 这通常包括在 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a> 中使用恰当的归并 (reduction) 操作, 并验证写入的结果比先前写入的结果 "更好".</li>
+</ol>
+</div>
+<div class="section" id="distributed-bfs-visitor-example">
+<h2><a class="toc-backref" href="#id6">分布式 BFS 访问器示例</a></h2>
+<p>为说明顺序与分布式 BFS 访问器之间的差异, 我们考虑一个把源顶点到其他每个顶点的距离放入属性映射的 BFS 访问器. 顺序访问器非常简单:</p>
+<pre class="literal-block">
+template&lt;typename DistanceMap&gt;
+struct bfs_discovery_visitor : bfs_visitor&lt;&gt;
+{
+  bfs_discovery_visitor(DistanceMap distance) : distance(distance) {}
+
+  template&lt;typename Edge, typename Graph&gt;
+  void tree_edge(Edge e, const Graph&amp; g)
+  {
+    std::size_t new_distance = get(distance, source(e, g)) + 1;
+    put(distance, target(e, g), new_distance);
+  }
+
+ private:
+  DistanceMap distance;
+};
+</pre>
+<p>为了针对分布式 BFS 重新审视这段代码, 我们考虑 <a class="reference internal" href="#making-visitors-safe-for-distributed-bfs">使访问器对分布式 BFS 安全</a> 一节中的三个要点:</p>
+<ol class="arabic">
+<li><p class="first">距离映射需要成为分布式映射, 因为到每个顶点的距离应存储在拥有该顶点的进程中. 这实际上是对用户提出的要求, 即提供这样一个分布式属性映射; 尽管在许多情况下属性映射会自动成为分布式的, 不需要任何语法上的更改.</p>
+</li>
+<li><p class="first">此访问器 <em>确实</em> 要求一个可能随分布式 BFS 而变化的精确事件序列. 可能出现的多余 <tt class="docutils literal"><span class="pre">tree_edge</span></tt> 事件会导致针对单个顶点多次尝试把距离写入距离映射. 因此我们需要考虑第 3 条.</p>
+</li>
+<li><p class="first">由于每个顶点可能写入多个距离值, 我们必须始终选择所能找到的最佳值来更新距离映射. 分布式属性映射 <tt class="docutils literal"><span class="pre">distance</span></tt> 需要把距离解析为其所见的最小距离. 例如, 进程 0 可能在第 3 层发现顶点 <tt class="docutils literal"><span class="pre">u</span></tt>, 而进程 1 在第 5 层发现它: 距离必须保持为 3. 为此, 我们声明该属性映射的 <em>角色</em> 是距离映射, 这将引入一个恰当的归并操作:</p>
+<pre class="literal-block">
+set_property_map_role(vertex_distance, distance);
+</pre>
+</li>
+</ol>
+<p>由此得到的分布式 BFS 访问器 (它同样适用于顺序 BFS, 无需任何更改) 与我们最初的顺序 BFS 访问器非常相似. 注意构造函数中的单行差异:</p>
+<pre class="literal-block">
+template&lt;typename DistanceMap&gt;
+struct bfs_discovery_visitor : bfs_visitor&lt;&gt;
+{
+  bfs_discovery_visitor(DistanceMap distance) : distance(distance)
+  {
+    set_property_map_role(vertex_distance, distance);
+  }
+
+  template&lt;typename Edge, typename Graph&gt;
+  void tree_edge(Edge e, const Graph&amp; g)
+  {
+    std::size_t new_distance = get(distance, source(e, g)) + 1;
+    put(distance, target(e, g), new_distance);
+  }
+
+ private:
+  DistanceMap distance;
+};
+</pre>
+</div>
+</div>
+<div class="section" id="performance">
+<h1><a class="toc-backref" href="#id7">性能</a></h1>
+<p>以下图表展示了广度优先搜索的性能. 对于我们尝试过的所有图, 扩展性与性能都是合理的.</p>
+<img align="left" alt="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_4.png" class="align-left" src="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_4.png" />
+<img alt="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_4_speedup_1.png" src="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_4_speedup_1.png" />
+<img align="left" alt="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_4.png" class="align-left" src="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_4.png" />
+<img alt="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_4_speedup_1.png" src="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_4_speedup_1.png" />
+<hr class="docutils" />
+<p>版权所有 (C) 2004 The Trustees of Indiana University.</p>
+<p>作者: Douglas Gregor 和 Andrew Lumsdaine</p>
+</div>
+</div>
+<div class="footer">
+<hr class="footer" /> 生成时间: 2009-05-31 00:21 UTC. 由 <a class="reference external" href="http://docutils.sourceforge.net/">Docutils</a> 依据 <a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> 源生成.</div>
+</body>
+</html>

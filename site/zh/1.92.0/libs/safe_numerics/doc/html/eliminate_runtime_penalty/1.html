@@ -1,0 +1,126 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>使用自动类型提升</title>
+<link rel="stylesheet" href="../boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Safe Numerics">
+<link rel="up" href="../eliminate_runtime_penalty.html" title="消除运行期开销">
+<link rel="prev" href="2.html" title="使用 safe_range 与 safe_literal">
+<link rel="next" href="3.html" title="混合方法">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img href="index.html" height="164px" src="pre-boost.jpg" alt="库文档索引"></td>
+<td><h2>Safe Numerics</h2></td>
+</tr></table>
+<div class="spirit-nav">
+<a accesskey="p" href="2.html"><img src="../images/prev.png" alt="上一页"></a><a accesskey="u" href="../eliminate_runtime_penalty.html"><img src="../images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="3.html"><img src="../images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="safe_numerics.eliminate_runtime_penalty.1"></a>使用自动类型提升</h3></div></div></div>
+<p>C++ 标准描述了如何处理不同整数类型上的二元运算. 以下是规则的简化版本:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p>把任何小于 <code class="computeroutput">int</code> 的操作数提升为 <code class="computeroutput">int</code> 或 <code class="computeroutput">unsigned int</code> </p></li>
+<li class="listitem"><p>若有符号操作数的大小大于无符号操作数的大小, 则结果类型为有符号. 否则结果类型为无符号.</p></li>
+<li class="listitem"><p>把每个操作数的类型转换为结果的类型, 必要时扩展大小.</p></li>
+<li class="listitem"><p>对得到的两个操作数执行运算.</p></li>
+</ul></div>
+<p>因此, 某个二元运算的结果类型可能不同于原始操作数中的一个或两个的类型.</p>
+<p>如果值很大, 结果可能超出结果整数类型所能容纳的大小. 这就是我们所称的 "溢出". C/C++ 标准将其定性为未定义行为, 并把如何处理这种情况的决定留给编译器实现者. 通常, 这只是把结果截断以适应结果类型 - 这有时会使结果在算术上不正确. 不过, 视编译器与编译期开关设置而定, 这类情况可能导致某种运行期异常, 或静默地产生某个任意结果.</p>
+<p>safe 整数类型的完整签名为:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span>
+    <span class="keyword">class</span> <span class="identifier">T</span><span class="special">,</span>                  <span class="comment">// underlying integer type</span>
+    <span class="keyword">class</span> <span class="identifier">P</span> <span class="special">=</span> <span class="identifier">native</span><span class="special">,</span>         <span class="comment">// type promotion policy class</span>
+    <span class="keyword">class</span> <span class="identifier">E</span> <span class="special">=</span> <span class="identifier">default_exception_policy</span> <span class="comment">// error handling policy class</span>
+<span class="special">&gt;</span>
+<span class="identifier">safe</span><span class="special">;</span>
+</pre>
+<p>算术运算的提升规则在默认的 <code class="computeroutput"><a class="link" href="promotion_policies/native.html" title="native">native</a></code> 类型提升策略中实现, 与标准 C++ 的规则一致.</p>
+<p>到目前为止, 我们一直关注检测算术错误何时发生, 并调用异常或其他类型的错误处理器.</p>
+<p>但现在我们来看另一个选项. 使用 <a class="link" href="promotion_policies/automatic.html" title="automatic"><code class="computeroutput">automatic</code></a> 类型提升策略, 我们可以把 safe 类型的 C++ 算术规则改为类似下面的样子:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p>对于任何 C++ 数值类型, 我们从 <a href="http://en.cppreference.com/w/cpp/types/numeric_limits" target="_top"><code class="computeroutput">std::numeric_limits</code></a> 得知变量所能取的最大值和最小值 - 这定义了一个闭区间.</p></li>
+<li class="listitem"><p>对这些类型的任何二元运算, 我们都可以在编译期计算结果的区间.</p></li>
+<li class="listitem">
+<p>从这个区间, 我们可以选择一个保证能容纳结果的新类型, 并用它进行计算. 这大致等价于以下代码:</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">x</span><span class="special">,</span> <span class="identifier">y</span><span class="special">;</span>
+<span class="keyword">int</span> <span class="identifier">z</span> <span class="special">=</span> <span class="identifier">x</span> <span class="special">+</span> <span class="identifier">y</span>               <span class="comment">// could overflow</span>
+<span class="comment">// so replace with the following:</span>
+<span class="keyword">int</span> <span class="identifier">x</span><span class="special">,</span> <span class="identifier">y</span><span class="special">;</span>
+<span class="keyword">long</span> <span class="identifier">z</span> <span class="special">=</span> <span class="special">(</span><span class="keyword">long</span><span class="special">)</span><span class="identifier">x</span> <span class="special">+</span> <span class="special">(</span><span class="keyword">long</span><span class="special">)</span><span class="identifier">y</span><span class="special">;</span> <span class="comment">// can never overflow</span></pre>
+<p>可以通过像上面那样手动编辑代码来做到这一点, 但这样的任务繁琐、易错、不可移植, 并且使生成的代码难以阅读和验证. 使用 <a class="link" href="promotion_policies/automatic.html" title="automatic"><code class="computeroutput">automatic</code></a> 类型提升策略可以在没有这些问题的情况下达到等价的结果.</p>
+</li>
+</ul></div>
+<p>使用 <a class="link" href="promotion_policies/automatic.html" title="automatic"><code class="computeroutput">automatic</code></a> 类型提升策略时, 对于给定的二元运算, 我们静默地把操作数类型提升为更宽的结果类型, 使结果不会溢出. 这是对 C++ 标准行为的根本偏离.</p>
+<p>如果结果的区间不能保证容纳在机器能处理的最大类型中 (如今通常是 64 位), 则使用具有正确结果符号的最大可用整数类型. 因此, 即使采用我们的 "自动" 类型提升方案, 仍可能溢出. 所以虽然我们的 <a class="link" href="promotion_policies/automatic.html" title="automatic"><code class="computeroutput">automatic</code></a> 类型提升策略或许能消除上例中的异常, 但不能保证对所有程序都消除.</p>
+<p>使用 <a class="link" href="exception_policies.html#safe_numerics.exception_policies.loose_trap_policy"><code class="computeroutput">loose_trap_policy</code></a> 异常策略会在任何可能发生错误的时候产生编译期错误.</p>
+<p>这个小示例演示了如何使用自动类型提升来消除所有运行期开销.</p>
+<pre class="programlisting"><span class="comment">//  Copyright (c) 2018 Robert Ramey</span>
+<span class="comment">//</span>
+<span class="comment">// Distributed under the Boost Software License, Version 1.0. (See</span>
+<span class="comment">// accompanying file LICENSE_1_0.txt or copy at</span>
+<span class="comment">// http://www.boost.org/LICENSE_1_0.txt)</span>
+
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">safe_numerics</span><span class="special">/</span><span class="identifier">safe_integer</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">safe_numerics</span><span class="special">/</span><span class="identifier">exception_policies</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">safe_numerics</span><span class="special">/</span><span class="identifier">automatic</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="string">"safe_format.hpp"</span> <span class="comment">// prints out range and value of any type</span>
+
+<span class="keyword">using</span> <span class="identifier">safe_t</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">safe_numerics</span><span class="special">::</span><span class="identifier">safe</span><span class="special">&lt;</span>
+    <span class="keyword">int</span><span class="special">,</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">safe_numerics</span><span class="special">::</span><span class="identifier">automatic</span><span class="special">,</span> <span class="comment">// note use of "automatic" policy!!!</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">safe_numerics</span><span class="special">::</span><span class="identifier">loose_trap_policy</span>
+<span class="special">&gt;</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">int</span><span class="special">,</span> <span class="keyword">const</span> <span class="keyword">char</span> <span class="special">*</span><span class="special">[</span><span class="special">]</span><span class="special">)</span><span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"example 82:\n"</span><span class="special">;</span>
+    <span class="identifier">safe_t</span> <span class="identifier">x</span><span class="special">(</span><span class="identifier">INT_MAX</span><span class="special">)</span><span class="special">;</span>
+    <span class="identifier">safe_t</span> <span class="identifier">y</span> <span class="special">=</span> <span class="number">2</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"x = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">safe_format</span><span class="special">(</span><span class="identifier">x</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"y = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">safe_format</span><span class="special">(</span><span class="identifier">y</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"x + y = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">safe_format</span><span class="special">(</span><span class="identifier">x</span> <span class="special">+</span> <span class="identifier">y</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+
+</pre>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p> <a class="link" href="promotion_policies/automatic.html" title="automatic"><code class="computeroutput">automatic</code></a> 类型提升策略把两个 <code class="computeroutput">integers</code> 之和的结果呈现为 <code class="computeroutput">safe&lt;long</code>&gt; 类型.</p></li>
+<li class="listitem"><p>我们的程序无错编译 - 即使使用 <a class="link" href="exception_policies.html#safe_numerics.exception_policies.loose_trap_policy"><code class="computeroutput">loose_trap_policy</code></a> 异常策略. 这是因为一个 <code class="computeroutput">long</code> 总能容纳两个整数之和.</p></li>
+<li class="listitem"><p>我们不需要用 <code class="computeroutput">try/catch</code> 惯用法来处理算术错误 - 我们将没有任何异常.</p></li>
+<li class="listitem"><p>我们只需修改两行代码, 就实现了保证程序正确且无运行期开销的目标.</p></li>
+</ul></div>
+<p>上面的程序产生如下输出:</p>
+<pre class="screen">example 82:
+x = &lt;int&gt;[-2147483648,2147483647] = 2147483647
+y = &lt;int&gt;[-2147483648,2147483647] = 2
+x + y = &lt;long&gt;[-4294967296,4294967294] = 2147483649
+</pre>
+<p>注意, 如果将来某时把 safe&lt;int&gt; 改为 safe&lt;long long&gt;, 程序现在可能溢出. 但由于我们使用了 <a class="link" href="exception_policies.html#safe_numerics.exception_policies.loose_trap_policy"><code class="computeroutput">loose_trap_policy</code></a>, 修改后的程序将无法编译. 此时我们必须再次修改程序以消除运行期开销, 或者放弃零运行期开销的目标, 把异常策略改为 <a class="link" href="exception_policies.html#safe_numerics.exception_policies.default_exception_policy"><code class="computeroutput">default_exception_policy</code></a> .</p>
+<p>注意, 一旦使用自动类型提升, 我们的编程语言就不再是 C/C++ 了. 所以不要试图做类似下面的事情:</p>
+<pre class="programlisting"><span class="comment">// DON'T DO THIS !</span>
+<span class="preprocessor">#if</span> <span class="identifier">defined</span><span class="special">(</span><span class="identifier">NDEBUG</span><span class="special">)</span>
+<span class="keyword">using</span> <span class="identifier">safe_t</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">numeric</span><span class="special">::</span><span class="identifier">safe</span><span class="special">&lt;</span>
+    <span class="keyword">int</span><span class="special">,</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">numeric</span><span class="special">::</span><span class="identifier">automatic</span><span class="special">,</span> <span class="comment">// note use of "automatic" policy!!!</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">numeric</span><span class="special">::</span><span class="identifier">loose_trap_policy</span>
+<span class="special">&gt;</span><span class="special">;</span>
+<span class="preprocessor">#else</span>
+<span class="keyword">using</span> <span class="identifier">safe_t</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">numeric</span><span class="special">::</span><span class="identifier">safe</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span><span class="special">;</span>
+<span class="preprocessor">#endif</span>
+</pre>
+</div>
+<table xmlns:rev="http://www.cs.rpi.edu/~gregod/boost/tools/doc/revision" width="100%"><tr>
+<td align="left"></td>
+<td align="right"><div class="copyright-footer">版权所有 © 2012-2018 Robert Ramey<p><a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">遵循 Boost 软件许可</a></p>
+</div></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="2.html"><img src="../images/prev.png" alt="上一页"></a><a accesskey="u" href="../eliminate_runtime_penalty.html"><img src="../images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="3.html"><img src="../images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

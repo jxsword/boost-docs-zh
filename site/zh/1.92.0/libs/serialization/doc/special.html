@@ -1,0 +1,265 @@
+<!doctype HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!--
+(C) Copyright 2002-4 Robert Ramey - http://www.rrsd.com . 
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt)
+-->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<link rel="stylesheet" type="text/css" href="../../../boost.css">
+<link rel="stylesheet" type="text/css" href="style.css">
+<title>Serialization - 特别注意事项</title>
+</head>
+<body link="#0000ff" vlink="#800080">
+<table border="0" cellpadding="7" cellspacing="0" width="100%" summary="header">
+  <tr> 
+    <td valign="top" width="300"> 
+      <h3><a href="../../../index.htm"><img height="86" width="277" alt="C++ Boost" src="../../../boost.png" border="0"></a></h3>
+    </td>
+    <td valign="top"> 
+      <h1 align="center">序列化</h1>
+      <h2 align="center">特别注意事项</h2>
+    </td>
+  </tr>
+</table>
+<hr>
+<dl class="page-index">
+  <dt><a href="#objecttracking"> 对象跟踪 </a>
+  <dt><a href="#classinfo"> 类信息 </a>
+  <dt><a href="#helpersupport"> 辅助对象支持 </a>
+  <dt><a href="#portability"> 档案可移植性 </a>
+  <dl class="page-index">
+    <dt><a href="#numerics"> 数值 </a>
+    <dt><a href="#traits"> 特征 </a>
+  </dl>
+  <dt><a href="#binary_archives"> 二进制档案 </a>
+  <dt><a href="#xml_archives"> XML 档案 </a>
+  <dt><a href="#export"> 导出类序列化 </a>
+  <dt><a href="#static_libraries"> 静态库与序列化 </a>
+  <dt><a href="#dlls"> DLL - 序列化与运行期链接 </a>
+  <dt><a href="#plugins"> 插件 </a>
+  <dt><a href="#multi_threading"> 多线程 </a>
+  <dt><a href="#optimizations"> 优化 </a>
+  <dt><a href="exceptions.html"> 档案异常 </a>
+  <dt><a href="exception_safety.html"> 异常安全 </a>
+</dl>
+
+<h3><a name="objecttracking"> 对象跟踪 </a></h3> 视类的使用方式和其他因素而定, 被序列化的对象可能按内存地址跟踪. 这防止同一对象被多次写入档案或从档案读出. 这些存储的地址还可用于删除在因抛出异常而中断的加载过程中创建的对象. <p>在从同一地址保存不同对象的副本的程序中, 这可能引发问题. <pre><code>
+template&lt;class Archive&gt;
+void save(boost::basic_oarchive &amp; ar, const unsigned int version) const
+{
+    for(int i = 0; i &lt; 10; ++i){
+        A x = a[i];
+        ar &lt;&lt; x;
+    }
+}
+</code></pre> 在此情况下, 要保存的数据位于栈上. 循环的每次迭代都会更新栈上的值. 因此尽管数据每次迭代都改变, 数据的地址却不变. 如果 a[i] 是按内存地址跟踪的对象数组, 库会跳过存储第一个之后的对象, 因为它会假定同一地址上的对象其实是同一个对象.<p>为帮助检测这类情况, 输出档案运算符预期接受 <code style="white-space: normal">const</code> 引用实参.<p>鉴于此, 上面的代码会触发编译期断言. 本例中显而易见的修复是使用 <pre><code>
+template&lt;class Archive&gt;
+void save(boost::basic_oarchive &amp; ar, const unsigned int version) const
+{
+    for(int i = 0; i &lt; 10; ++i){
+        ar &lt;&lt; a[i];
+    }
+}
+</code></pre>, 它可以毫无问题地编译运行. 输出档案运算符使用 <code style="white-space: normal">const</code> 将确保序列化过程不改变被序列化对象的状态. 试图这样做等于给"保存状态"的概念掺入某种不明显的副作用. 这几乎肯定是个错误, 并且很可能是极隐蔽缺陷的来源.<p>遗憾的是, 目前的实现问题导致当数据项被包装为名值对时无法检测这类错误.<p>当不同的对象被加载到一个与最终位置不同的地址时, 也可能发生类似问题: <pre><code>
+template&lt;class Archive&gt;
+void load(boost::basic_oarchive &amp; ar, const unsigned int version) const
+{
+    for(int i = 0; i &lt; 10; ++i){
+        A x;
+        ar &gt;&gt; x;
+        std::m_set.insert(x);
+    }
+}
+</code></pre> 在此情况下, 被跟踪的是 <code>x</code> 的地址, 而不是加入集合的新条目的地址. 若不处理, 这会破坏依赖跟踪的特性, 例如通过指针加载对象. 程序中会被引入隐蔽缺陷. 可以通过这样修改上面的代码来解决: <pre><code>
+template&lt;class Archive&gt;
+void load(boost::basic_iarchive &amp; ar, const unsigned int version) const
+{
+    for(int i = 0; i &lt; 10; ++i){
+        A x;
+        ar &gt;&gt; x;
+        std::pair&lt;std::set::const_iterator, bool&gt; result;
+        result = std::m_set.insert(x);
+        ar.reset_object_address(&amp; (*result.first), &amp;x);
+    }
+}
+</code></pre> 这会调整跟踪信息以反映被移动变量的最终落脚之处, 从而纠正上述问题.<p>如果事先知道没有指针值重复, 可以通过适当设置对象跟踪类序列化特征来消除与对象跟踪相关的开销.<p>默认情况下, 被 <a target="detail" href="traits.html#level"> 实现级别 </a> 类序列化特征指定为原始的数据类型从不被跟踪. 如果希望通过指针跟踪一个共享的原始对象 (例如用作引用计数的 <code style="white-space: normal">long</code>) , 应当把它包装在类/结构体中, 使其成为可识别的类型. 改变 <code style="white-space: normal">long</code> 的实现级别的替代做法会影响整个程序中序列化的所有 <code style="white-space: normal">long</code>——这可能不是想要的效果.<p>即使对象从不通过指针序列化, 我们也可能希望跟踪其地址. 例如, 虚基类只需保存/加载一次. 通过把这个序列化特征设为 <code style="white-space: normal">track_always</code>, 我们可以抑制冗余的保存/加载操作. <pre><code>
+BOOST_CLASS_TRACKING(my_virtual_base_class, boost::serialization::track_always)
+</code></pre>
+
+<h3><a name="helpersupport"> 辅助对象支持 </a></h3> 某些类型, 特别是那些生命周期行为复杂或对其内部状态访问受限的类型, 可能需要或受益于精巧的序列化算法. 最主要的 motivating 例子是 shared_ptr. 随着实例被加载, 它们必须与任何已经加载的其他实例"配对". 因此, 在包含 shared_ptr 实例的档案被加载期间, 必须维护一张先前已加载实例的表. 若不维护这样的表, shared_ptr 将无法成为可序列化类型. <p>要实现这一设施, 需要声明一个与当前档案关联的<i> 辅助对象 </i>, 用于存储与特定类型序列化算法相关的上下文信息. <pre><code>
+template&lt;class T&gt;
+class shared_ptr
+{
+   ...
+};
+
+BOOST_SERIALIZATION_SPLIT_FREE(shared_ptr)
+
+class shared_ptr_serialization_helper
+{
+  // table of previously loaded shared_ptr
+  // lookup a shared_ptr from the object address
+  shared_ptr&lt;T&gt; lookup(const T *);
+  // insert a new shared_ptr
+  void insert&lt;shared_ptr&lt;T&gt; &gt;(const shared_ptr&lt;T&gt; *);
+};
+
+namespace boost {
+namespace serialization {
+
+template&lt;class Archive&gt;
+void save(Archive &amp; ar, const shared_ptr &amp; x, const unsigned int /* version */)
+{
+    // save shared ptr
+    ...
+}
+
+template&lt;class Archive&gt;
+void load(Archive &amp; ar, shared_ptr &amp; x, const unsigned int /* version */)
+{
+    // get a unique identifier.  Using a constant means that all shared pointers
+    // are held in the same set.  Thus we detect handle multiple pointers to the
+    // same value instances in the archive.
+    const void * shared_ptr_helper_id = 0;
+
+    shared_ptr_serialization_helper &amp; hlp =
+        ar.template get_helper&lt;shared_ptr_serialization_helper&gt;(helper_instance_id);
+
+    // load shared pointer object
+    ...
+
+    shared_ptr_serialization_helper &amp; hlp =
+        ar.template get_helper&lt;shared_ptr_serialization_helper&gt;(shared_ptr_helper_id);
+
+    // look up object in helper object
+    T * shared_object hlp.lookup(...);
+
+    // if found, return the one from the table
+
+    // load the shared_ptr data
+    shared_ptr&lt;T&gt; sp = ...
+
+    // and add it to the table
+    hlp.insert(sp);
+    // implement shared_ptr_serialization_helper load algorithm with the aid of hlp
+}
+
+} // namespace serialization
+} // namespace boost
+</code></pre>
+<code style="white-space: normal">get_helper&lt;shared_ptr_serialization_helper&gt;();</code> 在第一次被调用时创建与档案关联的辅助对象; 后续调用返回对首次创建对象的引用, 因此 <code style="white-space: normal">hlp</code> 可以有效地用于存储在同一档案上序列化不同 <code style="white-space: normal">complex_type</code> 对象期间持续存在的上下文信息.<p>可以为保存档案和加载档案创建辅助对象. 同一个程序可能有多个不同的辅助对象, 或同一个辅助对象从程序的不同部分分别实例化. 这正是需要 helper_instance_id 的原因. 原则上它可以是任何唯一整数. 实践中最简单的做法似乎是使用包含它的序列化函数的地址. 上面的示例就使用了这一技术.<h3><a name="classinfo"> 类信息 </a></h3> 默认情况下, 对每个被序列化的类, 类信息会写入档案. 此信息包括版本号、实现级别和跟踪行为. 这是必需的, 这样即使程序的后续版本改动了某个类的某些当前特征值, 档案仍能被正确反序列化. 这些数据的空间开销极小. 有一点点运行期开销, 因为必须检查每个类是否已把其类信息包含进档案. 在某些情况下, 甚至这一点也可能被认为太多. 这些额外开销可以通过把 <a target="detail" href="traits.html#level"> 实现级别 </a> 类特征设为: <code style="white-space: normal">boost::serialization::object_serializable</code> 来消除. <p>
+<i> 关闭跟踪与类信息序列化会得到纯模板内联代码, 原则上可以优化为简单的流写入/读取. </i> 以这种方式消除所有序列化开销是有代价的. 一旦档案交付给用户, 类序列化特征就不能再改动, 否则会使旧档案失效. 把类信息包含在档案中向我们保证: 即使类定义日后被修订, 档案仍然可读. 像显示像素这样的轻量结构可以像这样在头文件中声明: <pre><code>
+#include &lt;boost/serialization/serialization.hpp&gt;
+#include &lt;boost/serialization/level.hpp&gt;
+#include &lt;boost/serialization/tracking.hpp&gt;
+
+// a pixel is a light weight struct which is used in great numbers.
+struct pixel
+{
+    unsigned char red, green, blue;
+    template&lt;class Archive&gt;
+    void serialize(Archive &amp; ar, const unsigned int /* version */){
+        ar &lt;&lt; red &lt;&lt; green &lt;&lt; blue;
+    }
+};
+
+// elminate serialization overhead at the cost of
+// never being able to increase the version.
+BOOST_CLASS_IMPLEMENTATION(pixel, boost::serialization::object_serializable);
+
+// eliminate object tracking (even if serialized through a pointer)
+// at the risk of a programming error creating duplicate objects.
+BOOST_CLASS_TRACKING(pixel, boost::serialization::track_never)
+</code></pre>
+
+<h3><a name="portability"> 档案可移植性 </a></h3> 若干档案类以文本或可移植二进制格式创建其数据. 应当能够在一个平台上保存这样的类, 在另一个平台上加载. 这受制于两个条件. <h4><a name="numerics"> 数值 </a></h4> 读取档案的机器体系结构必须能容纳保存的数据. 例如, gcc 编译器为存储 <code style="white-space: normal">wchar_t</code> 类型的变量保留 4 字节, 而其他编译器只保留 2 字节. 因此可能写入一个加载程序无法表示的值. 这是相当明显的情形, 通过使用 <a target="cstding" href="../../../boost/cstdint.hpp"> &lt;boost/cstdint.hpp&gt; </a> 中的数值类型很容易处理. <P>一种特殊的整数类型是 <code>std::size_t</code>, 它是某种整数类型的 typedef, 保证大到足以容纳任何集合的大小, 但其实际大小可能因平台而异. <a href="wrappers.html#collection_size_type"><code>collection_size_type</code></a> 包装器的存在是为了使档案能够以可移植方式序列化集合大小. 对集合大小做可移植序列化的推荐选择是使用 64 位整数或变长整数表示.<h4><a name="traits"> 特征 </a></h4> 另一个潜在的问题由以下示例说明: <pre><code>
+template&lt;class T&gt;
+struct my_wrapper {
+    template&lt;class Archive&gt;
+    Archive &amp; serialize ...
+};
+
+...
+
+class my_class {
+    wchar_t a;
+    short unsigned b;
+    template&lt;class Archive&gt;
+    Archive &amp; serialize(Archive &amp; ar, unsigned int version){
+        ar &amp; my_wrapper(a);
+        ar &amp; my_wrapper(b);
+    }
+};
+</code></pre> 如果 <code style="white-space: normal">my_wrapper</code> 使用默认序列化特征, 可能出问题. 使用默认特征时, 每向档案加入一个新类型, 就会加入簿记信息. 所以在本例中, 档案会包含 <code style="white-space: normal">my_wrapper&lt;wchar_t&gt;</code> 和 <code style="white-space: normal">my_wrapper&lt;short_unsigned&gt;</code> 的此类簿记信息. 真的会吗? 如果把 <code style="white-space: normal">wchar_t</code> 当作 <code style="white-space: normal">unsigned short</code> 同义词的编译器呢? 此时只有一个不同类型——而不是两个. 如果档案在对其 <code style="white-space: normal">wchar_t</code> 处理方式不同的编译器的程序之间传递, 加载操作将以灾难性方式失败. <p>对此的一种补救方法是为模板 <code style="white-space: normal">my_template</code> 赋予序列化特征, 使该模板的实例化的类信息从不被序列化. 此过程在 <a target="detail" href="traits.html#templates"> 前文 </a> 有描述, 并已用于 <a target="detail" href="wrappers.html#nvp"><strong> 名值对 </strong></a>. 包装器通常会被赋予这类特征.<p>避免此问题的另一种方法是为模板 <code style="white-space: normal">my_wrapper</code> 针对所有原始类型的所有特化赋予序列化特征, 使类信息从不被保存. 我们对 STL 集合序列化的实现就是这样做的.<h3><a name="binary_archives"> 二进制档案 </a></h3> 某些系统上的标准流 i/o 会在输出时把换行符扩展为回车/换行. 这给二进制档案带来问题. 最简单的处理办法是用标志 <code style="white-space: normal">ios::binary</code> 以"二进制模式"为二进制档案打开流. 若不这样做, 生成的档案将不可读. <p>遗憾的是, 尚未找到在加载档案之前检测此错误的方法. debug 构建会在检测到时断言, 因此可能有助于捕捉此错误.<h3><a name="xml_archives"> XML 档案 </a></h3> XML 档案是一个 somewhat 特殊的情况. XML 格式具有嵌套结构, 与序列化系统使用的"递归类成员访问器"模式映射良好. 然而, XML 与其他格式的不同之处在于它要求每个数据成员都有名称. 我们的目标是在把这一信息加入类序列化规定的同时, 仍允许序列化代码用于任何档案. 实现方式是: 要求所有序列化到 XML 档案的数据都以 <a target="detail" href="wrappers.html#nvp"> 名值对 </a> 形式序列化. 第一个成员是用作数据项 XML 标签的名称, 第二个是对数据项本身的引用. 任何试图序列化未包装在 <a target="detail" href="wrappers.html#nvp"> 名值对 </a> 中的数据的行为都会在编译期被拦截. 系统的实现方式使得对其他档案类只序列化数据的值部分. 名称部分在编译期被丢弃. 因此, 始终使用 <a target="detail" href="wrappers.html#nvp"> 名值对 </a> 将保证所有数据都能以最高效率序列化到所有档案类. <h3><a name="export"> 导出类序列化 </a></h3> 在本手册的 <a target="detail" href="traits.html#export"> 其他地方 </a>, 我们已经描述了 <code style="white-space: normal">BOOST_CLASS_EXPORT</code>. 导出意味着两件事: <ul>
+<li>实例化其他方式不会引用到的代码.<li>把外部标识符与要序列化的类关联. 类没有被显式引用这一事实隐含了这一要求.</ul> 在 C++ 中, 未被显式引用的代码的使用通过虚函数实现. 因此, 导出的必要性由通过指向其基类的指针或引用操纵派生类的用法所隐含. <p>在包含任何档案类头文件的同一源模块中包含 <code style="white-space: normal">BOOST_CLASS_EXPORT</code>, 会为所有那些档案类实例化序列化指定类型多态指针所需的代码. 如果没有包含任何档案类头文件, 则不会实例化任何代码.<p>注意, 此功能的实现要求 <code style="white-space: normal">BOOST_CLASS_EXPORT</code> 宏出现在<b> 之后 </b>——在其代码要被实例化的任何档案类头文件的包含之后. 因此, 使用 <code style="white-space: normal">BOOST_CLASS_EXPORT</code> 的代码看起来会像下面这样: <pre><code>
+#include &lt;boost/archive/text_oarchive.hpp&gt;
+#include &lt;boost/archive/text_oarchive.hpp&gt;
+... // other archives
+
+#include "a.hpp" // header declaration for class a
+BOOST_CLASS_EXPORT(a)
+... // other class headers and exports
+</code></pre> 无论代码是独立可执行文件、静态库还是动态/共享库的一部分, 这都是成立的.<p>像对待其他序列化特征那样, 把 <code style="white-space: normal">BOOST_CLASS_EXPORT</code> 包含在"a.hpp"头文件本身中, 会使上述关于在调用 <code style="white-space: normal">BOOST_CLASS_EXPORT</code> 之前包含档案头文件的规则变得难以遵守甚至无法遵守. 最好的处理办法是在头文件声明中使用 <code style="white-space: normal">BOOST_CLASS_EXPORT_KEY</code>, 而在类定义文件中使用 <code style="white-space: normal">BOOST_CLASS_EXPORT_IMPLEMENT</code>.<p>本系统对把代码放入静态库或共享库有一定影响. 把 <code style="white-space: normal">BOOST_CLASS_EXPORT</code> 放入库代码中, 除非同时也包含档案类头文件, 否则不会有效果. 因此构建库时, 应当包含预计会使用的所有档案类的所有头文件. 或者, 可以只包含 <a href="archive_reference.html#polymorphic"> 多态档案 </a> 的头文件.<p>严格来说, 如果所有指针序列化都通过最派生的类进行, 导出应当不是必需的. 然而, 为了检测可能是灾难性的错误, 本库会拦截所有通过指向多态类的指针进行且未导出或未注册的序列化. 所以在实践中, 要做好准备: 为所有带有一个或多个虚函数且通过指针序列化的类注册或导出.<p>注意, 此功能的实现依赖于 C++ 语言的厂商特定扩展. 因此, 使用此设施的程序不能保证可移植. 不过, 所有用 boost 测试过的 C++ 编译器都提供所需的扩展. 库中包含了每个编译器所需的额外声明. 可以合理预期未来的 C++ 编译器会支持这些扩展或等价物.<h3><a name="static_libraries"> 静态库与序列化 </a></h3> 数据类型的序列化代码可以像类型的其余实现那样保存在库中. 这工作良好, 并可以节省大量编译时间. <ul>
+<li>只在库中编译序列化定义.<li>为打算在库中使用的所有档案类显式实例化序列化代码.<li>对导出类型, 只在头文件中使用 <code style="white-space: normal">BOOST_CLASS_EXPORT_KEY</code>.<li>对导出类型, 只在库中编译的定义里使用 <code style="white-space: normal">BOOST_CLASS_EXPORT_IMPLEMENT</code>. 对任何特定类型, 应当只有一个文件包含该类型的 <code style="white-space: normal">BOOST_CLASS_EXPORT_IMPLEMENT</code>. 这确保程序中只存在一份序列化代码. 它避免了空间浪费以及同一程序中存在不同版本序列化代码的可能性. 在多个文件中包含 <code style="white-space: normal">BOOST_CLASS_EXPORT_IMPLEMENT</code> 可能因符号重复而导致链接失败, 或抛出运行期异常.<li>序列化代码应当只放在库中,<li>熟悉 <b> PIMPL </b> 惯用法.</ul> 这由 <a href = "../example/demo_pimpl.cpp" target="demo_pimpl">
+<code style="white-space: normal">demo_pimpl.cpp</code>
+</a>、<a href = "../example/demo_pimpl_A.cpp" target="demo_pimpl">
+<code style="white-space: normal">demo_pimpl_A.cpp</code>
+</a> 和 <a href = "../example/demo_pimpl_A.hpp" target="demo_pimpl">
+<code style="white-space: normal">demo_pimpl_A.hpp</code>
+</a> 说明, 其中序列化的实现位于与主程序完全分离的静态库中. <h3><a name="dlls"> DLL - 序列化与运行期链接 </a></h3> 序列化代码可以放在运行期链接的库中. 也就是说, 代码可以放在 DLL(Windows)、共享库(*nix) 或静态库以及主可执行文件中. 最佳技术与上面针对库所描述的相同. 序列化库测试套件包含以下程序来演示其工作方式: <p>
+
+<a href = "../test/test_dll_simple.cpp" target="test_dll_simple">
+<code style="white-space: normal">test_dll_simple</code>
+</a> 和 <a href = "../test/dll_a.cpp" target="dll_a">
+<code style="white-space: normal">dll_a.cpp</code>
+</a>, 其中序列化的实现也与主程序完全分离, 但代码是在运行期加载的. 在此示例中, 这段代码在用到它的程序启动时自动加载, 但它同样可以用依赖 OS 的 API 调用来加载和卸载.<p>还包括 <a href = "../test/test_dll_exported.cpp" target="test_dll_exported">
+<code style="white-space: normal">test_dll_exported.cpp</code>
+</a> 和 <a href = "../test/polymorphic_derived2.cpp" target="polymorphic_derived2">
+<code style="white-space: normal">polymorphic_derived2.cpp</code>
+</a>, 它们与上面类似, 但在 DLL 环境下包含了对导出和 no_rtti 设施的测试.<p>为获得最佳效果, 请按以下准则编写代码:<ul>
+  <li>不要在 DLL 中使用的类里包含 <code>inline</code> 代码. 这会在 DLL 和主程序中生成重复代码. 这不必要地复制了代码. 更糟的是, 它使同一代码的不同版本可能同时存在. 事实证明, 这类错误极难调试. 最后, 它带来这样的可能: 被引用的模块被显式卸载, 从而 (但愿) 导致运行期错误. 这是另一种并非总能复现或不易发现的缺陷. 对于类成员模板, 在头文件中使用类似 <pre><code>
+template&lt;class Archive&gt;
+void serialize(Archive &amp; ar, const unsigned int version);
+</code></pre> 的代码, 并在实现文件中使用 <pre><code>
+template&lt;class Archive&gt;
+void myclass::serialize(Archive &amp; ar, const unsigned int version){
+	...
+}
+
+BOOST_CLASS_EXPORT_IMPLEMENT(my_class)
+
+#include &lt;boost/archive/text_oarchive&gt;
+#include &lt;boost/archive/text_iarchive&gt;
+template myclass::serialize(boost::archive::text_oarchive &amp; ar, const unsigned int version);
+template myclass::serialize(boost::archive::text_iarchive &amp; ar, const unsigned int version);
+... // repeat for each archive class to be used.
+</code></pre>. 这会确保所有所需代码只在一个地方生成. 库不会替你检测这类错误.<li>如果 DLL 会被显式加载和卸载 (例如在 *nix 上使用 <code>dlopen</code>, 或在 Windows 上使用 <code>LoadLibrary</code>) , 尽量安排它们按相反顺序卸载. 即使没有遵守上述准则, 这也应当能保证避免问题.</ul>
+
+<h3><a name="plugins"> 插件 </a></h3> 为了实现本库, 需要一些在运行期操纵类型的设施. 它们是 <a target="detail" href="extended_type_info.html"><code>extended_type_info</code></a>——用于把类与外部标识字符串 (<b> GUID </b>) 关联——以及 <a target="detail" href="void_cast.html"><code>void_cast</code></a>——用于在相关类型的指针之间转换. 为补全 <a target="detail" href="extended_type_info.html"><code>extended_type_info</code></a> 的功能, 还加入了构造和销毁对应类型的能力. 要使用此功能, 必须指定每个类型如何创建. 这应当在导出类时完成. 因此, 上面代码的一个更完整的示例是: <pre><code>
+#include &lt;boost/archive/text_oarchive.hpp&gt;
+#include &lt;boost/archive/text_oarchive.hpp&gt;
+... // other archives
+
+#include "a.hpp" // header declaration for class a
+
+// this class has a default constructor
+BOOST_SERIALIZATION_FACTORY_0(a)
+// as well as one that takes one integer argument
+BOOST_SERIALIZATION_FACTORY_1(a, int)
+
+// specify the GUID for this class
+BOOST_CLASS_EXPORT(a)
+... // other class headers and exports
+</code></pre> 有了这些, 就可以构造、序列化和销毁一个只知道 <b> GUID </b> 和一个基类的类. <h3><a name="multi_threading"> 多线程 </a></h3> 序列化的根本目的与多个线程并发地向单个打开的档案实例写入/读取相冲突. 库实现假定应用程序会避免这种情况. <p>不过, 允许在不同任务中同时写/读不同的档案, 因为每个档案实例 (几乎) 完全独立于其他档案实例. 唯一共享的信息是一些类型表, 它们用本文档其他地方描述的无锁线程安全 <a target="detail" href="singleton.html">
+<code style="white-space: normal">singleton</code>
+</a> 实现.<p>该单例实现保证所有这些共享信息在包含它的代码模块被加载时完成初始化. 序列化库注意确保这些数据结构此后不被修改. 唯一可能出问题的情况是: 在另一个任务正在序列化数据时加载/卸载代码. 这只可能发生在其序列化实现于动态加载/卸载的 DLL 或共享库中的类型上. 因此如果避免以下情况:<ul>
+    <li>从不同任务访问同一档案实例.<li>在任何档案实例打开期间加载/卸载 DLL 或共享库.</ul> 库应当是线程安全的. <h3><a name="optimizations"> 优化 </a></h3> 在序列化大量同质类型连续数据的性能关键应用中, 人们希望避免逐个序列化每个元素的开销, 这正是 <a href="wrappers.html#arrays"><code>array</code></a> 包装器的动机. 包含同质类型连续数组的数据类型 (例如 <code>std::vector</code>、<code>std::valarray</code> 或 <code>boost::multiarray</code>) 的序列化函数应当使用 <a href="wrappers.html#arrays"><code>array</code></a> 包装器来序列化它们, 以利用这些优化. 能够为同质类型连续数组提供优化序列化的档案类型应当通过重载 <a href="wrappers.html#arrays"><code>array</code></a> 包装器的序列化来实现, 正如二进制档案所做的那样. <h3><a href="exceptions.html"> 档案异常 </a></h3>
+<h3><a href="exception_safety.html"> 异常安全 </a></h3>
+
+<hr>
+<p><i> 版权所有 © <a href="http://www.rrsd.com"> Robert Ramey </a> 2002-2004. 按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt) </i></p>
+</body>
+</html>

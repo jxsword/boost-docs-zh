@@ -1,0 +1,89 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>自定义内存分配</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../../boost_asio.html" title="Boost.Asio">
+<link rel="up" href="../core.html" title="核心概念与功能">
+<link rel="prev" href="line_based.html" title="基于行的操作">
+<link rel="next" href="cancellation.html" title="按操作取消">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="line_based.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../core.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="cancellation.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_asio.overview.core.allocation"></a><a class="link" href="allocation.html" title="自定义内存分配">自定义内存分配</a>
+</h4></div></div></div>
+<p>许多异步操作都需要分配一个对象来存储与该操作相关的状态. 例如, Win32 实现需要 <code class="computeroutput"><span class="identifier">OVERLAPPED</span></code> 派生类的对象, 以便传递给 Win32 API 函数.</p>
+<p>此外, 程序通常包含容易辨识的异步操作链. 半双工协议实现 (例如 HTTP 服务器) 会为每个客户端准备一条操作链 (先接收后发送) ; 全双工协议实现则会有两条并行执行的操作链. 程序应当能够利用这一知识, 为一条链中的所有异步操作复用内存.</p>
+<p>给定一个用户自定义 <code class="computeroutput"><span class="identifier">Handler</span></code> 对象 <code class="computeroutput"><span class="identifier">h</span></code> 的副本, 如果实现需要为该处理器分配内存, 它将使用 <code class="computeroutput"><span class="identifier">get_associated_allocator</span></code> 函数获取一个分配器. 例如:</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">associated_allocator_t</span><span class="special">&lt;</span><span class="identifier">Handler</span><span class="special">&gt;</span> <span class="identifier">a</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">get_associated_allocator</span><span class="special">(</span><span class="identifier">h</span><span class="special">);</span>
+</pre>
+<p>关联分配器必须满足标准 Allocator 要求.</p>
+<p>默认情况下, 处理器使用标准分配器 (它借助 <code class="computeroutput"><span class="special">::</span><span class="keyword">operator</span>
+          <span class="keyword">new</span><span class="special">()</span></code> 和 <code class="computeroutput"><span class="special">::</span><span class="keyword">operator</span>
+          <span class="keyword">delete</span><span class="special">()</span></code> 实现) . 可以针对特定的处理器类型定制分配器, 方法是指定嵌套类型 <code class="computeroutput"><span class="identifier">allocator_type</span></code> 和成员函数 <code class="computeroutput"><span class="identifier">get_allocator</span><span class="special">()</span></code>:</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">my_handler</span>
+<span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+  <span class="comment">// Custom implementation of Allocator type requirements.</span>
+  <span class="keyword">typedef</span> <span class="identifier">my_allocator</span> <span class="identifier">allocator_type</span><span class="special">;</span>
+
+  <span class="comment">// Return a custom allocator implementation.</span>
+  <span class="identifier">allocator_type</span> <span class="identifier">get_allocator</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span>
+  <span class="special">{</span>
+    <span class="keyword">return</span> <span class="identifier">my_allocator</span><span class="special">();</span>
+  <span class="special">}</span>
+
+  <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()()</span> <span class="special">{</span> <span class="special">...</span> <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>在更复杂的情况下, 可以直接对 <code class="computeroutput"><span class="identifier">associated_allocator</span></code> 模板进行偏特化:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">asio</span> <span class="special">{</span>
+
+  <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Allocator</span><span class="special">&gt;</span>
+  <span class="keyword">struct</span> <span class="identifier">associated_allocator</span><span class="special">&lt;</span><span class="identifier">my_handler</span><span class="special">,</span> <span class="identifier">Allocator</span><span class="special">&gt;</span>
+  <span class="special">{</span>
+    <span class="comment">// Custom implementation of Allocator type requirements.</span>
+    <span class="keyword">typedef</span> <span class="identifier">my_allocator</span> <span class="identifier">type</span><span class="special">;</span>
+
+    <span class="comment">// Return a custom allocator implementation.</span>
+    <span class="keyword">static</span> <span class="identifier">type</span> <span class="identifier">get</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">my_handler</span><span class="special">&amp;,</span>
+        <span class="keyword">const</span> <span class="identifier">Allocator</span><span class="special">&amp;</span> <span class="identifier">a</span> <span class="special">=</span> <span class="identifier">Allocator</span><span class="special">())</span> <span class="keyword">noexcept</span>
+    <span class="special">{</span>
+      <span class="keyword">return</span> <span class="identifier">my_allocator</span><span class="special">();</span>
+    <span class="special">}</span>
+  <span class="special">};</span>
+
+<span class="special">}</span> <span class="special">}</span> <span class="comment">// namespace boost::asio</span>
+</pre>
+<p>实现保证内存释放会发生在关联处理器被调用之前, 这意味着这块内存已经可以供该处理器启动的任何新异步操作复用.</p>
+<p>自定义内存分配函数可以从任何正在调用 Boost.Asio 库函数的用户创建线程中调用. 对于库所包含的异步操作, 实现保证: 在单个操作的上下文内, 实现不会针对该处理器的内存分配函数进行并发调用. 如果异步操作需要从不同线程调用分配函数, 实现会插入适当的内存屏障以确保正确的内存可见性. (注意: 如果同一个分配器被多个并发异步操作共享, 这可能导致对内存分配函数的并发调用. 使用 <a class="link" href="strands.html" title="Strands: 无需显式加锁地使用线程">strand</a> 并不能阻止这些并发调用, 因为操作可能需要在 strand 之外分配内存. 在这种情况下, 由共享分配器负责提供必要的线程安全保证. )</p>
+<h6>
+<a name="boost_asio.overview.core.allocation.h0"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.allocation.see_also"></a></span><a class="link" href="allocation.html#boost_asio.overview.core.allocation.see_also">参见</a>
+        </h6>
+<p>
+          <a class="link" href="../../reference/associated_allocator.html" title="associated_allocator">associated_allocator</a>、<a class="link" href="../../reference/get_associated_allocator.html" title="get_associated_allocator">get_associated_allocator</a>、<a class="link" href="../../examples/cpp11_examples.html#boost_asio.examples.cpp11_examples.allocation">自定义内存分配示例 (C++11) </a>.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2003-2026 Christopher M. Kohlhoff<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="line_based.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../core.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="cancellation.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

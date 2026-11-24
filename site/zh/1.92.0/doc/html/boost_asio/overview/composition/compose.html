@@ -1,0 +1,103 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>作为异步操作的组合</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../../boost_asio.html" title="Boost.Asio">
+<link rel="up" href="../composition.html" title="组合与完成标记">
+<link rel="prev" href="parallel_group.html" title="协调并行操作">
+<link rel="next" href="token_adapters.html" title="完成标记适配器">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="parallel_group.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../composition.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="token_adapters.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_asio.overview.composition.compose"></a><a class="link" href="compose.html" title="作为异步操作的组合">作为异步操作的组合</a>
+</h4></div></div></div>
+<p>应用程序开发者可能希望将自己的组合封装为符合 <a class="link" href="../model/async_ops.html" title="异步操作">异步操作</a> 要求的形式, 纳入 <a class="link" href="../model.html" title="异步模型">异步模型</a> 之中. 这样做有助于将这些操作与 Boost.Asio 已提供的操作无缝地组合起来.</p>
+<p>虽然这些操作可以从零开始编写以满足 <a class="link" href="../../reference/asynchronous_operations.html" title="对异步操作的要求">对异步操作的要求</a>, 但 Boost.Asio 提供了 <a class="link" href="../../reference/async_compose.html" title="async_compose"><code class="computeroutput"><span class="identifier">async_compose</span></code></a> 函数来简化这一过程. <code class="computeroutput"><span class="identifier">async_compose</span></code> 实现会自动提供一个中间完成处理器, 它正确地传播 <a class="link" href="../model/associators.html" title="关联特征与关联器">关联特征</a>, 并针对 I/O 执行器和完成执行器跟踪未完成的工作.</p>
+<p>下面的示例展示了一个异步 echo 循环 (即先读、再写, 如此往复) , 以一个简单状态机的形式表达.</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">async_echo_implementation</span>
+<span class="special">{</span>
+  <span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span><span class="special">&amp;</span> <span class="identifier">socket_</span><span class="special">;</span>
+  <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">mutable_buffer</span> <span class="identifier">buffer_</span><span class="special">;</span>
+  <span class="keyword">enum</span> <span class="special">{</span> <span class="identifier">starting</span><span class="special">,</span> <span class="identifier">reading</span><span class="special">,</span> <span class="identifier">writing</span> <span class="special">}</span> <span class="identifier">state_</span><span class="special">;</span>
+
+  <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Self</span><span class="special">&gt;</span>
+  <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span><span class="identifier">Self</span><span class="special">&amp;</span> <span class="identifier">self</span><span class="special">,</span>
+      <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span> <span class="identifier">error</span> <span class="special">=</span> <span class="special">{},</span>
+      <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">n</span> <span class="special">=</span> <span class="number">0</span><span class="special">)</span>
+  <span class="special">{</span>
+    <span class="keyword">switch</span> <span class="special">(</span><span class="identifier">state_</span><span class="special">)</span>
+    <span class="special">{</span>
+    <span class="keyword">case</span> <span class="identifier">starting</span><span class="special">:</span>
+      <span class="identifier">state_</span> <span class="special">=</span> <span class="identifier">reading</span><span class="special">;</span>
+      <span class="identifier">socket_</span><span class="special">.</span><span class="identifier">async_read_some</span><span class="special">(</span>
+          <span class="identifier">buffer_</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">self</span><span class="special">));</span>
+      <span class="keyword">break</span><span class="special">;</span>
+    <span class="keyword">case</span> <span class="identifier">reading</span><span class="special">:</span>
+      <span class="keyword">if</span> <span class="special">(</span><span class="identifier">error</span><span class="special">)</span>
+      <span class="special">{</span>
+        <span class="identifier">self</span><span class="special">.</span><span class="identifier">complete</span><span class="special">(</span><span class="identifier">error</span><span class="special">,</span> <span class="number">0</span><span class="special">);</span>
+      <span class="special">}</span>
+      <span class="keyword">else</span>
+      <span class="special">{</span>
+        <span class="identifier">state_</span> <span class="special">=</span> <span class="identifier">writing</span><span class="special">;</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">async_write</span><span class="special">(</span><span class="identifier">socket_</span><span class="special">,</span> <span class="identifier">buffer_</span><span class="special">,</span>
+            <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">transfer_exactly</span><span class="special">(</span><span class="identifier">n</span><span class="special">),</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">self</span><span class="special">));</span>
+      <span class="special">}</span>
+      <span class="keyword">break</span><span class="special">;</span>
+    <span class="keyword">case</span> <span class="identifier">writing</span><span class="special">:</span>
+      <span class="identifier">self</span><span class="special">.</span><span class="identifier">complete</span><span class="special">(</span><span class="identifier">error</span><span class="special">,</span> <span class="identifier">n</span><span class="special">);</span>
+      <span class="keyword">break</span><span class="special">;</span>
+    <span class="special">}</span>
+  <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>然后在一个发起函数中使用该实现, 该函数只是简单地对 <code class="computeroutput"><span class="identifier">async_compose</span></code> 进行了包装:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">CompletionToken</span><span class="special">&gt;</span>
+<span class="keyword">auto</span> <span class="identifier">async_echo</span><span class="special">(</span><span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span><span class="special">&amp;</span> <span class="identifier">socket</span><span class="special">,</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">mutable_buffer</span> <span class="identifier">buffer</span><span class="special">,</span>
+    <span class="identifier">CompletionToken</span><span class="special">&amp;&amp;</span> <span class="identifier">token</span><span class="special">)</span> <span class="special">-&gt;</span>
+  <span class="keyword">typename</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">async_result</span><span class="special">&lt;</span>
+    <span class="keyword">typename</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">decay</span><span class="special">&lt;</span><span class="identifier">CompletionToken</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">,</span>
+      <span class="keyword">void</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span><span class="special">)&gt;::</span><span class="identifier">return_type</span>
+<span class="special">{</span>
+  <span class="keyword">return</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">async_compose</span><span class="special">&lt;</span><span class="identifier">CompletionToken</span><span class="special">,</span>
+    <span class="keyword">void</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span><span class="special">)&gt;(</span>
+      <span class="identifier">async_echo_implementation</span><span class="special">{</span><span class="identifier">socket</span><span class="special">,</span> <span class="identifier">buffer</span><span class="special">,</span>
+        <span class="identifier">async_echo_implementation</span><span class="special">::</span><span class="identifier">starting</span><span class="special">},</span>
+      <span class="identifier">token</span><span class="special">,</span> <span class="identifier">socket</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>这里, <code class="computeroutput"><span class="identifier">async_compose</span></code> 首先被传入一个函数对象, 该函数对象包含这个组合异步操作的实现. 传给该函数对象的第一个实参是对外层中间完成处理器的非 const 引用. 其余实参则是来自该实现所执行的任何异步操作的完成处理器的各个实参.</p>
+<p> <code class="computeroutput"><span class="identifier">async_compose</span></code> 函数还会被传入完成标记, 以及零个或多个需要为其维持未完成工作的 I/O 对象或 I/O 执行器.</p>
+<h6>
+<a name="boost_asio.overview.composition.compose.h0"></a>
+          <span class="phrase"><a name="boost_asio.overview.composition.compose.see_also"></a></span><a class="link" href="compose.html#boost_asio.overview.composition.compose.see_also">参见</a>
+        </h6>
+<p>
+          <a class="link" href="../../reference/async_compose.html" title="async_compose">async_compose</a>、<a class="link" href="../../examples/cpp11_examples.html#boost_asio.examples.cpp11_examples.operations">操作示例 (C++11) </a>、<a class="link" href="../../examples/cpp14_examples.html#boost_asio.examples.cpp14_examples.operations">操作示例 (C++14) </a>.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2003-2026 Christopher M. Kohlhoff<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="parallel_group.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../composition.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="token_adapters.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

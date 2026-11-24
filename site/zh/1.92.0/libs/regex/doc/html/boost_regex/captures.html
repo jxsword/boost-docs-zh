@@ -1,0 +1,310 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>理解标记子表达式与捕获</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost.Regex 7.0.1">
+<link rel="up" href="../index.html" title="Boost.Regex 7.0.1">
+<link rel="prev" href="unicode.html" title="Unicode 与 Boost.Regex">
+<link rel="next" href="partial_matches.html" title="部分匹配">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="unicode.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="partial_matches.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="boost_regex.captures"></a><a class="link" href="captures.html" title="理解标记子表达式与捕获">理解标记子表达式与捕获</a>
+</h2></div></div></div>
+<p>捕获 (captures) 是标记子表达式在正则表达式被匹配时"捕获"的迭代器范围. 如果某个标记子表达式被匹配多次, 则可以产生多个捕获. 本文档解释 Boost.Regex 中捕获与标记子表达式是如何表示和访问的.</p>
+<h5>
+<a name="boost_regex.captures.h0"></a>
+      <span class="phrase"><a name="boost_regex.captures.marked_sub_expressions"></a></span><a class="link" href="captures.html#boost_regex.captures.marked_sub_expressions">标记子表达式</a>
+    </h5>
+<p>每当 Perl 正则表达式包含一个括号分组 <code class="computeroutput"><span class="special">()</span></code> 时, 就会多产生一个字段, 称为标记子表达式 (marked sub-expression); 例如表达式:</p>
+<pre class="programlisting">(\w+)\W+(\w+)</pre>
+<p>它有两个标记子表达式 (分别称为 $1 和 $2); 此外, 完整匹配称为 $&amp;, 第一次匹配之前的所有内容称为 $`, 匹配之后的所有内容称为 $'. 因此, 如果在 <code class="computeroutput"><span class="string">"@abc def--"</span></code> 中搜索上述表达式, 我们得到:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+              <p>子表达式</p>
+            </th>
+<th>
+              <p>找到的文本</p>
+            </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+              <p>
+                $`
+              </p>
+            </td>
+<td>
+              <p>
+                "@"
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                $&amp;
+              </p>
+            </td>
+<td>
+              <p>
+                "abc def"
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                $1
+              </p>
+            </td>
+<td>
+              <p>
+                "abc"
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                $2
+              </p>
+            </td>
+<td>
+              <p>
+                "def"
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                $'
+              </p>
+            </td>
+<td>
+              <p>
+                "--"
+              </p>
+            </td>
+</tr>
+</tbody>
+</table></div>
+<p>在 Boost.Regex 中, 所有这些都可以通过 <a class="link" href="ref/match_results.html" title="match_results"><code class="computeroutput"><span class="identifier">match_results</span></code></a> 类访问, 该类在调用某个正则表达式匹配算法 ( <a class="link" href="ref/regex_search.html" title="regex_search"><code class="computeroutput"><span class="identifier">regex_search</span></code></a>、<a class="link" href="ref/regex_match.html" title="regex_match"><code class="computeroutput"><span class="identifier">regex_match</span></code></a> 或 <a class="link" href="ref/regex_iterator.html" title="regex_iterator"><code class="computeroutput"><span class="identifier">regex_iterator</span></code></a> ) 时被填充. 因此给定:</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">match_results</span><span class="special">&lt;</span><span class="identifier">IteratorType</span><span class="special">&gt;</span> <span class="identifier">m</span><span class="special">;</span>
+</pre>
+<p>Perl 与 Boost.Regex 的对应关系如下:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+              <p>
+                Perl
+              </p>
+            </th>
+<th>
+              <p>
+                Boost.Regex
+              </p>
+            </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+              <p>
+                $`
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">m</span><span class="special">.</span><span class="identifier">prefix</span><span class="special">()</span></code>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                $&amp;
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">m</span><span class="special">[</span><span class="number">0</span><span class="special">]</span></code>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                $n
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">m</span><span class="special">[</span><span class="identifier">n</span><span class="special">]</span></code>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                $'
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">m</span><span class="special">.</span><span class="identifier">suffix</span><span class="special">()</span></code>
+              </p>
+            </td>
+</tr>
+</tbody>
+</table></div>
+<p>在 Boost.Regex 中, 每个子表达式的匹配由一个 <a class="link" href="ref/sub_match.html" title="sub_match"><code class="computeroutput"><span class="identifier">sub_match</span></code></a> 对象表示; 它基本上只是一对迭代器, 表示子表达式匹配的起止位置, 但还提供了一些附加运算符, 使 <a class="link" href="ref/sub_match.html" title="sub_match"><code class="computeroutput"><span class="identifier">sub_match</span></code></a> 类型的对象的行为很像一个 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">basic_string</span></code>: 例如, 它们可以隐式转换为 <code class="computeroutput"><span class="identifier">basic_string</span></code>, 可以与字符串比较、加到字符串上, 或输出到输出流.</p>
+<h5>
+<a name="boost_regex.captures.h1"></a>
+      <span class="phrase"><a name="boost_regex.captures.unmatched_sub_expressions"></a></span><a class="link" href="captures.html#boost_regex.captures.unmatched_sub_expressions">未匹配的子表达式</a>
+    </h5>
+<p>找到一个正则表达式匹配时, 并不需要所有标记子表达式都参与了匹配; 例如表达式:</p>
+<pre class="programlisting">(abc)|(def)</pre>
+<p>它可以匹配 $1 或 $2, 但绝不会同时匹配两者. 在 Boost.Regex 中, 你可以通过访问 <code class="computeroutput"><span class="identifier">sub_match</span><span class="special">::</span><span class="identifier">matched</span></code> 数据成员来确定哪些子表达式匹配了.</p>
+<h5>
+<a name="boost_regex.captures.h2"></a>
+      <span class="phrase"><a name="boost_regex.captures.repeated_captures"></a></span><a class="link" href="captures.html#boost_regex.captures.repeated_captures">重复捕获</a>
+    </h5>
+<p>当标记子表达式被重复时, 该子表达式会被"捕获"多次; 但通常只有最后一次捕获可用. 例如, 如果</p>
+<pre class="programlisting">(?:(\w+)\W+)+</pre>
+<p>与下式匹配</p>
+<pre class="programlisting">one fine day</pre>
+<p>那么 $1 将包含字符串 "day", 而之前所有的捕获都会被遗忘.</p>
+<p>不过, Boost.Regex 有一项实验性特性, 允许保留所有捕获信息 - 可以通过 <code class="computeroutput"><span class="identifier">match_results</span><span class="special">::</span><span class="identifier">captures</span></code> 成员函数或 <code class="computeroutput"><span class="identifier">sub_match</span><span class="special">::</span><span class="identifier">captures</span></code> 成员函数访问. 这些函数返回一个容器, 其中包含正则表达式匹配期间获得的所有捕获组成的序列. 下面的示例程序展示了如何使用这一信息:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">regex</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+
+<span class="keyword">void</span> <span class="identifier">print_captures</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;</span> <span class="identifier">regx</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;</span> <span class="identifier">text</span><span class="special">)</span>
+<span class="special">{</span>
+   <span class="identifier">boost</span><span class="special">::</span><span class="identifier">regex</span> <span class="identifier">e</span><span class="special">(</span><span class="identifier">regx</span><span class="special">);</span>
+   <span class="identifier">boost</span><span class="special">::</span><span class="identifier">smatch</span> <span class="identifier">what</span><span class="special">;</span>
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Expression:  \""</span> <span class="special">&lt;&lt;</span> <span class="identifier">regx</span> <span class="special">&lt;&lt;</span> <span class="string">"\"\n"</span><span class="special">;</span>
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Text:        \""</span> <span class="special">&lt;&lt;</span> <span class="identifier">text</span> <span class="special">&lt;&lt;</span> <span class="string">"\"\n"</span><span class="special">;</span>
+   <span class="keyword">if</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">regex_match</span><span class="special">(</span><span class="identifier">text</span><span class="special">,</span> <span class="identifier">what</span><span class="special">,</span> <span class="identifier">e</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">match_extra</span><span class="special">))</span>
+   <span class="special">{</span>
+      <span class="keyword">unsigned</span> <span class="identifier">i</span><span class="special">,</span> <span class="identifier">j</span><span class="special">;</span>
+      <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"** Match found **\n   Sub-Expressions:\n"</span><span class="special">;</span>
+      <span class="keyword">for</span><span class="special">(</span><span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">what</span><span class="special">.</span><span class="identifier">size</span><span class="special">();</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span>
+         <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"      $"</span> <span class="special">&lt;&lt;</span> <span class="identifier">i</span> <span class="special">&lt;&lt;</span> <span class="string">" = \""</span> <span class="special">&lt;&lt;</span> <span class="identifier">what</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">&lt;&lt;</span> <span class="string">"\"\n"</span><span class="special">;</span>
+      <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"   Captures:\n"</span><span class="special">;</span>
+      <span class="keyword">for</span><span class="special">(</span><span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">what</span><span class="special">.</span><span class="identifier">size</span><span class="special">();</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span>
+      <span class="special">{</span>
+         <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"      $"</span> <span class="special">&lt;&lt;</span> <span class="identifier">i</span> <span class="special">&lt;&lt;</span> <span class="string">" = {"</span><span class="special">;</span>
+         <span class="keyword">for</span><span class="special">(</span><span class="identifier">j</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">j</span> <span class="special">&lt;</span> <span class="identifier">what</span><span class="special">.</span><span class="identifier">captures</span><span class="special">(</span><span class="identifier">i</span><span class="special">).</span><span class="identifier">size</span><span class="special">();</span> <span class="special">++</span><span class="identifier">j</span><span class="special">)</span>
+         <span class="special">{</span>
+            <span class="keyword">if</span><span class="special">(</span><span class="identifier">j</span><span class="special">)</span>
+               <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">", "</span><span class="special">;</span>
+            <span class="keyword">else</span>
+               <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">" "</span><span class="special">;</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"\""</span> <span class="special">&lt;&lt;</span> <span class="identifier">what</span><span class="special">.</span><span class="identifier">captures</span><span class="special">(</span><span class="identifier">i</span><span class="special">)[</span><span class="identifier">j</span><span class="special">]</span> <span class="special">&lt;&lt;</span> <span class="string">"\""</span><span class="special">;</span>
+         <span class="special">}</span>
+         <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">" }\n"</span><span class="special">;</span>
+      <span class="special">}</span>
+   <span class="special">}</span>
+   <span class="keyword">else</span>
+   <span class="special">{</span>
+      <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"** No Match found **\n"</span><span class="special">;</span>
+   <span class="special">}</span>
+<span class="special">}</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">int</span> <span class="special">,</span> <span class="keyword">char</span><span class="special">*</span> <span class="special">[])</span>
+<span class="special">{</span>
+   <span class="identifier">print_captures</span><span class="special">(</span><span class="string">"(([[:lower:]]+)|([[:upper:]]+))+"</span><span class="special">,</span> <span class="string">"aBBcccDDDDDeeeeeeee"</span><span class="special">);</span>
+   <span class="identifier">print_captures</span><span class="special">(</span><span class="string">"(.*)bar|(.*)bah"</span><span class="special">,</span> <span class="string">"abcbar"</span><span class="special">);</span>
+   <span class="identifier">print_captures</span><span class="special">(</span><span class="string">"(.*)bar|(.*)bah"</span><span class="special">,</span> <span class="string">"abcbah"</span><span class="special">);</span>
+   <span class="identifier">print_captures</span><span class="special">(</span><span class="string">"^(?:(\\w+)|(?&gt;\\W+))*$"</span><span class="special">,</span>
+      <span class="string">"now is the time for all good men to come to the aid of the party"</span><span class="special">);</span>
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>其输出如下:</p>
+<pre class="programlisting">Expression:  "(([[:lower:]]+)|([[:upper:]]+))+"
+Text:        "aBBcccDDDDDeeeeeeee"
+** Match found **
+   Sub-Expressions:
+      $0 = "aBBcccDDDDDeeeeeeee"
+      $1 = "eeeeeeee"
+      $2 = "eeeeeeee"
+      $3 = "DDDDD"
+   Captures:
+      $0 = { "aBBcccDDDDDeeeeeeee" }
+      $1 = { "a", "BB", "ccc", "DDDDD", "eeeeeeee" }
+      $2 = { "a", "ccc", "eeeeeeee" }
+      $3 = { "BB", "DDDDD" }
+Expression:  "(.*)bar|(.*)bah"
+Text:        "abcbar"
+** Match found **
+   Sub-Expressions:
+      $0 = "abcbar"
+      $1 = "abc"
+      $2 = ""
+   Captures:
+      $0 = { "abcbar" }
+      $1 = { "abc" }
+      $2 = { }
+Expression:  "(.*)bar|(.*)bah"
+Text:        "abcbah"
+** Match found **
+   Sub-Expressions:
+      $0 = "abcbah"
+      $1 = ""
+      $2 = "abc"
+   Captures:
+      $0 = { "abcbah" }
+      $1 = { }
+      $2 = { "abc" }
+Expression:  "^(?:(\w+)|(?&gt;\W+))*$"
+Text:        "now is the time for all good men to come to the aid of the party"
+** Match found **
+   Sub-Expressions:
+      $0 = "now is the time for all good men to come to the aid of the party"
+      $1 = "party"
+   Captures:
+      $0 = { "now is the time for all good men to come to the aid of the party" }
+      $1 = { "now", "is", "the", "time", "for", "all", "good", "men", "to",
+         "come", "to", "the", "aid", "of", "the", "party" }
+</pre>
+<p>遗憾的是, 启用该特性会影响性能 (即使你不使用它), 而如果使用它则影响更大; 因此要使用该特性, 你需要:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">为所有包含库源代码的翻译单元定义 BOOST_REGEX_MATCH_EXTRA (最佳做法是在 boost/regex/user.hpp 中取消该定义的注释, 然后重新构建所有内容.</li>
+<li class="listitem">向实际需要捕获信息的特定算法传递 match_extra 标志 (regex_search、regex_match 或 regex_iterator).</li>
+</ul></div>
+</div>
+<div class="copyright-footer">版权所有 © 1998-2013 John Maddock<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="unicode.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="partial_matches.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

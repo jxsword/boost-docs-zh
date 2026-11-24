@@ -1,0 +1,213 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>实用注意事项</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../lambda.html" title="第 17 章. Boost.Lambda">
+<link rel="prev" href="extending.html" title="扩展返回类型推导系统">
+<link rel="next" href="s08.html" title="与其他 Boost 库的关系">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="extending.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../lambda.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="s08.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="id-1.3.18.9"></a>实用注意事项</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="s07.html#id-1.3.18.9.2">性能</a></span></dt>
+<dt><span class="section"><a href="s07.html#id-1.3.18.9.3">关于编译</a></span></dt>
+<dt><span class="section"><a href="s07.html#id-1.3.18.9.4">可移植性</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="id-1.3.18.9.2"></a>性能</h3></div></div></div>
+<p>理论上, 与手写循环相比, 使用 STL 算法和 lambda 仿函数的所有开销都可以像标准 STL 函数对象和 binder 的开销一样被优化掉. 取决于编译器, 这在实际中也可能成立. 我们在 1.5 GHz Intel Pentium 4 上用 GCC 3.0.4 编译器进行了两次测试. 使用了优化标志 -03.</p>
+<p>在第一个测试中, 我们把 lambda 仿函数与显式编写的函数对象进行对比. 我们用这两种风格定义把实参反复自乘的一元函数. 从恒等函数开始, 一直到 x<sup>5</sup>. 这些表达式在 <code class="literal">std::transform</code> 循环内调用, 从一个 <code class="literal">std::vector&lt;int&gt;</code> 读取实参并把结果放入另一个. 向量长度为 100 个元素. 运行时间列于 <a class="xref" href="s07.html#table:increasing_arithmetic_test" title="表 17.3 测试 1">表 17.3 "测试 1"</a>. 可以观察到两种方法没有显著差异.</p>
+<p>在第二个测试中, 我们再次用 <code class="literal">std::transform</code> 对一个 100 元素向量的每个元素执行操作. 这次向量的元素类型是 <code class="literal">double</code> , 我们从非常简单的算术表达式开始, 逐渐过渡到更复杂的表达式. 运行时间列于 <a class="xref" href="s07.html#table:ll_vs_stl_test" title="表 17.4 测试 2">表 17.4 "测试 2"</a>. 这里我们还在测试中加入了经典 STL 风格的无名函数. 我们没有展示这些表达式, 因为它们相当复杂. 例如, 用经典 STL 工具编写的 <a class="xref" href="s07.html#table:ll_vs_stl_test" title="表 17.4 测试 2">表 17.4 "测试 2"</a> 中最后一个表达式包含 7 次对 <code class="literal">compose2</code>的调用、8 次对 <code class="literal">bind1st</code> 的调用, 以及总共 14 次构造函数调用, 用于创建 <code class="literal">multiplies</code>、 <code class="literal">minus</code> 以及 <code class="literal">plus</code> 对象. 在这个测试中, BLL 表达式比相应的手写函数对象稍慢 (平均约 10%, 所有情形下低于 14%) . 经典 STL 表达式的性能损失更大, 最简单的表达式高达 27%.</p>
+<p>这些测试表明, 与 STL 函数对象相比, BLL 没有引入性能损失. 使用合理的优化编译器, 可以预期其性能特性与使用经典 STL 相当. 而且, 对于简单表达式, 性能可以预期接近显式编写的函数对象. 但请注意, 对 lambda 仿函数的求值由一系列声明为 inline 的小函数调用组成. 如果编译器未能真正内联展开这些函数, 性能可能受损. 一旦发生这种情况, 运行时间可能翻倍以上. 虽然上面的测试没有包含这样的表达式, 但我们在一些看似简单的表达式上遇到过这种情况.</p>
+<div class="table">
+<a name="table:increasing_arithmetic_test"></a><p class="title"><b>表 17.3 测试 1</b></p>
+<div class="table-contents">
+<div class="caption">以 lambda 表达式和传统手写函数对象类形式编写的整数乘法表达式的 CPU 时间. 运行时间以任意单位表示.</div>
+<table class="table" summary="Test 1">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>表达式</th>
+<th>lambda 表达式</th>
+<th>手写函数对象</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>x</td>
+<td>240</td>
+<td>230</td>
+</tr>
+<tr>
+<td>x*x</td>
+<td>340</td>
+<td>350</td>
+</tr>
+<tr>
+<td>x*x*x</td>
+<td>770</td>
+<td>760</td>
+</tr>
+<tr>
+<td>x*x*x*x</td>
+<td>1180</td>
+<td>1210</td>
+</tr>
+<tr>
+<td>x*x*x*x*x</td>
+<td>1950</td>
+<td>1910</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p><br class="table-break">
+</p>
+<p>
+</p>
+<div class="table">
+<a name="table:ll_vs_stl_test"></a><p class="title"><b>表 17.4 测试 2</b></p>
+<div class="table-contents">
+<div class="caption">以 lambda 表达式、经典 STL 无名函数 (使用 <code class="literal">compose2</code>、 <code class="literal">bind1st</code> 等) 以及传统手写函数对象类形式编写的算术表达式的 CPU 时间. 用 BLL 术语来说, <code class="literal">a</code> 和 <code class="literal">b</code> 是表达式中的绑定实参, <code class="literal">x</code> 是开放实参. 所有变量均为 <code class="literal">double</code>类型. 运行时间以任意单位表示.</div>
+<table class="table" summary="Test 2">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>表达式</th>
+<th>lambda 表达式</th>
+<th>经典 STL 表达式</th>
+<th>手写函数对象</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>ax</td>
+<td>330</td>
+<td>370</td>
+<td>290</td>
+</tr>
+<tr>
+<td>-ax</td>
+<td>350</td>
+<td>370</td>
+<td>310</td>
+</tr>
+<tr>
+<td>ax-(a+x)</td>
+<td>470</td>
+<td>500</td>
+<td>420</td>
+</tr>
+<tr>
+<td>(ax-(a+x))(a+x)</td>
+<td>620</td>
+<td>670</td>
+<td>600</td>
+</tr>
+<tr>
+<td>((ax) - (a+x))(bx - (b+x))(ax - (b+x))(bx - (a+x))</td>
+<td>1660</td>
+<td>1660</td>
+<td>1460</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p><br class="table-break">
+</p>
+<p>使用本库早期版本进行的其他一些性能测试在 <a class="xref" href="../lambda.html#cit:jarvi:00" title="Lambda 库: C++ 中的 Lambda 抽象">[<abbr class="abbrev">Jär00</abbr>]</a>中有描述.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="id-1.3.18.9.3"></a>关于编译</h3></div></div></div>
+<p>BLL 相当大量地使用模板, 对同一模板执行大量递归实例化. 这 (至少) 有三点影响:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p>虽然可以写出极其复杂的 lambda 表达式, 但这可能不是个好主意. 编译这类表达式可能最终在编译期需要大量内存, 并且编译缓慢.</p></li>
+<li class="listitem"><p>即使是最简单的 lambda 表达式产生的 lambda 仿函数类型也令人费解. 通常程序员根本不需要处理 lambda 仿函数类型, 但当 lambda 表达式出错时, 编译器通常会输出所涉 lambda 仿函数的类型. 这可能使错误信息非常长且难以解读, 尤其是当编译器输出完整的模板实例化链时.</p></li>
+<li class="listitem"><p>C++ 标准建议 17 层的模板嵌套级别, 以帮助检测无限递归. 复杂的 lambda 模板很容易超过这一限制. 大多数编译器允许更多的嵌套模板, 但通常需要通过命令行参数显式提高限制.</p></li>
+</ul></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="id-1.3.18.9.4"></a>可移植性</h3></div></div></div>
+<div class="toc"><dl class="toc"><dt><span class="section"><a href="s07.html#id-1.3.18.9.4.3">测试覆盖</a></span></dt></dl></div>
+<p>BLL 可与以下编译器一起工作, 也就是说, 这些编译器能够编译 BLL 附带的测试用例:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">GCC 3.0.4
+	</li>
+<li class="listitem">KCC 4.0f with EDG 2.43.1
+	</li>
+<li class="listitem">GCC 2.96 (有一个测试用例失败, <code class="filename">exception_test.cpp</code> 导致编译器内部错误. )</li>
+</ul></div>
+<p>
+</p>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="id-1.3.18.9.4.3"></a>测试覆盖</h4></div></div></div>
+<p>下面的列表描述了所包含的测试文件以及每个文件覆盖的特性:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p>
+<code class="filename">bind_tests_simple.cpp</code> : 不同元数和不同目标函数类型 (函数指针、函数对象和成员函数) 的绑定表达式. 用绑定表达式进行函数组合.</p></li>
+<li class="listitem"><p><code class="filename">bind_tests_simple_function_references.cpp</code> : 重复 <code class="filename">bind_tests_simple.cpp</code> 中所有目标函数为函数指针的测试, 但改用函数引用.</p></li>
+<li class="listitem"><p><code class="filename">bind_tests_advanced.cpp</code> : 包含嵌套绑定表达式、 <code class="literal">unlambda</code>、 <code class="literal">protect</code>、 <code class="literal">const_parameters</code> 以及 <code class="literal">break_const</code>的测试. 包括把 lambda 仿函数作为实际实参传给其他 lambda 仿函数、柯里化 (currying) , 以及使用 <code class="literal">sig</code> 模板指定函数对象的返回类型.</p></li>
+<li class="listitem"><p>
+<code class="filename">operator_tests_simple.cpp</code> : 测试 lambda 表达式支持的所有运算符, 即一元和二元算术、位、比较、逻辑、递增和递减、复合赋值、下标、取地址、解引用和逗号运算符. 测试了移位运算符的流特性, 以及用加减运算符进行的指针算术.</p></li>
+<li class="listitem"><p><code class="filename">member_pointer_test.cpp</code> : 成员指针运算符足够复杂, 值得单独一个测试文件.</p></li>
+<li class="listitem"><p>
+<code class="filename">control_structures.cpp</code> : 循环与 if 结构的测试.</p></li>
+<li class="listitem"><p>
+<code class="filename">switch_construct.cpp</code> : 包含 switch 语句所有受支持元数的测试, 带与不带 default 分支皆有.</p></li>
+<li class="listitem"><p>
+<code class="filename">exception_test.cpp</code> : 包含抛出异常以及带不同数量 catch 块的 try/catch 结构的测试.</p></li>
+<li class="listitem"><p>
+<code class="filename">constructor_tests.cpp</code> : 包含 <code class="literal">constructor</code>、 <code class="literal">destructor</code>、 <code class="literal">new_ptr</code>、 <code class="literal">delete_ptr</code>、 <code class="literal">new_array</code> 以及 <code class="literal">delete_array</code>的测试.</p></li>
+<li class="listitem"><p>
+<code class="filename">cast_test.cpp</code> : 四种 cast 表达式的测试, 以及 <code class="filename">typeid</code> 和 <code class="literal">sizeof</code>的测试.</p></li>
+<li class="listitem"><p>
+<code class="filename">extending_return_type_traits.cpp</code> : 针对用户自定义类型扩展返回类型推导系统的测试. 包含若干用户自定义运算符以及返回类型推导模板的相应特化.</p></li>
+<li class="listitem"><p>
+<code class="filename">is_instance_of_test.cpp</code> : 包含对一个内部使用的特征模板的测试, 该模板能检测给定类型是否是某个模板的实例.</p></li>
+<li class="listitem"><p>
+<code class="filename">bll_and_function.cpp</code> : 包含把 <code class="literal">boost::function</code> 与 lambda 仿函数一起使用的测试.</p></li>
+</ul></div>
+<p>
+
+</p>
+</div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 1999-2004 Jaakko Järvi, Gary Powell<p>使用、修改和分发受 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 约束. (随附文件 <code class="filename">LICENSE_1_0.txt</code> 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="extending.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../lambda.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="s08.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

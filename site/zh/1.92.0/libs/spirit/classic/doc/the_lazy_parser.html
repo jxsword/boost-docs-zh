@@ -1,0 +1,76 @@
+<html>
+<head>
+<title>惰性解析器</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<link rel="stylesheet" href="theme/style.css" type="text/css">
+</head>
+
+<body>
+<table width="100%" border="0" background="theme/bkd2.gif" cellspacing="2">
+  <tr> 
+    <td width="10"> 
+    </td>
+    <td width="85%"> <font size="6" face="Verdana, Arial, Helvetica, sans-serif"><b>惰性解析器</b></font></td>
+    <td width="112"><a href="http://spirit.sf.net"><img src="theme/spirit.gif" width="112" height="48" align="right" border="0"></a></td>
+  </tr>
+</table>
+<br>
+<table border="0">
+  <tr>
+    <td width="10"></td>
+    <td width="30"><a href="../index.html"><img src="theme/u_arr.gif" border="0"></a></td>
+    <td width="30"><a href="dynamic_parsers.html"><img src="theme/l_arr.gif" border="0"></a></td>
+    <td width="30"><a href="select_parser.html"><img src="theme/r_arr.gif" border="0"></a></td>
+  </tr>
+</table>
+<p>闭包很酷. 它允许我们把基于栈的局部变量注入解析下降层次的任何位置. 通常, 我们把由语义动作生成的临时变量存储在闭包变量中, 作为在递归下降中上下传递信息的手段.</p>
+<p>现在想象一下... 鉴于闭包变量几乎可以是任何类型, 我们可以把一个解析器, 一条规则, 或者指向解析器或规则的指针存储在闭包变量中. <em>是啊, 然后呢?...</em> 好, 稍安勿躁... 如果我们能用这个闭包变量发起一次解析呢? 想一秒钟. 突然我们就拥有了一些强大的动态解析器! 突然我们在 <a href="../phoenix/index.html">Phoenix</a> 与 Spirit 之间有了完整的往返! <a href="../phoenix/index.html">Phoenix</a> 语义动作选择正确的 Spirit 解析器, 而 Spirit 解析器选择正确的 <a href="../phoenix/index.html">Phoenix</a> 语义动作. 天哪, 我得说, 这主意酷毙了!!</p>
+<h2>lazy_p</h2>
+<p>这就是 <tt>lazy_p</tt> 解析器背后的想法. <tt>lazy_p</tt> 的语法为:</p>
+<pre>    lazy_p<span class="special">(</span>actor<span class="special">)</span></pre>
+<p>其中 actor 是一个返回 Spirit 解析器的 <a href="../phoenix/index.html">Phoenix</a> 表达式. 该返回的解析器被用于解析过程.</p>
+<p>示例:</p>
+<pre>    lazy_p<span class="special">(</span>phoenix<span class="special">::</span>val<span class="special">(</span>int_p<span class="special">))[</span>assign_a<span class="special">(</span>result<span class="special">)]</span>
+</pre>
+<p>挂接到 <tt>lazy_p</tt> 解析器的语义动作期望的签名与返回解析器的签名相同(在我们上面的例子中是 <tt>int_p</tt>).</p>
+<h2>lazy_p 示例</h2>
+<p>为了让你看得更清楚(见 <tt><a href="../example/intermediate/lazy_parser.cpp">lazy_parser.cpp</a></tt>), 假设你想解析如下输入:</p>
+<pre>    <span class=identifier>dec 
+    </span><span class="special">{</span><span class=identifier><br>        1 2 3<br>        bin 
+        </span><span class="special">{</span><span class=identifier><br>            1 10 11<br>        </span><span class="special">}</span><span class=identifier><br>        4 5 6<br>    </span><span class="special">}</span></pre>
+<p>其中 <tt>bin {...}</tt> 和 <tt>dec {...}</tt> 指定我们期望读取的数值格式(二进制或十进制). 如果我们分析该输入, 我们想要一个这样的文法:</p>
+<pre><code><font color="#000000"><span class=special>    </span><span class=identifier>base </span><span class="special">=</span><span class=identifier> </span><span class="string">&quot;bin&quot;</span><span class=identifier> </span><span class="special">|</span><span class=identifier> </span><span class="string">&quot;dec&quot;</span><span class="special">;</span><span class=identifier>
+    block </span><span class=special>= </span><span class="identifier">base</span><span class=special> &gt;&gt; </span><span class="literal">'{'</span><span class=special> &gt;&gt; *</span><span class="identifier">block_line</span><span class=special> &gt;&gt; </span><span class="literal">'}'</span><span class=special>;
+    </span>block_line <span class=special>= </span><span class="identifier">number</span><span class=special> | </span><span class=identifier>block</span><span class=special>;</span></font></code></pre>
+<p>我们有意略去了 <code><font color="#000000"><span class="identifier"><tt>number</tt></span></font></code> 规则. 棘手之处在于 <tt>number</tt> 规则的行为方式取决于 <tt>base</tt> 规则的结果. 若 <tt>base</tt> 得到了 <em>"bin"</em>, 则 number 应解析二进制数. 若 <tt>base</tt> 得到了 <em>"dec"</em>, 则 number 应解析十进制数. 通常, 我们必须重写文法以容纳不同的解析行为:</p>
+<pre><code><font color="#000000"><span class=identifier>    block </span><span class=special>= 
+            </span><span class=identifier>&quot;bin&quot;</span> <span class=special>&gt;&gt; </span><span class="literal">'{'</span><span class=special> &gt;&gt; *</span>bin_line<span class=special> &gt;&gt; </span><span class="literal">'}'</span><span class=special>
+        |   </span><span class=identifier>&quot;dec&quot;</span> <span class=special>&gt;&gt; </span><span class="literal">'{'</span><span class=special> &gt;&gt; *</span>dec_line<span class=special> &gt;&gt; </span><span class="literal">'}'</span><span class=special>
+        ;
+    </span>bin_line <span class=special>= </span><span class="identifier">bin_p</span><span class=special> | </span><span class=identifier>block</span><span class=special>;
+    </span>dec_line <span class=special>= </span><span class="identifier">int_p</span><span class=special> | </span><span class=identifier>block</span><span class=special>;</span></font></code></pre>
+<p>虽然这样可以, 但冗余使我们想寻找更好的解决方案; 毕竟, 我们希望充分利用 Spirit 的动态解析能力. 除此之外, 还会有这样的情况: 编写文法时, <tt>number</tt> 规则的解析行为集合尚不可知. 我们只会拿到一个由字符串描述符与对应规则组成的映射 [例如 (("dec", int_p), ("bin", bin_p) ... 等等...)].</p>
+<p>基本思路是为二进制数和十进制数各设一条规则. 这很容易做到(见 <a href="numerics.html">numerics</a>). 当解析 <tt>base</tt> 时, 在你的语义动作中, 把指向所选基的指针存入一个闭包变量(如 <tt>block.int_rule</tt>). 下面是一个示例:</p>
+<pre><code><font color="#000000"><span class=special>    </span><span class=identifier>base 
+        </span><span class="special">=</span><span class=identifier> str_p</span><span class="special">(</span><span class="string">&quot;bin&quot;</span><span class="special">)[</span><span class=identifier>block.int_rule</span> = <span class="special">&amp;</span>var<span class="special">(</span><span class="identifier">bin_rule</span><span class="special">)] 
+        | </span><span class=identifier>str_p</span><span class="special">(</span><span class="string">&quot;dec&quot;</span><span class="special">)[</span><span class=identifier>block.int_rule</span> = <span class="special">&amp;</span>var<span class="special">(</span><span class="identifier">dec_rule</span><span class="special">)]
+        ;</span></font></code></pre>
+<p>有了这种设置, 你的 number 规则看起来会像这样:</p>
+<pre><code><font color="#000000"><span class=special>    </span><span class=identifier>number </span><span class="special">=</span><span class=identifier> lazy_p</span><span class="special">(*</span><span class=identifier>block.int_rule</span><span class="special">);</span></font></code></pre>
+<p> <tt><a href="../example/intermediate/lazy_parser.cpp">lazy_parser.cpp</a></tt> 的做法稍有不同, 巧妙地使用 <a href="symbols.html">符号表</a>来分派正确的规则, 但本质上两种策略是相似的. 这种使用符号表的技术在 Techniques 一节中有详述: <a href="techniques.html#nabialek_trick">nabialek_trick</a>. 诚然, 把所有规则加起来, 得到的文法比上面硬编码的文法更复杂. 然而, 对于带有更多待选规则的更复杂文法模式, 额外的设置是非常值得的.</p>
+<table border="0">
+  <tr> 
+    <td width="10"></td>
+    <td width="30"><a href="../index.html"><img src="theme/u_arr.gif" border="0"></a></td>
+    <td width="30"><a href="dynamic_parsers.html"><img src="theme/l_arr.gif" border="0"></a></td>
+    <td width="30"><a href="select_parser.html"><img src="theme/r_arr.gif" border="0"></a></td>
+  </tr>
+</table>
+<br>
+<hr size="1">
+<p class="copyright">Copyright © 2003 Joel de Guzman<br> Copyright © 2003 Vaclav Vesely<br>
+  <br>
+  <font size="2">使用、修改与分发受 Boost 软件许可 1.0 版(Boost Software License, Version 1.0)约束. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt)</font></p>
+<p class="copyright">&nbsp;</p>
+</body>
+</html>

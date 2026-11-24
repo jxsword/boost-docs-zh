@@ -1,0 +1,749 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html>
+<head>
+  <meta http-equiv="Content-Language" content="en-us">
+  <meta http-equiv="Content-Type" content="text/html; charset=us-ascii">
+
+  <title>Boost Format 库</title>
+</head>
+
+<body bgcolor="white" text="black">
+  <h1><img align="middle" alt="boost.png (6897 字节)" height="86" src=
+  "../../../boost.png" width="277">Boost Format 库</h1>
+
+  <p> <code><a href=
+  "../../../boost/format.hpp">&lt;boost/format.hpp&gt;</a></code> format 类以类型安全的方式提供类 printf 的格式化功能, 并允许输出用户自定义类型.<br></p>
+
+  <ul>
+    <li><a href="#synopsis">概要</a></li>
+
+    <li><a href="#how_it_works">工作原理</a></li>
+
+    <li><a href="#examples">示例</a></li>
+
+    <li>
+      <a href="#syntax">语法</a>
+
+      <ul>
+        <li><a href="#printf_directives">printf 格式说明语法</a></li>
+
+        <li><a href="#printf_differences">与 printf 的不兼容之处</a></li>
+      </ul>
+    </li>
+
+    <li><a href="#manipulators">操纵器与流的内部状态</a></li>
+
+    <li><a href="#user-defined">用户自定义类型</a></li>
+
+    <li><a href="#alternatives">替代方案</a></li>
+
+    <li><a href="#exceptions"> 异常 </a></li>
+
+    <li><a href="#performance">性能</a></li>
+
+    <li><a href="#extract">类接口摘录</a></li>
+
+    <li><a href="#rationale">设计理由</a></li>
+  </ul><a name="synopsis" id="synopsis"></a>
+  <hr>
+
+  <h2>概要</h2>
+
+  <p>format 对象由格式化串构造, 然后通过反复调用 <i>operator%</i> 来提供参数.<br> 随后每个参数都被转换为字符串, 再根据格式化串把这些字符串组合成一个字符串.</p>
+
+  <blockquote>
+    <pre>
+cout &lt;&lt; boost::format("writing %1%,  x=%2% : %3%-th try") % "toto" % 40.23 % 50; 
+     // prints "writing toto,  x=40.230 : 50-th try"
+</pre>
+  </blockquote><a name="how_it_works" id="how_it_works"></a>
+  <hr>
+
+  <h2>工作原理</h2>
+
+  <ol>
+    <li>当你调用 <i>format(s)</i>(其中 s 为格式化串)时, 它会构造一个对象, 该对象解析格式化串, 查找其中的所有指令, 并为下一步准备内部结构.</li>
+
+    <li>然后, 要么像 <blockquote>
+        <pre>
+cout &lt;&lt; format("%2% %1%") % 36 % 77;
+</pre>
+      </blockquote> 这样立即进行, 要么像 <blockquote>
+        <pre>
+format fmter("%2% %1%");
+fmter % 36; fmter % 77;
+</pre>
+      </blockquote> 那样稍后进行, 把变量 <i>喂入</i>格式化器.<br> 这些变量会被送入一个内部流, 该流的状态按照格式化串中给定的格式化选项(如果有的话)设置, 而 format 对象则把字符串结果保存起来留待最后一步使用.</li>
+
+    <li>一旦所有参数都已喂入, 你就可以把 format 对象输出到流, 或者用 <i>str()</i> 成员函数, 或命名空间 <i>boost</i> 中的自由函数 <i>str(const format&amp; )</i> 获取其字符串值. 结果字符串会一直保存在 format 对象中, 直到传入另一个参数时才被重新初始化. <blockquote>
+        <pre>
+
+// fmter was previously created and fed arguments, it can print the result :
+cout &lt;&lt; fmter ;  
+
+// You can take the string result :
+string s  = fmter.str();
+
+// possibly several times :
+s = fmter.str( );
+
+// You can also do all steps at once :
+cout &lt;&lt; boost::format("%2% %1%") % 36 % 77; 
+
+// using the str free function :
+string s2 = str( format("%2% %1%") % 36 % 77 );
+
+</pre>
+      </blockquote>
+    </li>
+
+    <li>可选地, 在第 3 步之后, 你可以复用 format 对象并从第 2 步重新开始: <i>fmter % 18 % 39;</i><br> 用同一个格式化串格式化新变量, 从而省去第 1 步中开销很大的处理.</li>
+  </ol>总而言之, format 类把一个格式化串(可能带有类 printf 的指令)转化为对内部流的操作, 并最终把格式化的结果作为字符串返回, 或直接写入输出流. <a name="examples" id="examples"></a>
+  <hr>
+
+  <h2>示例</h2>
+
+  <blockquote>
+    <pre>
+using namespace std;
+using boost::format;
+using boost::io::group;
+</pre>
+  </blockquote>
+
+  <ul>
+    <li>简单的输出, 带重排: <blockquote>
+        <pre>
+
+cout &lt;&lt; format("%1% %2% %3% %2% %1% \n") % "11" % "22" % "333"; // 'simple' style.
+
+</pre>
+      </blockquote>它打印: "11 22 333 22 11 \n"</li>
+
+    <li>更精细的格式化, 使用 Posix-printf 位置指令: <blockquote>
+        <pre>
+
+cout &lt;&lt; format("(x,y) = (%1$+5d,%2$+5d) \n") % -23 % 35;     // Posix-Printf style
+
+</pre>
+      </blockquote>它打印: "(x,y) = ( -23, +35) \n"</li>
+
+    <li>经典 printf 指令, 无重排: <blockquote>
+        <pre>
+
+cout &lt;&lt; format("writing %s,  x=%s : %d-th step \n") % "toto" % 40.23 % 50; 
+
+</pre>
+      </blockquote>它打印: "writing toto, x=40.23 : 50-th step \n"</li>
+
+    <li>表达同一件事的多种方式: <blockquote>
+        <pre>
+
+cout &lt;&lt; format("(x,y) = (%+5d,%+5d) \n") % -23 % 35;
+cout &lt;&lt; format("(x,y) = (%|+5|,%|+5|) \n") % -23 % 35;
+
+cout &lt;&lt; format("(x,y) = (%1$+5d,%2$+5d) \n") % -23 % 35;
+cout &lt;&lt; format("(x,y) = (%|1$+5|,%|2$+5|) \n") % -23 % 35;
+
+</pre>
+      </blockquote>所有这些都会打印: "(x,y) = ( -23, +35) \n"</li>
+
+    <li>使用操纵器修改格式化串: <blockquote>
+        <pre>
+
+format fmter("_%1$+5d_ %1$d \n");
+
+format fmter2("_%1%_ %1% \n");
+fmter2.modify_item(1, group(showpos, setw(5)) ); 
+
+cout &lt;&lt; fmter % 101 ;
+cout &lt;&lt; fmter2 % 101 ;
+
+</pre>
+      </blockquote>两者打印的结果相同: "_ +101_ 101 \n"</li>
+
+    <li>使用带参数的操纵器: <blockquote>
+        <pre>
+
+cout &lt;&lt; format("_%1%_ %1% \n") % group(showpos, setw(5), 101);
+
+</pre>
+      </blockquote>操纵器会应用于 %1% 的每次出现, 因此它打印: "_ +101_ +101 \n"</li>
+
+    <li>新的格式化特性: "绝对制表位", 在循环内很有用, 可以确保某个字段从一行到下一行都打印在相同位置, 即使前面参数的宽度变化很大. <blockquote>
+        <pre>
+
+for(unsigned int i=0; i &lt; names.size(); ++i)
+    cout &lt;&lt; format("%1%, %2%, %|40t|%3%\n") % names[i] % surname[i] % tel[i];
+
+</pre>
+      </blockquote>对于某个 std::vector <i>names</i>、<i>surnames</i> 和 <i>tel</i> (见 sample_new_features.cpp), 它打印: <blockquote>
+        <pre>
+Marc-Fran&ccedil;ois Michel, Durand,           +33 (0) 123 456 789
+Jean, de Lattre de Tassigny,            +33 (0) 987 654 321
+</pre>
+      </blockquote>
+    </li>
+  </ul>
+  <hr>
+
+  <h2>示例文件</h2>
+
+  <p>程序 <a href=
+  "../example/sample_formats.cpp">sample_formats.cpp</a> 演示了 <b>format</b> 的简单用法.<br></p>
+
+  <p><a href="../example/sample_new_features.cpp">sample_new_features.cpp</a> 展示了加入 printf 语法的少量格式化特性, 例如简单的位置指令、居中对齐和"制表位".<br></p>
+
+  <p><a href="../example/sample_advanced.cpp">sample_advanced.cpp</a> 演示了高级特性的用法, 例如复用和修改 format 对象等.<br></p>
+
+  <p>而 <a href="../example/sample_userType.cpp">sample_userType.cpp</a> 展示了 <b>format</b> 库在用户自定义类型上的行为.</p><a name="syntax" id="syntax"></a>
+  <hr>
+
+  <h2>语法</h2>
+
+  <p><b>boost::format(</b> 格式化串 <b>) %</b> arg1 <b>%</b> arg2 <b>%</b> ... <b>%</b> argN</p>
+
+  <p> <i>格式化串</i> 包含文本, 其中的特殊指令将被替换为由给定参数格式化得到的字符串.<br> C 和 C++ 世界中的传统语法就是 printf 所用的语法, 因此 format 可以直接使用 printf 格式化串并产生相同的结果(几乎所有情况下如此, 详见 <a href=
+  "#printf_differences">与 printf 的不兼容之处</a>)<br> 这一核心语法经过了扩展, 以支持新特性, 同时也适应 C++ 流的语境. 因此, format 接受格式化串中指令的多种形式:</p>
+
+  <ul>
+    <li>传统 printf 格式化串: <b>%</b><i>spec</i>, 其中 <i>spec</i> 是一个 <a href="#printf_directives">printf 格式说明</a><br>. <i>spec</i> 传递格式化选项, 如宽度、对齐、格式化数字所用进制, 以及其他特定标志. 但 printf 经典的 <i>类型说明</i> 标志在 format 中含义较弱. 它只在内部流上设置相应的标志和/或格式化参数, 而不要求对应参数具有特定类型.<br> 例如: 说明 <i>2$x</i> 对 printf 意为"以十六进制打印第 2 个参数(它是一个整数)", 而对 format 仅意味着"以流基域标志设为 <i>hex</i> 的方式打印参数 2".</li>
+
+    <li><b>%|</b><i>spec</i><b>|</b>, 其中 <i>spec</i> 是一个 printf 格式说明.<br> 引入这种以竖线分隔的语法, 是为了提高格式化串的可读性, 但主要是为了使 <i>spec</i> 中的 <i>类型转换字符</i> 成为可选. 对 C++ 变量而言这一信息并非必需, 但在直接 printf 语法中, 必须始终给出类型转换字符, 原因仅仅是该字符对确定格式说明的结束位置至关重要.<br> 例如: "%|-5|" 将以宽度 5 和左对齐格式化下一个变量, 与以下 printf 指令相同: "%-5g"、"%-5f"、"%-5s" 等.</li>
+
+    <li><b>%</b><i>N</i><b>%</b><br> 这种简单的位置记法请求格式化第 <i>N</i> 个参数, 不带任何格式化选项.<br> (它只是 printf 位置指令(如 "%<i>N</i>$s")的简写, 但一个主要好处是可读性好得多, 并且不使用"类型转换"字符)</li>
+  </ul>在标准 printf 格式说明之上, 还实现了新特性, 例如居中对齐. 详见 <a href="#new_directives">新增格式说明</a>. <a name="printf_directives" id=
+  "printf_directives"></a>
+
+  <h3>printf 格式说明</h3>
+
+  <p>Boost.format 支持的 printf 格式说明遵循 Unix98 <a href=
+  "http://www.opengroup.org/onlinepubs/7908799/xsh/fprintf.html">Open-group printf</a> 的精确语法, 而非标准 C printf——后者不支持位置参数.(常见标志在两者中含义相同, 因此不应对任何人造成困扰)<br>
+  <i>注意, 在同一个格式化串中把位置格式说明</i>(如 <i>%3$+d</i>)<i>与非位置格式说明混用</i>(如 <i>%+d</i>)<i>是错误的.</i><br> 在 Open-group 规范中, 多次引用同一个参数(如 <i>"%1$d %1$d"</i>)的行为是未定义的. Boost.format 在这种情况下的行为是允许每个参数被引用任意多次. 唯一的约束是它期望恰好 <i>P</i> 个参数, <i>P</i> 是格式化串中用到的最大参数编号.(例如, 对于 "%1$d %10$d", <i>P</i> == 10)<br> 提供多于或少于 <i>P</i> 个参数会抛出异常.(除非另行设置, 见 <a href="#exceptions">异常</a>)</p>
+
+  <p>一个说明 <i>spec</i> 具有如下形式: <pre>    [ <i>N</i><b>$</b> ] [ <i>flags</i> ] [ <i>width</i> ] [ <b>.</b> <i>precision</i> ] [ <i>argument-type</i> ] <i>conversion-specifier</i></pre> 方括号内的字段是可选的. 这些字段将在下面的列表中逐一说明:</p>
+
+  <ul>
+    <li><i>N</i> <b>$</b> (可选字段) 指定该格式说明应用于第 <i>N</i> 个参数(这称为 <i>位置格式说明</i>).<br> 如果没有这一项, 参数将逐个取用.(而且此后再提供参数编号就是错误的)</li><br />
+
+    <li>
+      <i>flags</i> 是由以下任意项组成的序列: <blockquote>
+        <table border="1" cellpadding="5" summary="">
+          <tr>
+            <td><b>标志</b></td>
+
+            <td><b>含义</b></td>
+
+            <td><b>对内部流的影响</b></td>
+          </tr>
+
+          <tr>
+            <td><b>'-'</b></td>
+
+            <td>左对齐</td>
+
+            <td>不适用 (稍后在字符串上应用)</td>
+          </tr>
+
+          <tr>
+            <td><b>'='</b></td>
+
+            <td>居中对齐</td>
+
+            <td>不适用 (稍后在字符串上应用)<br>
+            <i>- 注: 新增特性, printf 中没有 -</i></td>
+          </tr>
+
+          <tr>
+            <td><b>'_'</b></td>
+
+            <td>内部对齐</td>
+
+            <td>设置内部对齐<br>
+            <i>- 注: 新增特性, printf 中没有 -</i></td>
+          </tr>
+
+          <tr>
+            <td><b>'+'</b></td>
+
+            <td>即使对正数也显示符号</td>
+
+            <td>设置 <i>showpos</i></td>
+          </tr>
+
+          <tr>
+            <td><b>'#'</b></td>
+
+            <td>显示进制前缀和小数点</td>
+
+            <td>设置 <i>showbase</i> 和 <i>showpoint</i></td>
+          </tr>
+
+          <tr>
+            <td><b>'0'</b></td>
+
+            <td>用 0 填充(插入在符号或进制指示符之后)</td>
+
+            <td>如果不是左对齐, 则调用 <i>setfill('0')</i> 并设置 <i>internal</i><br>. 在流转换之后会采取额外动作以处理 <a href="#user-defined">用户自定义输出</a>.</td>
+          </tr>
+
+          <tr>
+            <td><b>' '</b></td>
+
+            <td>如果字符串不以 <i>+</i> 或 <i>-</i> 开头, 则在转换后的字符串之前插入一个 <i>空格</i> </td>
+
+            <td>不适用 (稍后在字符串上应用)<br> 与 printf 的行为不同: 它不受内部对齐影响</td>
+          </tr>
+        </table>
+      </blockquote><br />
+    </li>
+
+    <li><i>width</i> 为转换得到的字符串指定最小宽度. 如有必要, 将按照在流上通过操纵器设置的、或由格式化串指定的对齐与填充字符对字符串进行填充(例如标志 '0'、'-' 等).<br> 注意, width 并不只是设置在转换流上. 为了支持 <a href="#user-defined">用户自定义类型</a> 的输出(它们可能对多个成员多次调用 <i>operator&lt;&lt;</i>), 宽度是在整个参数对象完成流转换之后由 format 类代码处理的.</li><br />
+
+    <li>
+      <i>precision</i> (前面带一个点) 设置流的 <i>precision</i>
+
+      <ul>
+        <li>输出浮点类型数字时, 设置最大位数 <ul>
+            <li>在 fixed 或 scientific 模式下指小数点后的位数</li>
+
+            <li>在默认模式("<i>general 模式</i>", 类似 <i>%g</i>)下指总位数</li>
+          </ul>
+        </li>
+
+        <li>与类型字符 <b>s</b> 或 <b>S</b> 一起使用时有另一个含义: 转换字符串将被截断为前 <i>precision</i> 个字符.(注意, 向 <i>width</i> 的最终填充是在截断之后进行的.)</li>
+      </ul><br />
+    </li>
+
+    <li>
+        <i>argument-type</i> 被 printf 系列函数用来正确处理通过变长参数传入的参数. 而使用 <code>boost::format</code> 时, 参数通过 <code>operator %</code> 喂入 format, 这使模板能够携带参数类型. 因此经典的 printf 风格参数类型会被消费并忽略. 可识别的参数类型有 <code>hh</code>、<code>h</code>、<code>l</code>、<code>ll</code>、<code>j</code>、<code>z</code> 和 <code>L</code>, 以及微软扩展 <code>w</code>、<code>I</code>(大写 i)、<code>I32</code> 和 <code>I64</code>. ISO C99 标准中的参数类型 <code>t</code> 不被识别为参数类型, 因为多年来它在 <code>boost::format</code> 中一直被用作表格输出的转换说明符.</li><br />
+
+    <li>
+      <i>conversion-specifier</i> 并 <b>不会</b> 强制相关参数属于某个受限的类型集合, 而只是设置与类型说明相关联的 ios 标志: <blockquote>
+        <table border="1" cellpadding="5" summary="">
+          <tr>
+            <td><b>转换说明符</b></td>
+
+            <td><b>含义</b></td>
+
+            <td><b>对流的影响</b></td>
+          </tr>
+
+          <tr>
+            <td><b>b</b></td>
+
+            <td>布尔字符串输出</td>
+
+            <td>设置 <i>boolalpha</i>; 仅对类型 <code>bool</code><br /> 有效. 要定制结果字符串, 参见 <a href="http://en.cppreference.com/w/cpp/locale/numpunct/truefalsename">std::numpunct</a>.</tr>
+
+          <tr>
+            <td><b>p 或 x</b></td>
+
+            <td>十六进制输出</td>
+
+            <td>设置 <i>hex</i></td>
+          </tr>
+
+          <tr>
+            <td><b>o</b></td>
+
+            <td>八进制输出</td>
+
+            <td>设置 <i>oct</i></td>
+          </tr>
+
+          <tr>
+            <td><b>a</b></td>
+
+            <td>十六进制指数记法</td>
+
+            <td>把 floatfield 位设置为 <i>scientific</i> | <i>fixed</i> (等价于 <i>hexfloat</i>)</td>
+          </tr>
+
+          <tr>
+            <td><b>e</b></td>
+
+            <td>科学计数浮点格式</td>
+
+            <td>把 floatfield 位设置为 <i>scientific</i></td>
+          </tr>
+
+          <tr>
+            <td><b>f</b></td>
+
+            <td>定点浮点格式</td>
+
+            <td>把 floatfield 位设置为 <i>fixed</i></td>
+          </tr>
+
+          <tr>
+            <td><b>g</b></td>
+
+            <td>常规(默认)浮点格式</td>
+
+            <td><b>清除</b>所有 floatfield 位</td>
+          </tr>
+
+          <tr>
+            <td><b>X, A, E, F</b> 或 <b>G</b></td>
+
+            <td>效果与其小写对应物相同, 但数字输出(指数、十六进制数字等)使用大写字母.</td>
+
+            <td>分别与 <i>'x'</i>、<i>'a'</i>、<i>'e'</i>、<i>'f'</i> 或 <i>'g'</i> 效果相同, <b>外加</b> <i>大写</i></td>
+          </tr>
+
+          <tr>
+            <td><b>d, i</b> 或 <b>u</b></td>
+
+            <td><b>十进制</b>类型输出</td>
+
+            <td>把 basefield 位设置为 <i>dec</i></td>
+          </tr>
+
+          <tr>
+            <td><b>s</b> 或 <b>S</b></td>
+
+            <td>字符串输出</td>
+
+            <td><i>precision</i> 说明未设置, 其值进入一个内部字段, 供稍后的"截断"使用.(见上文 <i>precision</i> 的解释)</td>
+          </tr>
+
+          <tr>
+            <td><b>c</b> 或 <b>C</b></td>
+
+            <td>单字符输出</td>
+
+            <td>只使用转换字符串的第一个字符.</td>
+          </tr>
+
+          <tr>
+            <td><b>%</b></td>
+
+            <td>打印字符 <i>%</i></td>
+
+            <td>N/A</td>
+          </tr>
+        </table>
+      </blockquote>
+
+      <p>注意, 'n' 转换说明符(及其对应参数)会被忽略, 因为它不适合此处语境.</p>
+    </li>
+  </ul><a name="new_directives" id="new_directives"></a>
+
+  <h3>新增格式说明</h3>
+
+  <ul>
+    <li>如标志表所述, 新增了居中对齐和内部对齐标志(' <i>=</i> ' 和 ' <i>_</i> ').</li>
+
+    <li><i><b>%{</b>n</i><b>t}</b> (其中 <i>n</i> 为正数)插入一个 <i>绝对制表位</i>. 意思是, format 会在必要时用字符填充字符串, 直到目前生成的字符串长度达到 <i>n</i> 个字符.(参见 <a href=
+    "#examples">示例</a>)</li>
+
+    <li><b>%|</b><i>n</i><b>T</b><i>X</i><b>|</b> 以相同方式插入制表位, 但使用 <i>X</i> 作为填充字符, 而不是流当前的 "fill" 字符(处于默认状态的流该字符为 <i>空格</i>)</li>
+  </ul><a name="printf_differences" id="printf_differences"></a>
+
+  <h2>与 printf 的行为差异</h2>假设你有一些变量 <i>x1, x2</i> (C 的 printf 支持的内置类型),<br> 以及一个打算这样配合 printf 函数使用的格式化串 <i>s</i>: <blockquote>
+    <pre>
+printf(s, x1, x2);
+</pre>
+  </blockquote><br> 在几乎所有情况下, 结果都将与此命令相同: <blockquote>
+    <pre>
+cout &lt;&lt; format(s) % x1 % x2;
+</pre>
+  </blockquote>
+
+  <p>但由于某些 printf 格式说明不能很好地转化为流的格式化选项, Boost.format 模拟 printf 的方式存在一些明显的不完善之处.<br> 无论如何, <i>format</i> 类都会安静地忽略不支持的选项, 因此 printf 格式化串总能被 format 接受, 并产生与 printf 几乎相同的输出.</p><br> 下面是这些差异的完整清单: <ul>
+    <li><b>'0'</b> 和 <b>' '</b> 选项: printf 对非数值转换忽略这些选项, 但 format 会把它们应用于所有类型的变量.(因此可以把这些选项用于用户自定义类型, 例如 Rational 类等)</li>
+
+    <li><b>precision</b> 对整数类型参数在 printf 中有特殊含义: <br>
+    <i>printf( "(%5.3d)" , 7 ) ;</i> 打印 « ( 007) »<br> 而 format 与流一样, 对整数类型转换忽略 precision 参数.</li>
+
+    <li>printf 的 <b>'</b> 选项(<i>用千位分组字符格式化</i>)在 format 中没有效果.</li>
+
+    <li>设置为星号(<i>*</i>)的宽度或精度被 printf 用来从参数中读取该字段. 例如 <i>printf("%1$d:%2$.*3$d:%4$.*3$d\n", hour, min, precision, sec);</i><br> 该类目前不支持这种机制, 因此解析时会安静地忽略此类精度或宽度字段.</li>
+
+    <li>参数类型被忽略</li>
+  </ul>另外, 注意特殊的 <b>'n'</b> 类型说明(用于告诉 printf 把格式化输出的字符数保存到一个变量中)在 format 中没有效果.<br> 因此, 含有该类型说明的格式化串由 printf 或 format 应当产生相同的转换字符串. 它不会造成 printf 与 format 之间格式化字符串的差异.<br> 要用 Boost.Format 获取格式化字符串的字符数, 可以使用 <i>size()</i> 成员函数: <blockquote>
+    <pre>
+format formatter("%+5d");
+cout &lt;&lt; formatter % x;
+unsigned int n = formatter.size();
+</pre>
+  </blockquote><a name="user-defined" id="user-defined"></a>
+  <hr>
+
+  <h2>用户自定义类型的输出</h2>
+
+  <p>所有被转化为对流状态修改的标志都会在用户自定义类型内部递归起作用.(这些标志保持有效, 所需的格式化选项也一样, 对用户自定义类可能调用的每个 '&lt;&lt;' 操作都如此)</p>例如, 对于一个 Rational 类, 我们会遇到类似这样的情况: <blockquote>
+    <pre>
+Rational ratio(16,9);
+cerr &lt;&lt; format("%#x \n")  % ratio;  // -&gt; "0x10/0x9 \n"
+</pre>
+  </blockquote>
+
+  <p>其他格式化选项则情况不同. 例如, 设置宽度作用于对象最终产生的输出, 而不是其每一次内部输出, 而这正合我们意:</p>
+
+  <blockquote>
+    <pre>
+cerr &lt;&lt; format("%-8d")  % ratio;  // -&gt; "16/9    "      and not    "16      /9       "
+cerr &lt;&lt; format("%=8d")  % ratio;  // -&gt; "  16/9  "      and not    "   16   /    9   "
+</pre>
+  </blockquote>
+
+  <p><br>但 0 和 ' ' 选项同样如此(与 '+' 不同, 后者通过 <i>showpos</i> 直接转化到流状态. 但 printf 的 0 和空格选项没有对应的流标志)<br> 而这就不那么自然了:</p>
+
+  <blockquote>
+    <pre>
+cerr &lt;&lt; format("%+08d \n")  % ratio;  // -&gt; "+00016/9"
+cerr &lt;&lt; format("% 08d \n")  % ratio;  // -&gt; "000 16/9"
+</pre>
+  </blockquote>通过精心设计 Rational 的 <i>operator&lt;&lt;</i>, 让它自行处理流的宽度、对齐和 <i>showpos</i> 参数, 可以获得更好的行为. <a href=
+  "../example/sample_userType.cpp">sample_userType.cpp</a> 对此做了演示. <a name=
+  "manipulators" id="manipulators"></a>
+  <hr>
+
+  <h3>操纵器与流的内部状态</h3>
+
+  <p> <b>format</b> 的内部流状态会在输出参数之前保存、之后恢复; 因此, 修饰符不是粘性的, 只影响它们所应用的那个参数.<br> 标准规定的流默认状态为: precision 6、width 0、右对齐, 以及设置了 decimal 标志.</p>
+
+  <p>内部 <b>format</b> 流的状态可以通过与参数一起传入的操纵器改变; 借助 <i>group</i> 函数, 像这样:</p>
+
+  <blockquote>
+    <pre>
+cout &lt;&lt; format("%1% %2% %1%\n") % group(hex, showbase, 40) % 50; // prints "0x28 50 0x28\n"
+</pre>
+  </blockquote>
+
+  <p><br>当在一个 'group' 中传入 N 项时, Boost.format 需要以不同于普通参数的方式处理操纵器, 因此使用 group 受以下约束:</p>
+
+  <ol>
+    <li>要打印的对象必须作为 group 中的最后一项传入</li>
+
+    <li>前 N-1 项被视为操纵器, 如果它们产生了输出, 该输出会被丢弃</li>
+  </ol>
+
+  <p>这样的操纵器会在每次出现时、紧接着下一个参数之前传给流. 注意, 以这种方式传入的流状态修饰符会覆盖格式化串中指定的格式化选项. 例如在下面的代码中, <i>hex</i> 操纵器的优先级高于格式化串中本会设置十进制输出的 <i>d</i> 类型说明:</p>
+
+  <blockquote>
+    <pre>
+cout &lt;&lt; format("%1$d %2% %1%\n") % group(hex, showbase, 40) % 50; 
+// prints "0x28 50 0x28\n"
+</pre>
+  </blockquote><a name="alternatives" id="alternatives"></a>
+
+  <h2>替代方案</h2>
+
+  <ul>
+    <li><b>printf</b> 是经典的替代方案, 它不是类型安全的, 也不能扩展到用户自定义类型.</li>
+
+    <li>Karl Nelson 的 ofrstream.cc 设计是本 format 类的一大灵感来源.</li>
+
+    <li>James Kanze 的库有一个 format 类(位于 <i>srcode/Extended/format</i> ), 看起来打磨得非常好. 其设计与本类的共同点在于: 使用内部流进行实际转换, 并且使用运算符传递参数.(不过他的类与 ofrstream 一样使用 <i>operator&lt;&lt;</i> 而 <i>不是 operator%</i> )</li>
+
+    <li><a href="http://groups.yahoo.com/group/boost/files/format3/">Karl Nelson 的库</a> 是在 Boost 邮件列表讨论 Boost.format 设计时, 作为备选方案的演示而写成的.</li>
+
+    <li><a href="http://fmtlib.net/latest/index.html">{fmt}</a>, 作者 Victor Zverovich.</li>
+  </ul><a name="exceptions" id="exceptions"></a>
+  <hr>
+
+  <h2>异常</h2>
+
+  <p>Boost.format 对 format 对象的使用施加了若干规则: 格式化串必须遵守上文所述的语法; 在输出到最终目的地之前, 用户必须恰好提供数量正确的参数; 如果使用 modify_item 或 bind_arg, 条目和参数的索引不得越界.<br> 当 format 检测到其中某条规则未被满足时, 会抛出相应的异常, 使错误不会被漏掉或置之不理.<br> 但用户可以改变这种行为以适应自己的需要, 使用以下函数选择哪些类型的错误会抛出异常:</p>
+
+  <blockquote>
+    <pre>
+
+unsigned char exceptions(unsigned char newexcept); // query and set
+unsigned char exceptions() const;                  // just query
+
+</pre>
+  </blockquote>
+
+  <p>用户可以用二元算术组合以下原子量, 计算出参数 <i>newexcept</i>:</p>
+
+  <ul>
+    <li><b>boost::io::bad_format_string_bit</b> 选择因格式化串格式错误导致的错误.</li>
+
+    <li><b>boost::io::too_few_args_bit</b> 选择因在所有参数传入之前就请求字符串结果导致的错误.</li>
+
+    <li><b>boost::io::too_many_args_bit</b> 选择因传入过多参数导致的错误.</li>
+
+    <li><b>boost::io::out_of_range_bit</b> 选择因调用 <i>modify_item</i> 或其他接受条目索引(或参数索引)的函数时用户提供的索引越界导致的错误.</li>
+
+    <li><b>boost::io::all_error_bits</b> 选择全部错误</li>
+
+    <li><b>boost::io::no_error_bits</b> 不选择任何错误.</li>
+  </ul>
+
+  <p>例如, 如果你不想让 Boost.format 检测参数个数错误, 可以定义一个特定的包装函数, 用正确的异常设置来构建 format 对象:</p>
+
+  <blockquote>
+    <pre>
+
+boost::format  my_fmt(const std::string &amp; f_string) {
+    using namespace boost::io;
+    format fmter(f_string);
+    fmter.exceptions( all_error_bits ^ ( too_many_args_bit | too_few_args_bit )  );
+    return fmter;
+}
+
+</pre>
+  </blockquote>因此, 允许提供多于所需的参数(它们会被简单地忽略): <blockquote>
+    <pre>
+
+cout &lt;&lt; my_fmt(" %1% %2% \n") % 1 % 2 % 3 % 4 % 5;
+
+</pre>
+  </blockquote>而如果我们在所有参数提供完毕之前请求结果, 结果的相应部分就只是空的 <blockquote>
+    <pre>
+
+cout &lt;&lt; my_fmt(" _%2%_ _%1%_ \n") % 1 ;
+// prints      " __ _1_ \n"
+
+</pre>
+  </blockquote><a name="performance" id="performance"></a>
+  <hr>
+
+  <h2>关于性能的说明</h2>
+
+  <p>对于带重排的少量内置类型参数格式化, boost::format 的性能可以与 Posix-printf 以及等价的手工流操作相比较, 以衡量其带来的开销. 结果可能极大地取决于编译器、标准库实现, 以及格式化串和参数的具体选择.</p>
+
+  <p>常见的流实现最终会调用 printf 系列函数来实际格式化数字. 一般而言, 由于重排的开销(为存储字符串片段而进行的分配、每个条目格式化时的流初始化等), printf 会明显快于直接的流操作. 直接的流操作会比 boost::format 快——预期比率在 2 到 5 甚至更高.</p>
+
+  <p>当迭代格式化成为性能瓶颈时, 可以通过把格式化串解析为一个 format 对象, 并在每次格式化时复制该对象, 来略微提高性能, 如下所示:</p>
+
+  <blockquote>
+    <pre>
+    const boost::format fmter(fstring);
+    dest &lt;&lt; boost::format(fmter) % arg1 % arg2 % arg3 ;
+    </pre>
+  </blockquote>
+
+  <p>作为性能结果的一个示例, 作者用 4 种不同方法测量了迭代格式化的执行时间:</p>
+
+  <ol>
+    <li>posix printf</li>
+
+    <li>手工流输出(输出到一个哑 <i>nullStream</i> 流, 把字节送入虚空)</li>
+
+    <li>如上所示, 从 const 对象复制的 boost::format</li>
+
+    <li>直接的 boost::format 用法</li>
+  </ol>
+
+  <p>测试用 g++-3.3.3 编译, 测得如下计时(以秒为单位, 并给出比率):</p>
+
+  <blockquote>
+    <pre>
+string     fstring="%3$0#6x %1$20.10E %2$g %3$0+5d \n";
+double     arg1=45.23;
+double     arg2=12.34;
+int        arg3=23;
+
+- release mode :
+printf                 : 2.13
+nullStream             : 3.43,  = 1.61033 * printf
+boost::format copied   : 6.77,  = 3.1784  * printf ,  = 1.97376 * nullStream
+boost::format straight :10.67,  = 5.00939 * printf ,  = 3.11079 * nullStream
+
+- debug mode :
+printf                 : 2.12
+nullStream             : 3.69,  = 1.74057 * printf
+boost::format copied   :10.02,  = 4.72642 * printf ,  = 2.71545 * nullStream
+boost::format straight :17.03,  = 8.03302 * printf ,  = 4.61518 * nullStream
+</pre>
+  </blockquote><a name="extract" id="extract"></a>
+  <hr>
+
+  <h2>类接口摘录</h2>
+
+  <blockquote>
+    <pre>
+namespace boost {
+
+template&lt;class charT, class Traits=std::char_traits&lt;charT&gt; &gt; 
+class basic_format 
+{
+public:
+  typedef std::basic_string&lt;charT, Traits&gt; string_type;
+  typedef typename string_type::size_type     size_type;
+  basic_format(const charT* str);
+  basic_format(const charT* str, const std::locale &amp; loc);
+  basic_format(const string_type&amp; s);
+  basic_format(const string_type&amp; s, const std::locale &amp; loc);
+  basic_format&amp; operator= (const basic_format&amp; x);
+
+  void clear(); // reset buffers
+  basic_format&amp; parse(const string_type&amp;); // clears and parse a new format string
+
+  string_type str() const;
+  size_type size() const;
+
+  // pass arguments through those operators :
+  template&lt;class T&gt;  basic_format&amp;   operator%(T&amp; x);  
+  template&lt;class T&gt;  basic_format&amp;   operator%(const T&amp; x);
+
+  // dump buffers to ostream :
+  friend std::basic_ostream&lt;charT, Traits&gt;&amp; 
+  operator&lt;&lt; &lt;&gt; ( std::basic_ostream&lt;charT, Traits&gt;&amp; , basic_format&amp; ); 
+
+   // Choosing which errors will throw exceptions :
+   unsigned char exceptions() const;
+   unsigned char exceptions(unsigned char newexcept);
+
+// ............  this is just an extract .......
+}; // basic_format
+
+typedef basic_format&lt;char &gt;          format;
+typedef basic_format&lt;wchar_t &gt;      wformat;
+
+
+// free function for ease of use :
+template&lt;class charT, class Traits&gt; 
+std::basic_string&lt;charT,Traits&gt;  str(const basic_format&lt;charT,Traits&gt;&amp; f) {
+      return f.str();
+}
+
+
+} // namespace boost
+</pre>
+  </blockquote>
+  <hr>
+  <a name="rationale" id="rationale"></a>
+
+  <h2>设计理由</h2>
+
+  <p>该类的目标是提供一个更好的、C++ 的、类型安全且类型可扩展的 <i>printf</i> 等价物, 与流配合使用.</p>确切地说, <b>format</b> 的设计目标是提供以下特性: <ul>
+    <li>支持位置参数(国际化所必需)</li>
+
+    <li>接受不限个数的参数.</li>
+
+    <li>使格式化命令在视觉上自然.</li>
+
+    <li>除格式化串语法之外, 还支持使用操纵器来修改参数的显示.</li>
+
+    <li>接受任何类型的变量, 实际转换成字符串的过程交给流完成. 这尤其针对用户自定义类型, 其格式化选项的效果应当直觉自然.</li>
+
+    <li>在类型安全且类型可扩展的语境下, 尽可能提供 printf 兼容性.</li>
+  </ul>
+
+  <p>在设计过程中遇到了许多问题, 也做出了一些可能并不直觉正确的选择. 但每种情况下的选择都有 <a href="choices.html">相应理由</a>.</p>
+  <hr>
+
+  <h2>致谢</h2>
+
+  <p>Boost format 的作者是 Samuel Krempp. 他采用了 Rüdiger Loos 的 format.hpp 和 Karl Nelson 的格式化类中的想法.</p>
+  <hr>
+
+  <p><a href="http://validator.w3.org/check?uri=referer"><img border="0" src=
+  "../../../doc/images/valid-html401.png" alt="Valid HTML 4.01 Transitional"
+  height="31" width="88"></a></p>
+
+  <p>修订 <!--webbot bot="Timestamp" s-type="EDITED" s-format="%d %B, %Y" startspan -->23 October, 2017<!--webbot bot="Timestamp" endspan i-checksum="38510" --></p>
+
+  <p><i>版权所有 © 2002 Samuel Krempp</i></p>
+
+  <p><i>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <a href="../../../LICENSE_1_0.txt">LICENSE_1_0.txt</a> 或复制于 <a href=
+  "http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</a>)</i></p>
+</body>
+</html>

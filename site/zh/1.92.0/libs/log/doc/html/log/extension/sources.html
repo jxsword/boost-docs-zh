@@ -1,0 +1,291 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>编写自己的日志源</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Boost.Log v2">
+<link rel="up" href="../extension.html" title="扩展本库">
+<link rel="prev" href="../extension.html" title="扩展本库">
+<link rel="next" href="attributes.html" title="编写自己的属性">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr><td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td></tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../extension.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../extension.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="attributes.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="log.extension.sources"></a><a class="link" href="sources.html" title="编写自己的日志源">编写自己的日志源</a>
+</h3></div></div></div>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../../logging_sources.html#doxygen.logging_sources.threading__models_8hpp" title="头文件 &lt;boost/log/sources/threading_models.hpp&gt;">boost/log/sources/threading_models.hpp</a></code><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../../logging_sources.html#doxygen.logging_sources.basic__logger_8hpp" title="头文件 &lt;boost/log/sources/basic_logger.hpp&gt;">boost/log/sources/basic_logger.hpp</a></code><span class="special">&gt;</span>
+</pre>
+<p>您可以通过开发自己的日志源来扩展库, 并就此扩展收集日志数据的方式. 基本上有两种起步选择: 要么开发一个新的日志器特性, 要么设计一种全新的日志源类型. 如果您只需要微调现有日志器的功能, 第一种方式很好; 如果库提供的日志器收集日志的整个机制不适合您的需求, 第二种方式是合理的.</p>
+<h5>
+<a name="log.extension.sources.h0"></a>
+        <span class="phrase"><a name="log.extension.sources.creating_a_new_logger_feature"></a></span><a class="link" href="sources.html#log.extension.sources.creating_a_new_logger_feature">创建新的日志器特性</a>
+      </h5>
+<p>库提供的每个日志器都由若干可以相互组合的特性组成. 每个特性负责日志器功能中单一且独立的一个方面. 例如, 提供为日志记录分配严重级别能力的日志器包含 <code class="computeroutput"><a class="link" href="../../doxygen/logging_sources/structboost_1_1log_1_1sources_1_1severity.html" title="结构体模板 severity">severity</a></code> 特性. 您可以实现自己的特性, 并与库提供的特性一起使用.</p>
+<p>日志器特性应遵循以下基本要求:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">日志特性应当是类模板. 它应至少有一个模板参数类型 (不妨命名为 <code class="computeroutput"><span class="identifier">BaseT</span></code>).</li>
+<li class="listitem">该特性必须公开派生自 <code class="computeroutput"><span class="identifier">BaseT</span></code> 模板参数.</li>
+<li class="listitem">该特性必须可默认构造且可复制构造.</li>
+<li class="listitem">该特性必须可以用一个模板化类型的单个实参构造. 特性本身可以不使用该实参, 但应将该实参传递给 <code class="computeroutput"><span class="identifier">BaseT</span></code> 构造函数.</li>
+</ul></div>
+<p>这些要求允许由多个相互派生的特性组合出一个日志器. 特性层次结构的根类将是 <code class="computeroutput"><a class="link" href="../../doxygen/logging_sources/classboost_1_1log_1_1sources_1_1basic__logger.html" title="类模板 basic_logger">basic_logger</a></code> 类模板实例. 该类实现日志器的大部分基本功能, 例如存储日志器专属属性, 以及提供日志消息格式化接口. 层次结构的组合由 <code class="computeroutput"><a class="link" href="../../doxygen/logging_sources/classboost_1_1log_1_1sources_1_1basic__composite__logger.html" title="类模板 basic_composite_logger">basic_composite_logger</a></code> 类模板完成, 它以特性序列实例化 (别担心, 稍后会用一个示例展示). 带模板化实参的构造函数允许使用 <a href="https://www.boost.org/doc/libs/release/libs/parameter/doc/html/index.html" target="_top">Boost.Parameter</a> 库通过命名参数初始化特性.</p>
+<p>日志特性也可以包含内部数据. 在这种情况下, 为了维护日志器的线程安全, 特性应遵循以下附加准则:</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">通常不需要在每个特性中引入互斥量或其他同步机制. 而且, 建议不要这样做, 因为同一特性既可能用于线程安全的日志器, 也可能用于非线程安全的日志器. 相反, 特性应使用日志器的线程模型作为同步原语, 类似于使用互斥量的方式. 线程模型可通过 <code class="computeroutput"><span class="identifier">get_threading_model</span></code> 方法访问, 该方法定义在 <code class="computeroutput"><a class="link" href="../../doxygen/logging_sources/classboost_1_1log_1_1sources_1_1basic__logger.html" title="类模板 basic_logger">basic_logger</a></code> 类模板中.</li>
+<li class="listitem">如果特性必须重写 <code class="computeroutput"><span class="special">*</span><span class="identifier">_unlocked</span></code> 方法 (属于 <code class="computeroutput"><a class="link" href="../../doxygen/logging_sources/classboost_1_1log_1_1sources_1_1basic__logger.html" title="类模板 basic_logger">basic_logger</a></code> 类模板的受保护接口, 或基特性接口的同一部分), 关于这类方法应考虑以下几点: <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">最终调用这些方法的公开方法由 <code class="computeroutput"><a class="link" href="../../doxygen/logging_sources/classboost_1_1log_1_1sources_1_1basic__composite__logger.html" title="类模板 basic_composite_logger">basic_composite_logger</a></code> 类模板实现. 这些实现会进行必要的加锁, 然后将控制传递给基特性的对应 <code class="computeroutput"><span class="identifier">_unlocked</span></code> 方法.</li>
+<li class="listitem">这些方法的线程安全要求用锁类型表示. 这些类型作为 typedef 在每个特性以及 <code class="computeroutput"><a class="link" href="../../doxygen/logging_sources/classboost_1_1log_1_1sources_1_1basic__logger.html" title="类模板 basic_logger">basic_logger</a></code> 类模板中提供. 如果特性暴露受保护函数 <code class="computeroutput"><span class="identifier">foo_unlocked</span></code>, 它也会暴露类型 <code class="computeroutput"><span class="identifier">foo_lock</span></code>, 该类型表达 <code class="computeroutput"><span class="identifier">foo_unlocked</span></code> 的加锁要求. <code class="computeroutput"><span class="identifier">foo</span></code> 方法 (位于 <code class="computeroutput"><a class="link" href="../../doxygen/logging_sources/classboost_1_1log_1_1sources_1_1basic__composite__logger.html" title="类模板 basic_composite_logger">basic_composite_logger</a></code> 类模板中) 会使用该 typedef, 在调用 <code class="computeroutput"><span class="identifier">foo_unlocked</span></code> 之前锁定线程模型.</li>
+<li class="listitem">特性构造函数不需要加锁, 因此不需要为它们定义锁类型.</li>
+</ul></div>
+          </li>
+<li class="listitem">特性可以实现复制构造函数. 调用构造函数时, 构造函数的参数已被共享锁锁定. 自然, 特性应将复制构造调用转发给 <code class="computeroutput"><span class="identifier">BaseT</span></code> 类.</li>
+<li class="listitem">特性无需实现赋值运算符. 赋值将由 <code class="computeroutput"><a class="link" href="../../doxygen/logging_sources/classboost_1_1log_1_1sources_1_1basic__composite__logger.html" title="类模板 basic_composite_logger">basic_composite_logger</a></code> 类实例自动提供. 不过, 特性可以提供 <code class="computeroutput"><span class="identifier">swap_unlocked</span></code> 方法, 交换本特性与方法实参的内容, 并调用 <code class="computeroutput"><span class="identifier">BaseT</span></code> 类中的类似方法. 自动生成的赋值运算符将连同复制构造函数一起使用该方法.</li>
+</ol></div>
+<p>为了说明这些冗长的建议, 我们来实现一个简单的日志器特性. 假设我们希望日志器能够为单条日志记录打标记. 换句话说, 日志器必须临时向其属性集添加一个属性, 发出日志记录, 然后自动移除该属性. 使用作用域属性可以实现类似功能, 尽管语法可能使把它包装成一个整洁的宏变得复杂:</p>
+<pre class="programlisting"><span class="comment">// We want something equivalent to this</span>
+<span class="special">{</span>
+    <span class="identifier">BOOST_LOG_SCOPED_LOGGER_TAG</span><span class="special">(</span><span class="identifier">logger</span><span class="special">,</span> <span class="string">"Tag"</span><span class="special">,</span> <span class="string">"[GUI]"</span><span class="special">);</span>
+    <span class="identifier">BOOST_LOG</span><span class="special">(</span><span class="identifier">logger</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="string">"The user has confirmed his choice"</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>我们来声明日志器特性:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">BaseT</span> <span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">record_tagger_feature</span> <span class="special">:</span>
+    <span class="keyword">public</span> <span class="identifier">BaseT</span>                        <a class="co" name="log.extension.sources.c0" href="sources.html#log.extension.sources.c1"><img src="../../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a>
+<span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="comment">// Let's import some types that we will need. These imports should be public,</span>
+    <span class="comment">// in order to allow other features that may derive from record_tagger to do the same.</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">BaseT</span><span class="special">::</span><span class="identifier">char_type</span> <span class="identifier">char_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">BaseT</span><span class="special">::</span><span class="identifier">threading_model</span> <span class="identifier">threading_model</span><span class="special">;</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="comment">// Default constructor. Initializes m_Tag to an invalid value.</span>
+    <span class="identifier">record_tagger_feature</span><span class="special">();</span>
+    <span class="comment">// Copy constructor. Initializes m_Tag to a value, equivalent to that.m_Tag.</span>
+    <span class="identifier">record_tagger_feature</span><span class="special">(</span><span class="identifier">record_tagger_feature</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">that</span><span class="special">);</span>
+    <span class="comment">// Forwarding constructor with named parameters</span>
+    <span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">ArgsT</span> <span class="special">&gt;</span>
+    <span class="identifier">record_tagger_feature</span><span class="special">(</span><span class="identifier">ArgsT</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">args</span><span class="special">);</span>
+
+    <span class="comment">// The method will require locking, so we have to define locking requirements for it.</span>
+    <span class="comment">// We use the strictest_lock trait in order to choose the most restricting lock type.</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">logging</span><span class="special">::</span><span class="identifier">strictest_lock</span><span class="special">&lt;</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">lock_guard</span><span class="special">&lt;</span> <span class="identifier">threading_model</span> <span class="special">&gt;,</span>
+        <span class="keyword">typename</span> <span class="identifier">BaseT</span><span class="special">::</span><span class="identifier">open_record_lock</span><span class="special">,</span>
+        <span class="keyword">typename</span> <span class="identifier">BaseT</span><span class="special">::</span><span class="identifier">add_attribute_lock</span><span class="special">,</span>
+        <span class="keyword">typename</span> <span class="identifier">BaseT</span><span class="special">::</span><span class="identifier">remove_attribute_lock</span>
+    <span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">open_record_lock</span><span class="special">;</span>
+
+<span class="keyword">protected</span><span class="special">:</span>
+    <span class="comment">// Lock-less implementation of operations</span>
+    <span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">ArgsT</span> <span class="special">&gt;</span>
+    <span class="identifier">logging</span><span class="special">::</span><span class="identifier">record</span> <span class="identifier">open_record_unlocked</span><span class="special">(</span><span class="identifier">ArgsT</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">args</span><span class="special">);</span>
+<span class="special">};</span>
+
+<span class="comment">// A convenience metafunction to specify the feature</span>
+<span class="comment">// in the list of features of the final logger later</span>
+<span class="keyword">struct</span> <span class="identifier">record_tagger</span> <span class="special">:</span>
+    <span class="keyword">public</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">mpl</span><span class="special">::</span><span class="identifier">quote1</span><span class="special">&lt;</span> <span class="identifier">record_tagger_feature</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<div class="calloutlist"><table border="0" summary="Callout list"><tr>
+<td width="5%" valign="top" align="left"><p><a name="log.extension.sources.c1"></a><a href="#log.extension.sources.c0"><img src="../../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a> </p></td>
+<td valign="top" align="left"><p>特性应派生自其他特性或 basic_logger 类</p></td>
+</tr></table></div>
+<p>可以看到, 我们使用 <code class="computeroutput"><a class="link" href="../../doxygen/utilities/structboost_1_1log_1_1strictest__lock.html" title="结构体模板 strictest_lock">strictest_lock</a></code> 模板来定义锁类型, 使其满足基类的线程安全要求, 供将从 <code class="computeroutput"><span class="identifier">record_tagger_feature</span></code> 的对应方法调用的方法使用. <code class="computeroutput"><span class="identifier">open_record_lock</span></code> 定义表明, <code class="computeroutput"><span class="identifier">open_record_unlocked</span></code> 实现 (属于 <code class="computeroutput"><span class="identifier">record_tagger_feature</span></code> 特性) 需要日志器的排他锁 (<code class="computeroutput"><span class="identifier">lock_guard</span></code> 正是这种锁), 但它也考虑了基类 <code class="computeroutput"><span class="identifier">open_record_unlocked</span></code>、<code class="computeroutput"><span class="identifier">add_attribute_unlocked</span></code> 和 <code class="computeroutput"><span class="identifier">remove_attribute_unlocked</span></code> 方法的加锁要求, 因为它必须调用这些方法. 最终日志器类生成的 <code class="computeroutput"><span class="identifier">open_record</span></code> 方法将利用该 typedef, 在转发到 <code class="computeroutput"><span class="identifier">open_record_unlocked</span></code> 方法之前自动获取相应的锁类型.</p>
+<p>实际上, 在这个特定示例中, 并不需要使用 <code class="computeroutput"><a class="link" href="../../doxygen/utilities/structboost_1_1log_1_1strictest__lock.html" title="结构体模板 strictest_lock">strictest_lock</a></code> 特征, 因为我们所有的方法都需要排他锁, 而这已经是最严格的了. 不过, 如果您使用共享锁, 该模板可能会派上用场.</p>
+<p>公开接口的实现变得相当简单:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">BaseT</span> <span class="special">&gt;</span>
+<span class="identifier">record_tagger_feature</span><span class="special">&lt;</span> <span class="identifier">BaseT</span> <span class="special">&gt;::</span><span class="identifier">record_tagger_feature</span><span class="special">()</span>
+<span class="special">{</span>
+<span class="special">}</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">BaseT</span> <span class="special">&gt;</span>
+<span class="identifier">record_tagger_feature</span><span class="special">&lt;</span> <span class="identifier">BaseT</span> <span class="special">&gt;::</span><span class="identifier">record_tagger_feature</span><span class="special">(</span><span class="identifier">record_tagger_feature</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">that</span><span class="special">)</span> <span class="special">:</span>
+    <span class="identifier">BaseT</span><span class="special">(</span><span class="keyword">static_cast</span><span class="special">&lt;</span> <span class="identifier">BaseT</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="special">&gt;(</span><span class="identifier">that</span><span class="special">))</span>
+<span class="special">{</span>
+<span class="special">}</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">BaseT</span> <span class="special">&gt;</span>
+<span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">ArgsT</span> <span class="special">&gt;</span>
+<span class="identifier">record_tagger_feature</span><span class="special">&lt;</span> <span class="identifier">BaseT</span> <span class="special">&gt;::</span><span class="identifier">record_tagger_feature</span><span class="special">(</span><span class="identifier">ArgsT</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">args</span><span class="special">)</span> <span class="special">:</span> <span class="identifier">BaseT</span><span class="special">(</span><span class="identifier">args</span><span class="special">)</span>
+<span class="special">{</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>现在, 由于所有加锁都提取到了公开接口中, 特性逻辑的大部分需要在接口的受保护部分实现. 为了在日志器中设置标记值, 我们必须引入一个新的 <a href="https://www.boost.org/doc/libs/release/libs/parameter/doc/html/index.html" target="_top">Boost.Parameter</a> 关键字. 按照该库文档的建议, 最好在专用命名空间中引入该关键字:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">my_keywords</span> <span class="special">{</span>
+
+    <span class="identifier">BOOST_PARAMETER_KEYWORD</span><span class="special">(</span><span class="identifier">tag_ns</span><span class="special">,</span> <span class="identifier">tag</span><span class="special">)</span>
+
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>打开新记录现在大致如下:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">BaseT</span> <span class="special">&gt;</span>
+<span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">ArgsT</span> <span class="special">&gt;</span>
+<span class="identifier">logging</span><span class="special">::</span><span class="identifier">record</span> <span class="identifier">record_tagger_feature</span><span class="special">&lt;</span> <span class="identifier">BaseT</span> <span class="special">&gt;::</span><span class="identifier">open_record_unlocked</span><span class="special">(</span><span class="identifier">ArgsT</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">args</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="comment">// Extract the named argument from the parameters pack</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">tag_value</span> <span class="special">=</span> <span class="identifier">args</span><span class="special">[</span><span class="identifier">my_keywords</span><span class="special">::</span><span class="identifier">tag</span> <span class="special">|</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">()];</span>
+
+    <span class="identifier">logging</span><span class="special">::</span><span class="identifier">attribute_set</span><span class="special">&amp;</span> <span class="identifier">attrs</span> <span class="special">=</span> <span class="identifier">BaseT</span><span class="special">::</span><span class="identifier">attributes</span><span class="special">();</span>
+    <span class="identifier">logging</span><span class="special">::</span><span class="identifier">attribute_set</span><span class="special">::</span><span class="identifier">iterator</span> <span class="identifier">tag</span> <span class="special">=</span> <span class="identifier">attrs</span><span class="special">.</span><span class="identifier">end</span><span class="special">();</span>
+    <span class="keyword">if</span> <span class="special">(!</span><span class="identifier">tag_value</span><span class="special">.</span><span class="identifier">empty</span><span class="special">())</span>
+    <span class="special">{</span>
+        <span class="comment">// Add the tag as a new attribute</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span><span class="special">&lt;</span>
+            <span class="identifier">logging</span><span class="special">::</span><span class="identifier">attribute_set</span><span class="special">::</span><span class="identifier">iterator</span><span class="special">,</span>
+            <span class="keyword">bool</span>
+        <span class="special">&gt;</span> <span class="identifier">res</span> <span class="special">=</span> <span class="identifier">BaseT</span><span class="special">::</span><span class="identifier">add_attribute_unlocked</span><span class="special">(</span><span class="string">"Tag"</span><span class="special">,</span>
+            <span class="identifier">attrs</span><span class="special">::</span><span class="identifier">constant</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="special">&gt;(</span><span class="identifier">tag_value</span><span class="special">));</span>
+        <span class="keyword">if</span> <span class="special">(</span><span class="identifier">res</span><span class="special">.</span><span class="identifier">second</span><span class="special">)</span>
+            <span class="identifier">tag</span> <span class="special">=</span> <span class="identifier">res</span><span class="special">.</span><span class="identifier">first</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="comment">// In any case, after opening a record remove the tag from the attributes</span>
+    <span class="identifier">BOOST_SCOPE_EXIT_TPL</span><span class="special">((&amp;</span><span class="identifier">tag</span><span class="special">)(&amp;</span><span class="identifier">attrs</span><span class="special">))</span>
+    <span class="special">{</span>
+        <span class="keyword">if</span> <span class="special">(</span><span class="identifier">tag</span> <span class="special">!=</span> <span class="identifier">attrs</span><span class="special">.</span><span class="identifier">end</span><span class="special">())</span>
+            <span class="identifier">attrs</span><span class="special">.</span><span class="identifier">erase</span><span class="special">(</span><span class="identifier">tag</span><span class="special">);</span>
+    <span class="special">}</span>
+    <span class="identifier">BOOST_SCOPE_EXIT_END</span>
+
+    <span class="comment">// Forward the call to the base feature</span>
+    <span class="keyword">return</span> <span class="identifier">BaseT</span><span class="special">::</span><span class="identifier">open_record_unlocked</span><span class="special">(</span><span class="identifier">args</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>这里, 如果调用 <code class="computeroutput"><span class="identifier">open_record</span></code> 时指定了标记值, 我们就添加一个带有该标记值的新属性. 打开日志记录时, 所有属性值都会被获取并随记录一起锁定, 因此我们用 <a href="https://www.boost.org/doc/libs/release/libs/scope_exit/doc/html/index.html" target="_top">Boost.ScopeExit</a> 块从属性集中移除该标记.</p>
+<p>好了, 我们得到了自己的特性, 现在是把它注入日志器的时候了. 假设我们想把它与标准严重级别日志组合起来. 没问题:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">LevelT</span> <span class="special">=</span> <span class="keyword">int</span> <span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">my_logger</span> <span class="special">:</span>
+    <span class="keyword">public</span> <span class="identifier">src</span><span class="special">::</span><span class="identifier">basic_composite_logger</span><span class="special">&lt;</span>
+        <span class="keyword">char</span><span class="special">,</span>                           <a class="co" name="log.extension.sources.c2" href="sources.html#log.extension.sources.c3"><img src="../../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a>
+        <span class="identifier">my_logger</span><span class="special">&lt;</span> <span class="identifier">LevelT</span> <span class="special">&gt;,</span>            <a class="co" name="log.extension.sources.c4" href="sources.html#log.extension.sources.c5"><img src="../../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a>
+        <span class="identifier">src</span><span class="special">::</span><span class="identifier">single_thread_model</span><span class="special">,</span>       <a class="co" name="log.extension.sources.c6" href="sources.html#log.extension.sources.c7"><img src="../../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a>
+        <span class="identifier">src</span><span class="special">::</span><span class="identifier">features</span><span class="special">&lt;</span>                  <a class="co" name="log.extension.sources.c8" href="sources.html#log.extension.sources.c9"><img src="../../../../../../doc/src/images/callouts/4.png" alt="4" border="0"></a>
+            <span class="identifier">src</span><span class="special">::</span><span class="identifier">severity</span><span class="special">&lt;</span> <span class="identifier">LevelT</span> <span class="special">&gt;,</span>
+            <span class="identifier">record_tagger</span>
+        <span class="special">&gt;</span>
+    <span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="comment">// The following line will automatically generate forwarding constructors that</span>
+    <span class="comment">// will call to the corresponding constructors of the base class</span>
+    <span class="identifier">BOOST_LOG_FORWARD_LOGGER_MEMBERS_TEMPLATE</span><span class="special">(</span><span class="identifier">my_logger</span><span class="special">)</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<div class="calloutlist"><table border="0" summary="Callout list">
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="log.extension.sources.c3"></a><a href="#log.extension.sources.c2"><img src="../../../../../../doc/src/images/callouts/1.png" alt="1" border="0"></a> </p></td>
+<td valign="top" align="left"><p>日志器的字符类型</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="log.extension.sources.c5"></a><a href="#log.extension.sources.c4"><img src="../../../../../../doc/src/images/callouts/2.png" alt="2" border="0"></a> </p></td>
+<td valign="top" align="left"><p>最终日志器类型</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="log.extension.sources.c7"></a><a href="#log.extension.sources.c6"><img src="../../../../../../doc/src/images/callouts/3.png" alt="3" border="0"></a> </p></td>
+<td valign="top" align="left"><p>日志器不执行线程同步; 使用 <code class="computeroutput"><span class="identifier">multi_thread_model</span></code> 声明线程安全的日志器</p></td>
+</tr>
+<tr>
+<td width="5%" valign="top" align="left"><p><a name="log.extension.sources.c9"></a><a href="#log.extension.sources.c8"><img src="../../../../../../doc/src/images/callouts/4.png" alt="4" border="0"></a> </p></td>
+<td valign="top" align="left"><p>我们要组合的特性列表</p></td>
+</tr>
+</table></div>
+<p>如上所示, 创建日志器是相当简单的过程. 这里看到的 <code class="computeroutput"><span class="identifier">BOOST_LOG_FORWARD_LOGGER_MEMBERS_TEMPLATE</span></code> 宏只是为了方便: 它展开为默认构造函数、复制构造函数、赋值运算符, 以及若干支持命名实参的构造函数. 对于非模板日志器, 有一个类似的 <code class="computeroutput"><span class="identifier">BOOST_LOG_FORWARD_LOGGER_MEMBERS</span></code> 宏.</p>
+<p>假设我们像这样定义了严重级别:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">enum</span> <span class="identifier">severity_level</span>
+<span class="special">{</span>
+    <span class="identifier">normal</span><span class="special">,</span>
+    <span class="identifier">warning</span><span class="special">,</span>
+    <span class="identifier">error</span>
+<span class="special">};</span>
+</pre>
+<p>
+      </p>
+<p>现在我们可以这样使用日志器:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">manual_logging</span><span class="special">()</span>
+<span class="special">{</span>
+    <span class="identifier">my_logger</span><span class="special">&lt;</span> <span class="identifier">severity_level</span> <span class="special">&gt;</span> <span class="identifier">logger</span><span class="special">;</span>
+
+    <span class="identifier">logging</span><span class="special">::</span><span class="identifier">record</span> <span class="identifier">rec</span> <span class="special">=</span> <span class="identifier">logger</span><span class="special">.</span><span class="identifier">open_record</span><span class="special">((</span><span class="identifier">keywords</span><span class="special">::</span><span class="identifier">severity</span> <span class="special">=</span> <span class="identifier">normal</span><span class="special">,</span> <span class="identifier">my_keywords</span><span class="special">::</span><span class="identifier">tag</span> <span class="special">=</span> <span class="string">"GUI"</span><span class="special">));</span>
+    <span class="keyword">if</span> <span class="special">(</span><span class="identifier">rec</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">logging</span><span class="special">::</span><span class="identifier">record_ostream</span> <span class="identifier">strm</span><span class="special">(</span><span class="identifier">rec</span><span class="special">);</span>
+        <span class="identifier">strm</span> <span class="special">&lt;&lt;</span> <span class="string">"The user has confirmed his choice"</span><span class="special">;</span>
+        <span class="identifier">strm</span><span class="special">.</span><span class="identifier">flush</span><span class="special">();</span>
+        <span class="identifier">logger</span><span class="special">.</span><span class="identifier">push_record</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">rec</span><span class="special">));</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>所有这些繁琐的写法通常并不需要. 可以定义一个特殊宏使代码更简洁:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#define</span> <span class="identifier">LOG_WITH_TAG</span><span class="special">(</span><span class="identifier">lg</span><span class="special">,</span> <span class="identifier">sev</span><span class="special">,</span> <span class="identifier">tg</span><span class="special">)</span> <span class="special">\</span>
+    <span class="identifier">BOOST_LOG_WITH_PARAMS</span><span class="special">((</span><span class="identifier">lg</span><span class="special">),</span> <span class="special">(</span><span class="identifier">keywords</span><span class="special">::</span><span class="identifier">severity</span> <span class="special">=</span> <span class="special">(</span><span class="identifier">sev</span><span class="special">))(</span><span class="identifier">my_keywords</span><span class="special">::</span><span class="identifier">tag</span> <span class="special">=</span> <span class="special">(</span><span class="identifier">tg</span><span class="special">)))</span>
+
+<span class="keyword">void</span> <span class="identifier">logging_function</span><span class="special">()</span>
+<span class="special">{</span>
+    <span class="identifier">my_logger</span><span class="special">&lt;</span> <span class="identifier">severity_level</span> <span class="special">&gt;</span> <span class="identifier">logger</span><span class="special">;</span>
+
+    <span class="identifier">LOG_WITH_TAG</span><span class="special">(</span><span class="identifier">logger</span><span class="special">,</span> <span class="identifier">normal</span><span class="special">,</span> <span class="string">"GUI"</span><span class="special">)</span> <span class="special">&lt;&lt;</span> <span class="string">"The user has confirmed his choice"</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>
+        <a href="../../../../../../libs/log/example/doc/extension_record_tagger.cpp" target="_top">查看完整代码</a>.</p>
+<h5>
+<a name="log.extension.sources.h1"></a>
+        <span class="phrase"><a name="log.extension.sources.guidelines_for_designers_of_standalone_logging_sources"></a></span><a class="link" href="sources.html#log.extension.sources.guidelines_for_designers_of_standalone_logging_sources">面向独立日志源设计者的准则</a>
+      </h5>
+<p>一般而言, 您可以按自己喜欢的方式实现新的日志源, 库不强制对日志源提出任何设计要求. 不过, 关于日志源应如何与日志核心交互, 有一些注意事项.</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">每当日志源准备好发出日志记录时, 它应调用核心中的 <code class="computeroutput"><span class="identifier">open_record</span></code>. 日志源专属属性应传入该调用. 在该调用期间, 核心为正在创建的记录分配资源并执行过滤.</li>
+<li class="listitem">如果对 <code class="computeroutput"><span class="identifier">open_record</span></code> 的调用返回了有效的日志记录, 则该记录已通过过滤, 被视为已打开. 记录随后既可以由日志源通过后续调用 <code class="computeroutput"><span class="identifier">push_record</span></code> 确认, 也可以通过销毁它而撤回.</li>
+<li class="listitem">如果对 <code class="computeroutput"><span class="identifier">open_record</span></code> 的调用返回了无效 (空) 的日志记录, 则说明记录未被打开 (很可能因过滤被拒绝). 此时日志核心不持有与该记录关联的任何资源, 因此日志源不得为这次日志尝试调用 <code class="computeroutput"><span class="identifier">push_record</span></code>.</li>
+<li class="listitem">日志源随后可以打开不止一条记录. 已打开的日志记录彼此独立存在.</li>
+</ol></div>
+</div>
+<div class="copyright-footer">版权所有 © 2007-2024 Andrey Semashev<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>) .</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../extension.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../extension.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="attributes.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

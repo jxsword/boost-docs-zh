@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.6: http://docutils.sourceforge.net/" />
+<title>Boost 动态属性映射</title>
+<link rel="stylesheet" href="../../parameter/doc/html/rst.css" type="text/css" />
+</head>
+<body>
+<div class="document" id="logo-dynamic-property-maps">
+<h1 class="title"><a class="reference external" href="../../../index.htm"><img align="middle" alt="Boost" class="align-middle" src="../../../boost.png" /></a> 动态属性映射</h1>
+
+<!-- Copyright 2004-5 The Trustees of Indiana University.
+
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt) -->
+<div class="section" id="summary">
+<h1><a class="toc-backref" href="#id2">摘要</a></h1>
+<p>动态属性映射接口通过动态类型化的接口提供对一组属性映射的访问. 算法可以用它来操作属性映射, 而无需在编译期知道它们的键类型或值类型. 类型安全的代码可以使用动态属性映射, 更轻松、更完整地与脚本语言以及其他基于文本的键值数据表示形式对接.</p>
+<div class="contents topic" id="contents">
+<p class="topic-title first">目录</p>
+<ul class="simple">
+<li><a class="reference internal" href="#summary" id="id2">摘要</a></li>
+<li><a class="reference internal" href="#introduction" id="id3">引言</a><ul>
+<li><a class="reference internal" href="#fred-s-info-revisited" id="id4">"Fred 的信息"再探</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#reference" id="id5">参考</a><ul>
+<li><a class="reference internal" href="#member-functions" id="id6"> 成员函数 </a></li>
+<li><a class="reference internal" href="#free-functions" id="id7">自由函数</a></li>
+<li><a class="reference internal" href="#exceptions" id="id8"> 异常 </a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+<div class="section" id="introduction">
+<h1><a class="toc-backref" href="#id3">引言</a></h1>
+<p>Boost Property Map 库指定了静态类型安全的接口, 泛型算法可以通过它们操作键值对. 通常, 使用属性映射的算法会以其所用的属性映射类型为模板参数, 并使用 Boost Property Map 库指定的接口来操作它们.</p>
+<p>下面的泛型函数演示了属性映射的基本用法.</p>
+<pre class="literal-block">
+template &lt;typename AgeMap, typename GPAMap&gt;
+void
+manipulate_freds_info(AgeMap ages, GPAMap gpas) {
+
+  typedef typename boost::property_traits&lt;AgeMap&gt;::key_type name_type;
+  typedef typename boost::property_traits&lt;AgeMap&gt;::value_type age_type;
+  typedef typename boost::property_traits&lt;GPAMap&gt;::value_type gpa_type;
+
+  name_type fred = &quot;Fred&quot;;
+
+  age_type old_age = get(ages, fred);
+  gpa_type old_gpa = get(gpas, fred);
+
+  std::cout &lt;&lt; &quot;Fred's old age: &quot; &lt;&lt; old_age &lt;&lt; &quot;\n&quot;
+            &lt;&lt; &quot;Fred's old gpa: &quot; &lt;&lt; old_gpa &lt;&lt; &quot;\n&quot;;
+
+  age_type new_age = 18;
+  gpa_type new_gpa = 3.9;
+  put(ages, fred, new_age);
+  put(gpas, fred, new_gpa);
+}
+</pre>
+<p>该函数以两个属性映射类型 <tt class="docutils literal"><span class="pre">AgeMap</span></tt> 和 <tt class="docutils literal"><span class="pre">GPAMap</span></tt> 为模板参数, 并为每种类型接受一个值参数. 该函数使用 <tt class="docutils literal"><span class="pre">property_traits</span></tt> 接口在编译期确定属性映射的值类型和键类型. 代码随后使用 <tt class="docutils literal"><span class="pre">get</span></tt> 函数检索 Fred 的旧信息, 并使用 <tt class="docutils literal"><span class="pre">put</span></tt> 函数更新它. <tt class="docutils literal"><span class="pre">get</span></tt> 函数由可读属性映射概念要求, 而 <tt class="docutils literal"><span class="pre">get</span></tt> 和 <tt class="docutils literal"><span class="pre">put</span></tt> 二者由读/写属性映射概念要求.</p>
+<p>上面的函数不仅要求两个类型参数是属性映射概念的模型, 还做一些额外的假定. <tt class="docutils literal"><span class="pre">AgeMap</span></tt> 和 <tt class="docutils literal"><span class="pre">GPAMap</span></tt> 必须具有相同的键类型, 且该类型必须能从字符串构造. 此外, <tt class="docutils literal"><span class="pre">AgeMap</span></tt> 的值类型必须能从 <tt class="docutils literal"><span class="pre">int</span></tt> 构造. 虽然这些要求没有被显式声明, 但它们会在编译期被静态检查, 不满足它们将导致编译期错误.</p>
+<p>尽管属性映射接口的静态类型化通常能提供理想的编译期安全性, 某些算法仍需要更动态的属性映射接口. 例如, Boost Graph Library (BGL) 提供了一些函数, 可以通过解读文本形式的图描述(即 GraphML 文件)的内容来初始化一个图. 这类通用图描述语言可以指定任意数量的边属性和顶点属性, 并用字符串表示键值对. 图读取函数应当能够捕获这些任意属性, 但由于函数模板只能以固定数量的属性映射为模板参数, 传统的属性映射处理技术不足以实现它们.</p>
+<p>动态属性映射专门满足这样一种需求: 把对属性映射的检查推迟到运行期. 多个组件共同提供对动态属性映射的支持. <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 类收集一组异构的对象, 这些对象是 Boost Property Map 库中概念的模型. 每个属性映射在被加入该集合时都会被指派一个基于字符串的键, 并且可以通过该键来访问. 在内部, <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 用动态属性映射接口适配每个被包含的属性映射, 该接口提供 <tt class="docutils literal"><span class="pre">get</span></tt> 和 <tt class="docutils literal"><span class="pre">put</span></tt> 函数, 可以用满足少量要求的任意类型的值来调用它们. 在内部, 动态属性映射会转换键和值以满足底层属性映射的要求, 如果无法做到则发出运行期异常.</p>
+<div class="section" id="fred-s-info-revisited">
+<h2><a class="toc-backref" href="#id4">"Fred 的信息"再探</a></h2>
+<p>上面的示例使用 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 接口后如下所示:</p>
+<pre class="literal-block">
+void manipulate_freds_info(boost::dynamic_properties&amp; properties)
+{
+  using boost::get;
+  std::string fred = &quot;Fred&quot;;
+
+  int old_age = get&lt;int&gt;(&quot;age&quot;, properties, fred);
+  std::string old_gpa = get(&quot;gpa&quot;, properties, fred);
+
+  std::cout &lt;&lt; &quot;Fred's old age: &quot; &lt;&lt; old_age &lt;&lt; &quot;\n&quot;
+            &lt;&lt; &quot;Fred's old gpa: &quot; &lt;&lt; old_gpa &lt;&lt; &quot;\n&quot;;
+
+  std::string new_age = &quot;18&quot;;
+  double new_gpa = 3.9;
+  put(&quot;age&quot;,properties,fred,new_age);
+  put(&quot;gpa&quot;,properties,fred,new_gpa);
+}
+</pre>
+<p>新函数不是以属性映射类型为模板参数的模板, 而是一个接受 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 对象的具体函数. 此外, 代码不再引用键类型或值类型: 键和值都用字符串表示. 尽管如此, 该函数在有用的地方仍然使用非字符串类型. 例如, Fred 的旧年龄用 <tt class="docutils literal"><span class="pre">int</span></tt> 表示, 其值通过带类型参数调用 <tt class="docutils literal"><span class="pre">get</span></tt> 来检索, 该类型参数决定其返回类型. 最后, <tt class="docutils literal"><span class="pre">get</span></tt> 和 <tt class="docutils literal"><span class="pre">put</span></tt> 函数各自接受一个基于字符串的键, 该键随所关注的属性不同而不同.</p>
+<p>下面示例展示如何调用上面的函数.</p>
+<pre class="literal-block">
+int main()
+{
+  using boost::get;
+
+  // build property maps using associative_property_map
+  std::map&lt;std::string, int&gt; name2age;
+  std::map&lt;std::string, double&gt; name2gpa;
+  boost::associative_property_map&lt; std::map&lt;std::string, int&gt; &gt;
+    age_map(name2age);
+  boost::associative_property_map&lt; std::map&lt;std::string, double&gt; &gt;
+    gpa_map(name2gpa);
+
+  std::string fred(&quot;Fred&quot;);
+  // add key-value information
+  name2age.insert(make_pair(fred,17));
+  name2gpa.insert(make_pair(fred,2.7));
+
+  // build and populate dynamic interface
+  boost::dynamic_properties properties;
+  properties.property(&quot;age&quot;,age_map);
+  properties.property(&quot;gpa&quot;,gpa_map);
+
+  manipulate_freds_info(properties);
+
+  std::cout &lt;&lt; &quot;Fred's age: &quot; &lt;&lt; get(age_map,fred) &lt;&lt; &quot;\n&quot;
+            &lt;&lt; &quot;Fred's gpa: &quot; &lt;&lt; get(gpa_map,fred) &lt;&lt; &quot;\n&quot;;
+}
+</pre>
+<p>代码首先使用 <tt class="docutils literal"><span class="pre">std::map</span></tt> 和 <tt class="docutils literal"><span class="pre">associative_property_map</span></tt> 适配器创建两个属性映射. 在用键值数据初始化属性映射之后, 它构造一个 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 对象, 并把两个属性映射加入其中, 分别以字符串 "age" 和 "gpa" 为键. 最后把 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 对象传给 <tt class="docutils literal"><span class="pre">manipulate_freds_info</span></tt>, 并显示其修改的结果.</p>
+<p>如上所示, <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 对象在需要时为属性映射提供动态类型化的接口, 同时又保留了应用程序中其他地方使用属性映射时的静态类型化.</p>
+</div>
+</div>
+<div class="section" id="reference">
+<h1><a class="toc-backref" href="#id5">参考</a></h1>
+<pre class="literal-block">
+class dynamic_properties
+</pre>
+<p> <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 类为一组属性映射提供动态类型化的接口. 要使用它, 必须先用 <tt class="docutils literal"><span class="pre">property</span></tt> 成员函数把属性映射装入该类的对象.</p>
+<div class="section" id="member-functions">
+<h2><a class="toc-backref" href="#id6"> 成员函数 </a></h2>
+<pre class="literal-block">
+dynamic_properties()
+dynamic_properties(
+  const boost::function&lt;
+    boost::shared_ptr&lt;dynamic_property_map&gt; (
+      const std::string&amp;, const boost::any&amp;, const boost::any&amp;)
+    &gt;&amp; fn)
+</pre>
+<p> <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 对象可以用一个函数对象来构造, 该函数对象被调用时会创建一个新的属性映射. 库提供了 <tt class="docutils literal"><span class="pre">ignore_other_properties</span></tt> 函数对象, 它让 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 对象忽略任何它尚未准备好记录的属性. 如果试图向一个不存在的 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 键 <tt class="docutils literal"><span class="pre">put</span></tt> 一个键值对, 就会以该 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 键以及预期的属性键和值调用此函数. 如果 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 是默认构造的, 这样的 <tt class="docutils literal"><span class="pre">put</span></tt> 尝试会抛出 <tt class="docutils literal"><span class="pre">property_not_found</span></tt>.</p>
+<pre class="literal-block">
+template&lt;typename PropertyMap&gt;
+dynamic_properties&amp;
+property(const std::string&amp; name, PropertyMap property_map)
+</pre>
+<p>该成员函数向所包含的映射集合添加一个属性映射, 以 <tt class="docutils literal"><span class="pre">name</span></tt> 作为其键.</p>
+<p>要求: <tt class="docutils literal"><span class="pre">PropertyMap</span></tt> 必须是可读属性映射或读/写属性映射的模型.</p>
+<pre class="literal-block">
+void insert(const std::string&amp; name, boost::shared_ptr&lt;dynamic_property_map&gt; pm)
+</pre>
+<p>该成员函数直接向集合中添加一个 <tt class="docutils literal"><span class="pre">dynamic_property_map</span></tt>, 以 <tt class="docutils literal"><span class="pre">name</span></tt> 作为其键.</p>
+<pre class="literal-block">
+iterator begin()
+const_iterator begin() const
+</pre>
+<p>该成员函数返回一个迭代器, 遍历 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 对象所持有的属性映射集合.</p>
+<pre class="literal-block">
+iterator end()
+const_iterator end() const
+</pre>
+<p>该成员函数返回一个终止迭代器, 对应 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 对象所持有的动态属性映射集合的末端. 它用于终止对动态属性映射集合的遍历.</p>
+<pre class="literal-block">
+iterator lower_bound(const std::string&amp; name)
+</pre>
+<p>该成员函数返回一个迭代器, 指向 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 键为 <tt class="docutils literal"><span class="pre">name</span></tt> 的第一个属性映射. 请记住, 多个属性映射可以拥有相同的 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 键, 只要它们的属性映射键类型不同.</p>
+<p>不变式: 区间 [ lower_bound(name), end() ) 包含以其 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 键为 name 的每个属性映射.</p>
+</div>
+<div class="section" id="free-functions">
+<h2><a class="toc-backref" href="#id7">自由函数</a></h2>
+<pre class="literal-block">
+boost::shared_ptr&lt;boost::dynamic_property_map&gt;
+ignore_other_properties(const std::string&amp;,
+                        const boost::any&amp;,
+                        const boost::any&amp;)
+</pre>
+<p>当传给 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 构造函数时, 该函数使 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 对象可以忽略向未知键写入值的尝试而不发出错误信号.</p>
+<pre class="literal-block">
+template&lt;typename Key, typename Value&gt;
+bool put(const std::string&amp; name, dynamic_properties&amp; dp, const Key&amp; key,
+         const Value&amp; value)
+</pre>
+<p>该函数向名称和键类型都匹配的属性映射添加一个键值对. 如果找不到匹配的属性映射, 行为取决于是否存在属性映射生成器. 如果构造 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 对象时提供了属性映射生成器, 则使用该函数创建新的属性映射. 如果生成器未能生成属性映射(返回空的 <tt class="docutils literal"><span class="pre">shared_ptr</span></tt>), <tt class="docutils literal"><span class="pre">put</span></tt> 函数返回 <tt class="docutils literal"><span class="pre">false</span></tt>. 反之, 如果 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 对象没有属性映射生成器(即它是默认构造的), 则抛出 <tt class="docutils literal"><span class="pre">property_not_found</span></tt>. 如果找到了候选属性映射, 但它不支持 <tt class="docutils literal"><span class="pre">put</span></tt>, 则抛出 <tt class="docutils literal"><span class="pre">dynamic_const_put_error</span></tt>.</p>
+<pre class="literal-block">
+template&lt;typename Value, typename Key&gt;
+Value get(const std::string&amp; name, const dynamic_properties&amp; dp,
+          const Key&amp; key)
+</pre>
+<p>该函数从名称与给定名称一致且键类型匹配的属性映射中获取值. 如果 <tt class="docutils literal"><span class="pre">Value</span></tt> 是 <tt class="docutils literal"><span class="pre">std::string</span></tt>, 则属性映射的值类型要么是 <tt class="docutils literal"><span class="pre">std::string</span></tt>, 要么是 OutputStreamable 的模型. 在后一种情况下, <tt class="docutils literal"><span class="pre">get</span></tt> 函数会把值转换为字符串. 如果找不到匹配的属性映射, 则抛出 <tt class="docutils literal"><span class="pre">dynamic_get_failure</span></tt>.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+class dynamic_property_map
+</pre>
+<p>该类描述 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 用来以多态方式与用户属性映射交互的接口.</p>
+<pre class="literal-block">
+boost::any get(const any&amp; key)
+</pre>
+<p>给定键的一种表示, 返回与该键关联的值.</p>
+<p>要求: 1) 作为键传入的对象必须可转换为映射键类型的值. 该转换的细节未作规定. 2) 要使此表达式有效, 该键必须关联到某个值, 否则结果未定义.</p>
+<pre class="literal-block">
+std::string get_string(const any&amp; key)
+</pre>
+<p>给定键的一种表示, 返回与该键关联的值的字符串表示.</p>
+<p>要求: 1) 作为键传入的对象必须可转换为属性映射的键类型. 该转换的细节未作规定. 2) 要使此表达式有效, 该键必须关联到某个值, 否则结果未定义. 3) 属性映射的值类型必须是 Output Streamable 的模型.</p>
+<pre class="literal-block">
+void put(const any&amp; key, const any&amp; value)
+</pre>
+<p>给定键的一种表示和值的一种表示, 该键和值在属性映射中建立关联.</p>
+<p>要求: 1) 作为键传入的对象必须可转换为属性映射的键类型. 该转换的细节未作规定. 2) 作为值传入的对象必须可转换为属性映射的值类型. 该转换的细节未作规定. 3) 属性映射不必支持此成员函数, 在这种情况下将发出错误信号. 这是可读属性映射概念的运行期类似物.</p>
+<pre class="literal-block">
+const std::type_info&amp; key() const
+</pre>
+<p>返回一个 <tt class="docutils literal"><span class="pre">type_info</span></tt> 对象, 表示属性映射的键类型.</p>
+<pre class="literal-block">
+const std::type_info&amp; value() const
+</pre>
+<p>返回一个 <tt class="docutils literal"><span class="pre">type_info</span></tt> 对象, 表示属性映射的值类型.</p>
+</div>
+<div class="section" id="exceptions">
+<h2><a class="toc-backref" href="#id8"> 异常 </a></h2>
+<pre class="literal-block">
+struct dynamic_property_exception : public std::exception {
+  virtual ~dynamic_property_exception() throw() {}
+};
+
+struct property_not_found : public std::exception {
+  std::string property;
+  property_not_found(const std::string&amp; property);
+  virtual ~property_not_found() throw();
+
+  const char* what() const throw();
+};
+
+struct dynamic_get_failure : public std::exception {
+  std::string property;
+  dynamic_get_failure(const std::string&amp; property);
+  virtual ~dynamic_get_failure() throw();
+
+  const char* what() const throw();
+};
+
+struct dynamic_const_put_error  : public std::exception {
+  virtual ~dynamic_const_put_error() throw();
+
+  const char* what() const throw();
+};
+</pre>
+<p>在某些情况下, 调用 <tt class="docutils literal"><span class="pre">dynamic_properties</span></tt> 的成员函数会抛出上述异常之一. 当不需要更高精度时, 三个具体异常都可以用通用的 <tt class="docutils literal"><span class="pre">dynamic_property_exception</span></tt> 名称捕获. 此外, 上述所有异常都派生自标准的 <tt class="docutils literal"><span class="pre">std::exception</span></tt>, 以便进行更泛化的错误处理. 导致这些异常的具体情形已在上文描述.</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr class="footer" /> 生成于: 2010-03-29 18:04 UTC. 由 <a class="reference external" href="http://docutils.sourceforge.net/">Docutils</a> 从 <a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> 源生成.</div>
+</body>
+</html>

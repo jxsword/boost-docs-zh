@@ -1,0 +1,421 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>托管堆内存与托管外部缓冲区</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../interprocess.html" title="第 15 章 Boost.Interprocess">
+<link rel="prev" href="managed_memory_segment_advanced_features.html" title="托管内存段高级特性">
+<link rel="next" href="allocators_containers.html" title="分配器与内存分配算法">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="managed_memory_segment_advanced_features.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../interprocess.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="allocators_containers.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="interprocess.managed_heap_memory_external_buffer"></a><a class="link" href="managed_heap_memory_external_buffer.html" title="托管堆内存与托管外部缓冲区">托管堆内存与托管外部缓冲区</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="managed_heap_memory_external_buffer.html#interprocess.managed_heap_memory_external_buffer.managed_external_buffer">托管外部缓冲区: 在用户提供的缓冲区中构造所有 Boost.Interprocess 对象</a></span></dt>
+<dt><span class="section"><a href="managed_heap_memory_external_buffer.html#interprocess.managed_heap_memory_external_buffer.managed_heap_memory">托管堆内存: 堆内存中的 Boost.Interprocess 机制</a></span></dt>
+<dt><span class="section"><a href="managed_heap_memory_external_buffer.html#interprocess.managed_heap_memory_external_buffer.managed_heap_memory_external_buffer_diff">托管内存段之间的差异</a></span></dt>
+<dt><span class="section"><a href="managed_heap_memory_external_buffer.html#interprocess.managed_heap_memory_external_buffer.shared_message_queue_ex">示例: 通过消息队列序列化数据库</a></span></dt>
+</dl></div>
+<p>
+      <span class="bold"><strong>Boost.Interprocess</strong></span> 使用 <code class="computeroutput"><span class="identifier">managed_shared_memory</span></code> 或 <code class="computeroutput"><span class="identifier">managed_mapped_file</span></code> 提供进程间的托管共享内存. 两个进程只需映射同一个可映射内存资源, 并对该对象读写.</p>
+<p>很多时候, 我们不想使用共享内存方式, 而更愿意通过网络、本地套接字或消息队列发送序列化后的数据. 序列化可以通过 <span class="bold"><strong>Boost.Serialization</strong></span> 或类似的库完成. 不过, 如果两个进程共享相同的 ABI (应用二进制接口), 我们也可以利用 <code class="computeroutput"><span class="identifier">managed_shared_memory</span></code> 或 <code class="computeroutput"><span class="identifier">managed_heap_memory</span></code> 同样的对象与容器构造能力, 把所有信息构建在单个缓冲区中, 再通过消息队列等发送. 接收方只需把数据复制到本地缓冲区, 即可直接读取或修改, 无需反序列化. 这种方法可能比复杂的序列化机制高效得多.</p>
+<p>使用非共享内存缓冲区的 <span class="bold"><strong>Boost.Interprocess</strong></span> 服务应用场景:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">在不建议使用动态内存的系统中创建并使用 STL 兼容容器和分配器.</li>
+<li class="listitem">在单个缓冲区中构建复杂且易于序列化的数据库: <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; ">
+<li class="listitem">在线程之间共享数据</li>
+<li class="listitem">从文件保存和加载信息.</li>
+</ul></div>
+        </li>
+<li class="listitem">只需把一个缓冲区的内容复制到另一个缓冲区, 即可复制信息 (容器、分配器等...).</li>
+<li class="listitem">通过串行/进程间/网络通信发送复杂信息和对象/数据库.</li>
+</ul></div>
+<p>为帮助进行这种管理, <span class="bold"><strong>Boost.Interprocess</strong></span> 提供了两个有用的类: <code class="computeroutput"><span class="identifier">basic_managed_heap_memory</span></code> 和 <code class="computeroutput"><span class="identifier">basic_managed_external_buffer</span></code>:</p>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.managed_heap_memory_external_buffer.managed_external_buffer"></a><a class="link" href="managed_heap_memory_external_buffer.html#interprocess.managed_heap_memory_external_buffer.managed_external_buffer" title="托管外部缓冲区: 在用户提供的缓冲区中构造所有 Boost.Interprocess 对象">托管外部缓冲区: 在用户提供的缓冲区中构造所有 Boost.Interprocess 对象</a>
+</h3></div></div></div>
+<p>有时, 用户想在一个缓冲区中创建简单对象、STL 兼容容器、STL 兼容字符串等. 该缓冲区可以是一个大的静态缓冲区、一个内存映射的辅助设备或任何其他用户缓冲区.</p>
+<p>这样可以轻松序列化, 而且只需复制缓冲区就能复制原缓冲区中创建的所有对象, 包括 map、list 等复杂对象. <span class="bold"><strong>Boost.Interprocess</strong></span> 提供了处理用户提供的缓冲区的托管内存段类, 其功能与共享内存类相同:</p>
+<pre class="programlisting"><span class="comment">//Named object creation managed memory segment</span>
+<span class="comment">//All objects are constructed in a user provided buffer</span>
+<span class="keyword">template</span> <span class="special">&lt;</span>
+            <span class="keyword">class</span> <span class="identifier">CharType</span><span class="special">,</span>
+            <span class="keyword">class</span> <span class="identifier">MemoryAlgorithm</span><span class="special">,</span>
+            <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">IndexConfig</span><span class="special">&gt;</span> <span class="keyword">class</span> <span class="identifier">IndexType</span>
+         <span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">basic_managed_external_buffer</span><span class="special">;</span>
+
+<span class="comment">//Named object creation managed memory segment</span>
+<span class="comment">//All objects are constructed in a user provided buffer</span>
+<span class="comment">//   Names are c-strings,</span>
+<span class="comment">//   Default memory management algorithm</span>
+<span class="comment">//    (rbtree_best_fit with no mutexes and relative pointers)</span>
+<span class="comment">//   Name-object mappings are stored in the default index type (flat_map)</span>
+<span class="keyword">typedef</span> <span class="identifier">basic_managed_external_buffer</span> <span class="special">&lt;</span>
+   <span class="keyword">char</span><span class="special">,</span>
+   <span class="identifier">rbtree_best_fit</span><span class="special">&lt;</span><span class="identifier">null_mutex_family</span><span class="special">,</span> <span class="identifier">offset_ptr</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span> <span class="special">&gt;,</span>
+   <span class="identifier">flat_map_index</span>
+   <span class="special">&gt;</span>  <span class="identifier">managed_external_buffer</span><span class="special">;</span>
+
+<span class="comment">//Named object creation managed memory segment</span>
+<span class="comment">//All objects are constructed in a user provided buffer</span>
+<span class="comment">//   Names are wide-strings,</span>
+<span class="comment">//   Default memory management algorithm</span>
+<span class="comment">//    (rbtree_best_fit with no mutexes and relative pointers)</span>
+<span class="comment">//   Name-object mappings are stored in the default index type (flat_map)</span>
+<span class="keyword">typedef</span> <span class="identifier">basic_managed_external_buffer</span><span class="special">&lt;</span>
+   <span class="keyword">wchar_t</span><span class="special">,</span>
+   <span class="identifier">rbtree_best_fit</span><span class="special">&lt;</span><span class="identifier">null_mutex_family</span><span class="special">,</span> <span class="identifier">offset_ptr</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span> <span class="special">&gt;,</span>
+   <span class="identifier">flat_map_index</span>
+   <span class="special">&gt;</span>  <span class="identifier">wmanaged_external_buffer</span><span class="special">;</span>
+</pre>
+<p>要使用托管外部缓冲区, 必须包含以下头文件:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">managed_external_buffer</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<p>来看一个使用 managed_external_buffer 的示例:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">managed_external_buffer</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">allocator</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">container</span><span class="special">/</span><span class="identifier">list</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">cstring</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">aligned_storage</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">()</span>
+<span class="special">{</span>
+   <span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">;</span>
+
+   <span class="comment">//Create the static memory who will store all objects</span>
+   <span class="keyword">const</span> <span class="keyword">int</span> <span class="identifier">memsize</span> <span class="special">=</span> <span class="number">65536</span><span class="special">;</span>
+
+   <span class="keyword">static</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">aligned_storage</span><span class="special">&lt;</span><span class="identifier">memsize</span><span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">static_buffer</span><span class="special">;</span>
+
+   <span class="comment">//This managed memory will construct objects associated with</span>
+   <span class="comment">//a wide string in the static buffer</span>
+   <span class="identifier">wmanaged_external_buffer</span> <span class="identifier">objects_in_static_memory</span>
+      <span class="special">(</span><span class="identifier">create_only</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">static_buffer</span><span class="special">,</span> <span class="identifier">memsize</span><span class="special">);</span>
+
+   <span class="comment">//We optimize resources to create 100 named objects in the static buffer</span>
+   <span class="identifier">objects_in_static_memory</span><span class="special">.</span><span class="identifier">reserve_named_objects</span><span class="special">(</span><span class="number">100</span><span class="special">);</span>
+
+   <span class="comment">//Alias an integer node allocator type</span>
+   <span class="comment">//This allocator will allocate memory inside the static buffer</span>
+   <span class="keyword">typedef</span> <span class="identifier">allocator</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">wmanaged_external_buffer</span><span class="special">::</span><span class="identifier">segment_manager</span><span class="special">&gt;</span>
+      <span class="identifier">allocator_t</span><span class="special">;</span>
+
+   <span class="comment">//Alias a STL compatible list to be constructed in the static buffer</span>
+   <span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">container</span><span class="special">::</span><span class="identifier">list</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">allocator_t</span><span class="special">&gt;</span>    <span class="identifier">MyBufferList</span><span class="special">;</span>
+
+   <span class="comment">//The list must be initialized with the allocator</span>
+   <span class="comment">//All objects created with objects_in_static_memory will</span>
+   <span class="comment">//be stored in the static_buffer!</span>
+   <span class="identifier">MyBufferList</span> <span class="special">*</span><span class="identifier">list</span> <span class="special">=</span> <span class="identifier">objects_in_static_memory</span><span class="special">.</span><span class="identifier">construct</span><span class="special">&lt;</span><span class="identifier">MyBufferList</span><span class="special">&gt;(</span><span class="identifier">L</span><span class="string">"MyList"</span><span class="special">)</span>
+                           <span class="special">(</span><span class="identifier">objects_in_static_memory</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+   <span class="comment">//Since the allocation algorithm from wmanaged_external_buffer uses relative</span>
+   <span class="comment">//pointers and all the pointers constructed int the static memory point</span>
+   <span class="comment">//to objects in the same segment,  we can create another static buffer</span>
+   <span class="comment">//from the first one and duplicate all the data.</span>
+   <span class="keyword">static</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">aligned_storage</span><span class="special">&lt;</span><span class="identifier">memsize</span><span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">static_buffer2</span><span class="special">;</span>
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">memcpy</span><span class="special">(&amp;</span><span class="identifier">static_buffer2</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">static_buffer</span><span class="special">,</span> <span class="identifier">memsize</span><span class="special">);</span>
+
+   <span class="comment">//Now open the duplicated managed memory passing the memory as argument</span>
+   <span class="identifier">wmanaged_external_buffer</span> <span class="identifier">objects_in_static_memory2</span>
+      <span class="special">(</span><span class="identifier">open_only</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">static_buffer2</span><span class="special">,</span> <span class="identifier">memsize</span><span class="special">);</span>
+
+   <span class="comment">//Check that "MyList" has been duplicated in the second buffer</span>
+   <span class="keyword">if</span><span class="special">(!</span><span class="identifier">objects_in_static_memory2</span><span class="special">.</span><span class="identifier">find</span><span class="special">&lt;</span><span class="identifier">MyBufferList</span><span class="special">&gt;(</span><span class="identifier">L</span><span class="string">"MyList"</span><span class="special">).</span><span class="identifier">first</span><span class="special">)</span>
+      <span class="keyword">return</span> <span class="number">1</span><span class="special">;</span>
+
+   <span class="comment">//Destroy the lists from the static buffers</span>
+   <span class="identifier">objects_in_static_memory</span><span class="special">.</span><span class="identifier">destroy</span><span class="special">&lt;</span><span class="identifier">MyBufferList</span><span class="special">&gt;(</span><span class="identifier">L</span><span class="string">"MyList"</span><span class="special">);</span>
+   <span class="identifier">objects_in_static_memory2</span><span class="special">.</span><span class="identifier">destroy</span><span class="special">&lt;</span><span class="identifier">MyBufferList</span><span class="special">&gt;(</span><span class="identifier">L</span><span class="string">"MyList"</span><span class="special">);</span>
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+        <span class="bold"><strong>Boost.Interprocess</strong></span> 的 STL 兼容分配器也可以用来把 STL 兼容容器放入用户段中.</p>
+<p>
+        <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1basic__managed__external__buffer.html" title="类模板 basic_managed_external_buffer">basic_managed_external_buffer</a></code> 对于为嵌入式系统构建小型数据库也很有用: 它把所用内存的大小限制在预定义的内存块内, 而不是让数据库把堆内存弄得零碎.</p>
+<p>
+        <span class="bold"><strong>注意:</strong></span>: 用户提供的对外内存的对齐值应为 <code class="computeroutput"><span class="keyword">alignof</span><span class="special">(</span><span class="identifier">max_align_t</span><span class="special">)</span></code> 与要在该内存中构建的最严格超对齐类型的对齐值二者中的较大者.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.managed_heap_memory_external_buffer.managed_heap_memory"></a><a class="link" href="managed_heap_memory_external_buffer.html#interprocess.managed_heap_memory_external_buffer.managed_heap_memory" title="托管堆内存: 堆内存中的 Boost.Interprocess 机制">托管堆内存: 堆内存中的 Boost.Interprocess 机制</a>
+</h3></div></div></div>
+<p>用堆内存 (new/delete) 获得一个存放用户全部数据的缓冲区是很常见的做法, 因此 <span class="bold"><strong>Boost.Interprocess</strong></span> 提供了一些专门与堆内存配合的类.</p>
+<p>这些类是:</p>
+<pre class="programlisting"><span class="comment">//Named object creation managed memory segment</span>
+<span class="comment">//All objects are constructed in a single buffer allocated via new[]</span>
+<span class="keyword">template</span> <span class="special">&lt;</span>
+            <span class="keyword">class</span> <span class="identifier">CharType</span><span class="special">,</span>
+            <span class="keyword">class</span> <span class="identifier">MemoryAlgorithm</span><span class="special">,</span>
+            <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">IndexConfig</span><span class="special">&gt;</span> <span class="keyword">class</span> <span class="identifier">IndexType</span>
+         <span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">basic_managed_heap_memory</span><span class="special">;</span>
+
+<span class="comment">//Named object creation managed memory segment</span>
+<span class="comment">//All objects are constructed in a single buffer allocated via new[]</span>
+<span class="comment">//   Names are c-strings,</span>
+<span class="comment">//   Default memory management algorithm</span>
+<span class="comment">//    (rbtree_best_fit with no mutexes and relative pointers)</span>
+<span class="comment">//   Name-object mappings are stored in the default index type (flat_map)</span>
+<span class="keyword">typedef</span> <span class="identifier">basic_managed_heap_memory</span> <span class="special">&lt;</span>
+   <span class="keyword">char</span><span class="special">,</span>
+   <span class="identifier">rbtree_best_fit</span><span class="special">&lt;</span><span class="identifier">null_mutex_family</span><span class="special">&gt;,</span>
+   <span class="identifier">flat_map_index</span>
+   <span class="special">&gt;</span>  <span class="identifier">managed_heap_memory</span><span class="special">;</span>
+
+<span class="comment">//Named object creation managed memory segment</span>
+<span class="comment">//All objects are constructed in a single buffer allocated via new[]</span>
+<span class="comment">//   Names are wide-strings,</span>
+<span class="comment">//   Default memory management algorithm</span>
+<span class="comment">//    (rbtree_best_fit with no mutexes and relative pointers)</span>
+<span class="comment">//   Name-object mappings are stored in the default index type (flat_map)</span>
+<span class="keyword">typedef</span> <span class="identifier">basic_managed_heap_memory</span><span class="special">&lt;</span>
+   <span class="keyword">wchar_t</span><span class="special">,</span>
+   <span class="identifier">rbtree_best_fit</span><span class="special">&lt;</span><span class="identifier">null_mutex_family</span><span class="special">&gt;,</span>
+   <span class="identifier">flat_map_index</span>
+   <span class="special">&gt;</span>  <span class="identifier">wmanaged_heap_memory</span><span class="special">;</span>
+</pre>
+<p>要使用托管堆内存, 必须包含以下头文件:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">managed_heap_memory</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<p>用法与 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1basic__managed__external__buffer.html" title="类模板 basic_managed_external_buffer">basic_managed_external_buffer</a></code> 完全相同, 只是内存由托管内存段自身用动态内存 (new/delete) 创建.</p>
+<p>
+        <span class="bold"><strong>basic_managed_heap_memory</strong></span> 还提供一个 <code class="computeroutput"><span class="identifier">grow</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span>
+        <span class="identifier">extra_bytes</span><span class="special">)</span></code> 函数, 尝试调整内部堆内存的大小, 以便为更多对象腾出空间. 但要 <span class="bold"><strong>小心</strong></span> : 如果内存被重新分配, 旧缓冲区会被复制到新缓冲区, 所有对象将被按二进制复制到新缓冲区. 要使用该函数, 堆缓冲区中构造的、指向堆缓冲区内对象的所有指针都必须是相对指针 (例如 <code class="computeroutput"><span class="identifier">offset_ptr</span></code>), 否则结果未定义. 下面是一个示例:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">container</span><span class="special">/</span><span class="identifier">list</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">managed_heap_memory</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">allocators</span><span class="special">/</span><span class="identifier">allocator</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">cstddef</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">cassert</span><span class="special">&gt;</span>
+
+<span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">container</span><span class="special">::</span><span class="identifier">list</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">allocator</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">managed_heap_memory</span><span class="special">::</span><span class="identifier">segment_manager</span><span class="special">&gt;</span> <span class="special">&gt;</span>
+   <span class="identifier">MyList</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span> <span class="special">()</span>
+<span class="special">{</span>
+   <span class="comment">//We will create a buffer of 1000 bytes to store a list</span>
+   <span class="identifier">managed_heap_memory</span> <span class="identifier">heap_memory</span><span class="special">(</span><span class="number">1000</span><span class="special">);</span>
+
+   <span class="identifier">MyList</span> <span class="special">*</span> <span class="identifier">mylist</span> <span class="special">=</span> <span class="identifier">heap_memory</span><span class="special">.</span><span class="identifier">construct</span><span class="special">&lt;</span><span class="identifier">MyList</span><span class="special">&gt;(</span><span class="string">"MyList"</span><span class="special">)</span>
+                        <span class="special">(</span><span class="identifier">heap_memory</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+
+   <span class="comment">//Obtain handle, that identifies the list in the buffer</span>
+   <span class="identifier">managed_heap_memory</span><span class="special">::</span><span class="identifier">handle_t</span> <span class="identifier">list_handle</span> <span class="special">=</span> <span class="identifier">heap_memory</span><span class="special">.</span><span class="identifier">get_handle_from_address</span><span class="special">(</span><span class="identifier">mylist</span><span class="special">);</span>
+
+   <span class="comment">//Fill list until there is no more memory in the buffer</span>
+   try <span class="special">{</span>
+      <span class="keyword">while</span><span class="special">(</span><span class="number">1</span><span class="special">)</span> <span class="special">{</span>
+         <span class="identifier">mylist</span><span class="special">-&gt;</span><span class="identifier">insert</span><span class="special">(</span><span class="identifier">mylist</span><span class="special">-&gt;</span><span class="identifier">begin</span><span class="special">(),</span> <span class="number">0</span><span class="special">);</span>
+      <span class="special">}</span>
+   <span class="special">}</span>
+   catch<span class="special">(</span><span class="keyword">const</span> <span class="identifier">bad_alloc</span> <span class="special">&amp;){</span>
+      <span class="comment">//memory is full</span>
+   <span class="special">}</span>
+   <span class="comment">//Let's obtain the size of the list</span>
+   <span class="identifier">MyList</span><span class="special">::</span><span class="identifier">size_type</span> <span class="identifier">old_size</span> <span class="special">=</span> <span class="identifier">mylist</span><span class="special">-&gt;</span><span class="identifier">size</span><span class="special">();</span>
+
+   <span class="comment">//To make the list bigger, let's increase the heap buffer</span>
+   <span class="comment">//in 1000 bytes more.</span>
+   <span class="identifier">heap_memory</span><span class="special">.</span><span class="identifier">grow</span><span class="special">(</span><span class="number">1000</span><span class="special">);</span>
+
+   <span class="comment">//If memory has been reallocated, the old pointer is invalid, so</span>
+   <span class="comment">//use previously obtained handle to find the new pointer.</span>
+   <span class="identifier">mylist</span> <span class="special">=</span> <span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">MyList</span> <span class="special">*&gt;</span>
+               <span class="special">(</span><span class="identifier">heap_memory</span><span class="special">.</span><span class="identifier">get_address_from_handle</span><span class="special">(</span><span class="identifier">list_handle</span><span class="special">));</span>
+
+   <span class="comment">//Fill list until there is no more memory in the buffer</span>
+   try <span class="special">{</span>
+      <span class="keyword">while</span><span class="special">(</span><span class="number">1</span><span class="special">)</span> <span class="special">{</span>
+         <span class="identifier">mylist</span><span class="special">-&gt;</span><span class="identifier">insert</span><span class="special">(</span><span class="identifier">mylist</span><span class="special">-&gt;</span><span class="identifier">begin</span><span class="special">(),</span> <span class="number">0</span><span class="special">);</span>
+      <span class="special">}</span>
+   <span class="special">}</span>
+   catch<span class="special">(</span><span class="keyword">const</span> <span class="identifier">bad_alloc</span> <span class="special">&amp;){</span>
+      <span class="comment">//memory is full</span>
+   <span class="special">}</span>
+
+   <span class="comment">//Let's obtain the new size of the list</span>
+   <span class="identifier">MyList</span><span class="special">::</span><span class="identifier">size_type</span> <span class="identifier">new_size</span> <span class="special">=</span> <span class="identifier">mylist</span><span class="special">-&gt;</span><span class="identifier">size</span><span class="special">();</span>
+
+   <span class="identifier">assert</span><span class="special">(</span><span class="identifier">new_size</span> <span class="special">&gt;</span> <span class="identifier">old_size</span><span class="special">);</span>
+
+   <span class="comment">//Destroy list</span>
+   <span class="identifier">heap_memory</span><span class="special">.</span><span class="identifier">destroy_ptr</span><span class="special">(</span><span class="identifier">mylist</span><span class="special">);</span>
+
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+        <span class="bold"><strong>注意:</strong></span>: 堆内存不保证与超对齐类型兼容, 因此不支持使用内存分配算法或构造需要超对齐内存的对象:</p>
+<pre class="programlisting"><span class="comment">// 64 byte aligned memory might not be supported</span>
+<span class="keyword">typedef</span> <span class="identifier">basic_managed_heap_memory</span><span class="special">&lt;</span>
+    <span class="keyword">char</span><span class="special">,</span>
+    <span class="identifier">rbtree_best_fit</span><span class="special">&lt;</span><span class="identifier">mutex_family</span><span class="special">,</span> <span class="identifier">offset_ptr</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">,</span> <span class="keyword">long</span><span class="special">,</span> <span class="keyword">unsigned</span> <span class="keyword">long</span><span class="special">,</span> <span class="number">64</span><span class="special">&gt;,</span> <span class="number">64</span><span class="special">&gt;,</span>
+    <span class="identifier">iset_index</span>
+<span class="special">&gt;</span> <span class="identifier">managed_heap_with_overalignment_t</span><span class="special">;</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.managed_heap_memory_external_buffer.managed_heap_memory_external_buffer_diff"></a><a class="link" href="managed_heap_memory_external_buffer.html#interprocess.managed_heap_memory_external_buffer.managed_heap_memory_external_buffer_diff" title="托管内存段之间的差异">托管内存段之间的差异</a>
+</h3></div></div></div>
+<p>所有托管内存段都有相似的能力 (内存段内分配内存、命名对象构造...), 但 <span class="bold"><strong>managed_shared_memory</strong></span> 、<span class="bold"><strong>managed_mapped_file</strong></span> 与 <span class="bold"><strong>managed_heap_memory</strong></span> 、<span class="bold"><strong>managed_external_file</strong></span> 之间存在一些显著差异.</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">托管共享内存和映射文件的默认特化使用进程共享互斥量. 堆内存和外部缓冲区默认没有内部同步. 原因在于前两者设计为在进程之间共享 (尽管内存映射文件也可以只用来为单个进程获得一个持久的对象数据库), 而后两者设计为在单个进程内部使用, 用于构建可序列化的命名对象数据库, 以便通过串行进程间通信 (如消息队列、localhost 网络等) 发送.</li>
+<li class="listitem">前两者创建由多个进程共享的系统全局对象 (共享内存对象或文件), 而后两者是不创建系统级资源的对象.</li>
+</ul></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="interprocess.managed_heap_memory_external_buffer.shared_message_queue_ex"></a><a class="link" href="managed_heap_memory_external_buffer.html#interprocess.managed_heap_memory_external_buffer.shared_message_queue_ex" title="示例: 通过消息队列序列化数据库">示例: 通过消息队列序列化数据库</a>
+</h3></div></div></div>
+<p>为了展示托管堆内存和托管外部缓冲区类的用处, 下面的示例演示如何用消息队列把用 <span class="bold"><strong>Boost.Interprocess</strong></span> 在内存缓冲区中构建的整个数据库序列化, 通过消息队列发送, 并在另一个缓冲区中复制:</p>
+<pre class="programlisting"><span class="comment">//This test creates a in memory data-base using Interprocess machinery and</span>
+<span class="comment">//serializes it through a message queue. Then rebuilds the data-base in</span>
+<span class="comment">//another buffer and checks it against the original data-base</span>
+<span class="keyword">bool</span> <span class="identifier">test_serialize_db</span><span class="special">()</span>
+<span class="special">{</span>
+   <span class="comment">//Typedef data to create a Interprocess map</span>
+   <span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span><span class="special">&lt;</span><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span><span class="special">&gt;</span> <span class="identifier">MyPair</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">less</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span><span class="special">&gt;</span>   <span class="identifier">MyLess</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="identifier">node_allocator</span><span class="special">&lt;</span><span class="identifier">MyPair</span><span class="special">,</span> <span class="identifier">managed_external_buffer</span><span class="special">::</span><span class="identifier">segment_manager</span><span class="special">&gt;</span>
+      <span class="identifier">node_allocator_t</span><span class="special">;</span>
+   <span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">container</span><span class="special">::</span><span class="identifier">map</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span><span class="special">,</span>
+               <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span><span class="special">,</span>
+               <span class="identifier">std</span><span class="special">::</span><span class="identifier">less</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span><span class="special">&gt;,</span>
+               <span class="identifier">node_allocator_t</span><span class="special">&gt;</span>
+               <span class="identifier">MyMap</span><span class="special">;</span>
+
+   <span class="comment">//Some constants</span>
+   <span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">BufferSize</span>  <span class="special">=</span> <span class="number">65536</span><span class="special">;</span>
+   <span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">MaxMsgSize</span>  <span class="special">=</span> <span class="number">100</span><span class="special">;</span>
+
+   <span class="comment">//Allocate a memory buffer to hold the destiny database using vector&lt;char&gt;</span>
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">&gt;</span> <span class="identifier">buffer_destiny</span><span class="special">(</span><span class="identifier">BufferSize</span><span class="special">,</span> <span class="number">0</span><span class="special">);</span>
+
+   <span class="identifier">message_queue</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span>
+   <span class="special">{</span>
+      <span class="comment">//Create the message-queues</span>
+      <span class="identifier">message_queue</span> <span class="identifier">mq1</span><span class="special">(</span><span class="identifier">create_only</span><span class="special">,</span> "MyName"<span class="special">,</span> <span class="number">1</span><span class="special">,</span> <span class="identifier">MaxMsgSize</span><span class="special">);</span>
+
+      <span class="comment">//Open previously created message-queue simulating other process</span>
+      <span class="identifier">message_queue</span> <span class="identifier">mq2</span><span class="special">(</span><span class="identifier">open_only</span><span class="special">,</span> "MyName"<span class="special">);</span>
+
+      <span class="comment">//A managed heap memory to create the origin database</span>
+      <span class="identifier">managed_heap_memory</span> <span class="identifier">db_origin</span><span class="special">(</span><span class="identifier">buffer_destiny</span><span class="special">.</span><span class="identifier">size</span><span class="special">());</span>
+
+      <span class="comment">//Construct the map in the first buffer</span>
+      <span class="identifier">MyMap</span> <span class="special">*</span><span class="identifier">map1</span> <span class="special">=</span> <span class="identifier">db_origin</span><span class="special">.</span><span class="identifier">construct</span><span class="special">&lt;</span><span class="identifier">MyMap</span><span class="special">&gt;(</span><span class="string">"MyMap"</span><span class="special">)</span>
+                                       <span class="special">(</span><span class="identifier">MyLess</span><span class="special">(),</span>
+                                       <span class="identifier">db_origin</span><span class="special">.</span><span class="identifier">get_segment_manager</span><span class="special">());</span>
+      <span class="keyword">if</span><span class="special">(!</span><span class="identifier">map1</span><span class="special">)</span>
+         <span class="keyword">return</span> <span class="keyword">false</span><span class="special">;</span>
+
+      <span class="comment">//Fill map1 until is full</span>
+      try <span class="special">{</span>
+         <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+         <span class="keyword">while</span><span class="special">(</span><span class="number">1</span><span class="special">){</span>
+            <span class="special">(*</span><span class="identifier">map1</span><span class="special">)[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">i</span><span class="special">;</span>
+            <span class="special">++</span><span class="identifier">i</span><span class="special">;</span>
+         <span class="special">}</span>
+      <span class="special">}</span>
+      catch<span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">::</span><span class="identifier">bad_alloc</span> <span class="special">&amp;){}</span>
+
+      <span class="comment">//Data control data sending through the message queue</span>
+      <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">sent</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+      <span class="identifier">message_queue</span><span class="special">::</span><span class="identifier">size_type</span> <span class="identifier">recvd</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+      <span class="identifier">message_queue</span><span class="special">::</span><span class="identifier">size_type</span> <span class="identifier">total_recvd</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+      <span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="identifier">priority</span><span class="special">;</span>
+
+      <span class="comment">//Send whole first buffer through the mq1, read it</span>
+      <span class="comment">//through mq2 to the second buffer</span>
+      <span class="keyword">while</span><span class="special">(</span><span class="number">1</span><span class="special">){</span>
+         <span class="comment">//Send a fragment of buffer1 through mq1</span>
+       <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">bytes_to_send</span> <span class="special">=</span> <span class="identifier">MaxMsgSize</span> <span class="special">&lt;</span> <span class="special">(</span><span class="identifier">db_origin</span><span class="special">.</span><span class="identifier">get_size</span><span class="special">()</span> <span class="special">-</span> <span class="identifier">sent</span><span class="special">)</span> <span class="special">?</span>
+                                       <span class="identifier">MaxMsgSize</span> <span class="special">:</span> <span class="special">(</span><span class="identifier">db_origin</span><span class="special">.</span><span class="identifier">get_size</span><span class="special">()</span> <span class="special">-</span> <span class="identifier">sent</span><span class="special">);</span>
+         <span class="identifier">mq1</span><span class="special">.</span><span class="identifier">send</span><span class="special">(</span> <span class="special">&amp;</span><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">*&gt;(</span><span class="identifier">db_origin</span><span class="special">.</span><span class="identifier">get_address</span><span class="special">())[</span><span class="identifier">sent</span><span class="special">]</span>
+               <span class="special">,</span> <span class="identifier">bytes_to_send</span>
+               <span class="special">,</span> <span class="number">0</span><span class="special">);</span>
+         <span class="identifier">sent</span> <span class="special">+=</span> <span class="identifier">bytes_to_send</span><span class="special">;</span>
+         <span class="comment">//Receive the fragment through mq2 to buffer_destiny</span>
+       <span class="identifier">mq2</span><span class="special">.</span><span class="identifier">receive</span><span class="special">(</span> <span class="special">&amp;</span><span class="identifier">buffer_destiny</span><span class="special">[</span><span class="identifier">total_recvd</span><span class="special">]</span>
+                <span class="special">,</span> <span class="identifier">BufferSize</span> <span class="special">-</span> <span class="identifier">recvd</span>
+                  <span class="special">,</span> <span class="identifier">recvd</span>
+                  <span class="special">,</span> <span class="identifier">priority</span><span class="special">);</span>
+         <span class="identifier">total_recvd</span> <span class="special">+=</span> <span class="identifier">recvd</span><span class="special">;</span>
+
+         <span class="comment">//Check if we have received all the buffer</span>
+         <span class="keyword">if</span><span class="special">(</span><span class="identifier">total_recvd</span> <span class="special">==</span> <span class="identifier">BufferSize</span><span class="special">){</span>
+            <span class="keyword">break</span><span class="special">;</span>
+         <span class="special">}</span>
+      <span class="special">}</span>
+
+      <span class="comment">//The buffer will contain a copy of the original database</span>
+      <span class="comment">//so let's interpret the buffer with managed_external_buffer</span>
+      <span class="identifier">managed_external_buffer</span> <span class="identifier">db_destiny</span><span class="special">(</span><span class="identifier">open_only</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">buffer_destiny</span><span class="special">[</span><span class="number">0</span><span class="special">],</span> <span class="identifier">BufferSize</span><span class="special">);</span>
+
+      <span class="comment">//Let's find the map</span>
+      <span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span><span class="special">&lt;</span><span class="identifier">MyMap</span> <span class="special">*,</span> <span class="identifier">managed_external_buffer</span><span class="special">::</span><span class="identifier">size_type</span><span class="special">&gt;</span> <span class="identifier">ret</span> <span class="special">=</span> <span class="identifier">db_destiny</span><span class="special">.</span><span class="identifier">find</span><span class="special">&lt;</span><span class="identifier">MyMap</span><span class="special">&gt;(</span><span class="string">"MyMap"</span><span class="special">);</span>
+      <span class="identifier">MyMap</span> <span class="special">*</span><span class="identifier">map2</span> <span class="special">=</span> <span class="identifier">ret</span><span class="special">.</span><span class="identifier">first</span><span class="special">;</span>
+
+      <span class="comment">//Check if we have found it</span>
+      <span class="keyword">if</span><span class="special">(!</span><span class="identifier">map2</span><span class="special">){</span>
+         <span class="keyword">return</span> <span class="keyword">false</span><span class="special">;</span>
+      <span class="special">}</span>
+
+      <span class="comment">//Check if it is a single variable (not an array)</span>
+      <span class="keyword">if</span><span class="special">(</span><span class="identifier">ret</span><span class="special">.</span><span class="identifier">second</span> <span class="special">!=</span> <span class="number">1</span><span class="special">){</span>
+         <span class="keyword">return</span> <span class="keyword">false</span><span class="special">;</span>
+      <span class="special">}</span>
+
+      <span class="comment">//Now let's compare size</span>
+      <span class="keyword">if</span><span class="special">(</span><span class="identifier">map1</span><span class="special">-&gt;</span><span class="identifier">size</span><span class="special">()</span> <span class="special">!=</span> <span class="identifier">map2</span><span class="special">-&gt;</span><span class="identifier">size</span><span class="special">()){</span>
+         <span class="keyword">return</span> <span class="keyword">false</span><span class="special">;</span>
+      <span class="special">}</span>
+
+      <span class="comment">//Now let's compare all db values</span>
+     <span class="identifier">MyMap</span><span class="special">::</span><span class="identifier">size_type</span> <span class="identifier">num_elements</span> <span class="special">=</span> <span class="identifier">map1</span><span class="special">-&gt;</span><span class="identifier">size</span><span class="special">();</span>
+     <span class="keyword">for</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">num_elements</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">){</span>
+         <span class="keyword">if</span><span class="special">((*</span><span class="identifier">map1</span><span class="special">)[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">!=</span> <span class="special">(*</span><span class="identifier">map2</span><span class="special">)[</span><span class="identifier">i</span><span class="special">]){</span>
+            <span class="keyword">return</span> <span class="keyword">false</span><span class="special">;</span>
+         <span class="special">}</span>
+      <span class="special">}</span>
+
+      <span class="comment">//Destroy maps from db-s</span>
+      <span class="identifier">db_origin</span><span class="special">.</span><span class="identifier">destroy_ptr</span><span class="special">(</span><span class="identifier">map1</span><span class="special">);</span>
+      <span class="identifier">db_destiny</span><span class="special">.</span><span class="identifier">destroy_ptr</span><span class="special">(</span><span class="identifier">map2</span><span class="special">);</span>
+   <span class="special">}</span>
+   <span class="identifier">message_queue</span><span class="special">::</span><span class="identifier">remove</span><span class="special">(</span>"MyName"<span class="special">);</span>
+   <span class="keyword">return</span> <span class="keyword">true</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2005-2024 Ion Gaztanaga<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="managed_memory_segment_advanced_features.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../interprocess.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="allocators_containers.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

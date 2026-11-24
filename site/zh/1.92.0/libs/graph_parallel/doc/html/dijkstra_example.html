@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.6: http://docutils.sourceforge.net/" />
+<title>并行最短路径</title>
+<link rel="stylesheet" href="../../../../rst.css" type="text/css" />
+</head>
+<body>
+<div class="document" id="parallel-shortest-paths">
+<h1 class="title">并行最短路径</h1>
+
+<!-- Copyright (C) 2004-2008 The Trustees of Indiana University.
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt) -->
+<p>为了演示 Parallel Boost Graph Library 的使用, 我们同时使用顺序与并行 BGL 来求下图简单图形中从顶点 A 到其他每个顶点的最短路径:</p>
+<img alt="../dijkstra_seq_graph.png" src="../dijkstra_seq_graph.png" />
+<p>使用顺序 <a class="reference external" href="http://www.boost.org/libs/graph/doc">BGL</a> 时, 计算最短路径的程序分为三个阶段. 熟悉 BGL 的读者可以直接跳到 <a class="reference internal" href="#distributing-the-graph">对图进行分布</a> 一节.</p>
+<blockquote>
+<ul class="simple">
+<li><a class="reference internal" href="#define-the-graph-type">定义图类型</a></li>
+<li><a class="reference internal" href="#construct-the-graph">构造图</a></li>
+<li><a class="reference internal" href="#invoke-dijkstra-s-algorithm">调用 Dijkstra 算法</a></li>
+</ul>
+</blockquote>
+<div class="section" id="define-the-graph-type">
+<h1>定义图类型</h1>
+<p>对于此问题, 我们使用图的邻接表表示, 并采用 BGL 的 <tt class="docutils literal"><span class="pre">adjacency_list``_</span> <span class="pre">类</span> <span class="pre">模板.</span> <span class="pre">它</span> <span class="pre">将</span> <span class="pre">是</span> <span class="pre">一个</span> <span class="pre">有向</span>
+<span class="pre">图</span> <span class="pre">(``directedS</span></tt> 参数), 其顶点存储于 <tt class="docutils literal"><span class="pre">std::vector</span></tt> (<tt class="docutils literal"><span class="pre">vecS</span></tt> 参数), 每个顶点的出边存储于 <tt class="docutils literal"><span class="pre">std::list</span></tt> (<tt class="docutils literal"><span class="pre">listS</span></tt> 参数). 我们为每条边附加一个整数权重.</p>
+<pre class="literal-block">
+typedef adjacency_list&lt;listS, vecS, directedS,
+                       no_property,                 // Vertex properties
+                       property&lt;edge_weight_t, int&gt; // Edge properties
+                       &gt; graph_t;
+typedef graph_traits &lt; graph_t &gt;::vertex_descriptor vertex_descriptor;
+typedef graph_traits &lt; graph_t &gt;::edge_descriptor edge_descriptor;
+</pre>
+</div>
+<div class="section" id="construct-the-graph">
+<h1>构造图</h1>
+<p>为了构建该图, 我们声明一个包含节点名称的枚举 (供我们自己使用), 并创建两个数组: 第一个数组 <tt class="docutils literal"><span class="pre">edge_array</span></tt> 包含每条边的源点与目标点, 第二个数组 <tt class="docutils literal"><span class="pre">weights</span></tt> 包含每条边的整数权重. 我们通过指针 (此处用作迭代器) 把数组的内容传给图构造函数以构建图:</p>
+<pre class="literal-block">
+typedef std::pair&lt;int, int&gt; Edge;
+const int num_nodes = 5;
+enum nodes { A, B, C, D, E };
+char name[] = &quot;ABCDE&quot;;
+Edge edge_array[] = { Edge(A, C), Edge(B, B), Edge(B, D), Edge(B, E),
+  Edge(C, B), Edge(C, D), Edge(D, E), Edge(E, A), Edge(E, B)
+};
+int weights[] = { 1, 2, 1, 2, 7, 3, 1, 1, 1 };
+int num_arcs = sizeof(edge_array) / sizeof(Edge);
+
+graph_t g(edge_array, edge_array + num_arcs, weights, num_nodes);
+</pre>
+</div>
+<div class="section" id="invoke-dijkstra-s-algorithm">
+<h1>调用 Dijkstra 算法</h1>
+<p>要调用 Dijkstra 算法, 我们首先需要决定希望如何接收算法的结果, 即到每个顶点的距离以及每个顶点的前驱 (以便重建最短路径本身). 在本例中, 我们将创建两个向量: <tt class="docutils literal"><span class="pre">p</span></tt> 用于前驱, <tt class="docutils literal"><span class="pre">d</span></tt> 用于距离.</p>
+<p>接下来, 我们用 <tt class="docutils literal"><span class="pre">s</span></tt> 确定起始顶点, 即在 <tt class="docutils literal"><span class="pre">vertex</span></tt> 操作之上, 使用 <tt class="docutils literal"><span class="pre">adjacency_list``_</span> <span class="pre">并</span> <span class="pre">调用</span>
+<span class="pre">``dijkstra_shortest_paths``_</span> <span class="pre">以</span> <span class="pre"> </span> <span class="pre">图</span> <span class="pre">``g</span></tt>, 即起始顶点 <tt class="docutils literal"><span class="pre">s</span></tt>, 并传入两个 <tt class="docutils literal"><span class="pre">属性</span> <span class="pre">映射``_</span> <span class="pre">其</span> <span class="pre">指示</span> <span class="pre"> </span> <span class="pre">算法</span> <span class="pre"> </span>
+<span class="pre">把</span> <span class="pre">前驱</span> <span class="pre">存入</span> <span class="pre"> </span> <span class="pre">``p</span></tt> 向量, 并把距离存入 <tt class="docutils literal"><span class="pre">d</span></tt> 向量. 该算法会自动使用存储在图中的边权重, 不过这一能力可以被覆盖.</p>
+<pre class="literal-block">
+// Keeps track of the predecessor of each vertex
+std::vector&lt;vertex_descriptor&gt; p(num_vertices(g));
+// Keeps track of the distance to each vertex
+std::vector&lt;int&gt; d(num_vertices(g));
+
+vertex_descriptor s = vertex(A, g);
+dijkstra_shortest_paths
+  (g, s,
+   predecessor_map(
+     make_iterator_property_map(p.begin(), get(vertex_index, g))).
+   distance_map(
+     make_iterator_property_map(d.begin(), get(vertex_index, g)))
+   );
+</pre>
+</div>
+<div class="section" id="distributing-the-graph">
+<h1>对图进行分布</h1>
+<p>前述计算完全是顺序的, 图存储在单一地址空间内. 要把图分布到多个不共享地址空间的处理器上, 我们需要表示处理器及它们之间的通信, 并修改图类型.</p>
+<p>处理器及其交互通过一个 <em>进程组</em> 来抽象. 在本例中, 我们将使用 <a class="reference external" href="http://www-unix.mcs.anl.gov/mpi/">MPI</a> 进行通信, 进程间消息被立即发送:</p>
+<pre class="literal-block">
+typedef mpi::process_group&lt;mpi::immediateS&gt; process_group_type;
+</pre>
+<p>接下来, 我们指示 <tt class="docutils literal"><span class="pre">adjacency_list</span></tt> 模板把图的顶点分布到我们的进程组上, 并把本地顶点存储在 <tt class="docutils literal"><span class="pre">std::vector</span></tt> 中:</p>
+<pre class="literal-block">
+typedef adjacency_list&lt;listS,
+                       distributedS&lt;process_group_type, vecS&gt;,
+                       directedS,
+                       no_property,                 // Vertex properties
+                       property&lt;edge_weight_t, int&gt; // Edge properties
+                       &gt; graph_t;
+typedef graph_traits &lt; graph_t &gt;::vertex_descriptor vertex_descriptor;
+typedef graph_traits &lt; graph_t &gt;::edge_descriptor edge_descriptor;
+</pre>
+<p>注意, 与顺序 BGL 的唯一区别是使用了 <tt class="docutils literal"><span class="pre">distributedS</span></tt> 选择器, 它标识一个分布式图. 图的顶点将分布在各个处理器上, 拥有某顶点的处理器同时存储从该顶点出发的边以及与该顶点或其边相关联的任何属性. 使用三个处理器和默认的分块分布时, 图将按如下方式分布:</p>
+<img alt="../dijkstra_dist3_graph.png" src="../dijkstra_dist3_graph.png" />
+<p>处理器 0 (红色) 拥有顶点 A 和 B, 包括从这些顶点出发的所有边; 处理器 1 (绿色) 拥有顶点 C 和 D (及其边); 处理器 2 (蓝色) 拥有顶点 E. 构造该图所用的语法与顺序图相同, 如 <a class="reference internal" href="#construct-the-graph">构造图</a> 一节所示.</p>
+<p>对 <tt class="docutils literal"><span class="pre">dijkstra_shortest_paths</span></tt> 的调用在语法上与顺序调用等价, 但其使用的机制截然不同. 传给 <tt class="docutils literal"><span class="pre">dijkstra_shortest_paths</span></tt> 的属性映射实际上是 <em>分布式</em> 属性映射, 它们存储本地边或顶点的属性, 并在需要时通过隐式通信访问远程边或顶点的属性. Dijkstra 算法的表述也略有不同, 因为每个处理器只能尝试松弛从本地顶点出发的边: 当发现到某个顶点的更短路径时, 发送给拥有该顶点的处理器的消息会指明该顶点可能需要重新处理.</p>
+<hr class="docutils" />
+<p>返回 <a class="reference external" href="index.html">Parallel BGL 主页</a></p>
+</div>
+</div>
+<div class="footer">
+<hr class="footer" /> 生成时间: 2009-05-31 00:22 UTC. 由 <a class="reference external" href="http://docutils.sourceforge.net/">Docutils</a> 依据 <a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> 源生成.</div>
+</body>
+</html>

@@ -1,0 +1,167 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>将纤程与非阻塞 I/O 集成</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Fiber">
+<link rel="up" href="../index.html" title="第 1 章 Fiber">
+<link rel="prev" href="callbacks/then_there_s____boost_asio__.html" title="接下来便是 Boost.Asio">
+<link rel="next" href="when_any.html" title="when_any / when_all 功能">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="callbacks/then_there_s____boost_asio__.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="when_any.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="fiber.nonblocking"></a><a name="nonblocking"></a><a class="link" href="nonblocking.html" title="将纤程与非阻塞 I/O 集成">将纤程与非阻塞 I/O 集成</a>
+</h2></div></div></div>
+<h4>
+<a name="fiber.nonblocking.h0"></a>
+      <span class="phrase"><a name="fiber.nonblocking.overview"></a></span><a class="link" href="nonblocking.html#fiber.nonblocking.overview"> 概述 </a>
+    </h4>
+<p>
+      <span class="emphasis"><em>非阻塞</em></span> I/O 与 <span class="emphasis"><em>异步</em></span> I/O 不同. 真正的异步 I/O 操作承诺发起操作并在完成时通知调用方, 通常通过某种回调 (如 <a class="link" href="callbacks.html#callbacks">将纤程与异步回调集成</a> 一节所述).</p>
+<p>相比之下, 非阻塞 I/O 操作如果需要阻塞就会拒绝启动, 返回诸如 <a href="http://man7.org/linux/man-pages/man3/errno.3.html" target="_top"><code class="computeroutput"><span class="identifier">EWOULDBLOCK</span></code></a> 之类的错误码. 只有在能立即完成时该操作才会执行. 实际上, 调用方必须不断重试该操作, 直到它不再返回 <code class="computeroutput"><span class="identifier">EWOULDBLOCK</span></code>.</p>
+<p>在经典的事件驱动程序中, 使用非阻塞 I/O 可能会让人头疼. 在尝试非阻塞 I/O 的位置, 返回值 <code class="computeroutput"><span class="identifier">EWOULDBLOCK</span></code> 要求调用方把控制权交回主事件循环, 并安排在下一次迭代时重试.</p>
+<p>更糟的是, 非阻塞 I/O 操作可能 <span class="emphasis"><em>部分</em></span> 成功. 这意味着相关的业务逻辑必须在主循环的每次迭代中继续获得控制权, 直到所有需要的数据都被处理完: 一个双重嵌套的循环, 以回调驱动的状态机形式实现.</p>
+<p>
+      <span class="bold"><strong>Boost.Fiber</strong></span> 可以极大地简化这一问题. 一旦你按照 <a class="link" href="integration.html#integration">与另一个主循环共享线程</a> 一节所述与应用程序主循环完成集成, 等待下一次主循环迭代就只需调用 <a class="link" href="fiber_mgmt/this_fiber.html#this_fiber_yield"><code class="computeroutput">this_fiber::yield()</code></a> 那么简单.</p>
+<h4>
+<a name="fiber.nonblocking.h1"></a>
+      <span class="phrase"><a name="fiber.nonblocking.example_nonblocking_api"></a></span><a class="link" href="nonblocking.html#fiber.nonblocking.example_nonblocking_api">非阻塞 API 示例</a>
+    </h4>
+<p>为便于说明, 请看这个 API:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">NonblockingAPI</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">NonblockingAPI</span><span class="special">();</span>
+
+    <span class="comment">// nonblocking operation: may return EWOULDBLOCK</span>
+    <span class="keyword">int</span> <span class="identifier">read</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="special">&amp;</span> <span class="identifier">data</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">desired</span><span class="special">);</span>
+
+    <span class="special">...</span>
+<span class="special">};</span>
+</pre>
+<p>
+    </p>
+<h4>
+<a name="fiber.nonblocking.h2"></a>
+      <span class="phrase"><a name="fiber.nonblocking.polling_for_completion"></a></span><a class="link" href="nonblocking.html#fiber.nonblocking.polling_for_completion">轮询完成状态</a>
+    </h4>
+<p>我们可以围绕 <code class="computeroutput"><span class="identifier">NonblockingAPI</span><span class="special">::</span><span class="identifier">read</span><span class="special">()</span></code> 构建一个低层封装, 使其调用方完全不必面对 <code class="computeroutput"><span class="identifier">EWOULDBLOCK</span></code>:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// guaranteed not to return EWOULDBLOCK</span>
+<span class="keyword">int</span> <span class="identifier">read_chunk</span><span class="special">(</span> <span class="identifier">NonblockingAPI</span> <span class="special">&amp;</span> <span class="identifier">api</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="special">&amp;</span> <span class="identifier">data</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">desired</span><span class="special">)</span> <span class="special">{</span>
+    <span class="keyword">int</span> <span class="identifier">error</span><span class="special">;</span>
+    <span class="keyword">while</span> <span class="special">(</span> <span class="identifier">EWOULDBLOCK</span> <span class="special">==</span> <span class="special">(</span> <span class="identifier">error</span> <span class="special">=</span> <span class="identifier">api</span><span class="special">.</span><span class="identifier">read</span><span class="special">(</span> <span class="identifier">data</span><span class="special">,</span> <span class="identifier">desired</span><span class="special">)</span> <span class="special">)</span> <span class="special">)</span> <span class="special">{</span>
+        <span class="comment">// not ready yet -- try again on the next iteration of the</span>
+        <span class="comment">// application's main loop</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">this_fiber</span><span class="special">::</span><span class="identifier">yield</span><span class="special">();</span>
+    <span class="special">}</span>
+    <span class="keyword">return</span> <span class="identifier">error</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+    </p>
+<h4>
+<a name="fiber.nonblocking.h3"></a>
+      <span class="phrase"><a name="fiber.nonblocking.filling_all_desired_data"></a></span><a class="link" href="nonblocking.html#fiber.nonblocking.filling_all_desired_data">填满全部所需数据</a>
+    </h4>
+<p>有了 <code class="computeroutput"><span class="identifier">read_chunk</span><span class="special">()</span></code>, 我们可以直截了当地迭代, 直到获得全部所需数据:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// keep reading until desired length, EOF or error</span>
+<span class="comment">// may return both partial data and nonzero error</span>
+<span class="keyword">int</span> <span class="identifier">read_desired</span><span class="special">(</span> <span class="identifier">NonblockingAPI</span> <span class="special">&amp;</span> <span class="identifier">api</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="special">&amp;</span> <span class="identifier">data</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">desired</span><span class="special">)</span> <span class="special">{</span>
+    <span class="comment">// we're going to accumulate results into 'data'</span>
+    <span class="identifier">data</span><span class="special">.</span><span class="identifier">clear</span><span class="special">();</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">chunk</span><span class="special">;</span>
+    <span class="keyword">int</span> <span class="identifier">error</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+    <span class="keyword">while</span> <span class="special">(</span> <span class="identifier">data</span><span class="special">.</span><span class="identifier">length</span><span class="special">()</span> <span class="special">&lt;</span> <span class="identifier">desired</span> <span class="special">&amp;&amp;</span>
+           <span class="special">(</span> <span class="identifier">error</span> <span class="special">=</span> <span class="identifier">read_chunk</span><span class="special">(</span> <span class="identifier">api</span><span class="special">,</span> <span class="identifier">chunk</span><span class="special">,</span> <span class="identifier">desired</span> <span class="special">-</span> <span class="identifier">data</span><span class="special">.</span><span class="identifier">length</span><span class="special">()</span> <span class="special">)</span> <span class="special">)</span> <span class="special">==</span> <span class="number">0</span><span class="special">)</span> <span class="special">{</span>
+        <span class="identifier">data</span><span class="special">.</span><span class="identifier">append</span><span class="special">(</span> <span class="identifier">chunk</span><span class="special">);</span>
+    <span class="special">}</span>
+    <span class="keyword">return</span> <span class="identifier">error</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+    </p>
+<p>(<span class="emphasis"><em>当然</em></span>, 累积字符串数据还有更高效的办法. 但那不是本例的重点.)</p>
+<h4>
+<a name="fiber.nonblocking.h4"></a>
+      <span class="phrase"><a name="fiber.nonblocking.wrapping_it_up"></a></span><a class="link" href="nonblocking.html#fiber.nonblocking.wrapping_it_up">封装收尾</a>
+    </h4>
+<p>最后, 我们可以定义一个相关的异常:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// exception class augmented with both partially-read data and errorcode</span>
+<span class="keyword">class</span> <span class="identifier">IncompleteRead</span> <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">runtime_error</span> <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">IncompleteRead</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">what</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">partial</span><span class="special">,</span> <span class="keyword">int</span> <span class="identifier">ec</span><span class="special">)</span> <span class="special">:</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">runtime_error</span><span class="special">(</span> <span class="identifier">what</span><span class="special">),</span>
+        <span class="identifier">partial_</span><span class="special">(</span> <span class="identifier">partial</span><span class="special">),</span>
+        <span class="identifier">ec_</span><span class="special">(</span> <span class="identifier">ec</span><span class="special">)</span> <span class="special">{</span>
+    <span class="special">}</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">get_partial</span><span class="special">()</span> <span class="keyword">const</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">partial_</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">int</span> <span class="identifier">get_errorcode</span><span class="special">()</span> <span class="keyword">const</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">ec_</span><span class="special">;</span>
+    <span class="special">}</span>
+
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">partial_</span><span class="special">;</span>
+    <span class="keyword">int</span>         <span class="identifier">ec_</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>
+    </p>
+<p>并编写一个简单的 <code class="computeroutput"><span class="identifier">read</span><span class="special">()</span></code> 函数, 它要么返回全部所需数据, 要么抛出 <code class="computeroutput"><span class="identifier">IncompleteRead</span></code>:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// read all desired data or throw IncompleteRead</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">read</span><span class="special">(</span> <span class="identifier">NonblockingAPI</span> <span class="special">&amp;</span> <span class="identifier">api</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">desired</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">data</span><span class="special">;</span>
+    <span class="keyword">int</span> <span class="identifier">ec</span><span class="special">(</span> <span class="identifier">read_desired</span><span class="special">(</span> <span class="identifier">api</span><span class="special">,</span> <span class="identifier">data</span><span class="special">,</span> <span class="identifier">desired</span><span class="special">)</span> <span class="special">);</span>
+
+    <span class="comment">// for present purposes, EOF isn't a failure</span>
+    <span class="keyword">if</span> <span class="special">(</span> <span class="number">0</span> <span class="special">==</span> <span class="identifier">ec</span> <span class="special">||</span> <span class="identifier">EOF</span> <span class="special">==</span> <span class="identifier">ec</span><span class="special">)</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">data</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="comment">// oh oh, partial read</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">ostringstream</span> <span class="identifier">msg</span><span class="special">;</span>
+    <span class="identifier">msg</span> <span class="special">&lt;&lt;</span> <span class="string">"NonblockingAPI::read() error "</span> <span class="special">&lt;&lt;</span> <span class="identifier">ec</span> <span class="special">&lt;&lt;</span> <span class="string">" after "</span>
+        <span class="special">&lt;&lt;</span> <span class="identifier">data</span><span class="special">.</span><span class="identifier">length</span><span class="special">()</span> <span class="special">&lt;&lt;</span> <span class="string">" of "</span> <span class="special">&lt;&lt;</span> <span class="identifier">desired</span> <span class="special">&lt;&lt;</span> <span class="string">" characters"</span><span class="special">;</span>
+    <span class="keyword">throw</span> <span class="identifier">IncompleteRead</span><span class="special">(</span> <span class="identifier">msg</span><span class="special">.</span><span class="identifier">str</span><span class="special">(),</span> <span class="identifier">data</span><span class="special">,</span> <span class="identifier">ec</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>
+    </p>
+<p>一旦我们可以使用 <a class="link" href="fiber_mgmt/this_fiber.html#this_fiber_yield"><code class="computeroutput">this_fiber::yield()</code></a> 透明地等待下一次主循环迭代, 普通的封装手段就能直接奏效.</p>
+<p>上述源代码位于 <a href="../../../examples/adapt_nonblocking.cpp" target="_top">adapt_nonblocking.cpp</a> 中.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2013 Oliver Kowalke<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="callbacks/then_there_s____boost_asio__.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="when_any.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

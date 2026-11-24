@@ -1,0 +1,187 @@
+<html>
+
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>多边形用法</title>
+</head>
+
+<body>
+
+<h1>版图与原理图比对教程</h1> 
+<p>在本教程中, 我们将实现一个玩具级的 VLSI 版图验证应用. 在 VLSI CAD 中, 设计的一个重要步骤是签核检查 (sign off check), 用于验证掩模设计师与自动化工具绘制的物理版图是否实现了设计工程师指定的逻辑原理图. 物理版图被建模为若干层上的多边形, 这些层在制造过程中用于把版图印制到硅晶圆上. 在花费数百万美元制作光刻掩模并运行测试批次晶圆之前就发现物理设计错误, 要好得多.</p>
+<p>真实的版图文件格式是二进制的, 且通常是压缩的, 表示一个折叠的层次化版图模型, 其中一组多边形可以组合成一个单元 (cell), 并作为一个组实例化到其他单元中. 在本教程中, 我们假定一种简化的 ascii 版图文件格式, 不含设计层次, 用 VLSI 行话来说就是"平面" (flat) 的. 类似地, 我们假定一种平面的 ascii 逻辑原理图网表文件格式. 网表 (net) 是电路设计中一个命名的电气连接. 版图验证教程的目标是解析这两种文件格式, 对版图数据应用 Boost.Polygon 提供的几何运算以生成一个表示物理版图所实现内容的逻辑原理图, 然后把输入原理图与生成的原理图进行比较, 以确定二者是否相同.</p>
+<p>首先, 让我们定义一些在设计玩具版图验证应用时需要用到的对象:</p>
+<p>版图矩形: 一个与层关联的轴平行矩形<br> 版图引脚: 一个与层和网 (电气信号) 名称关联的轴平行矩形<br> 版图数据库: 层名到多边形集合的关联容器<br> 连通性数据库: 网名到版图数据库的关联容器<br> 物理器件: 若干层上的一种特定几何排布, 具有一个或多个输入网和一个输出网<br> 逻辑网: 命名的图节点<br> 逻辑器件: 带有器件类型的未命名图节点<br> 逻辑引脚: 为电路定义输入或输出的特殊网<br> 原理图数据库: 由网和逻辑器件构成的图</p>
+<p>接下来, 让我们定义玩具版图与原理图比对应用所执行的操作序列:</p>
+<p>解析版图: 把版图矩形与多边形流式读入版图数据库, 并把版图引脚流式读入连通性数据库<br> 提取连通性: 基于物理接触或重叠关系, 把版图数据库中的多边形加入连通性数据库<br> 提取器件: 根据在版图几何中识别出的物理器件, 用逻辑器件填充原理图数据库, 并从连通性数据库中提取它们的端子<br> 提取网表: 补全由版图导出的原理图数据库所表示的图<br> 解析原理图: 把逻辑网、器件和引脚流式读入一个原理图数据库<br> 比较原理图: 评估提取出的原理图数据库是否与输入原理图数据库等价, 并输出结果</p>
+<p>为了测试我们的应用, 我们将提取单个逻辑门. 逻辑门是多个晶体管的组合, 共同完成特定的逻辑功能. 逻辑功能包括人们熟知的布尔逻辑运算, 如布尔 AND、OR、XOR 和 INVERT. 常用的还有 NAND 和 NOR, 分别是先执行 AND/OR 运算再执行 INVERT 运算. 在 CMOS 电路家族中, 一个 NAND 门可以用四个晶体管实现. NAND 门有两个输入和一个输出. 每个输入连接到两个晶体管: 一个 p 型晶体管和一个 n 型晶体管. "p" 代表 positive (正), "n" 代表 negative (负). 当 p 型晶体管导通时, 它把输出拉高到与电源电压相同. 当 n 型晶体管导通时, 它把输出拉低到与地电压相同. 制作 p 型晶体管的过程首先要对硅衬底进行"掺杂"以生成 n 型材料. 这块 n 型材料区域在我们的测试数据中将被称为 NWELL 层. 在 NWELL 区域内, 通过对硅进一步掺杂以生成 p 型材料, 从而形成 p 扩散区. 这块 p 型材料区域在我们的测试数据中将被称为 PDIFF. 在 PDIFF 区域的中央生长出多晶硅条, 在扩散区上方形成导电线路. 这块多晶硅材料区域在我们的测试数据中将被称为 POLY. 在其中一些多晶硅线条下方, 一层薄薄的二氧化硅提供绝缘, 同时允许多晶硅的电压场与扩散区发生相互作用. 每一条这样的绝缘多晶硅线就是一个晶体管的"栅极". 这个栅极区域在我们的测试数据中将被称为 GATE. 当栅极电压与地电压相同时, p 型晶体管"导通", 可以把电流从电源传送到输出. 未被绝缘的多晶硅线为晶体管提供输出信号和源电压的电气连接. n 型晶体管与 p 型的区别在于, 其扩散区是 NWELL 区域之外的 n 型材料. 当 n 型晶体管栅极电压处于源电压水平时, 电流可以从输出流向地. 在多晶硅层之上是一层二氧化硅绝缘体, 上面开有孔并用金属填充. 这些金属填充的孔称为过孔 (via), 我们在测试数据中把这一层称为 VIA0. 在 VIA0 之上是一层金属多边形, 金属多边形之间以二氧化硅绝缘体隔开. 这些金属多边形就是导线, 我们在测试数据中把它们称为 METAL1. 我们测试数据中的版图引脚将位于 METAL1 上. 在 NAND 门中, 两个 n 型晶体管串联配置, 即一个晶体管的输出是另一个的输入电压源. 只有当 NAND 的两个 n 型晶体管都"导通"时, 输出才会连接到地, 表示逻辑"假". NAND 门中的两个 p 型晶体管并联配置. 只要 NAND 门的任一输入为逻辑"假", 与其相连的 p 型晶体管就会"导通", 门的输出将是逻辑"真", 因为晶体管会把它连接到电源. 下图是 NAND 门可能的版图布局示例, 未按任何真实工艺节点的比例绘制. 扩散区材料本应在栅极材料下方被布尔 NOT 运算切掉, 图中仅在晶体管栅极下方用实心条表示扩散区, 只是为了绘图方便.</p>
+<p>
+<img border="0" src="images/NAND.PNG" width="602" height="387"></p>
+<p>以下是上述 NAND 门版图的输入版图文件, 矩形格式为 XL XH YL YH:</p>
+<p><font face="Courier New" size="2">Rectangle 0 60 24 48 NWELL<br>
+Rectangle 3 57 32 43 PDIFF<br>
+Rectangle 3 57 5 16 NDIFF<br>
+Rectangle 5 7 0 17 POLY<br>
+Rectangle 5 7 22 45 POLY<br>
+Rectangle 17 19 3 45 POLY<br>
+Rectangle 29 31 31 48 POLY<br>
+Rectangle 41 43 3 45 POLY<br>
+Rectangle 53 55 3 45 POLY<br>
+Rectangle 17 19 4 17 GATE<br>
+Rectangle 17 19 31 44 GATE<br>
+Rectangle 41 43 4 17 GATE<br>
+Rectangle 41 43 31 44 GATE<br>
+Rectangle 5 7 0 2 VIA0<br>
+Rectangle 5 7 23 25 VIA0<br>
+Rectangle 17 19 28 30 VIA0<br>
+Rectangle 29 31 46 48 VIA0<br>
+Rectangle 41 43 18 20 VIA0<br>
+Rectangle 53 55 23 25 VIA0<br>
+Rectangle 0 60 0 2 METAL1<br>
+Rectangle 3 57 28 30 METAL1<br>
+Rectangle 0 60 46 48 METAL1<br>
+Rectangle 3 57 18 20 METAL1<br>
+Rectangle 3 57 23 25 METAL1<br>
+Pin 29 31 0 2 METAL1 GND<br>
+Pin 29 31 23 25 METAL1 OUTPUT</font><font face="Courier New" size="2"><br>
+Pin 29 31 28 30 METAL1 INPUT1</font><font face="Courier New" size="2"><br>
+Pin 29 31 46 48 METAL1 VDD<br>
+Pin 29 31 18 20 METAL1 INPUT2</font></p>
+<p>
+<img border="0" src="images/nands.PNG" width="421" height="402"></p>
+<p>以下是上述 NAND 门原理图的逻辑原理图网表文件:</p>
+<p><font face="Courier New" size="2">Pin OUTPUT<br>Pin INPUT1<br>Pin INPUT2<br>
+Pin VDD<br>Pin GND<br>Device PTRANS VDD INPUT1 OUTPUT<br>Device PTRANS VDD 
+INPUT2 OUTPUT<br>Device NTRANS GND INPUT1 NET1<br>Device NTRANS NET1 INPUT2 
+OUTPUT</font></p>
+<p>人眼可以看着这张原理图, 与上面绘制的 NAND 门版图进行比较, 几秒钟内即可验证所绘版图与原理图的描述相符. 如果你现在就这样做, 你可能会找出 p 型和 n 型晶体管, 并追踪输入和电源到晶体管端子、再到输出的连通性. 如今单个芯片上的晶体管数量约有十亿个, 我们需要比人眼检查版图快得多, 且出错更少. 利用 Boost.Polygon 提供的多边形集合运算与多边形连通性提取, 我们将把晶体管识别和连通性追踪自动化. 基于 Boost.Polygon 性能的这份<a href="analysis.htm">分析</a>, 我们可以预期这一方法在标准工作站上能够轻松扩展到百万门规模的模块, 只要系统内存充足, 也可以处理任意大的设计. 让我们从为应用实现一些数据结构开始.</p>
+<p><font face="Courier New" size="2">struct layout_rectangle {<br>
+&nbsp; int xl, yl, xh, yh;<br>
+&nbsp; std::string layer;<br>
+};</font></p>
+<p>我们的版图矩形非常精简, 刚好够存储其数据. 它定义于 <a href="tutorial/layout_rectangle.hpp">layout_rectangle.hpp</a>. 接下来让我们以类似的方式实现版图引脚.</p>
+<p><font face="Courier New" size="2">struct layout_pin {<br>
+&nbsp; int xl, yl, xh, yh;<br>
+&nbsp; std::string layer;<br>
+&nbsp; std::string net;<br>
+};</font></p>
+<p>我们的版图引脚定义于 <a href="tutorial/layout_pin.hpp">layout_pin.hpp</a>. 现在让我们定义一个版图数据库对象, 并用解析得到的版图数据填充它, 见 <a href="tutorial/layout_database.hpp">layout_database.hpp</a>.</p>
+<p><font face="Courier New" size="2">typedef std::map&lt;std::string, boost::polygon::polygon_90_set_data&lt;int&gt; &gt; layout_database;<br>
+<br> //把版图矩形数据类型映射到 boost::polygon::rectangle_concept<br> namespace boost { namespace polygon{<br> template &lt;&gt;<br> struct rectangle_traits&lt;layout_rectangle&gt; {<br> typedef int coordinate_type;<br> typedef interval_data&lt;int&gt; interval_type;<br> static inline interval_type get(const layout_rectangle&amp; rectangle, orientation_2d orient) {<br> if(orient == HORIZONTAL)<br> return interval_type(rectangle.xl, rectangle.xh);<br> return interval_type(rectangle.yl, rectangle.yh);<br> }<br> };<br>
+<br> template &lt;&gt;<br> struct geometry_concept&lt;layout_rectangle&gt; { typedef rectangle_concept type; };<br> }}<br>
+<br> //把版图矩形插入版图数据库<br> inline void populate_layout_database(layout_database&amp; layout, std::vector&lt;layout_rectangle&gt;&amp; rects) {<br> for(std::size_t i = 0; i &lt; rects.size(); ++i) {<br> layout[rects[i].layer].insert(rects[i]);<br> }<br> }</font></p>
+<p>我们不需要把引脚插入版图数据库, 因为它对连通性一无所知, 只关心几何. 然而, 要把原理图与版图进行比较, 我们确实需要了解一些连通性信息, 因此需要定义连通性数据库和一些逻辑对象. 首先我们在 <a href="tutorial/device.hpp">device.hpp</a> 中为逻辑器件定义一个对象. 由于我们比较懒, 这个对象身兼数职, 既用作引脚, 也用作两种晶体管. 传统的面向对象设计可能会声明一个带虚析构函数的基类, 并让每种器件都从它派生. 既然我们的报酬不按代码行数计算, 那就让事情保持简单吧.</p>
+<p><font face="Courier New" size="2">struct device {<br>
+&nbsp; std::string type;<br>
+&nbsp; std::vector&lt;std::string&gt; terminals;<br>
+};</font></p>
+<p>现在让我们在 <a href="tutorial/schematic_database.hpp">schematic_database.hpp</a> 中定义一个原理图数据库对象, 并用解析得到的原理图数据填充它.</p>
+<p><font face="Courier New"><font size="2">struct schematic_database{<br> std::vector&lt;device&gt; devices;<br> std::map&lt;std::string, std::set&lt;std::size_t&gt; &gt; nets;<br> };<br>
+<br> //给定器件向量, 填充网名到器件索引集合的映射<br> inline void extract_netlist(std::map&lt;std::string, std::set&lt;std::size_t&gt; &gt;&amp; nets,<br> std::vector&lt;device&gt;&amp; devices) {<br> for(std::size_t i = 0; i &lt; devices.size(); ++i) {<br> for(std::size_t j = 0; j &lt; devices[i].terminals.size(); ++j) {<br> //建立网名与器件 id 之间的关联<br> nets[devices[i].terminals[j]].insert(nets[devices[i].terminals[j]].end(), i);<br> }<br> }<br> }</font></font></p>
+<p>我们的原理图数据库只是一个器件向量, 器件通过其端子按名称与网关联, 另有一个从网名到器件索引集合 (向量中的下标) 的映射, 通过把网与其器件关联起来完成这个图. 给定器件及其端子网, 我们用 extract_netlist 操作即可轻松构建从网到器件的映射. 现在, 我们可以开始把版图提取为派生的原理图数据库了. 不过, 首先需要构建一个含几何信息的物理连通性数据库, 然后才能从版图构建逻辑连通性数据库. 我们在 <a href="tutorial/connectivity_database.hpp">connectivity_database.hpp</a> 中定义了一个简单的连通性数据库, 它是从网名到与该网相连的几何 (版图数据库) 的映射, 并用版图数据库和引脚数据填充它.</p>
+<p><font size="2" face="Courier New">typedef std::map&lt;std::string, layout_database &gt; connectivity_database;<br>
+<br> //把版图引脚数据类型映射到 boost::polygon::rectangle_concept<br> namespace boost { namespace polygon{<br> template &lt;&gt;<br> struct rectangle_traits&lt;layout_pin&gt; {<br> typedef int coordinate_type;<br> typedef interval_data&lt;int&gt; interval_type;<br> static inline interval_type get(const layout_pin&amp; pin, orientation_2d orient) {<br> if(orient == HORIZONTAL)<br> return interval_type(pin.xl, pin.xh);<br> return interval_type(pin.yl, pin.yh);<br> }<br> };<br>
+<br> template &lt;&gt;<br> struct geometry_concept&lt;layout_pin&gt; { typedef rectangle_concept type; };<br> }}</font></p>
+<p><font size="2" face="Courier New">//给定一个 layout_database, 我们填充一个连通性数据库<br> inline void populate_connectivity_database(connectivity_database&amp; connectivity,<br> std::vector&lt;layout_pin&gt;&amp; pins, layout_database&amp; layout) {<br> using namespace boost::polygon;<br> using namespace boost::polygon::operators;<br> for(std::size_t i = 0; i &lt; pins.size(); ++i) {<br> connectivity[pins[i].net][pins[i].layer].insert(pins[i]);<br> }<br> int internal_net_suffix = 0;<br> //把 metal1 版图连接到位于 metal1 上的引脚<br> connect_layout_to_layer(connectivity, layout["METAL1"], "METAL1", <br> "METAL1", "__internal_net_", internal_net_suffix);<br> //把 via0 版图连接到 metal1<br> connect_layout_to_layer(connectivity, layout["VIA0"], "VIA0", <br> "METAL1", "__internal_net_", internal_net_suffix);<br> //poly 需要减去栅极, 以防止信号经由晶体管短路<br> polygon_set poly_not_gate = layout["POLY"] - layout["GATE"];<br> //把减去栅极的 poly 连接到 via0<br> connect_layout_to_layer(connectivity, poly_not_gate, "POLY", <br> "VIA0", "__internal_net_", internal_net_suffix);<br> //我们不希望信号经由晶体管短路, 因此把栅极区域<br> //从扩散区中减去<br> polygon_set diff_not_gate = (layout["PDIFF"] + layout["NDIFF"]) - layout["GATE"];<br> //把减去栅极的扩散区连接到 poly<br> //注意, DIFF 这个层名是我为合并的 PDIFF 与 NDIFF 起的名字<br> connect_layout_to_layer(connectivity, diff_not_gate, "DIFF", <br> "POLY", "__internal_net_", internal_net_suffix);<br> //把栅极连接到 poly, 以形成经由 poly 上栅极的连接<br> connect_layout_to_layer(connectivity, layout["GATE"], "GATE", <br> "POLY", "__internal_net_", internal_net_suffix);<br> //现在我们已经把版图的连通性追踪到晶体管层级<br> //所有未连接到引脚的多边形都已被赋予内部网名<br> }</font></p>
+<p>这个填充连通性数据库的函数是我们在应用中第一次真正使用 Boost.Polygon. 例如, 这里我们对版图层执行布尔 (多边形集合) 运算, 把 PDIFF 层与 NDIFF 层合并, 并从结果中切掉 GATE 层. 我们从引脚开始连接版图, 沿层栈向下一直处理到晶体管层级. 沿层栈向上处理, 或以任意顺序连接, 其实同样可行, 但这种方式产生的内部临时网更少, 否则当之后发现这些临时网之间的连接时还需要合并. 上面使用的 connect layout to layer 函数需要先实现, 然后我们才能填充连通性数据库.</p>
+<p><font size="2" face="Courier New">inline void connect_layout_to_layer(connectivity_database&amp; connectivity, polygon_set&amp; layout, <br> std::string layout_layer, std::string layer,<br> std::string net_prefix, int&amp; net_suffix) {<br> if(layout_layer.empty())<br> return;<br> boost::polygon::connectivity_extraction_90&lt;int&gt; ce;<br> std::vector&lt;std::string&gt; net_ids;<br> for(connectivity_database::iterator itr = connectivity.begin(); itr != connectivity.end(); ++itr) {<br> net_ids.push_back((*itr).first);<br> ce.insert((*itr).second[layer]);<br> }<br> std::vector&lt;polygon&gt; polygons;<br> layout.get_polygons(polygons);<br> std::size_t polygon_id_offset = net_ids.size();<br> for(std::size_t i = 0; i &lt; polygons.size(); ++i) {<br> ce.insert(polygons[i]);<br> }<br> std::vector&lt;std::set&lt;int&gt; &gt; graph(polygons.size() + net_ids.size(), std::set&lt;int&gt;());<br> ce.extract(graph);<br> std::vector&lt;int&gt; polygon_color(polygons.size() + net_ids.size(), 0);<br> //对 net_ids 中的每个网, 用该网填充连通分量<br> for(std::size_t node_id = 0; node_id &lt; net_ids.size(); ++node_id) {<br> populate_connected_component(connectivity, polygons, polygon_color, graph, node_id, <br> polygon_id_offset, net_ids[node_id], net_ids, <br> net_prefix, layout_layer);<br> }<br> //对每个为零的 polygon_color, 用 net_prefix + net_suffix++ 填充连通分量<br> for(std::size_t i = 0; i &lt; polygons.size(); ++i) {<br> if(polygon_color[i + polygon_id_offset] == 0) {<br> std::stringstream ss(std::stringstream::in | std::stringstream::out);<br> ss &lt;&lt; net_prefix &lt;&lt; net_suffix++;<br> std::string internal_net; <br> ss &gt;&gt; internal_net;<br> populate_connected_component(connectivity, polygons, polygon_color, graph, <br> i + polygon_id_offset, <br> polygon_id_offset, internal_net, net_ids, <br> net_prefix, layout_layer);<br> }<br> }<br> }</font></p>
+<p>connect layout to layer 函数使用 Boost.Polygon 的连通性提取功能, 为输入多边形集合中的多边形以及连通性数据库中指定层上的多边形构建连通性图. 然后, 它通过图遍历找出与连通性数据库中已有网相关联的多边形, 并把它们插入连通性数据库. 最后, 未与已有网相连的多边形以自动生成的内部网名插入连通性数据库. 把连通分量插入连通性数据库的工作由我们接下来实现的连通性图递归遍历来完成.</p>
+<p><font size="2" face="Courier New">inline void populate_connected_component<br> (connectivity_database&amp; connectivity, std::vector&lt;polygon&gt;&amp; polygons, <br> std::vector&lt;int&gt; polygon_color, std::vector&lt;std::set&lt;int&gt; &gt;&amp; graph, <br> std::size_t node_id, std::size_t polygon_id_offset, std::string&amp; net, <br> std::vector&lt;std::string&gt;&amp; net_ids, std::string net_prefix,<br> std::string&amp; layout_layer) {<br> if(polygon_color[node_id] == 1)<br> return;<br> polygon_color[node_id] = 1;<br> if(node_id &lt; polygon_id_offset &amp;&amp; net_ids[node_id] != net) {<br> //合并连通性数据库中的网<br> //若其中一个网是内部网, 则把它合并到另一个网<br> std::string net1 = net_ids[node_id];<br> std::string net2 = net;<br> if(net.compare(0, net_prefix.length(), net_prefix) == 0) {<br> net = net1;<br> std::swap(net1, net2);<br> } else {<br> net_ids[node_id] = net;<br> }<br> connectivity_database::iterator itr = connectivity.find(net1);<br> if(itr != connectivity.end()) {<br> for(layout_database::iterator itr2 = (*itr).second.begin();<br> itr2 != (*itr).second.end(); ++itr2) {<br> connectivity[net2][(*itr2).first].insert((*itr2).second);<br> }<br> connectivity.erase(itr);<br> }<br> }<br> if(node_id &gt;= polygon_id_offset)<br> connectivity[net][layout_layer].insert(polygons[node_id - polygon_id_offset]);<br> for(std::set&lt;int&gt;::iterator itr = graph[node_id].begin();<br> itr != graph[node_id].end(); ++itr) {<br> populate_connected_component(connectivity, polygons, polygon_color, graph, <br> *itr, polygon_id_offset, net, net_ids, net_prefix, layout_layer);<br> }<br> }<br>
+<br>
+</font>我们希望把内部生成的网合并到引脚网中, 这是这个简单流程中最复杂的部分. 既然我们已经把连通性数据库从引脚提取到晶体管层级, 接下来就需要提取晶体管, 并建立晶体管端子与连通性数据库中各网之间的关系. 首先让我们用 <a href="tutorial/extract_devices.hpp"> extract_devices.hpp</a> 中定义的函数提取晶体管.</p>
+<p><font size="2" face="Courier New">typedef boost::polygon::connectivity_extraction_90&lt;int&gt; 
+connectivity_extraction;<br>
+inline std::vector&lt;std::set&lt;int&gt; &gt;<br>
+extract_layer(connectivity_extraction&amp; ce, std::vector&lt;std::string&gt;&amp; net_ids,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+connectivity_database&amp; connectivity, polygon_set&amp; layout,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+std::string layer) {<br>
+&nbsp; for(connectivity_database::iterator itr = connectivity.begin(); itr != 
+connectivity.end(); ++itr) {<br>
+&nbsp;&nbsp;&nbsp; net_ids.push_back((*itr).first);<br>
+&nbsp;&nbsp;&nbsp; ce.insert((*itr).second[layer]);<br>
+&nbsp; }<br>
+&nbsp; std::vector&lt;polygon&gt; polygons;<br>
+&nbsp; layout.get_polygons(polygons);<br>
+&nbsp; for(std::size_t i = 0; i &lt; polygons.size(); ++i) {<br>
+&nbsp;&nbsp;&nbsp; ce.insert(polygons[i]);<br>
+&nbsp; }<br>
+&nbsp; std::vector&lt;std::set&lt;int&gt; &gt; graph(polygons.size() + net_ids.size(), 
+std::set&lt;int&gt;());<br>
+&nbsp; ce.extract(graph);<br>
+&nbsp; return graph;<br>
+}</font></p>
+<p>这个 extract layer 算法在输入多边形集合中的多边形与连通性数据库指定层中的多边形之间构建连通性图. 在提取特定晶体管类型的函数中, 它被用来建立晶体管与其端子网之间的关联.</p>
+<p><font size="2" face="Courier New">inline void extract_device_type(std::vector&lt;device&gt;&amp; devices, connectivity_database&amp; connectivity,<br> polygon_set&amp; layout, std::string type) {<br> //回想一下, PDIFF 与 NDIFF 在连通性数据库中已合并为一个 DIFF 层<br> //找出 DIFF 层上与每个晶体管相互作用的两个网<br> //然后找出 poly 层上与每个晶体管相互作用的网<br> boost::polygon::connectivity_extraction_90&lt;int&gt; cediff;<br> std::vector&lt;std::string&gt; net_ids_diff;<br> std::vector&lt;std::set&lt;int&gt; &gt; graph_diff =<br> extract_layer(cediff, net_ids_diff, connectivity, layout, "DIFF");<br> boost::polygon::connectivity_extraction_90&lt;int&gt; cepoly;<br> std::vector&lt;std::string&gt; net_ids_poly;<br> std::vector&lt;std::set&lt;int&gt; &gt; graph_poly =<br> extract_layer(cepoly, net_ids_poly, connectivity, layout, "POLY");<br> std::vector&lt;device&gt; tmp_devices(graph_diff.size() - net_ids_poly.size());<br> for(std::size_t i = net_ids_poly.size(); i &lt; graph_diff.size(); ++i) {<br> tmp_devices[i - net_ids_diff.size()].type = type;<br> tmp_devices[i - net_ids_diff.size()].terminals = std::vector&lt;std::string&gt;(3, std::string());<br> std::size_t j = 0;<br> for(std::set&lt;int&gt;::iterator itr = graph_diff[i].begin();<br> itr != graph_diff[i].end(); ++itr, ++j) {<br> if(j == 0) {<br> tmp_devices[i - net_ids_diff.size()].terminals[0] = net_ids_diff[*itr];<br> } else if(j == 1) {<br> tmp_devices[i - net_ids_diff.size()].terminals[2] = net_ids_diff[*itr];<br> } else {<br> //错误, 扩散连接过多<br> tmp_devices[i - net_ids_diff.size()].terminals = std::vector&lt;std::string&gt;(3, std::string());<br> }<br> }<br> j = 0;<br> for(std::set&lt;int&gt;::iterator itr = graph_poly[i].begin();<br> itr != graph_poly[i].end(); ++itr, ++j) {<br> if(j == 0) {<br> tmp_devices[i - net_ids_diff.size()].terminals[1] = net_ids_poly[*itr];<br> } else {<br> //错误, 多晶硅连接过多<br> tmp_devices[i - net_ids_poly.size()].terminals = std::vector&lt;std::string&gt;(3, std::string());<br> }<br> }<br> }<br>
+<br> devices.insert(devices.end(), tmp_devices.begin(), tmp_devices.end());<br> }</font></p>
+<p>我们把晶体管追加到器件向量上, 其端子填充了从连通性数据库提取的网名. 晶体管的端子经由 POLY 层与 DIFF 层相连, 其中 DIFF 同时包含 PDIFF 与 NDIFF. 与 POLY 层的连接是晶体管的栅极, 而与晶体管沟道两侧 DIFF 的连接则是源极和漏极. 我们可以用它来提取 p 型和 n 型晶体管. <font size="2" face="Courier New"><br>
+<br> //基于连通性与版图数据填充器件向量<br> inline void extract_devices(std::vector&lt;device&gt;&amp; devices, connectivity_database&amp; connectivity,<br> layout_database&amp; layout) {<br> using namespace boost::polygon::operators;<br> //p 型晶体管是与 p 扩散区和 nwell 相互作用的栅极<br> polygon_set ptransistors = layout["GATE"];<br> ptransistors.interact(layout["PDIFF"]);<br> ptransistors.interact(layout["NWELL"]);<br> //n 型晶体管是与 n 扩散区相互作用但不与 nwell 相互作用的栅极<br> polygon_set ntransistors = layout["GATE"];<br> ntransistors.interact(layout["NDIFF"]);<br> polygon_set not_ntransistors = ntransistors;<br> not_ntransistors.interact(layout["NWELL"]);<br> ntransistors -= not_ntransistors;<br> extract_device_type(devices, connectivity, ptransistors, "PTRANS");<br> extract_device_type(devices, connectivity, ntransistors, "NTRANS");<br> }</font></p>
+<p>在提取 n 型晶体管时, 我们排除位于 NDIFF 之上但不同时位于 NWELL 之上的栅极材料, extract devices 流程在这里进一步使用了 Boost.Polygon 对版图数据的布尔运算. 我们还使用了多边形集合上的 "interact" 运算, 它基于连通性提取实现, 保留多边形集合中与另一个多边形集合中的多边形接触或重叠的所有多边形. 既然我们有了器件向量, 就可以通过调用 extract_netlist 函数来构建原理图数据库. 然后, 我们可以用 <a href="tutorial/compare_schematics.hpp">compare_schematics.hpp</a> 中定义的函数, 把提取出的原理图与从文件读入的原理图进行比较. 由于比较两个原理图不涉及几何, 本教程不深入这个流程, 而是直接跳到 <a href="tutorial/extract.cpp">extract.cpp</a> 中定义的所有这些流程的集成, 以构建版图与原理图比对算法.</p>
+<p><font size="2" face="Courier New">bool compare_files(std::string layout_file, 
+std::string schematic_file) {<br>
+&nbsp; std::ifstream sin(schematic_file.c_str());<br>
+&nbsp; std::ifstream lin(layout_file.c_str());<br>
+<br>
+&nbsp; std::vector&lt;layout_rectangle&gt; rects;<br>
+&nbsp; std::vector&lt;layout_pin&gt; pins;<br>
+&nbsp; parse_layout(rects, pins, lin);<br>
+<br>
+&nbsp; schematic_database reference_schematic;<br>
+&nbsp; parse_schematic_database(reference_schematic, sin);<br>
+<br>
+&nbsp; layout_database layout;<br>
+&nbsp; populate_layout_database(layout, rects);<br>
+<br>
+&nbsp; connectivity_database connectivity;<br>
+&nbsp; populate_connectivity_database(connectivity, pins, layout);<br>
+<br>
+&nbsp; schematic_database schematic;<br>
+&nbsp; std::vector&lt;device&gt;&amp; devices = schematic.devices;<br>
+&nbsp; for(std::size_t i = 0; i &lt; pins.size(); ++i) {<br>
+&nbsp;&nbsp;&nbsp; devices.push_back(device());<br>
+&nbsp;&nbsp;&nbsp; devices.back().type = &quot;PIN&quot;;<br>
+&nbsp;&nbsp;&nbsp; devices.back().terminals.push_back(pins[i].net);<br>
+&nbsp; }<br>
+&nbsp; extract_devices(devices, connectivity, layout);<br>
+&nbsp; extract_netlist(schematic.nets, devices);<br>
+&nbsp; return compare_schematics(reference_schematic, schematic);<br>
+}</font></p>
+<p><font face="Courier New" size="2">int main(int argc, char **argv) {<br> if(argc &lt; 3) {<br> std::cout &lt;&lt; "usage: " &lt;&lt; argv[0] &lt;&lt; " &lt;layout_file&gt; &lt;schematic_file&gt;" &lt;&lt; std::endl;<br> return -1;<br> }<br> bool result = compare_files(argv[1], argv[2]);<br> if(result == false) {<br> std::cout &lt;&lt; "Layout does not match schematic." &lt;&lt; std::endl;<br> return 1;<br> } <br> std::cout &lt;&lt; "Layout does match schematic." &lt;&lt; std::endl;<br> return 0;<br> }<br>
+<br>
+</font>我们用两个原理图和三个版图来测试这个程序. 其中包括一个 nand 门和一个 nor 门的版图与原理图, 以及一个错误的 nand 门版图. nand 版图和原理图与上面所示相同.<font face="Courier New" size="2">
+</font></p>
+<p><font face="Courier New" size="2">&gt; lvs<br>
+usage: lvs &lt;layout_file&gt; &lt;schematic_file&gt;<br>
+&gt; lvs nand.layout nand.schematic <br>
+Layout does match schematic.<br>
+&gt; lvs nand_short.layout nand.schematic <br>
+Layout does not match schematic.<br>
+&gt; lvs nand.layout nor.schematic <br>
+Layout does not match schematic.<br>
+&gt; lvs nor.layout nor.schematic <br>
+Layout does match schematic.<br>
+&gt; lvs nor.layout nand.schematic <br>
+Layout does not match schematic.</font></p>
+<p>我们关于如何基于 Boost.Polygon 库能力构建简单的版图与原理图验证应用的教程到此结束. 这个应用的实现做出了许多在真实世界中并不成立的简化假设, 并且把许多在实际版图验证应用中需要可配置的东西硬编码了. 尽管如此, 它确实给出了如何使用 Boost.Polygon 解决实际问题的思路, 并指出了一个真实应用可能如何使用 Boost.Polygon 的方向.</p>
+
+
+<table class="docinfo" rules="none" frame="void" id="table1">
+	<colgroup>
+		<col class="docinfo-name"><col class="docinfo-content">
+	</colgroup>
+	<tbody vAlign="top">
+		<tr>
+			<th class="docinfo-name">版权:</th>
+			<td>版权所有 © Intel Corporation 2008-2010.</td>
+		</tr>
+		<tr class="field">
+			<th class="docinfo-name">License:</th>
+			<td class="field-body">按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <tt class="literal">
+			<span class="pre">LICENSE_1_0.txt</span></tt> 或复制于 <a class="reference" target="_top" href="http://www.boost.org/LICENSE_1_0.txt"> http://www.boost.org/LICENSE_1_0.txt</a>)</td>
+		</tr>
+</table>
+
+</body>
+
+</html>

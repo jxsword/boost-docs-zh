@@ -1,0 +1,84 @@
+<html>
+<head>
+<title>设计理由</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<link rel="stylesheet" href="theme/style.css" type="text/css">
+</head>
+
+<body>
+<table width="100%" border="0" background="theme/bkd2.gif" cellspacing="2">
+  <tr> 
+    <td width="10"> 
+    </td>
+    <td width="85%"> <font size="6" face="Verdana, Arial, Helvetica, sans-serif"><b>设计理由</b></font></td>
+    <td width="112"><a href="http://spirit.sf.net"><img src="theme/spirit.gif" width="112" height="48" align="right" border="0"></a></td>
+  </tr>
+</table>
+<br>
+<table border="0">
+  <tr>
+    <td width="10"></td>
+    <td width="30"><a href="../index.html"><img src="theme/u_arr.gif" border="0"></a></td>
+    <td width="30"><a href="faq.html"><img src="theme/l_arr.gif" border="0"></a></td>
+    <td width="30"><a href="acknowledgments.html"><img src="theme/r_arr.gif" border="0"></a></td>
+   </tr>
+</table>
+<p><img src="theme/lens.gif" width="15" height="16"> <strong>虚函数: 从静态 C++ 到动态 C++</strong></p>
+<p>rule 跨越了静态 C++ 与动态 C++ 的边界. 实际上, rule 把编译期多态 (使用模板) 转换为运行期多态 (使用虚函数). 这是必要的, 因为 C++ 无法自动声明一个变量, 其类型由赋值表达式右侧 (rhs) 的任意复杂表达式推导得出. 基本上, 我们想这样做:</p>
+<pre><code><font color="#000000">    <span class=identifier>T </span><span class=identifier>rule </span><span class=special>= </span><span class=identifier>an_arbitrarily_complex_expression</span><span class=special>;</span></font></code></pre>
+<p>而不必知道或关心赋值表达式右侧(rhs)的结果类型. 除此之外, 我们还需要一个设施来前向声明未知类型:</p>
+<pre><code><font color="#000000"><span class=special>    </span><span class=identifier>T </span><span class=identifier>rule</span><span class=special>;
+    </span><span class=special>...
+    </span><span class=identifier>rule </span><span class=special>= </span><span class=identifier>a </span><span class=special>| </span><span class=identifier>b</span><span class=special>;</span></font></code></pre>
+<p>这些限制把我们引向规则的这一实现. 其代价是虚函数调用的开销, 每次调用规则都会经过一次.</p>
+<p><img src="theme/lens.gif" width="15" height="16"> <strong>多重声明 </strong> </p>
+<p>某些 BNF 变体允许对 <tt>rule</tt> 的多重声明. 这些声明被视为候选. 示例:</p>
+<pre>
+   <span class=identifier><code>r </code></span><code><span class=special>= </span><span class=identifier>a</span><span class=special>;    </span><span class=identifier>
+   r </span><span class=special>= </span><span class=identifier>b</span><span class=special>;</span></code></pre>
+<p>等价于:</p>
+<pre>
+   <span class=identifier><code>r </code></span><code><span class=special>= </span><span class=identifier>a </span><span class=special>| </span><span class=identifier>b</span><span class=special>;</span></code></pre>
+<p>Spirit v1.3 允许这种行为. 然而, 当前版本的 Spirit <b>不再</b>允许, 因为经验表明这种行为会导致不想要的陷阱(例如, 它不允许把规则存放在容器中). 在当前版本的 Spirit 中, 对规则的第二次赋值只会简单地重定义它. 旧的定义被销毁. 这更贴近 C++ 语义, 也更符合用户对规则行为的预期.</p>
+<p><img src="theme/lens.gif" width="15" height="16"> <b>顺序衔接语法</b> 
+  <br>
+  <br> 像 a, b 这样的逗号运算符, 从语法上看似乎是更好的候选. 但问题在于它的优先级. 它在 C/C++ 中优先级最低, 这使它几乎无用. <br>
+  <br> Bjarne Stroustrup 在其文章 <a href="references.html#generalized_overloading">"Generalizing Overloading for C++2000"</a> 中谈到了重载空白. 这样的特性将允许像我们在 (E)BNF 中那样把解析器对象并置(例如用 a b | c 代替 a &gt;&gt; b | c). 遗憾的是, 那篇文章的日期是 1998 年 4 月 1 日. 唉.</p>
+<p><img src="theme/lens.gif" width="15" height="16"> <b>前向迭代器</b><br>
+  <br> 一般而言, 扫描器期望至少一个符合标准的前向迭代器. 回溯需要前向迭代器, 因为迭代器位置需要被保存以便日后恢复. 总的来说, Spirit 是带回溯的解析器. 这意味着在某些时刻, 必须保存迭代器位置, 以允许解析器回溯到之前的某个点. 因此, 要使回溯工作, 框架至少需要前向迭代器.<br>
+  <br> 某些解析器可能需要更特化的迭代器(双向甚至随机访问). 也许将来, 确定性解析器加入框架后, 将不执行回溯, 只需要单个记号的向前看, 因此将只需要输入迭代器.</p>
+<p><img src="theme/lens.gif" width="15" height="16"><b> 子规则为何重要?</b><br>
+  <br> 子规则还开启了进行激进元编程的机会, 因为它们不依赖虚函数. 虚函数是元程序员的炼狱. 它不仅因虚函数的间接调用而拖慢程序, 还是一堵不透明的墙, 任何元程序都无法越过. 它杀死了虚函数调用之外的所有元信息. 更糟的是, 虚函数不能被模板化. 这意味着它的实参必须绑定到实际类型. 许多问题都源于这一限制. <br>
+  <br> 虽然 Spirit 目前被归类为非确定性递归下降解析器, Doug Gregor 最先指出, 除自顶向下递归下降之外的其他解析技术也可以应用. 例如, 除非确定性递归下降之外, 确定性的 LL(1) 与 LR(1) 理论上也可以用同一个表达式模板前端实现. Spirit 规则使用虚函数把 RHS 解析器表达式编码在一个不透明的抽象解析器类型中. 虽然它很好地实现了自己的目的, 但规则的虚函数是更高级元编程的绊脚石. 子规则没有虚函数.</p>
+<p><img src="theme/lens.gif" width="15" height="16"><b> <a name="exhaustive_rd"></a>穷尽回溯与贪婪 RD</b></p>
+<p>Spirit 不像正则表达式那样做穷尽回溯. 例如:</p>
+<pre>    <span class="special">*</span>chlit_p<span class="special">(</span><span class="quotes">'a'</span><span class="special">) &gt;&gt;</span> chlit_p<span class="special">(</span><span class="quotes">'a'</span><span class="special">);</span></pre>
+<p>将总是无法匹配, 因为当 rule 的其余部分匹配失败时, Spirit 的 Kleene 星号不会回退.</p>
+<p>实际上, 这个贪婪 RD 问题有一个解决方案. 这种方案在 <a 
+href="http://www.cs.vu.nl/%7Edick/PTAPG.html">Parsing Techniques: A Practical Guide</a> 的 6.6.2 节中有讨论. 其技巧涉及向每个解析器传递一个 <em>tail</em>(尾部)解析器(除扫描器之外). 开始解析器于是简单地是: <tt>start &gt;&gt; end_p;</tt>(end_p 是 start 的尾部).</p>
+<p>Spirit 是贪婪的 -- 使用直接的、朴素的递归下降 (RD). 实现上面给出的完全回溯方案当然是可能的, 但肯定会有性能损失. 该方案总是会尝试匹配所有可能的解析器路径 (完整解析器层次遍历), 直到达到确定的点: 整体匹配或不匹配.</p>
+<table border="0" width="80%" align="center">
+  <tr> 
+    <td class="note_box"><p><img src="theme/note.gif" width="16" height="16"><b>回溯与贪婪 RD </b><br>
+        <br> Spirit 对于何时回溯以及回溯到何处相当一致且直观, 尽管对来自不同背景的人来说这可能不那么明显. 一般来说, 任何(子)解析器在给定相同输入时, 总是匹配输入的相同部分(或完全不匹配输入). 这意味着 Spirit 天生是贪婪的. Spirit 只在(子)解析器未能匹配输入时才回溯, 且它总是回溯到解析器结构中向上(而非向后)的下一个选择点. 换句话说, abb|ab 将匹配 "ab", a(bb|b) 也将匹配 "ab", 但 (ab|a)b 不会, 因为若 'a' 之后有 'b', (ab|a) 子解析器总是会匹配这个 'b'.</p>
+      <p>--Rainer Deyke</p>
+      </td>
+  </tr>
+</table>
+<p>目前, 强烈倾向于 "简单, 需要时提供所有旋钮" 的做法. 另一方面, Spirit 的灵活性使得可以提供不同的可选方案. 将来或许可以把穷尽回溯的 RD 方案实现为可选特性.</p>
+<table border="0">
+  <tr> 
+    <td width="10"></td>
+    <td width="30"><a href="../index.html"><img src="theme/u_arr.gif" border="0"></a></td>
+    <td width="30"><a href="faq.html"><img src="theme/l_arr.gif" border="0"></a></td>
+    <td width="30"><a href="acknowledgments.html"><img src="theme/r_arr.gif" border="0"></a></td>
+  </tr>
+</table>
+<br>
+<hr size="1">
+<p class="copyright">Copyright © 1998-2003 Joel de Guzman<br>
+  <br>
+  <font size="2">使用、修改与分发受 Boost 软件许可 1.0 版(Boost Software License, Version 1.0)约束. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt)</font></p>
+<p class="copyright">&nbsp;</p>
+</body>
+</html>

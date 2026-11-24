@@ -1,0 +1,42 @@
+<!doctype HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!--
+(C) Copyright 2002-4 Robert Ramey - http://www.rrsd.com . 
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt)
+-->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<link rel="stylesheet" type="text/css" href="../../../boost.css">
+<link rel="stylesheet" type="text/css" href="style.css">
+<title>Serialization - 参考</title>
+</head>
+<body link="#0000ff" vlink="#800080">
+<table border="0" cellpadding="7" cellspacing="0" width="100%" summary="header">
+  <tr> 
+    <td valign="top" width="300"> 
+      <h3><a href="../../../index.htm"><img height="86" width="277" alt="C++ Boost" src="../../../boost.png" border="0"></a></h3>
+    </td>
+    <td valign="top"> 
+      <h1 align="center">序列化</h1>
+      <h2 align="center">异常安全</h2>
+    </td>
+  </tr>
+</table>
+<hr> 加载档案的过程可能导致创建新对象. 同一过程也可能在某个时点抛出异常. 为防止内存泄漏和无效指针, 必须考虑这些情况. 遗憾的是, 对这个问题没有简单的通用解决方案. 处理方式必须取决于待序列化数据结构的设计. 下面我们按难度递增的顺序讨论各种场景. 这一讨论假定在考虑序列化之前, 类成员函数已经是异常安全的. 也就是说, 析构函数可以在任何时刻被调用而不引用无效指针、也不产生内存泄漏. <ol>
+    <li><h4>类不包含指针</h4>这里没有问题. <p>
+    <li><h4>类只包含<i> 所有权 </i>指针</h4>从这里开始, 我们必须区分用于管理堆存储的指针 (<i> 所有权 </i>指针) 与用于引用相关对象的指针 (<i> 引用 </i>指针) . 包含<i> 所有权 </i>指针的程序必须包含删除这些对象并把释放的存储归还堆的代码. 包含<i> 引用 </i>指针的程序必须设计为确保在所指对象被销毁且其存储归还堆之后, 不会有这样的<i> 引用 </i>指针再被解引用. 如果一个指针只存储在一处, 它必然是<i> 所有权 </i>指针. <p>load 函数会捕获在对象创建与指针存储之间发生的任何异常. 如果在读取档案时发生异常, 已创建的对象会被删除, 反序列化的指针被置为 NULL. 这确保没有内存泄漏. 该指针没有其他副本这一事实确保不会留下失效的指针. 对象的析构函数应当能够以正常方式删除其他已存在的对象而没有问题. <a href="../test/test_delete_pointer.cpp" target="test_delete_pointer.cpp"> test_delete_pointer.cpp </a> 说明了这种情况.<p>
+    <li><h4>类包含一个或多个<i> 引用 </i>指针</h4>这种情况可以进一步细分为两种情况 <p>
+    <ol>
+        <li><h4><i> 所有权 </i>指针总是在<i> 引用 </i>指针之前序列化</h4>对象跟踪会确保加载<i> 引用 </i>指针不会创建新对象. 如果发生异常, <i> 引用 </i>指针不需要删除, 因此不会有内存泄漏. 该类的析构函数不会尝试删除这些指针, 因此不会有悬空引用的问题. <i> 所有权 </i>指针的处理与上文描述完全相同. <p>
+        <li><h4>类包含可能由 load 创建的<i> 引用 </i>指针</h4>如果一个<i> 引用 </i>指针在其对应的<i> 所有权 </i>指针之前被加载, 对象会被分配在堆上. 在某些情况下, 无法知道哪些指针由其所有者创建、哪些由 load 函数创建. 为解决这个问题: <ul>
+        <li>用 <code style="white-space: normal">try/catch</code> 块捕获异常.<li>在 catch 部分中, 调用档案函数 <code style="white-space: normal">delete_created_pointers()</code> 来删除由类 load 创建的所有指针. 若不这样做, 以这种方式创建的对象会成为内存泄漏, 因为它们不被视为<i> 所有权 </i>指针, 因而不会被销毁.<li>对象的析构函数不会尝试删除<i> 引用 </i>指针, 因此任何悬空引用都不会造成危害.</ul>
+    <a href="../example/demo_exception.cpp" target="demo_exception.cpp"> demo_exception.cpp </a> 是说明这种情况的程序. <p>
+    </ol>
+    <p>
+    <li><h4>其他情况</h4>上面未涵盖的情况是<i> 引用 </i>与<i> 所有权 </i>分类不适用的指针. 例如指针由一个类创建、却由另一个类消费并删除. 这类情况可以通过类似上述的专门分析来处理. 随着情况变得更复杂, 这会更困难、更容易出错. 最终, 必须通过把堆管理内建到指针本身来解决这个问题——也就是内建到 <code style="white-space: normal">boost::shared_ptr</code> 中. 本库包含 <code style="white-space: normal">boost::shared_ptr</code> 的序列化. 如前所述, 这需要对某个 <code style="white-space: normal">boost::shared_ptr</code> 实现文件做微小的改动, 以允许序列化系统访问.</ol>
+<hr>
+<p><i> 版权所有 © <a href="http://www.rrsd.com"> Robert Ramey </a> 2002-2004. 按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt) </i></p>
+</body>
+</html>

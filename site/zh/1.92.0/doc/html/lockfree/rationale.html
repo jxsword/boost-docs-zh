@@ -1,0 +1,65 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>设计理由</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../lockfree.html" title="第 19 章 Boost.Lockfree">
+<link rel="prev" href="examples.html" title="示例">
+<link rel="next" href="reference.html" title="参考">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="examples.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../lockfree.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="reference.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="lockfree.rationale"></a><a class="link" href="rationale.html" title="设计理由">设计理由</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="rationale.html#lockfree.rationale.memory_management">内存管理</a></span></dt>
+<dt><span class="section"><a href="rationale.html#lockfree.rationale.aba_prevention">ABA 防护</a></span></dt>
+<dt><span class="section"><a href="rationale.html#lockfree.rationale.interprocess_support">进程间支持</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="lockfree.rationale.memory_management"></a><a class="link" href="rationale.html#lockfree.rationale.memory_management" title="内存管理">内存管理</a>
+</h3></div></div></div>
+<p>无锁的 <code class="computeroutput"><a class="link" href="../doxygen/classboost_1_1lockfree_1_1queue.html" title="类模板 queue">boost::lockfree::queue</a></code> 与 <code class="computeroutput"><a class="link" href="../doxygen/classboost_1_1lockfree_1_1stack.html" title="类模板 stack">boost::lockfree::stack</a></code> 类是基于链表的节点型数据结构. 无锁数据结构的内存管理是个不平凡的问题, 因为我们需要避免一个线程释放内部节点而另一个线程仍在使用它的情况. <code class="literal">boost.lockfree</code> 采用一种简单的方法: 不向操作系统归还任何内存. 它们维护一个<span class="bold"><strong>空闲列表</strong></span>以便日后复用. 这样做有两个原因: 其一, 视内存分配器的实现而定, 释放内存可能阻塞 (那样实现就不再是无锁的); 其二, 大多数内存回收算法都受专利保护.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="lockfree.rationale.aba_prevention"></a><a class="link" href="rationale.html#lockfree.rationale.aba_prevention" title="ABA 预防">ABA 预防</a>
+</h3></div></div></div>
+<p>ABA 问题是实现无锁数据结构时的常见问题. 该问题在使用 <code class="literal">compare_exchange</code> 操作更新原子变量时出现: 如果读到了值 A, 线程 1 将其改为比如 C 并试图更新该变量, 它使用 <code class="literal">compare_exchange</code> 写入 C——仅当当前值为 A 时. 若在此期间线程 2 把值从 A 改为 B 又改回 A, 这就可能成为问题, 因为线程 1 没有观察到状态的变化. 避免 ABA 问题的常见方法是把版本计数器与值关联起来, 并原子地同时更改两者.</p>
+<p>
+        <code class="literal">boost.lockfree</code> 使用一个 <code class="literal">tagged_ptr</code> 辅助类, 把指针与整数标签关联起来. 这通常需要双宽度的 <code class="literal">compare_exchange</code>, 并非所有平台都支持. IA32 在 pentium 处理器之前不提供 <code class="literal">cmpxchg8b</code> 操作码, 在 PPC 等许多 RISC 架构上也同样缺失. 早期的 X86-64 处理器也不提供 <code class="literal">cmpxchg16b</code> 指令. 在 64 位平台上可以绕过这个问题, 因为通常并不使用完整的 64 位地址空间. 例如在 X86_64 上, 地址只使用 48 位, 因此可以把剩余的 16 位用作 ABA 预防标签. 详情请查阅 <code class="literal">boost::lockfree::detail::tagged_ptr</code> 类的实现.</p>
+<p>对于没有双宽度 <code class="literal">compare_exchange</code> 的 32 位平台上的无锁操作, 我们支持第三种方法: 通过使用固定大小的数组存储内部节点, 我们可以避免使用 32 位指针, 而改用 16 位的数组索引即可. 但这只适用于内部节点数量有上限的固定大小数据结构.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="lockfree.rationale.interprocess_support"></a><a class="link" href="rationale.html#lockfree.rationale.interprocess_support" title="进程间支持">进程间支持</a>
+</h3></div></div></div>
+<p> <code class="literal">boost.lockfree</code> 数据结构对 <a href="../../../libs/interprocess/index.html" target="_top">Boost.Interprocess</a> 有基本支持. 唯一的问题是无锁原子操作 (atomics) 的阻塞模拟, 在当前实现中它不保证进程间安全.</p>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2008-2026 Tim Blechmann<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="examples.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../lockfree.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="reference.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

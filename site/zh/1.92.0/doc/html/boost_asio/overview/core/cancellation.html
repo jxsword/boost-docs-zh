@@ -1,0 +1,227 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>按操作取消</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../../boost_asio.html" title="Boost.Asio">
+<link rel="up" href="../core.html" title="核心概念与功能">
+<link rel="prev" href="allocation.html" title="自定义内存分配">
+<link rel="next" href="handler_tracking.html" title="处理器跟踪">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="allocation.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../core.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="handler_tracking.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_asio.overview.core.cancellation"></a><a class="link" href="cancellation.html" title="按操作取消">按操作取消</a>
+</h4></div></div></div>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>这些类型要求和类是取消机制的底层构件. 对于大多数用例, 请考虑使用更高层的抽象, 例如 <a class="link" href="../../reference/experimental__make_parallel_group.html" title="experimental::make_parallel_group">experimental::make_parallel_group</a> 或 <a class="link" href="../composition/cpp20_coroutines.html#boost_asio.overview.composition.cpp20_coroutines.co_ordinating_parallel_coroutines">逻辑运算符</a> (针对 <code class="computeroutput"><span class="identifier">awaitable</span></code>) .</p></td></tr>
+</table></div>
+<p>套接字和定时器等 I/O 对象通过其 <code class="computeroutput"><span class="identifier">close</span></code> 或 <code class="computeroutput"><span class="identifier">cancel</span></code> 成员函数支持对未完成异步操作的对象级取消. 但是, 某些异步操作还支持单个的、有针对性的取消. 这种按操作取消是通过指定完成处理器拥有一个满足 <a class="link" href="../../reference/associated_cancellation_slot.html" title="associated_cancellation_slot">CancellationSlot</a> 类型要求的<a class="link" href="../../reference/CancellationSlot.html" title="取消槽要求">关联取消槽</a>来启用的. 取消槽是用于传递取消请求的轻量级通道.</p>
+<p>给定一个用户自定义 <code class="computeroutput"><span class="identifier">Handler</span></code> 对象 <code class="computeroutput"><span class="identifier">h</span></code> 的副本, 如果异步操作支持取消, 它将使用 <code class="computeroutput"><span class="identifier">get_associated_cancellation_slot</span></code> 函数获取一个取消槽. 例如:</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">associated_cancellation_slot_t</span><span class="special">&lt;</span><span class="identifier">Handler</span><span class="special">&gt;</span> <span class="identifier">s</span>
+  <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">get_associated_cancellation_slot</span><span class="special">(</span><span class="identifier">h</span><span class="special">);</span>
+</pre>
+<p>关联取消槽必须满足 CancellationSlot 类型要求.</p>
+<p>默认情况下, 处理器使用默认构造的 <a class="link" href="../../reference/cancellation_slot.html" title="cancellation_slot"><code class="computeroutput"><span class="identifier">cancellation_slot</span></code></a>, 这意味着按操作取消被禁用. 可以针对特定的处理器类型定制取消槽, 方法是指定嵌套类型 <code class="computeroutput"><span class="identifier">cancellation_slot_type</span></code> 和成员函数 <code class="computeroutput"><span class="identifier">get_cancellation_slot</span><span class="special">()</span></code>:</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">my_handler</span>
+<span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+  <span class="comment">// Custom implementation of CancellationSlot type requirements.</span>
+  <span class="keyword">typedef</span> <span class="identifier">my_cancellation_slot</span> <span class="identifier">cancellation_slot_type</span><span class="special">;</span>
+
+  <span class="comment">// Return a custom cancellation slot implementation.</span>
+  <span class="identifier">cancellation_slot_type</span> <span class="identifier">get_cancellation_slot</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span>
+  <span class="special">{</span>
+    <span class="keyword">return</span> <span class="identifier">my_cancellation_slot</span><span class="special">(...);</span>
+  <span class="special">}</span>
+
+  <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()()</span> <span class="special">{</span> <span class="special">...</span> <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>在更复杂的情况下, 可以直接对 <code class="computeroutput"><span class="identifier">associated_cancellation_slot</span></code> 模板进行偏特化:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">asio</span> <span class="special">{</span>
+
+  <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">CancellationSlot</span><span class="special">&gt;</span>
+  <span class="keyword">struct</span> <span class="identifier">associated_cancellation_slot</span><span class="special">&lt;</span><span class="identifier">my_handler</span><span class="special">,</span> <span class="identifier">CancellationSlot</span><span class="special">&gt;</span>
+  <span class="special">{</span>
+    <span class="comment">// Custom implementation of CancellationSlot type requirements.</span>
+    <span class="keyword">typedef</span> <span class="identifier">my_cancellation_slot</span> <span class="identifier">type</span><span class="special">;</span>
+
+    <span class="comment">// Return a custom cancellation_slot implementation.</span>
+    <span class="keyword">static</span> <span class="identifier">type</span> <span class="identifier">get</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">my_handler</span><span class="special">&amp;,</span>
+        <span class="keyword">const</span> <span class="identifier">CancellationSlot</span><span class="special">&amp;</span> <span class="identifier">a</span> <span class="special">=</span> <span class="identifier">CancellationSlot</span><span class="special">())</span> <span class="keyword">noexcept</span>
+    <span class="special">{</span>
+      <span class="keyword">return</span> <span class="identifier">my_cancellation_slot</span><span class="special">(...);</span>
+    <span class="special">}</span>
+  <span class="special">};</span>
+
+<span class="special">}</span> <span class="special">}</span> <span class="comment">// namespace boost::asio</span>
+</pre>
+<p>为方便起见, 可以使用 <a class="link" href="../../reference/bind_cancellation_slot.html" title="bind_cancellation_slot"><code class="computeroutput"><span class="identifier">bind_cancellation_slot</span></code></a> 函数把取消槽与处理器关联. 在把取消槽与 lambda 关联时这一做法尤其有用:</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">async_read</span><span class="special">(</span><span class="identifier">my_socket</span><span class="special">,</span> <span class="identifier">my_buffer</span><span class="special">,</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">bind_cancellation_slot</span><span class="special">(</span>
+      <span class="identifier">my_cancellation_slot</span><span class="special">,</span>
+      <span class="special">[](</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span> <span class="identifier">e</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">n</span><span class="special">)</span>
+      <span class="special">{</span>
+        <span class="special">...</span>
+      <span class="special">}</span>
+    <span class="special">)</span>
+  <span class="special">);</span>
+</pre>
+<p>Boost.Asio 以 <a class="link" href="../../reference/cancellation_slot.html" title="cancellation_slot"><code class="computeroutput"><span class="identifier">cancellation_slot</span></code></a> 及其对应物 <a class="link" href="../../reference/cancellation_signal.html" title="cancellation_signal"><code class="computeroutput"><span class="identifier">cancellation_signal</span></code></a> 的形式提供了一个开箱即用的取消槽. 这两个类实现了生产者 (signal) 与消费者 (slot) 接口的一对一配对. 下面的例子展示了其用法:</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">session</span>
+  <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">enable_shared_from_this</span><span class="special">&lt;</span><span class="identifier">proxy</span><span class="special">&gt;</span>
+<span class="special">{</span>
+  <span class="special">...</span>
+
+  <span class="keyword">void</span> <span class="identifier">do_read</span><span class="special">()</span>
+  <span class="special">{</span>
+    <span class="keyword">auto</span> <span class="identifier">self</span> <span class="special">=</span> <span class="identifier">shared_from_this</span><span class="special">();</span>
+    <span class="identifier">socket_</span><span class="special">.</span><span class="identifier">async_read_some</span><span class="special">(</span>
+        <span class="identifier">buffer</span><span class="special">(</span><span class="identifier">data_</span><span class="special">),</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">bind_cancellation_slot</span><span class="special">(</span>
+          <span class="identifier">cancel_signal_</span><span class="special">.</span><span class="identifier">slot</span><span class="special">(),</span>
+          <span class="special">[</span><span class="identifier">self</span><span class="special">](</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span> <span class="identifier">error</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">n</span><span class="special">)</span>
+          <span class="special">{</span>
+            <span class="special">...</span>
+          <span class="special">}</span>
+        <span class="special">)</span>
+      <span class="special">);</span>
+  <span class="special">}</span>
+
+  <span class="special">...</span>
+
+  <span class="keyword">void</span> <span class="identifier">request_cancel</span><span class="special">()</span>
+  <span class="special">{</span>
+    <span class="identifier">cancel_signal_</span><span class="special">.</span><span class="identifier">emit</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">cancellation_type</span><span class="special">::</span><span class="identifier">total</span><span class="special">);</span>
+  <span class="special">}</span>
+
+  <span class="special">...</span>
+
+  <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">cancellation_signal</span> <span class="identifier">cancel_signal_</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p> <code class="computeroutput"><span class="identifier">cancellation_signal</span></code> 只包含一个槽, 因此一个取消 signal/slot 对一次至多只能用于一个操作. 不过, 同一个槽可以在后续操作中重复使用.</p>
+<p>为支持取消, 异步操作会通过调用槽的 <code class="computeroutput"><span class="identifier">assign</span></code> 或 <code class="computeroutput"><span class="identifier">emplace</span></code> 函数, 把一个取消处理器安装到槽中. 当发出取消信号时, 该处理器将被调用. 一个槽一次恰好持有一个处理器, 安装新处理器会覆盖之前安装的任何处理器.</p>
+<p>发出取消信号时, 调用者必须指定一个<a class="link" href="../../reference/cancellation_type.html" title="cancellation_type">取消类型 (cancellation type) </a>. 该值是一个位掩码, 规定取消目标在成功取消时必须作出哪些保证. 可能的位值按保证从最弱到最强排列如下:</p>
+<div class="table">
+<a name="boost_asio.overview.core.cancellation.t0"></a><p class="title"><b>表 1. 取消类型</b></p>
+<div class="table-contents"><table class="table" summary="cancellation types">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>位</p>
+                </th>
+<th>
+                  <p>取消成功时的保证</p>
+                </th>
+<th>
+                  <p>这是所支持的最强保证的示例</p>
+                </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">terminal</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>操作有未指明的副作用, 只有关闭或销毁 I/O 对象才是安全的.</p>
+                </td>
+<td>
+                  <p>消息组帧协议的有状态实现, 其中异步操作发送或接收一条完整消息. 如果在消息正文的中途发生取消, 就不可能向完成处理器报告一个有意义的状态.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">partial</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>操作有明确定义的副作用, 且该操作的完成处理器会指明这些副作用是什么.</p>
+                </td>
+<td>
+                  <p>诸如 <code class="computeroutput"><span class="identifier">async_read</span></code> 和 <code class="computeroutput"><span class="identifier">async_write</span></code> 之类的组合操作. 如果在所有字节传输完成之前发生取消, 完成处理器会收到迄今为止已传输的总字节数. 调用者可以利用这一信息启动另一个操作来传输剩余的字节.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">total</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>操作没有可以通过 API 观察到的副作用.</p>
+                </td>
+<td>
+                  <p>传输零个或非零个字节的底层系统调用. <br> <br> 等待就绪的操作, 即使成功也没有副作用. <br> <br> 完全缓冲的消息组帧协议实现, 其中部分消息被存储起来以便在下一次操作中复用.</p>
+                </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><p>例如, 如果应用程序逻辑要求操作以全有或全无 (all-or-nothing) 的副作用完成, 那么它应当只发出 <code class="computeroutput"><span class="identifier">total</span></code> 取消类型. 如果目标操作不支持这一类型, 则不会发生取消.</p>
+<p>此外, 较强的保证总是满足较弱保证的要求. <code class="computeroutput"><span class="identifier">partial</span></code> 保证仍然满足 <code class="computeroutput"><span class="identifier">terminal</span></code> 保证. <code class="computeroutput"><span class="identifier">total</span></code> 保证同时满足 <code class="computeroutput"><span class="identifier">partial</span></code> 和 <code class="computeroutput"><span class="identifier">terminal</span></code>. 这意味着当操作把某个取消类型作为其最强保证加以支持时, 它应当尊重针对任何较弱保证的取消请求.</p>
+<p>不应在异步操作的发起函数期间发出取消请求. 在操作开始之前发出的取消请求没有效果; 同样, 在完成之后发出的取消请求也没有效果.</p>
+<p>发出取消信号时, 线程安全规则的适用方式就如同在目标操作的 I/O 对象上调用成员函数一样. 对于非组合操作, 这意味着只要没有其他对 I/O 对象的并发调用、也没有其他并发的取消信号请求, 从任何线程发出取消信号都是安全的. 对于组合操作, 必须注意确保取消请求不与操作的中间完成处理器并发发生.</p>
+<h6>
+<a name="boost_asio.overview.core.cancellation.h0"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.cancellation.supported_operations"></a></span><a class="link" href="cancellation.html#boost_asio.overview.core.cancellation.supported_operations">受支持的操作</a>
+        </h6>
+<p>关于各个异步操作支持哪些取消类型 (如果支持) , 请查阅其文档. 目前支持取消单个操作或组合操作的有:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">定时器</li>
+<li class="listitem">POSIX 与 Windows 上的套接字</li>
+<li class="listitem">POSIX 描述符</li>
+<li class="listitem">Windows HANDLE</li>
+<li class="listitem">信号集</li>
+<li class="listitem">串口</li>
+<li class="listitem">SSL 流</li>
+<li class="listitem">Boost.Asio 提供的所有组合操作, 例如 <code class="computeroutput"><span class="identifier">async_read</span></code> 和 <code class="computeroutput"><span class="identifier">async_write</span></code>
+            </li>
+<li class="listitem">基于 <code class="computeroutput"><span class="identifier">async_compose</span></code> 的组合</li>
+<li class="listitem">使用 <code class="computeroutput"><span class="identifier">awaitable</span></code> 的 C++20 协程</li>
+<li class="listitem">使用 <code class="computeroutput"><span class="identifier">experimental</span><span class="special">::</span><span class="identifier">coro</span></code> 的 C++20 协程</li>
+<li class="listitem"> <code class="computeroutput"><span class="identifier">experimental</span><span class="special">::</span><span class="identifier">parallel_group</span></code> 操作</li>
+<li class="listitem"> <code class="computeroutput"><span class="identifier">experimental</span><span class="special">::</span><span class="identifier">promise</span></code> 类</li>
+</ul></div>
+<h6>
+<a name="boost_asio.overview.core.cancellation.h1"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.cancellation.see_also"></a></span><a class="link" href="cancellation.html#boost_asio.overview.core.cancellation.see_also">参见</a>
+        </h6>
+<p>
+          <a class="link" href="../../reference/CancellationSlot.html" title="取消槽要求">CancellationSlot</a>、<a class="link" href="../../reference/associated_cancellation_slot.html" title="associated_cancellation_slot">associated_cancellation_slot</a>、<a class="link" href="../../reference/bind_cancellation_slot.html" title="bind_cancellation_slot">bind_cancellation_slot</a>、<a class="link" href="../../reference/cancellation_signal.html" title="cancellation_signal">cancellation_signal</a>、<a class="link" href="../../reference/cancellation_slot.html" title="cancellation_slot">cancellation_slot</a>、<a class="link" href="../../reference/cancellation_state.html" title="cancellation_state">cancellation_state</a>、<a class="link" href="../../reference/cancellation_type.html" title="cancellation_type">cancellation_type</a>、<a class="link" href="../../reference/get_associated_cancellation_slot.html" title="get_associated_cancellation_slot">get_associated_cancellation_slot</a>、<a class="link" href="../../reference/experimental__parallel_group.html" title="experimental::parallel_group">experimental::parallel_group</a>、<a class="link" href="../../reference/experimental__make_parallel_group.html" title="experimental::make_parallel_group">experimental::make_parallel_group</a>
+        </p>
+</div>
+<div class="copyright-footer">版权所有 © 2003-2026 Christopher M. Kohlhoff<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="allocation.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../core.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="handler_tracking.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

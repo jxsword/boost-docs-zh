@@ -1,0 +1,1612 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>步进器</title>
+<link rel="stylesheet" href="../../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Boost.Numeric.Odeint">
+<link rel="up" href="../odeint_in_detail.html" title="odeint 详解">
+<link rel="prev" href="../odeint_in_detail.html" title="odeint 详解">
+<link rel="next" href="generation_functions.html" title="生成函数">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../logo.jpg"></td>
+<td align="center"><a href="../../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../odeint_in_detail.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../odeint_in_detail.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="generation_functions.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.steppers"></a><a class="link" href="steppers.html" title="步进器">步进器</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.explicit_steppers">显式步进器</a></span></dt>
+<dt><span class="section"><a href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.symplectic_solvers">辛求解器</a></span></dt>
+<dt><span class="section"><a href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.implicit_solvers">隐式求解器</a></span></dt>
+<dt><span class="section"><a href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.multistep_methods">多步方法</a></span></dt>
+<dt><span class="section"><a href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.controlled_steppers">受控步进器</a></span></dt>
+<dt><span class="section"><a href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.dense_output_steppers">稠密输出步进器</a></span></dt>
+<dt><span class="section"><a href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.using_steppers">使用步进器</a></span></dt>
+<dt><span class="section"><a href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.stepper_overview">步进器概览</a></span></dt>
+<dt><span class="section"><a href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.custom_steppers">自定义步进器</a></span></dt>
+<dt><span class="section"><a href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.custom_runge_kutta_steppers">自定义 Runge-Kutta 步进器</a></span></dt>
+</dl></div>
+<p>常微分方程的数值求解通常以迭代方式进行, 即给定的常微分方程状态被向前迭代 <span class="emphasis"><em>x(t) -&gt; x(t+dt) -&gt; x(t+2dt)</em></span>. odeint 中的步进器执行单步. 最一般的步进器类型由 <a class="link" href="../concepts/stepper.html" title="步进器">Stepper</a> 概念描述. odeint 的步进器概念在 <a class="link" href="../concepts.html" title="概念">概念</a> 一节中有详细介绍, 这里我们简要介绍步进器的数学与数值细节. <a class="link" href="../concepts/stepper.html" title="步进器">Stepper</a> 有两个版本的 <code class="computeroutput"><span class="identifier">do_step</span></code> 方法: 一个对当前状态做就地变换, 一个做非就地变换:</p>
+<p>
+        <code class="computeroutput"><span class="identifier">do_step</span><span class="special">(</span>
+        <span class="identifier">sys</span> <span class="special">,</span>
+        <span class="identifier">inout</span> <span class="special">,</span>
+        <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">)</span></code>
+      </p>
+<p>
+        <code class="computeroutput"><span class="identifier">do_step</span><span class="special">(</span>
+        <span class="identifier">sys</span> <span class="special">,</span>
+        <span class="identifier">in</span> <span class="special">,</span>
+        <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">out</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">)</span></code>
+      </p>
+<p>第一个参数始终是系统函数, 即描述 ODE 的函数. 第一个版本中, 第二个参数是被就地更新的步进状态, 第三和第四个参数是时间和步长 (时间步). 调用 <code class="computeroutput"><span class="identifier">do_step</span></code> 之后, 状态 <code class="computeroutput"><span class="identifier">inout</span></code> 被更新, 现在表示 ODE 在时刻 <span class="emphasis"><em>t+dt</em></span> 的近似解. 第二个版本中, 第二个参数是 ODE 在时刻 <span class="emphasis"><em>t</em></span> 的状态, 第三个参数是 t, 第四个参数是时刻 <span class="emphasis"><em>t+dt</em></span> 的近似解, 它由 <code class="computeroutput"><span class="identifier">do_step</span></code> 填充, 第五个参数是时间步. 注意这些函数不会改变时间 <code class="computeroutput"><span class="identifier">t</span></code>.</p>
+<p>
+        <span class="bold"><strong>系统函数</strong></span>
+      </p>
+<p>到目前为止, 我们还没有谈及系统函数. 该函数依赖于步进器. 对于显式 Runge-Kutta 步进器, 这个函数可以是一个简单的可调用对象, 即简单的 (全局) C 函数或函数对象. 参数语法为 <code class="computeroutput"><span class="identifier">sys</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">,</span>
+        <span class="identifier">dxdt</span> <span class="special">,</span>
+        <span class="identifier">t</span> <span class="special">)</span></code>, 并假定它计算 <span class="emphasis"><em>dx/dt = f(x,t)</em></span>. 在大多数情况下, 函数结构如下所示:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">sys</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span> <span class="comment">/*x*/</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">&amp;</span> <span class="comment">/*dxdt*/</span> <span class="special">,</span> <span class="keyword">const</span> <span class="keyword">double</span> <span class="comment">/*t*/</span> <span class="special">)</span>
+<span class="special">{</span>
+    <span class="comment">// ...</span>
+<span class="special">}</span>
+</pre>
+<p>
+      </p>
+<p>其他类型的系统函数可能表示哈密顿系统, 或者还会计算隐式步进器所需的 Jacobian 的系统. 有关哪个步进器使用哪种系统函数, 请参见下方的步进器表. odeint 有可能在不久的将来引入新的系统类型. 由于系统函数与步进器类型密切相关, 引入新步进器可能带来新类型的系统函数.</p>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.steppers.explicit_steppers"></a><a class="link" href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.explicit_steppers" title="显式步进器">显式步进器</a>
+</h4></div></div></div>
+<p>第一类特化是显式步进器. "显式"意味着 ODE 的新状态可以从当前状态显式计算出来, 而无需求解隐式方程. 这类步进器的共同点是它们在时刻 <span class="emphasis"><em>t</em></span> 处求值系统, 从而可以将 <span class="emphasis"><em>f(x,t)</em></span> 的结果传给步进器. 在 odeint 中, 显式步进器还有两个额外方法</p>
+<p>
+          <code class="computeroutput"><span class="identifier">do_step</span><span class="special">(</span>
+          <span class="identifier">sys</span> <span class="special">,</span>
+          <span class="identifier">inout</span> <span class="special">,</span>
+          <span class="identifier">dxdtin</span> <span class="special">,</span>
+          <span class="identifier">t</span> <span class="special">,</span>
+          <span class="identifier">dt</span> <span class="special">)</span></code>
+        </p>
+<p>
+          <code class="computeroutput"><span class="identifier">do_step</span><span class="special">(</span>
+          <span class="identifier">sys</span> <span class="special">,</span>
+          <span class="identifier">in</span> <span class="special">,</span>
+          <span class="identifier">dxdtin</span> <span class="special">,</span>
+          <span class="identifier">t</span> <span class="special">,</span>
+          <span class="identifier">out</span> <span class="special">,</span>
+          <span class="identifier">dt</span> <span class="special">)</span></code>
+        </p>
+<p>这里, 额外参数是函数 <span class="emphasis"><em>f</em></span> 在状态 <span class="emphasis"><em>x</em></span> 和时刻 <span class="emphasis"><em>t</em></span> 处的值. 例如四阶 Runge-Kutta 步进器:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">runge_kutta4</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">&gt;</span> <span class="identifier">rk</span><span class="special">;</span>
+<span class="identifier">rk</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys1</span> <span class="special">,</span> <span class="identifier">inout</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>               <span class="comment">// In-place transformation of inout</span>
+<span class="identifier">rk</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys2</span> <span class="special">,</span> <span class="identifier">inout</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>               <span class="comment">// call with different system: Ok</span>
+<span class="identifier">rk</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys1</span> <span class="special">,</span> <span class="identifier">in</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">out</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>            <span class="comment">// Out-of-place transformation</span>
+<span class="identifier">rk</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys1</span> <span class="special">,</span> <span class="identifier">inout</span> <span class="special">,</span> <span class="identifier">dxdtin</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>      <span class="comment">// In-place tranformation of inout</span>
+<span class="identifier">rk</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys1</span> <span class="special">,</span> <span class="identifier">in</span> <span class="special">,</span> <span class="identifier">dxdtin</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">out</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>   <span class="comment">// Out-of-place transformation</span>
+</pre>
+<p>
+        </p>
+<p>实际上, 你不需要调用这两个方法. 你总是可以使用更简单的 <code class="computeroutput"><span class="identifier">do_step</span><span class="special">(</span>
+          <span class="identifier">sys</span> <span class="special">,</span>
+          <span class="identifier">inout</span> <span class="special">,</span>
+          <span class="identifier">t</span> <span class="special">,</span>
+          <span class="identifier">dt</span> <span class="special">)</span></code>, 但有时需要在外部获取状态的导数, 以进行一些外部计算或统计分析.</p>
+<p>显式步进器的一个特殊类别是 FSAL (first-same-as-last, 首末相同) 步进器, 其中系统函数在一步中的最后一次求值同时就是下一步的第一次求值. 对于这类步进器, <code class="computeroutput"><span class="identifier">do_step</span></code> 方法略有不同:</p>
+<p>
+          <code class="computeroutput"><span class="identifier">do_step</span><span class="special">(</span>
+          <span class="identifier">sys</span> <span class="special">,</span>
+          <span class="identifier">inout</span> <span class="special">,</span>
+          <span class="identifier">dxdtinout</span> <span class="special">,</span>
+          <span class="identifier">t</span> <span class="special">,</span>
+          <span class="identifier">dt</span> <span class="special">)</span></code>
+        </p>
+<p>
+          <code class="computeroutput"><span class="identifier">do_step</span><span class="special">(</span>
+          <span class="identifier">sys</span> <span class="special">,</span>
+          <span class="identifier">in</span> <span class="special">,</span>
+          <span class="identifier">dxdtin</span> <span class="special">,</span>
+          <span class="identifier">out</span> <span class="special">,</span>
+          <span class="identifier">dxdtout</span> <span class="special">,</span>
+          <span class="identifier">t</span> <span class="special">,</span>
+          <span class="identifier">dt</span> <span class="special">)</span></code>
+        </p>
+<p>该方法取时刻 <code class="computeroutput"><span class="identifier">t</span></code> 的导数, 同时存储时刻 <span class="emphasis"><em>t+dt</em></span> 的导数. 沿解迭代连续调用这些函数时, 通过把 dxdt 的结果传入下一次函数调用, 可以节省一次函数调用. 不过, 当使用 FSAL 步进器而不提供导数时:</p>
+<p>
+          <code class="computeroutput"><span class="identifier">do_step</span><span class="special">(</span>
+          <span class="identifier">sys</span> <span class="special">,</span>
+          <span class="identifier">inout</span> <span class="special">,</span>
+          <span class="identifier">t</span> <span class="special">,</span>
+          <span class="identifier">dt</span> <span class="special">)</span></code>
+        </p>
+<p>步进器会在内部满足 FSAL 性质, 即记住上一次的 <code class="computeroutput"><span class="identifier">dxdt</span></code> 并将其用于下一步. FSAL 步进器的一个例子是 Runge-Kutta-Dopri5 步进器. FSAL 技巧有时也称为 Fehlberg 技巧. FSAL 步进器的使用示例如下</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">runge_kutta_dopri5</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">&gt;</span> <span class="identifier">rk</span><span class="special">;</span>
+<span class="identifier">rk</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys1</span> <span class="special">,</span> <span class="identifier">in</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">out</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+<span class="identifier">rk</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys2</span> <span class="special">,</span> <span class="identifier">in</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">out</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>         <span class="comment">// DONT do this, sys1 is assumed</span>
+
+<span class="identifier">rk</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys2</span> <span class="special">,</span> <span class="identifier">in2</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">out</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+<span class="identifier">rk</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys2</span> <span class="special">,</span> <span class="identifier">in3</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">out</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>        <span class="comment">// DONT do this, in2 is assumed</span>
+
+<span class="identifier">rk</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys1</span> <span class="special">,</span> <span class="identifier">inout</span> <span class="special">,</span> <span class="identifier">dxdtinout</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+<span class="identifier">rk</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys2</span> <span class="special">,</span> <span class="identifier">inout</span> <span class="special">,</span> <span class="identifier">dxdtinout</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>           <span class="comment">// Ok, internal derivative is not used, dxdtinout is updated</span>
+
+<span class="identifier">rk</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys1</span> <span class="special">,</span> <span class="identifier">in</span> <span class="special">,</span> <span class="identifier">dxdtin</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">out</span> <span class="special">,</span> <span class="identifier">dxdtout</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+<span class="identifier">rk</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys2</span> <span class="special">,</span> <span class="identifier">in</span> <span class="special">,</span> <span class="identifier">dxdtin</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">out</span> <span class="special">,</span> <span class="identifier">dxdtout</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span> <span class="comment">// Ok, internal derivative is not used</span>
+</pre>
+<p>
+        </p>
+<div class="caution"><table border="0" summary="Caution">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注意]" src="../../../../../../../doc/src/images/caution.png"></td>
+<th align="left">注意</th>
+</tr>
+<tr><td align="left" valign="top"><p>FSAL 步进器会在内部保存时刻 <span class="emphasis"><em>t+dt</em></span> 的导数, 前提是它们通过 <code class="computeroutput"><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys</span> <span class="special">,</span> <span class="identifier">in</span> <span class="special">,</span> <span class="identifier">out</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">)</span></code> 调用. <code class="computeroutput"><span class="identifier">do_step</span></code> 的第一次调用会初始化 <code class="computeroutput"><span class="identifier">dxdt</span></code>, 并且假定后续所有调用都使用相同的系统和相同的状态. 如果你在 integrate 函数中使用 FSAL 步进器, 这一点会自动得到处理. 更多细节请参见 <a class="link" href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.using_steppers" title="使用步进器">使用步进器</a> 一节, 或查看下表了解哪些步进器具有内部状态.</p></td></tr>
+</table></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.steppers.symplectic_solvers"></a><a class="link" href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.symplectic_solvers" title="辛求解器">辛求解器</a>
+</h4></div></div></div>
+<p>如上所述, 辛求解器用于哈密顿系统. 辛求解器精确保持相空间体积, 如果哈密顿系统是能量守恒的, 它们也近似保持能量. 辛系统的一个特殊类别是可分离系统, 它可以写成 <span class="emphasis"><em>dqdt/dt = f1(p)</em></span>、<span class="emphasis"><em>dpdt/dt = f2(q)</em></span> 的形式, 其中 <span class="emphasis"><em>(q,p)</em></span> 是系统的状态. <span class="emphasis"><em>(q,p)</em></span> 所在的空间有时被称为相空间, <span class="emphasis"><em>q</em></span> 和 <span class="emphasis"><em>p</em></span> 被称为相空间变量. 这种特殊形式的辛系统在自然界中广泛存在. 例如, 由 Newton、Lagrange 和 Hamilton 写下的整个经典力学都可以在这一框架中表述. 系统的可分离性取决于坐标的具体选择.</p>
+<p>辛系统可以在 odeint 中借助 symplectic_euler 步进器和四阶辛 Runge-Kutta-Nystrom 方法求解. 这些步进器假定系统是自治的, 因此时间不会显式出现. 此外, 它们原则上满足默认的 Stepper 概念, 但它们期望系统是一对可调用对象. 该 pair 的第一个成员计算 <span class="emphasis"><em>f1(p)</em></span>, 第二个计算 <span class="emphasis"><em>f2(q)</em></span>. 语法为 <code class="computeroutput"><span class="identifier">sys</span><span class="special">.</span><span class="identifier">first</span><span class="special">(</span><span class="identifier">p</span><span class="special">,</span><span class="identifier">dqdt</span><span class="special">)</span></code> 和 <code class="computeroutput"><span class="identifier">sys</span><span class="special">.</span><span class="identifier">second</span><span class="special">(</span><span class="identifier">q</span><span class="special">,</span><span class="identifier">dpdt</span><span class="special">)</span></code>, 其中第一和第二部分同样可以是简单的 C 函数或函数对象. 例如谐振子:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">,</span> <span class="number">1</span> <span class="special">&gt;</span> <span class="identifier">vector_type</span><span class="special">;</span>
+
+
+<span class="keyword">struct</span> <span class="identifier">harm_osc_f1</span>
+<span class="special">{</span>
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="keyword">const</span> <span class="identifier">vector_type</span> <span class="special">&amp;</span><span class="identifier">p</span> <span class="special">,</span> <span class="identifier">vector_type</span> <span class="special">&amp;</span><span class="identifier">dqdt</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">dqdt</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">p</span><span class="special">[</span><span class="number">0</span><span class="special">];</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="keyword">struct</span> <span class="identifier">harm_osc_f2</span>
+<span class="special">{</span>
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="keyword">const</span> <span class="identifier">vector_type</span> <span class="special">&amp;</span><span class="identifier">q</span> <span class="special">,</span> <span class="identifier">vector_type</span> <span class="special">&amp;</span><span class="identifier">dpdt</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">dpdt</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="special">-</span><span class="identifier">q</span><span class="special">[</span><span class="number">0</span><span class="special">];</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>这类 ODE 的状态现在也由两部分组成: q 部分 (也称为坐标) 和 p 部分 (动量). 谐振子的完整示例现在是:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">pair</span><span class="special">&lt;</span> <span class="identifier">vector_type</span> <span class="special">,</span> <span class="identifier">vector_type</span> <span class="special">&gt;</span> <span class="identifier">x</span><span class="special">;</span>
+<span class="identifier">x</span><span class="special">.</span><span class="identifier">first</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="number">1.0</span><span class="special">;</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">second</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="number">0.0</span><span class="special">;</span>
+<span class="identifier">symplectic_rkn_sb3a_mclachlan</span><span class="special">&lt;</span> <span class="identifier">vector_type</span> <span class="special">&gt;</span> <span class="identifier">rkn</span><span class="special">;</span>
+<span class="identifier">rkn</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">make_pair</span><span class="special">(</span> <span class="identifier">harm_osc_f1</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">harm_osc_f2</span><span class="special">()</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+<p>如果你想用一个类来表示该系统, 可以方便地绑定两个公有方法:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">harm_osc</span>
+<span class="special">{</span>
+    <span class="keyword">void</span> <span class="identifier">f1</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">vector_type</span> <span class="special">&amp;</span><span class="identifier">p</span> <span class="special">,</span> <span class="identifier">vector_type</span> <span class="special">&amp;</span><span class="identifier">dqdt</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="identifier">dqdt</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">p</span><span class="special">[</span><span class="number">0</span><span class="special">];</span>
+    <span class="special">}</span>
+
+    <span class="keyword">void</span> <span class="identifier">f2</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">vector_type</span> <span class="special">&amp;</span><span class="identifier">q</span> <span class="special">,</span> <span class="identifier">vector_type</span> <span class="special">&amp;</span><span class="identifier">dpdt</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="identifier">dpdt</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="special">-</span><span class="identifier">q</span><span class="special">[</span><span class="number">0</span><span class="special">];</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">harm_osc</span> <span class="identifier">h</span><span class="special">;</span>
+<span class="identifier">rkn</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">make_pair</span><span class="special">(</span> <span class="identifier">detail</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span> <span class="special">&amp;</span><span class="identifier">harm_osc</span><span class="special">::</span><span class="identifier">f1</span> <span class="special">,</span> <span class="identifier">h</span> <span class="special">,</span> <span class="identifier">_1</span> <span class="special">,</span> <span class="identifier">_2</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">detail</span><span class="special">::</span><span class="identifier">bind</span><span class="special">(</span> <span class="special">&amp;</span><span class="identifier">harm_osc</span><span class="special">::</span><span class="identifier">f2</span> <span class="special">,</span> <span class="identifier">h</span> <span class="special">,</span> <span class="identifier">_1</span> <span class="special">,</span> <span class="identifier">_2</span> <span class="special">)</span> <span class="special">)</span> <span class="special">,</span>
+        <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+<p>许多哈密顿系统可以写成 <span class="emphasis"><em>dq/dt=p</em></span>、<span class="emphasis"><em>dp/dt=f(q)</em></span>, 这在计算上比完全可分离系统容易得多. 而且, 通常也可以变换原始运动方程, 把系统化成这种简化形式. 这类系统可以在辛求解器中使用, 只需将 <span class="emphasis"><em>f(p)</em></span> 传给 <code class="computeroutput"><span class="identifier">do_step</span></code> 方法, 同样, <span class="emphasis"><em>f(p)</em></span> 将由简单的 C 函数或函数对象表示. 这里, 上面的谐振子示例可以写成</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">pair</span><span class="special">&lt;</span> <span class="identifier">vector_type</span> <span class="special">,</span> <span class="identifier">vector_type</span> <span class="special">&gt;</span> <span class="identifier">x</span><span class="special">;</span>
+<span class="identifier">x</span><span class="special">.</span><span class="identifier">first</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="number">1.0</span><span class="special">;</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">second</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="number">0.0</span><span class="special">;</span>
+<span class="identifier">symplectic_rkn_sb3a_mclachlan</span><span class="special">&lt;</span> <span class="identifier">vector_type</span> <span class="special">&gt;</span> <span class="identifier">rkn</span><span class="special">;</span>
+<span class="identifier">rkn</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">harm_osc_f1</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+<p>本示例中, 函数 <code class="computeroutput"><span class="identifier">harm_osc_f1</span></code> 与上面示例中的函数完全相同.</p>
+<p>注意, ODE 的状态不必通过 <code class="computeroutput"><span class="identifier">pair</span><span class="special">&lt;</span>
+          <span class="identifier">vector_type</span> <span class="special">,</span>
+          <span class="identifier">vector_type</span> <span class="special">&gt;</span>
+          <span class="identifier">x</span></code> 显式构造. 也可以使用 <code class="computeroutput"><span class="identifier">make_pair</span></code> 和 <code class="computeroutput"><span class="identifier">ref</span></code> 的组合. 此外, <code class="computeroutput"><span class="identifier">do_step</span></code> 还有一个便捷版本, 它直接接受 q 和 p 而不将它们组合成 pair:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">rkn</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">harm_osc_f1</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">make_pair</span><span class="special">(</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span> <span class="identifier">q</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span> <span class="identifier">p</span> <span class="special">)</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+<span class="identifier">rkn</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">harm_osc_f1</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">q</span> <span class="special">,</span> <span class="identifier">p</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+<span class="identifier">rkn</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">make_pair</span><span class="special">(</span> <span class="identifier">harm_osc_f1</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">harm_osc_f2</span><span class="special">()</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">q</span> <span class="special">,</span> <span class="identifier">p</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.steppers.implicit_solvers"></a><a class="link" href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.implicit_solvers" title="隐式求解器">隐式求解器</a>
+</h4></div></div></div>
+<div class="caution"><table border="0" summary="Caution">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注意]" src="../../../../../../../doc/src/images/caution.png"></td>
+<th align="left">注意</th>
+</tr>
+<tr><td align="left" valign="top"><p>本节内容不是最新的.</p></td></tr>
+</table></div>
+<p>对于某些系统, 经典 Runge-Kutta 方法的稳定性不够, 特别是当系统被称为刚性 (stiff) 时. 刚性系统拥有两个或多个量级差异极大的时间尺度. 刚性系统的求解器通常是隐式的, 意味着它们求解形如 <span class="emphasis"><em>x(t+dt) = x(t) + dt * f(x(t+1))</em></span> 的方程. 这个特定格式就是隐式 Euler 方法. 隐式方法通常通过求根算法 (如 Newton 法) 求解方程组, 因此需要知道系统的 Jacobian <span class="emphasis"><em>J<sub>​ij</sub> = df<sub>​i</sub> / dx<sub>​j</sub></em></span>.</p>
+<p>对于隐式求解器, 系统同样是一个 pair, 其中第一个成员计算 <span class="emphasis"><em>f(x,t)</em></span>, 第二个成员计算 Jacobian. 语法为 <code class="computeroutput"><span class="identifier">sys</span><span class="special">.</span><span class="identifier">first</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">dxdt</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">)</span></code> 和 <code class="computeroutput"><span class="identifier">sys</span><span class="special">.</span><span class="identifier">second</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">J</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">)</span></code>. 对于隐式求解器, <code class="computeroutput"><span class="identifier">state_type</span></code> 是 <code class="computeroutput"><span class="identifier">ublas</span><span class="special">::</span><span class="identifier">vector</span></code>, Jacobian 由 <code class="computeroutput"><span class="identifier">ublas</span><span class="special">::</span><span class="identifier">matrix</span></code> 表示.</p>
+<div class="important"><table border="0" summary="Important">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[重要]" src="../../../../../../../doc/src/images/important.png"></td>
+<th align="left">重要</th>
+</tr>
+<tr><td align="left" valign="top"><p>隐式求解器只支持 ublas::vector 作为状态类型. 目前不支持其他状态类型.</p></td></tr>
+</table></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.steppers.multistep_methods"></a><a class="link" href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.multistep_methods" title="多步方法">多步方法</a>
+</h4></div></div></div>
+<p>另一大类求解器是多步方法. 它们保存解的一小段历史, 并借助这段历史计算下一步. 由于多步方法了解自身历史的一部分, 它们不需要频繁计算系统函数, 通常只计算一次. 当系统函数的调用开销很大时, 多步方法更可取. 例如定义在网络上的 ODE, 其中相互作用的计算通常开销很大 (且可能是 O(N^2) 量级).</p>
+<p>多步方法与普通步进器不同. 它们保存自身历史的一部分, 这部分历史必须被显式计算和初始化. 下面的示例实例化并初始化一个历史长度为 5 步的 Adams-Bashforth 步进器;</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">adams_bashforth_moulton</span><span class="special">&lt;</span> <span class="number">5</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">&gt;</span> <span class="identifier">abm</span><span class="special">;</span>
+<span class="identifier">abm</span><span class="special">.</span><span class="identifier">initialize</span><span class="special">(</span> <span class="identifier">sys</span> <span class="special">,</span> <span class="identifier">inout</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+<span class="identifier">abm</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys</span> <span class="special">,</span> <span class="identifier">inout</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+<p>初始化使用四阶 Runge-Kutta 步进器, 调用 <code class="computeroutput"><span class="identifier">initialize</span></code> 之后, <code class="computeroutput"><span class="identifier">inout</span></code> 的状态已变为当前状态, 从而可以通过把它传递给后续的 <code class="computeroutput"><span class="identifier">do_step</span></code> 调用立即使用. 你也可以使用自己的步进器来初始化 Adams-Bashforth 步进器的内部状态:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">abm</span><span class="special">.</span><span class="identifier">initialize</span><span class="special">(</span> <span class="identifier">runge_kutta_fehlberg78</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">&gt;()</span> <span class="special">,</span> <span class="identifier">sys</span> <span class="special">,</span> <span class="identifier">inout</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+<p>许多多步方法同时也是显式步进器, 因此 <code class="computeroutput"><span class="identifier">do_step</span></code> 方法的参数与显式步进器没有区别.</p>
+<div class="caution"><table border="0" summary="Caution">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注意]" src="../../../../../../../doc/src/images/caution.png"></td>
+<th align="left">注意</th>
+</tr>
+<tr><td align="left" valign="top"><p>多步方法有一些依赖于显式解的内部变量. 因此, 在对状态 (例如大小) 或系统做任何外部更改之后, 必须再次调用 initialize 函数来调整步进器的内部状态. 如果你使用 integrate 函数, 这会被自动考虑. 更多细节请参见 <a class="link" href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.using_steppers" title="使用步进器">使用步进器</a> 一节.</p></td></tr>
+</table></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.steppers.controlled_steppers"></a><a class="link" href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.controlled_steppers" title="受控步进器">受控步进器</a>
+</h4></div></div></div>
+<p>上面介绍的许多步进器都具有使用自适应步长控制的能力. 自适应步长积分原则上按如下方式工作:</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">计算单步的误差. 这通常通过以不同阶数执行两步来完成, 两步结果之差用作误差的度量. 能够计算误差的步进器是 <a class="link" href="../concepts/error_stepper.html" title="误差步进器">误差步进器</a>, 它们构成一个拥有独立概念的单独类别.</li>
+<li class="listitem">将该误差与某些预定义的误差容限进行比较. 如果违反容限, 该步被拒绝并减小步长. 否则接受该步, 并可能增大步长.</li>
+</ol></div>
+<p>受控步进器类在 odeint 中有自己的概念, 即 <a class="link" href="../concepts/controlled_stepper.html" title="受控步进器">受控步进器</a> 概念. 它们通常由底层的误差步进器构造而成. 例如显式 Runge-Kutta 步进器的控制器. Runge-Kutta 步进器作为模板参数传入控制器. 此外, 也可以把 Runge-Kutta 步进器传给构造函数, 但这一步并非必需; 只要有可能, 步进器会被默认构造.</p>
+<p>存在不同的步长控制机制. 它们的共同点是: 都以某种方式将预定义的误差容限与误差进行比较, 并可能拒绝或接受一步. 如果某步被拒绝, 通常会减小步长, 并用减小的步长重做该步. 重复这一过程直到该步被接受. 该算法在 integrate 函数中实现.</p>
+<p>判断一步被拒绝还是接受的一种经典方式是计算</p>
+<p>
+          <span class="emphasis"><em>val = || | err<sub>​i</sub> | / ( ε<sub>​abs</sub> + ε<sub>​rel</sub> * ( a<sub>​x</sub> | x<sub>​i</sub> | + a<sub>​dxdt</sub> | | dxdt<sub>​i</sub> | )||
+          </em></span>
+        </p>
+<p>
+          <span class="emphasis"><em>ε<sub>​abs</sub></em></span> 和 <span class="emphasis"><em>ε<sub>​rel</sub></em></span> 是绝对和相对误差容限, <span class="emphasis"><em>|| x ||</em></span> 是一个范数, 典型地是 <span class="emphasis"><em>||x||=(Σ<sub>​i</sub> x<sub>​i</sub><sup>2</sup>)<sup>1/2</sup></em></span> 或最大值范数. 如果 <span class="emphasis"><em>val</em></span> 大于 1, 则该步被拒绝, 否则被接受. 所用范数和误差容限的细节见下表.</p>
+<p>对于 <code class="computeroutput"><span class="identifier">controlled_runge_kutta</span></code> 步进器, 新步长随后按如下方式计算:</p>
+<p>
+          <span class="emphasis"><em>val &gt; 1 : dt<sub>​new</sub> = dt<sub>​current</sub> max( 0.9 pow( val , -1 / ( O<sub>​E</sub> - 1
+          ) ) , 0.2 )</em></span>
+        </p>
+<p>
+          <span class="emphasis"><em>val &lt; 0.5 : dt<sub>​new</sub> = dt<sub>​current</sub> min( 0.9 pow( val , -1 / O<sub>​S</sub> ) ,
+          5 )</em></span>
+        </p>
+<p>
+          <span class="emphasis"><em>else : dt<sub>​new</sub> = dt<sub>​current</sub></em></span>
+        </p>
+<p>这里, <span class="emphasis"><em>O<sub>​S</sub></em></span> 和 <span class="emphasis"><em>O<sub>​E</sub></em></span> 分别是步进器和误差步进器的阶数. 这些公式还包含一些安全因子, 避免步长被过度减小或增大. odeint 中受控步进器实现的细节见下表.</p>
+<div class="table">
+<a name="boost_numeric_odeint.odeint_in_detail.steppers.controlled_steppers.adaptive_step_size_algorithms"></a><p class="title"><b>表 1.5. 自适应步长算法</b></p>
+<div class="table-contents"><table class="table" summary="Adaptive step size algorithms">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>步进器</p>
+                </th>
+<th>
+                  <p>容限公式</p>
+                </th>
+<th>
+                  <p>
+                    Norm
+                  </p>
+                </th>
+<th>
+                  <p>步长自适应</p>
+                </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">controlled_runge_kutta</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <span class="emphasis"><em>val = || | err<sub>​i</sub> | / ( ε<sub>​abs</sub> + ε<sub>​rel</sub> * ( a<sub>​x</sub> | x<sub>​i</sub> | + a<sub>​dxdt</sub> | |
+                    dxdt<sub>​i</sub> | )|| </em></span>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <span class="emphasis"><em>||x|| = max( x<sub>​i</sub> )</em></span>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <span class="emphasis"><em>val &gt; 1 : dt<sub>​new</sub> = dt<sub>​current</sub> max( 0.9 pow( val , -1
+                    / ( O<sub>​E</sub> - 1 ) ) , 0.2 )</em></span>
+                  </p>
+                  <p>
+                    <span class="emphasis"><em>val &lt; 0.5 : dt<sub>​new</sub> = dt<sub>​current</sub> min( 0.9 pow( val ,
+                    -1 / O<sub>​S</sub> ) , 5 )</em></span>
+                  </p>
+                  <p>
+                    <span class="emphasis"><em>else : dt<sub>​new</sub> = dt<sub>​current</sub></em></span>
+                  </p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">rosenbrock4_controller</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <span class="emphasis"><em>val = || err<sub>​i</sub> / ( ε<sub>​abs</sub> + ε<sub>​rel</sub> max( | x<sub>​i</sub> | , | xold<sub>​i</sub> | ) )
+                    || </em></span>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <span class="emphasis"><em>||x||=(Σ<sub>​i</sub> x<sub>​i</sub><sup>2</sup>)<sup>1/2</sup></em></span>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <span class="emphasis"><em>fac = max( 1 / 6 , min( 5 , pow( val , 1 / 4 ) / 0.9
+                    ) </em></span>
+                  </p>
+                  <p>
+                    <span class="emphasis"><em>fac2 = max( 1 / 6 , min( 5 , dt<sub>​old</sub> / dt<sub>​current</sub> pow( val<sup>2</sup> /
+                    val<sub>​old</sub> , 1 / 4 ) / 0.9 ) </em></span>
+                  </p>
+                  <p>
+                    <span class="emphasis"><em>val &gt; 1 : dt<sub>​new</sub> = dt<sub>​current</sub> / fac </em></span>
+                  </p>
+                  <p>
+                    <span class="emphasis"><em>val &lt; 1 : dt<sub>​new</sub> = dt<sub>​current</sub> / max( fac , fac2 ) </em></span>
+                  </p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    bulirsch_stoer
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <span class="emphasis"><em>tol=1/2</em></span>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    -
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <span class="emphasis"><em>dt<sub>​new</sub> = dt<sub>​old</sub><sup>1/a</sup></em></span>
+                  </p>
+                </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><p>为简化受控步进器的生成, 存在一些生成函数, 它们接受绝对和相对误差容限以及一个预定义的误差步进器, 并据此构造出合适的受控步进器. 生成函数在 <a class="link" href="generation_functions.html" title="生成函数">生成函数</a> 一节中有详细说明.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.steppers.dense_output_steppers"></a><a class="link" href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.dense_output_steppers" title="稠密输出步进器">稠密输出步进器</a>
+</h4></div></div></div>
+<p>还存在第四类步进器, 即所谓的稠密输出步进器. 稠密输出步进器可以迈出较大的步子, 并在两个相邻点之间对解进行插值. 这些插值点通常与步进器的阶数相同. 稠密输出步进器通常是复合步进器, 它们把底层方法作为模板参数. 例如 <code class="computeroutput"><span class="identifier">dense_output_runge_kutta</span></code> 步进器, 它接受一个具有稠密输出能力的 Runge-Kutta 步进器作为参数. 并非所有 Runge-Kutta 步进器都提供稠密输出计算; 目前只有 Dormand-Prince 5 步进器提供稠密输出. 示例如下</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">dense_output_runge_kutta</span><span class="special">&lt;</span> <span class="identifier">controlled_runge_kutta</span><span class="special">&lt;</span> <span class="identifier">runge_kutta_dopri5</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">&gt;</span> <span class="special">&gt;</span> <span class="special">&gt;</span> <span class="identifier">dense</span><span class="special">;</span>
+<span class="identifier">dense</span><span class="special">.</span><span class="identifier">initialize</span><span class="special">(</span> <span class="identifier">in</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+<span class="identifier">pair</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">,</span> <span class="keyword">double</span> <span class="special">&gt;</span> <span class="identifier">times</span> <span class="special">=</span> <span class="identifier">dense</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys</span> <span class="special">);</span>
+<span class="special">(</span><span class="keyword">void</span><span class="special">)</span><span class="identifier">times</span><span class="special">;</span>
+</pre>
+<p>
+        </p>
+<p>稠密输出步进器有自己的概念. 与普通步进器的主要区别在于它们在内部管理状态和时间. 如果调用 <code class="computeroutput"><span class="identifier">do_step</span></code>, 只传入 ODE 作为参数. 此外, <code class="computeroutput"><span class="identifier">do_step</span></code> 返回最后的时间区间: <code class="computeroutput"><span class="identifier">t</span></code> 和 <code class="computeroutput"><span class="identifier">t</span><span class="special">+</span><span class="identifier">dt</span></code>, 因此你可以在这两个时间点之间对解进行插值. 另一个区别是它们必须用 <code class="computeroutput"><span class="identifier">initialize</span></code> 初始化, 否则步进器的内部状态会被默认构造, 可能产生奇怪的错误或缺陷.</p>
+<p>稠密输出步进器的构造看起来有点麻烦, 因为对于 <code class="computeroutput"><span class="identifier">dense_output_runge_kutta</span></code> 步进器, 需要嵌套一个受控步进器和一个误差步进器. 为简化稠密输出步进器的生成, 存在一些生成函数:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">numeric</span><span class="special">::</span><span class="identifier">odeint</span><span class="special">::</span><span class="identifier">result_of</span><span class="special">::</span><span class="identifier">make_dense_output</span><span class="special">&lt;</span>
+    <span class="identifier">runge_kutta_dopri5</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">&gt;</span> <span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">dense_stepper_type</span><span class="special">;</span>
+<span class="identifier">dense_stepper_type</span> <span class="identifier">dense2</span> <span class="special">=</span> <span class="identifier">make_dense_output</span><span class="special">(</span> <span class="number">1.0e-6</span> <span class="special">,</span> <span class="number">1.0e-6</span> <span class="special">,</span> <span class="identifier">runge_kutta_dopri5</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">&gt;()</span> <span class="special">);</span>
+<span class="special">(</span><span class="keyword">void</span><span class="special">)</span><span class="identifier">dense2</span><span class="special">;</span>
+</pre>
+<p>
+        </p>
+<p>这条语句同样很长; 它演示了 <code class="computeroutput"><span class="identifier">make_dense_output</span></code> 如何配合 <code class="computeroutput"><span class="identifier">result_of</span></code> 协议使用. 传给 <code class="computeroutput"><span class="identifier">make_dense_output</span></code> 的参数是绝对误差容限、相对误差容限和步进器. 这明确假定底层步进器是受控步进器, 且该步进器具有绝对和相对误差容限. 生成函数的细节见 <a class="link" href="generation_functions.html" title="生成函数">生成函数</a>. 生成函数的设计目标就是与 integrate 函数配合使用:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">integrate_const</span><span class="special">(</span> <span class="identifier">make_dense_output</span><span class="special">(</span> <span class="number">1.0e-6</span> <span class="special">,</span> <span class="number">1.0e-6</span> <span class="special">,</span> <span class="identifier">runge_kutta_dopri5</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">&gt;()</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">sys</span> <span class="special">,</span> <span class="identifier">inout</span> <span class="special">,</span> <span class="identifier">t_start</span> <span class="special">,</span> <span class="identifier">t_end</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.steppers.using_steppers"></a><a class="link" href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.using_steppers" title="使用步进器">使用步进器</a>
+</h4></div></div></div>
+<p>本节包含一些关于 odeint 中步进器用法的一般信息.</p>
+<p>
+          <span class="bold"><strong>步进器按值复制</strong></span>
+        </p>
+<p>odeint 中的步进器总是按值复制. 它们在创建受控步进器或稠密输出步进器时被复制, 在 integrate 函数中也被复制.</p>
+<p>
+          <span class="bold"><strong>步进器可能具有内部状态</strong></span>
+        </p>
+<div class="caution"><table border="0" summary="Caution">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注意]" src="../../../../../../../doc/src/images/caution.png"></td>
+<th align="left">注意</th>
+</tr>
+<tr><td align="left" valign="top"><p>本节描述的部分特性尚未实现</p></td></tr>
+</table></div>
+<p>某些步进器需要在两步之间保存一些关于 ODE 状态的信息. 例如多步方法在 ODE 演化过程中保存解的一部分, 或 FSAL 步进器保存时刻 <span class="emphasis"><em>t+dt</em></span> 的最后一个导数以供下一步使用. 在这两种情况下, 步进器都期望连续的 <code class="computeroutput"><span class="identifier">do_step</span></code> 调用来自相同的解和相同的 ODE. 此时, 绝对必要的是以相同的系统函数和相同的状态调用 <code class="computeroutput"><span class="identifier">do_step</span></code>, 另见上文 FSAL 步进器的示例.</p>
+<p>具有内部状态的步进器支持两个额外方法: 用于重置状态的 <code class="computeroutput"><span class="identifier">reset</span></code> 和用于初始化内部状态的 <code class="computeroutput"><span class="identifier">initialize</span></code>. <code class="computeroutput"><span class="identifier">initialize</span></code> 的参数取决于具体的步进器. 例如, Adams-Bashforth-Moulton 步进器提供两个 initialize 方法: <code class="computeroutput"><span class="identifier">initialize</span><span class="special">(</span> <span class="identifier">system</span> <span class="special">,</span> <span class="identifier">inout</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">)</span></code> 借助 Runge-Kutta 4 步进器初始化内部状态, 而 <code class="computeroutput"><span class="identifier">initialize</span><span class="special">(</span> <span class="identifier">stepper</span> <span class="special">,</span> <span class="identifier">system</span> <span class="special">,</span> <span class="identifier">inout</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">)</span></code> 借助 <code class="computeroutput"><span class="identifier">stepper</span></code> 初始化. 对于 FSAL 步进器, <code class="computeroutput"><span class="identifier">initialize</span></code> 是 <code class="computeroutput"><span class="identifier">initialize</span><span class="special">(</span>
+          <span class="identifier">sys</span> <span class="special">,</span>
+          <span class="identifier">in</span> <span class="special">,</span>
+          <span class="identifier">t</span> <span class="special">)</span></code>, 它只是计算 ODE 的右端项并将其值赋给内部导数.</p>
+<p>所有这些步进器的共同点是, 它们起初会自行填充内部状态. 因此你不强制需要调用 initialize. 看看 Adams-Bashforth-Moulton 步进器是如何工作的: 在示例中, 我们实例化一个四阶 Adams-Bashforth-Moulton 步进器, 意味着它将存储解在时刻 <code class="computeroutput"><span class="special">(</span><span class="identifier">t</span><span class="special">-</span><span class="identifier">dt</span><span class="special">,</span><span class="identifier">t</span><span class="special">-</span><span class="number">2</span><span class="special">*</span><span class="identifier">dt</span><span class="special">,</span><span class="identifier">t</span><span class="special">-</span><span class="number">3</span><span class="special">*</span><span class="identifier">dt</span><span class="special">,</span><span class="identifier">t</span><span class="special">-</span><span class="number">4</span><span class="special">*</span><span class="identifier">dt</span><span class="special">)</span></code> 处的 4 个内部导数.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">adams_bashforth_moulton</span><span class="special">&lt;</span> <span class="number">4</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">&gt;</span> <span class="identifier">stepper</span><span class="special">;</span>
+<span class="identifier">stepper</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>   <span class="comment">// make one step with the classical Runge-Kutta stepper and initialize the first internal state</span>
+                                       <span class="comment">// the internal array is now [x(t-dt)]</span>
+
+<span class="identifier">stepper</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>   <span class="comment">// make one step with the classical Runge-Kutta stepper and initialize the second internal state</span>
+                                       <span class="comment">// the internal state array is now [x(t-dt), x(t-2*dt)]</span>
+
+<span class="identifier">stepper</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>   <span class="comment">// make one step with the classical Runge-Kutta stepper and initialize the third internal state</span>
+                                       <span class="comment">// the internal state array is now [x(t-dt), x(t-2*dt), x(t-3*dt)]</span>
+
+<span class="identifier">stepper</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>   <span class="comment">// make one step with the classical Runge-Kutta stepper and initialize the fourth internal state</span>
+                                       <span class="comment">// the internal state array is now [x(t-dt), x(t-2*dt), x(t-3*dt), x(t-4*dt)]</span>
+
+<span class="identifier">stepper</span><span class="special">.</span><span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">sys</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">);</span>   <span class="comment">// make one step with Adam-Bashforth-Moulton, the internal array of states is now rotated</span>
+</pre>
+<p>
+        </p>
+<p>在本页底部的步进器表中可以看到哪些步进器具有内部状态, 因而提供 <code class="computeroutput"><span class="identifier">reset</span></code> 和 <code class="computeroutput"><span class="identifier">initialize</span></code> 方法.</p>
+<p>
+          <span class="bold"><strong>步进器可能是可调整大小的</strong></span>
+        </p>
+<p>odeint 中几乎所有步进器都需要存储一些 <code class="computeroutput"><span class="identifier">state_type</span></code> 或 <code class="computeroutput"><span class="identifier">deriv_type</span></code> 类型的中间结果. 为此, odeint 需要对内部临时对象进行一些内存管理. 由于这种内存管理通常与调整类向量类型的大小有关, 在 odeint 中称之为调整大小 (resizing). 因此, odeint 中的大多数步进器提供一个额外的模板参数, 用于控制内部变量的大小调整, 即 resizer. 具体而言, odeint 提供三个策略类 (resizer): <code class="computeroutput"><span class="identifier">always_resizer</span></code>、<code class="computeroutput"><span class="identifier">initially_resizer</span></code> 和 <code class="computeroutput"><span class="identifier">never_resizer</span></code>. 此外, 所有步进器都有一个 <code class="computeroutput"><span class="identifier">adjust_size</span></code> 方法, 它接受一个表示状态类型的参数, 并手动调整内部变量的大小以匹配给定实例的大小. 在执行实际的调整大小之前, odeint 总是先检查状态与内部变量的大小是否不同, 只有在不同时才调整大小.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>只有使用动态大小的向量类型时, 你才需要操心内存分配. 如果你的状态类型是栈上分配的, 如 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span></code>, 则完全不需要内存分配.</p></td></tr>
+</table></div>
+<p>默认情况下, 调整大小参数是 <code class="computeroutput"><span class="identifier">initially_resizer</span></code>, 意味着对 <code class="computeroutput"><span class="identifier">do_step</span></code> 的第一次调用会执行调整大小, 即内存分配. 在这种情况下, 如果你改变了系统和状态的大小, 就必须手动调用 <code class="computeroutput"><span class="identifier">adjust_size</span></code>. 第二个 resizer 是 <code class="computeroutput"><span class="identifier">always_resizer</span></code>, 它在每次调用 <code class="computeroutput"><span class="identifier">do_step</span></code> 时都尝试调整内部变量的大小. 这类 resizer 的典型用例是教程中展示的自扩展晶格 ( <a class="link" href="../tutorial/self_expanding_lattices.html" title="自扩展晶格">自扩展晶格</a> ) 或带自适应网格的偏微分方程. 这里不需要调用 <code class="computeroutput"><span class="identifier">adjust_size</span></code>, 步进器自行管理一切. 第三类 resizer 是 <code class="computeroutput"><span class="identifier">never_resizer</span></code>, 意味着内部变量永远不会被自动调整, 必须始终手动调整.</p>
+<p>还有第二个影响调整大小的机制, 它控制状态类型是否至少是可调整大小的, 即一个元函数 <code class="computeroutput"><span class="identifier">is_resizeable</span></code>. 对于任意类型, 该元函数返回其是否可调整大小的静态布尔值. 例如, 它将返回 <code class="computeroutput"><span class="keyword">true</span></code> (对于类型 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span> <span class="identifier">T</span> <span class="special">&gt;</span></code>), 但返回 <code class="computeroutput"><span class="keyword">false</span></code> (对于类型 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="identifier">T</span> <span class="special">&gt;</span></code>). 默认情况下, 对未知类型 <code class="computeroutput"><span class="identifier">is_resizeable</span></code> 返回 <code class="computeroutput"><span class="keyword">false</span></code>, 因此如果你有自己的类型, 就需要特化这个元函数. 关于调整大小机制的更多细节, 请参见 <a class="link" href="state_types__algebras_and_operations.html" title="状态类型、代数与运算">适配你自己的状态类型</a> 一节.</p>
+<p>
+          <span class="bold"><strong>什么情况下应使用哪种步进器</strong></span>
+        </p>
+<p>odeint 提供了相当多不同的步进器, 于是用户面临"哪种步进器符合自己需求"的问题. 我们个人的建议是:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+              <code class="computeroutput"><span class="identifier">runge_kutta_dopri5</span></code> 或许是最好的默认步进器. 它具有步长控制和稠密输出功能. 只需通过 <code class="computeroutput"><span class="identifier">make_dense_output</span><span class="special">(</span> <span class="number">1.0e-6</span> <span class="special">,</span> <span class="number">1.0e-5</span> <span class="special">,</span> <span class="identifier">runge_kutta_dopri5</span><span class="special">&lt;</span> <span class="identifier">state_type</span>
+              <span class="special">&gt;()</span> <span class="special">)</span></code> 创建一个稠密输出步进器即可.</li>
+<li class="listitem">
+              <code class="computeroutput"><span class="identifier">runge_kutta4</span></code> 是固定步长下的优秀步进器. 它被广泛使用且广为人知. 如果你需要生成人工时间序列, 这个步进器应是首选.</li>
+<li class="listitem">'runge_kutta_fehlberg78' 与 'runge_kutta4' 类似, 优点是精度更高. 它也可以配合步长控制使用.</li>
+<li class="listitem">
+              <code class="computeroutput"><span class="identifier">adams_bashforth_moulton</span></code> 非常适合右端项计算开销大 (就计算时间而言) 的 ODE. 它在每步中只计算一次系统函数.</li>
+</ul></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.steppers.stepper_overview"></a><a class="link" href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.stepper_overview" title="步进器概览">步进器概览</a>
+</h4></div></div></div>
+<div class="table">
+<a name="boost_numeric_odeint.odeint_in_detail.steppers.stepper_overview.stepper_algorithms"></a><p class="title"><b>表 1.6. 步进器算法</b></p>
+<div class="table-contents"><table class="table" summary="Stepper Algorithms">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+<col>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>算法</p>
+                </th>
+<th>
+                  <p>类</p>
+                </th>
+<th>
+                  <p>概念</p>
+                </th>
+<th>
+                  <p>系统概念</p>
+                </th>
+<th>
+                  <p>阶数</p>
+                </th>
+<th>
+                  <p>误差估计</p>
+                </th>
+<th>
+                  <p>稠密输出</p>
+                </th>
+<th>
+                  <p>内部状态</p>
+                </th>
+<th>
+                  <p>备注</p>
+                </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                  <p>显式 Euler</p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">euler</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/dense_output_stepper.html" title="稠密输出步进器">稠密输出步进器</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/system.html" title="系统">系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    1
+                  </p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>非常简单, 仅用于演示目的</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>改进的中点法 (Modified Midpoint)</p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">modified_midpoint</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/stepper.html" title="步进器">Stepper</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/system.html" title="系统">系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>可配置 (2)</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>用于 Bulirsch-Stoer 实现</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    Runge-Kutta 4
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">runge_kutta4</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/stepper.html" title="步进器">Stepper</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/system.html" title="系统">系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    4
+                  </p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>经典 Runge-Kutta 格式, 通用性良好的无误差控制格式</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    Cash-Karp
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">runge_kutta_cash_karp54</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/error_stepper.html" title="误差步进器">误差步进器</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/system.html" title="系统">系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    5
+                  </p>
+                </td>
+<td>
+                  <p>是 (4)</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>带误差估计的通用性良好的格式, 用于 controlled_error_stepper</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    Dormand-Prince 5
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">runge_kutta_dopri5</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/error_stepper.html" title="误差步进器">误差步进器</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/system.html" title="系统">系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    5
+                  </p>
+                </td>
+<td>
+                  <p>是 (4)</p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>带误差控制和稠密输出的标准方法, 用于 controlled_error_stepper 和 dense_output_controlled_explicit_fsal.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    Fehlberg 78
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">runge_kutta_fehlberg78</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/error_stepper.html" title="误差步进器">误差步进器</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/system.html" title="系统">系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    8
+                  </p>
+                </td>
+<td>
+                  <p>是 (7)</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>带误差估计的高阶通用格式, 用于 controlled_error_stepper.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    Adams Bashforth
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">adams_bashforth</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/stepper.html" title="步进器">Stepper</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/system.html" title="系统">系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>可配置</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>多步方法</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    Adams Bashforth Moulton
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">adams_bashforth_moulton</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/stepper.html" title="步进器">Stepper</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/system.html" title="系统">系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>可配置</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>组合多步方法</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>受控 Runge-Kutta</p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">controlled_runge_kutta</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/controlled_stepper.html" title="受控步进器">受控步进器</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/system.html" title="系统">系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>取决于具体实现</p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>取决于具体实现</p>
+                </td>
+<td>
+                  <p>针对 <a class="link" href="../concepts/error_stepper.html" title="误差步进器">误差步进器</a> 的误差控制. 需要上表中的某个 <a class="link" href="../concepts/error_stepper.html" title="误差步进器">误差步进器</a>. 阶数取决于给定的 ErrorStepper</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>稠密输出 Runge-Kutta</p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">dense_output_runge_kutta</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/dense_output_stepper.html" title="稠密输出步进器">稠密输出步进器</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/system.html" title="系统">系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>取决于具体实现</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>为上表中的 <a class="link" href="../concepts/stepper.html" title="步进器">Stepper</a> 和 <a class="link" href="../concepts/error_stepper.html" title="误差步进器">误差步进器</a> 提供稠密输出 (前提是它们提供稠密输出功能, 如 <code class="computeroutput"><span class="identifier">euler</span></code> 和 <code class="computeroutput"><span class="identifier">runge_kutta_dopri5</span></code>). 阶数取决于给定的步进器.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    Bulirsch-Stoer
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">bulirsch_stoer</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/controlled_stepper.html" title="受控步进器">受控步进器</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/system.html" title="系统">系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>可变</p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>带步长和阶数控制的步进器. 需要高精度时表现非常好.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>Bulirsch-Stoer 稠密输出</p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">bulirsch_stoer_dense_out</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/dense_output_stepper.html" title="稠密输出步进器">稠密输出步进器</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/system.html" title="系统">系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>可变</p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>带步长和阶数控制以及稠密输出的步进器. 需要高精度和稠密输出时表现非常好.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>隐式 Euler</p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">implicit_euler</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/stepper.html" title="步进器">Stepper</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/implicit_system.html" title="隐式系统">隐式系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    1
+                  </p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>基本隐式例程. 需要 Jacobian. 仅支持 <a href="http://www.boost.org/doc/libs/release/libs/numeric/ublas/index.html" target="_top">Boost.uBLAS</a> 向量作为状态类型.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    Rosenbrock 4
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">rosenbrock4</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/error_stepper.html" title="误差步进器">误差步进器</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/implicit_system.html" title="隐式系统">隐式系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    4
+                  </p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>适用于刚性系统. 仅支持 <a href="http://www.boost.org/doc/libs/release/libs/numeric/ublas/index.html" target="_top">Boost.uBLAS</a> 向量作为状态类型.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>受控 Rosenbrock 4</p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">rosenbrock4_controller</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/controlled_stepper.html" title="受控步进器">受控步进器</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/implicit_system.html" title="隐式系统">隐式系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    4
+                  </p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>带误差控制的 Rosenbrock 4. 仅支持 <a href="http://www.boost.org/doc/libs/release/libs/numeric/ublas/index.html" target="_top">Boost.uBLAS</a> 向量作为状态类型.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>稠密输出 Rosenbrock 4</p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">rosenbrock4_dense_output</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/dense_output_stepper.html" title="稠密输出步进器">稠密输出步进器</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/implicit_system.html" title="隐式系统">隐式系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    4
+                  </p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>带稠密输出的受控 Rosenbrock 4. 仅支持 <a href="http://www.boost.org/doc/libs/release/libs/numeric/ublas/index.html" target="_top">Boost.uBLAS</a> 向量作为状态类型.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>辛 Euler</p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">symplectic_euler</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/stepper.html" title="步进器">Stepper</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/symplectic_system.html" title="辛系统">辛系统</a> <a class="link" href="../concepts/simple_symplectic_system.html" title="简单辛系统">简单辛系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    1
+                  </p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>面向可分离哈密顿系统的基本辛求解器</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>辛 RKN McLachlan</p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">symplectic_rkn_sb3a_mclachlan</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/stepper.html" title="步进器">Stepper</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/symplectic_system.html" title="辛系统">辛系统</a> <a class="link" href="../concepts/simple_symplectic_system.html" title="简单辛系统">简单辛系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    4
+                  </p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>面向可分离哈密顿系统的辛求解器, 6 级、4 阶.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>辛 RKN McLachlan</p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">symplectic_rkn_sb3a_m4_mclachlan</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/stepper.html" title="步进器">Stepper</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/symplectic_system.html" title="辛系统">辛系统</a> <a class="link" href="../concepts/simple_symplectic_system.html" title="简单辛系统">简单辛系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    4
+                  </p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>5 级 4 阶的辛求解器, 可与任意精度类型配合使用.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    Velocity Verlet
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">velocity_verlet</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/stepper.html" title="步进器">Stepper</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <a class="link" href="../concepts/second_order_system.html" title="二阶系统">二阶系统</a>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    1
+                  </p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>否</p>
+                </td>
+<td>
+                  <p>是</p>
+                </td>
+<td>
+                  <p>适用于分子动力学模拟的 Velocity Verlet 方法</p>
+                </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break">
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.steppers.custom_steppers"></a><a class="link" href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.custom_steppers" title="自定义步进器">自定义步进器</a>
+</h4></div></div></div>
+<p>最后, 你也可以编写与 odeint 完全兼容的新步进器. 它们只需满足 odeint 的一个或多个步进器 <a class="link" href="../concepts.html" title="概念">概念</a>.</p>
+<p>我们将以随机 Euler 方法为例说明如何编写自己的步进器. 该方法适合求解随机微分方程 (SDE). SDE 具有如下形式</p>
+<p>
+          <span class="emphasis"><em>dx/dt = f(x) + g(x) ξ(t)</em></span>
+        </p>
+<p>其中 <span class="emphasis"><em>ξ</em></span> 是均值为零、标准差为 <span class="emphasis"><em>σ(t)</em></span> 的高斯白噪声. <span class="emphasis"><em>f(x)</em></span> 被称为确定性部分, 而 <span class="emphasis"><em>g(x) ξ</em></span> 是噪声部分. 如果 <span class="emphasis"><em>g(x)</em></span> 与 <span class="emphasis"><em>x</em></span> 无关, 则称该 SDE 具有加性噪声. 用求解 ODE 的经典求解器无法求解 SDE, 因为相对于时间步, SDE 的噪声部分必须与确定性部分以不同方式缩放. 不过, 存在许多 SDE 求解器. 一个经典且简单的方法是随机 Euler 求解器. 它通过迭代</p>
+<p>
+          <span class="emphasis"><em>x(t+Δ t) = x(t) + Δ t f(x(t)) + Δ t<sup>1/2</sup> g(x) ξ(t)</em></span>
+        </p>
+<p>工作, 其中 ξ(t) 是独立的正态分布随机变量.</p>
+<p>现在我们来实现这个方法. 我们将这个步进器称为 <code class="computeroutput"><span class="identifier">stochastic_euler</span></code>. 它建模 <a class="link" href="../concepts/stepper.html" title="步进器">Stepper</a> 概念. 为简单起见, 我们把状态类型固定为 <code class="computeroutput"><span class="identifier">array</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">,</span> <span class="identifier">N</span> <span class="special">&gt;</span></code>. 类定义如下</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="identifier">size_t</span> <span class="identifier">N</span> <span class="special">&gt;</span> <span class="keyword">class</span> <span class="identifier">stochastic_euler</span>
+<span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+
+    <span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">,</span> <span class="identifier">N</span> <span class="special">&gt;</span> <span class="identifier">state_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">,</span> <span class="identifier">N</span> <span class="special">&gt;</span> <span class="identifier">deriv_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="keyword">double</span> <span class="identifier">value_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="keyword">double</span> <span class="identifier">time_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="keyword">unsigned</span> <span class="keyword">short</span> <span class="identifier">order_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">numeric</span><span class="special">::</span><span class="identifier">odeint</span><span class="special">::</span><span class="identifier">stepper_tag</span> <span class="identifier">stepper_category</span><span class="special">;</span>
+
+    <span class="keyword">static</span> <span class="identifier">order_type</span> <span class="identifier">order</span><span class="special">(</span> <span class="keyword">void</span> <span class="special">)</span> <span class="special">{</span> <span class="keyword">return</span> <span class="number">1</span><span class="special">;</span> <span class="special">}</span>
+
+    <span class="comment">// ...</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>需要这些类型是为了满足步进器概念. 在随机 Euler 方法中, 我们使用简单数组作为内部状态和导数类型, 它们用于临时对象. 该步进器的阶数为一, 由 <code class="computeroutput"><span class="identifier">order</span><span class="special">()</span></code> 函数返回.</p>
+<p>系统函数需要计算我们随机微分方程的确定性部分和随机部分. 因此系统函数适合表示为一对函数. 该 pair 的第一个成员计算确定性部分, 第二个成员计算随机部分. 此外, 第二个部分还需要计算随机数以模拟随机过程. 现在可以实现 <code class="computeroutput"><span class="identifier">do_step</span></code> 方法了</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="identifier">size_t</span> <span class="identifier">N</span> <span class="special">&gt;</span> <span class="keyword">class</span> <span class="identifier">stochastic_euler</span>
+<span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+
+    <span class="comment">// ...</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">class</span> <span class="identifier">System</span> <span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="identifier">do_step</span><span class="special">(</span> <span class="identifier">System</span> <span class="identifier">system</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">x</span> <span class="special">,</span> <span class="identifier">time_type</span> <span class="identifier">t</span> <span class="special">,</span> <span class="identifier">time_type</span> <span class="identifier">dt</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="identifier">deriv_type</span> <span class="identifier">det</span> <span class="special">,</span> <span class="identifier">stoch</span> <span class="special">;</span>
+        <span class="identifier">system</span><span class="special">.</span><span class="identifier">first</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">det</span> <span class="special">);</span>
+        <span class="identifier">system</span><span class="special">.</span><span class="identifier">second</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">stoch</span> <span class="special">);</span>
+        <span class="keyword">for</span><span class="special">(</span> <span class="identifier">size_t</span> <span class="identifier">i</span><span class="special">=</span><span class="number">0</span> <span class="special">;</span> <span class="identifier">i</span><span class="special">&lt;</span><span class="identifier">x</span><span class="special">.</span><span class="identifier">size</span><span class="special">()</span> <span class="special">;</span> <span class="special">++</span><span class="identifier">i</span> <span class="special">)</span>
+            <span class="identifier">x</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">+=</span> <span class="identifier">dt</span> <span class="special">*</span> <span class="identifier">det</span><span class="special">[</span><span class="identifier">i</span><span class="special">]</span> <span class="special">+</span> <span class="identifier">sqrt</span><span class="special">(</span> <span class="identifier">dt</span> <span class="special">)</span> <span class="special">*</span> <span class="identifier">stoch</span><span class="special">[</span><span class="identifier">i</span><span class="special">];</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>就这些. 相当简单, 而且这里实现的随机 Euler 步进器相当通用. 当然它可以增强, 例如</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">使用运算和代数以及调整大小机制, 以获得最大的灵活性和可移植性</li>
+<li class="listitem">对系统函数使用 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">ref</span></code> </li>
+<li class="listitem">对 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">range</span></code> 使用其作为状态类型, 用于 <code class="computeroutput"><span class="identifier">do_step</span></code> 方法</li>
+<li class="listitem">
+              ...
+            </li>
+</ul></div>
+<p>现在, 我们来看看如何使用新的步进器. 一个很好的例子是 Ornstein-Uhlenbeck 过程. 它由一个简单的布朗运动叠加一个弛豫过程构成. 其 SDE 为</p>
+<p>
+          <span class="emphasis"><em>dx/dt = - x + ξ</em></span>
+        </p>
+<p>其中 ξ 是标准差为 <span class="emphasis"><em>σ</em></span> 的高斯白噪声. 实现 Ornstein-Uhlenbeck 过程非常简单. 我们需要两个函数或函数对象, 一个用于确定性部分, 一个用于随机部分:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">const</span> <span class="keyword">static</span> <span class="identifier">size_t</span> <span class="identifier">N</span> <span class="special">=</span> <span class="number">1</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">,</span> <span class="identifier">N</span> <span class="special">&gt;</span> <span class="identifier">state_type</span><span class="special">;</span>
+
+<span class="keyword">struct</span> <span class="identifier">ornstein_det</span>
+<span class="special">{</span>
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">x</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">dxdt</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="identifier">dxdt</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="special">-</span><span class="identifier">x</span><span class="special">[</span><span class="number">0</span><span class="special">];</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="keyword">struct</span> <span class="identifier">ornstein_stoch</span>
+<span class="special">{</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">mt19937</span> <span class="special">&amp;</span><span class="identifier">m_rng</span><span class="special">;</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">normal_distribution</span><span class="special">&lt;&gt;</span> <span class="identifier">m_dist</span><span class="special">;</span>
+
+  <span class="identifier">ornstein_stoch</span><span class="special">(</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">mt19937</span> <span class="special">&amp;</span><span class="identifier">rng</span> <span class="special">,</span> <span class="keyword">double</span> <span class="identifier">sigma</span> <span class="special">)</span> <span class="special">:</span> <span class="identifier">m_rng</span><span class="special">(</span> <span class="identifier">rng</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">m_dist</span><span class="special">(</span> <span class="number">0.0</span> <span class="special">,</span> <span class="identifier">sigma</span> <span class="special">)</span> <span class="special">{</span> <span class="special">}</span>
+
+    <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">x</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">dxdt</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">dxdt</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">m_dist</span><span class="special">(</span> <span class="identifier">m_rng</span> <span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>在随机部分中, 我们使用 Mersenne twister 生成随机数, 并使用高斯白噪声生成器 <code class="computeroutput"><span class="identifier">normal_distribution</span></code>, 其标准差为 <span class="emphasis"><em>σ</em></span>. 现在, 我们可以将随机 Euler 步进器与 integrate 函数配合使用:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">mt19937</span> <span class="identifier">rng</span><span class="special">;</span>
+<span class="keyword">double</span> <span class="identifier">dt</span> <span class="special">=</span> <span class="number">0.1</span><span class="special">;</span>
+<span class="identifier">state_type</span> <span class="identifier">x</span> <span class="special">=</span> <span class="special">{{</span> <span class="number">1.0</span> <span class="special">}};</span>
+<span class="identifier">integrate_const</span><span class="special">(</span> <span class="identifier">stochastic_euler</span><span class="special">&lt;</span> <span class="identifier">N</span> <span class="special">&gt;()</span> <span class="special">,</span> <span class="identifier">make_pair</span><span class="special">(</span> <span class="identifier">ornstein_det</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">ornstein_stoch</span><span class="special">(</span> <span class="identifier">rng</span> <span class="special">,</span> <span class="number">1.0</span> <span class="special">)</span> <span class="special">),</span>
+        <span class="identifier">x</span> <span class="special">,</span> <span class="number">0.0</span> <span class="special">,</span> <span class="number">10.0</span> <span class="special">,</span> <span class="identifier">dt</span> <span class="special">,</span> <span class="identifier">streaming_observer</span><span class="special">()</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+<p>注意我们如何使用 <code class="computeroutput"><span class="identifier">make_pair</span></code> 函数来生成系统函数.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.steppers.custom_runge_kutta_steppers"></a><a class="link" href="steppers.html#boost_numeric_odeint.odeint_in_detail.steppers.custom_runge_kutta_steppers" title="自定义 Runge-Kutta 步进器">自定义 Runge-Kutta 步进器</a>
+</h4></div></div></div>
+<p>odeint 提供了一个用于构造任意 Runge-Kutta 格式的 C++ 模板元算法 <a href="#ftn.boost_numeric_odeint.odeint_in_detail.steppers.custom_runge_kutta_steppers.f0" class="footnote" name="boost_numeric_odeint.odeint_in_detail.steppers.custom_runge_kutta_steppers.f0"><sup class="footnote">[1]</sup></a>. 一些格式已在 odeint 中预定义, 例如经典的四阶 Runge-Kutta、Runge-Kutta-Cash-Karp 54 和 Runge-Kutta-Fehlberg 78 方法. 你可以使用这个元算法构造自己的求解器. 这样做的好处是可以充分利用 odeint 的代数与运算系统.</p>
+<p>以 Heun 方法为例, 它由以下 Butcher 表定义:</p>
+<pre class="programlisting">c1 = 0
+
+c2 = 1/3, a21 = 1/3
+
+c3 = 2/3, a31 =  0 , a32 = 2/3
+
+          b1  = 1/4, b2  = 0  , b3 = 3/4
+</pre>
+<p>实现这个方法非常容易. 首先必须定义常数:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">class</span> <span class="identifier">Value</span> <span class="special">=</span> <span class="keyword">double</span> <span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">heun_a1</span> <span class="special">:</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="identifier">Value</span> <span class="special">,</span> <span class="number">1</span> <span class="special">&gt;</span> <span class="special">{</span>
+    <span class="identifier">heun_a1</span><span class="special">(</span> <span class="keyword">void</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="special">(*</span><span class="keyword">this</span><span class="special">)[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="keyword">static_cast</span><span class="special">&lt;</span> <span class="identifier">Value</span> <span class="special">&gt;(</span> <span class="number">1</span> <span class="special">)</span> <span class="special">/</span> <span class="keyword">static_cast</span><span class="special">&lt;</span> <span class="identifier">Value</span> <span class="special">&gt;(</span> <span class="number">3</span> <span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">class</span> <span class="identifier">Value</span> <span class="special">=</span> <span class="keyword">double</span> <span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">heun_a2</span> <span class="special">:</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="identifier">Value</span> <span class="special">,</span> <span class="number">2</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="identifier">heun_a2</span><span class="special">(</span> <span class="keyword">void</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="special">(*</span><span class="keyword">this</span><span class="special">)[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="keyword">static_cast</span><span class="special">&lt;</span> <span class="identifier">Value</span> <span class="special">&gt;(</span> <span class="number">0</span> <span class="special">);</span>
+        <span class="special">(*</span><span class="keyword">this</span><span class="special">)[</span><span class="number">1</span><span class="special">]</span> <span class="special">=</span> <span class="keyword">static_cast</span><span class="special">&lt;</span> <span class="identifier">Value</span> <span class="special">&gt;(</span> <span class="number">2</span> <span class="special">)</span> <span class="special">/</span> <span class="keyword">static_cast</span><span class="special">&lt;</span> <span class="identifier">Value</span> <span class="special">&gt;(</span> <span class="number">3</span> <span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+
+<span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">class</span> <span class="identifier">Value</span> <span class="special">=</span> <span class="keyword">double</span> <span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">heun_b</span> <span class="special">:</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="identifier">Value</span> <span class="special">,</span> <span class="number">3</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="identifier">heun_b</span><span class="special">(</span> <span class="keyword">void</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="special">(*</span><span class="keyword">this</span><span class="special">)[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Value</span><span class="special">&gt;(</span> <span class="number">1</span> <span class="special">)</span> <span class="special">/</span> <span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Value</span><span class="special">&gt;(</span> <span class="number">4</span> <span class="special">);</span>
+        <span class="special">(*</span><span class="keyword">this</span><span class="special">)[</span><span class="number">1</span><span class="special">]</span> <span class="special">=</span> <span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Value</span><span class="special">&gt;(</span> <span class="number">0</span> <span class="special">);</span>
+        <span class="special">(*</span><span class="keyword">this</span><span class="special">)[</span><span class="number">2</span><span class="special">]</span> <span class="special">=</span> <span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Value</span><span class="special">&gt;(</span> <span class="number">3</span> <span class="special">)</span> <span class="special">/</span> <span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Value</span><span class="special">&gt;(</span> <span class="number">4</span> <span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">class</span> <span class="identifier">Value</span> <span class="special">=</span> <span class="keyword">double</span> <span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">heun_c</span> <span class="special">:</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="identifier">Value</span> <span class="special">,</span> <span class="number">3</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="identifier">heun_c</span><span class="special">(</span> <span class="keyword">void</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="special">(*</span><span class="keyword">this</span><span class="special">)[</span><span class="number">0</span><span class="special">]</span> <span class="special">=</span> <span class="keyword">static_cast</span><span class="special">&lt;</span> <span class="identifier">Value</span> <span class="special">&gt;(</span> <span class="number">0</span> <span class="special">);</span>
+        <span class="special">(*</span><span class="keyword">this</span><span class="special">)[</span><span class="number">1</span><span class="special">]</span> <span class="special">=</span> <span class="keyword">static_cast</span><span class="special">&lt;</span> <span class="identifier">Value</span> <span class="special">&gt;(</span> <span class="number">1</span> <span class="special">)</span> <span class="special">/</span> <span class="keyword">static_cast</span><span class="special">&lt;</span> <span class="identifier">Value</span> <span class="special">&gt;(</span> <span class="number">3</span> <span class="special">);</span>
+        <span class="special">(*</span><span class="keyword">this</span><span class="special">)[</span><span class="number">2</span><span class="special">]</span> <span class="special">=</span> <span class="keyword">static_cast</span><span class="special">&lt;</span> <span class="identifier">Value</span> <span class="special">&gt;(</span> <span class="number">2</span> <span class="special">)</span> <span class="special">/</span> <span class="keyword">static_cast</span><span class="special">&lt;</span> <span class="identifier">Value</span> <span class="special">&gt;(</span> <span class="number">3</span> <span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>虽然这看起来很繁琐, 但把所有参数打包进一个不会立即求值的模板化类有一个好处: 你可以把步进器的 <code class="computeroutput"><span class="identifier">value_type</span></code> 改成任何你喜欢的类型, 比如任意精度类型. 也可以直接实例化系数</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">,</span> <span class="number">1</span> <span class="special">&gt;</span> <span class="identifier">heun_a1</span> <span class="special">=</span> <span class="special">{{</span> <span class="number">1.0</span> <span class="special">/</span> <span class="number">3.0</span> <span class="special">}};</span>
+<span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">,</span> <span class="number">2</span> <span class="special">&gt;</span> <span class="identifier">heun_a2</span> <span class="special">=</span> <span class="special">{{</span> <span class="number">0.0</span> <span class="special">,</span> <span class="number">2.0</span> <span class="special">/</span> <span class="number">3.0</span> <span class="special">}};</span>
+<span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">,</span> <span class="number">3</span> <span class="special">&gt;</span> <span class="identifier">heun_b</span> <span class="special">=</span> <span class="special">{{</span> <span class="number">1.0</span> <span class="special">/</span> <span class="number">4.0</span> <span class="special">,</span> <span class="number">0.0</span> <span class="special">,</span> <span class="number">3.0</span> <span class="special">/</span> <span class="number">4.0</span> <span class="special">}};</span>
+<span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">,</span> <span class="number">3</span> <span class="special">&gt;</span> <span class="identifier">heun_c</span> <span class="special">=</span> <span class="special">{{</span> <span class="number">0.0</span> <span class="special">,</span> <span class="number">1.0</span> <span class="special">/</span> <span class="number">3.0</span> <span class="special">,</span> <span class="number">2.0</span> <span class="special">/</span> <span class="number">3.0</span> <span class="special">}};</span>
+</pre>
+<p>
+        </p>
+<p>但那样你就被钉死在 double 上.</p>
+<p>接下来, 你需要定义自己的步进器, 注意 Heun 方法有 3 个级且产生 3 阶近似:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span>
+    <span class="keyword">class</span> <span class="identifier">State</span> <span class="special">,</span>
+    <span class="keyword">class</span> <span class="identifier">Value</span> <span class="special">=</span> <span class="keyword">double</span> <span class="special">,</span>
+    <span class="keyword">class</span> <span class="identifier">Deriv</span> <span class="special">=</span> <span class="identifier">State</span> <span class="special">,</span>
+    <span class="keyword">class</span> <span class="identifier">Time</span> <span class="special">=</span> <span class="identifier">Value</span> <span class="special">,</span>
+    <span class="keyword">class</span> <span class="identifier">Algebra</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">numeric</span><span class="special">::</span><span class="identifier">odeint</span><span class="special">::</span><span class="identifier">range_algebra</span> <span class="special">,</span>
+    <span class="keyword">class</span> <span class="identifier">Operations</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">numeric</span><span class="special">::</span><span class="identifier">odeint</span><span class="special">::</span><span class="identifier">default_operations</span> <span class="special">,</span>
+    <span class="keyword">class</span> <span class="identifier">Resizer</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">numeric</span><span class="special">::</span><span class="identifier">odeint</span><span class="special">::</span><span class="identifier">initially_resizer</span>
+<span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">heun</span> <span class="special">:</span> <span class="keyword">public</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">numeric</span><span class="special">::</span><span class="identifier">odeint</span><span class="special">::</span><span class="identifier">explicit_generic_rk</span><span class="special">&lt;</span> <span class="number">3</span> <span class="special">,</span> <span class="number">3</span> <span class="special">,</span> <span class="identifier">State</span> <span class="special">,</span> <span class="identifier">Value</span> <span class="special">,</span> <span class="identifier">Deriv</span> <span class="special">,</span> <span class="identifier">Time</span> <span class="special">,</span>
+                                             <span class="identifier">Algebra</span> <span class="special">,</span> <span class="identifier">Operations</span> <span class="special">,</span> <span class="identifier">Resizer</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+
+    <span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">numeric</span><span class="special">::</span><span class="identifier">odeint</span><span class="special">::</span><span class="identifier">explicit_generic_rk</span><span class="special">&lt;</span> <span class="number">3</span> <span class="special">,</span> <span class="number">3</span> <span class="special">,</span> <span class="identifier">State</span> <span class="special">,</span> <span class="identifier">Value</span> <span class="special">,</span> <span class="identifier">Deriv</span> <span class="special">,</span> <span class="identifier">Time</span> <span class="special">,</span>
+                                                         <span class="identifier">Algebra</span> <span class="special">,</span> <span class="identifier">Operations</span> <span class="special">,</span> <span class="identifier">Resizer</span> <span class="special">&gt;</span> <span class="identifier">stepper_base_type</span><span class="special">;</span>
+
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">stepper_base_type</span><span class="special">::</span><span class="identifier">state_type</span> <span class="identifier">state_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">stepper_base_type</span><span class="special">::</span><span class="identifier">wrapped_state_type</span> <span class="identifier">wrapped_state_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">stepper_base_type</span><span class="special">::</span><span class="identifier">value_type</span> <span class="identifier">value_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">stepper_base_type</span><span class="special">::</span><span class="identifier">deriv_type</span> <span class="identifier">deriv_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">stepper_base_type</span><span class="special">::</span><span class="identifier">wrapped_deriv_type</span> <span class="identifier">wrapped_deriv_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">stepper_base_type</span><span class="special">::</span><span class="identifier">time_type</span> <span class="identifier">time_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">stepper_base_type</span><span class="special">::</span><span class="identifier">algebra_type</span> <span class="identifier">algebra_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">stepper_base_type</span><span class="special">::</span><span class="identifier">operations_type</span> <span class="identifier">operations_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">stepper_base_type</span><span class="special">::</span><span class="identifier">resizer_type</span> <span class="identifier">resizer_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">stepper_base_type</span><span class="special">::</span><span class="identifier">stepper_type</span> <span class="identifier">stepper_type</span><span class="special">;</span>
+
+    <span class="identifier">heun</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">algebra_type</span> <span class="special">&amp;</span><span class="identifier">algebra</span> <span class="special">=</span> <span class="identifier">algebra_type</span><span class="special">()</span> <span class="special">)</span>
+    <span class="special">:</span> <span class="identifier">stepper_base_type</span><span class="special">(</span>
+            <span class="identifier">fusion</span><span class="special">::</span><span class="identifier">make_vector</span><span class="special">(</span>
+                <span class="identifier">heun_a1</span><span class="special">&lt;</span><span class="identifier">Value</span><span class="special">&gt;()</span> <span class="special">,</span>
+                <span class="identifier">heun_a2</span><span class="special">&lt;</span><span class="identifier">Value</span><span class="special">&gt;()</span> <span class="special">)</span> <span class="special">,</span>
+            <span class="identifier">heun_b</span><span class="special">&lt;</span><span class="identifier">Value</span><span class="special">&gt;()</span> <span class="special">,</span> <span class="identifier">heun_c</span><span class="special">&lt;</span><span class="identifier">Value</span><span class="special">&gt;()</span> <span class="special">,</span> <span class="identifier">algebra</span> <span class="special">)</span>
+    <span class="special">{</span> <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+        </p>
+<p>就是这样. 现在我们有了一个新的步进器方法, 可以使用它了, 例如用于 Lorenz 系统:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">,</span> <span class="number">3</span> <span class="special">&gt;</span> <span class="identifier">state_type</span><span class="special">;</span>
+<span class="identifier">heun</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">&gt;</span> <span class="identifier">h</span><span class="special">;</span>
+<span class="identifier">state_type</span> <span class="identifier">x</span> <span class="special">=</span> <span class="special">{{</span> <span class="number">10.0</span> <span class="special">,</span> <span class="number">10.0</span> <span class="special">,</span> <span class="number">10.0</span> <span class="special">}};</span>
+
+<span class="identifier">integrate_const</span><span class="special">(</span> <span class="identifier">h</span> <span class="special">,</span> <span class="identifier">lorenz</span><span class="special">()</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">,</span> <span class="number">0.0</span> <span class="special">,</span> <span class="number">100.0</span> <span class="special">,</span> <span class="number">0.01</span> <span class="special">,</span>
+                 <span class="identifier">streaming_observer</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">)</span> <span class="special">);</span>
+</pre>
+<p>
+        </p>
+</div>
+<div class="footnotes">
+<br><hr style="width:100; text-align:left;margin-left: 0">
+<div id="ftn.boost_numeric_odeint.odeint_in_detail.steppers.custom_runge_kutta_steppers.f0" class="footnote"><p><a href="#boost_numeric_odeint.odeint_in_detail.steppers.custom_runge_kutta_steppers.f0" class="para"><sup class="para">[1] </sup></a>
+            M. Mulansky, K. Ahnert, Template-Metaprogramming applied to numerical
+            problems, <a href="http://arxiv.org/abs/1110.3233" target="_top">arxiv:1110.3233</a>
+          </p></div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2009-2015 Karsten Ahnert 和 Mario Mulansky<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../odeint_in_detail.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../odeint_in_detail.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="generation_functions.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

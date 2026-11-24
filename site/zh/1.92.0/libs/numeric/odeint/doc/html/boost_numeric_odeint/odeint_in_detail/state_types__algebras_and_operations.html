@@ -1,0 +1,934 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>状态类型、代数与运算</title>
+<link rel="stylesheet" href="../../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Boost.Numeric.Odeint">
+<link rel="up" href="../odeint_in_detail.html" title="odeint 详解">
+<link rel="prev" href="iterators_and_ranges.html" title="迭代器与范围">
+<link rel="next" href="using_boost__ref.html" title="使用 boost::ref">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../logo.jpg"></td>
+<td align="center"><a href="../../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="iterators_and_ranges.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../odeint_in_detail.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="using_boost__ref.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations"></a><a class="link" href="state_types__algebras_and_operations.html" title="状态类型、代数与运算">状态类型、代数与运算</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="state_types__algebras_and_operations.html#boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.construction_resizing">构造/调整大小</a></span></dt>
+<dt><span class="section"><a href="state_types__algebras_and_operations.html#boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.algebras_and_operations">代数与运算</a></span></dt>
+<dt><span class="section"><a href="state_types__algebras_and_operations.html#boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.adapt_your_own_operations">适配你自己的运算</a></span></dt>
+</dl></div>
+<p>在 odeint 中, 步进器算法的实现与底层的基本数学运算相互独立. 这是通过让用户完全掌控状态类型以及针对该状态类型的数学运算来实现的. 在技术上, 这是通过引入三个概念完成的: StateType、Algebra、Operations. odeint 中的大多数步进器都将满足这三个概念的三个类类型作为模板参数. 注意, 这些概念并非彼此完全独立, 而是必须提供有效的组合才能使步进器正常工作. 下文将给出一些合理的 state_type-algebra-operations 组合示例. 对于最常见的状态类型, 如 <code class="computeroutput"><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">&gt;</span></code> 或 <code class="computeroutput"><span class="identifier">array</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">,</span><span class="identifier">N</span><span class="special">&gt;</span></code>, 默认值 range_algebra 和 default_operations 完全够用, odeint 可以直接使用, 完全无需操心代数/运算.</p>
+<div class="important"><table border="0" summary="Important">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[重要]" src="../../../../../../../doc/src/images/important.png"></td>
+<th align="left">重要</th>
+</tr>
+<tr><td align="left" valign="top"><p>state_type、algebra 和 operations 并不相互独立, 必须提供有效的组合才能使 odeint 正常工作</p></td></tr>
+</table></div>
+<p>此外, 由于 odeint 自行处理中间临时对象所需的内存, 它还需要知道如何创建 state_type 对象, 或许还需要知道如何分配内存 (调整大小). 总而言之, 将 odeint 与非标准状态类型配合使用时, 需要处理好以下事项:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">构造/析构</li>
+<li class="listitem">调整大小 (如果可能/需要)</li>
+<li class="listitem">代数运算</li>
+</ul></div>
+<p>再次说明, odeint 已经为大多数常见状态类型提供了基本接口. 因此, 如果你使用 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span></code> 或 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span></code> 作为状态类型, 无需任何额外工作, 开箱即用.</p>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.construction_resizing"></a><a class="link" href="state_types__algebras_and_operations.html#boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.construction_resizing" title="构造/调整大小">构造/调整大小</a>
+</h4></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="state_types__algebras_and_operations.html#boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.construction_resizing.using_the_container_interface">使用容器接口</a></span></dt>
+<dt><span class="section"><a href="state_types__algebras_and_operations.html#boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.construction_resizing.std__list">std::list</a></span></dt>
+</dl></div>
+<p>我们区分两类基本状态类型: 固定大小与动态大小. 对于固定大小的状态类型, 默认构造函数 <code class="computeroutput"><span class="identifier">state_type</span><span class="special">()</span></code> 已经分配了所需的内存, 典型示例是 <code class="computeroutput"><span class="identifier">std</span><span class="special">:</span><span class="identifier">array</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">,</span><span class="identifier">N</span><span class="special">&gt;</span></code>. 动态大小的类型必须调整大小以确保分配了足够的内存, 标准构造函数不负责调整大小. 这方面的示例是 <code class="computeroutput"><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">&gt;</span></code> 之类的 STL 容器.</p>
+<p>让你自己的状态类型配合 odeint 工作的最简单方式是使用固定大小的状态, 基于范围代数 (range_algebra) 进行计算, 并提供以下功能:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>名称</p>
+                </th>
+<th>
+                  <p>表达式</p>
+                </th>
+<th>
+                  <p>类型</p>
+                </th>
+<th>
+                  <p>语义</p>
+                </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                  <p>构造状态</p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">State</span> <span class="identifier">x</span><span class="special">()</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>创建 <code class="computeroutput"><span class="identifier">State</span></code> 的一个实例并分配内存.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>序列起始</p>
+                </td>
+<td>
+                  <p>
+                    boost::begin(x)
+                  </p>
+                </td>
+<td>
+                  <p>迭代器</p>
+                </td>
+<td>
+                  <p>返回指向序列起始的迭代器</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>序列结尾</p>
+                </td>
+<td>
+                  <p>
+                    boost::end(x)
+                  </p>
+                </td>
+<td>
+                  <p>迭代器</p>
+                </td>
+<td>
+                  <p>返回指向序列结尾的迭代器</p>
+                </td>
+</tr>
+</tbody>
+</table></div>
+<div class="warning"><table border="0" summary="Warning">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[警告]" src="../../../../../../../doc/src/images/warning.png"></td>
+<th align="left">警告</th>
+</tr>
+<tr><td align="left" valign="top"><p>如果你的状态类型默认构造时不分配内存, 你 <span class="bold"><strong>必须将其定义为可调整大小</strong></span> 并提供 resize 功能 (见下文). 否则会发生段错误.</p></td></tr>
+</table></div>
+<p>因此 <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a> 支持的固定大小数组可以立即配合 odeint 使用. 对于动态大小的数组, 还必须额外提供 resize 功能. 首先, 必须通过特化结构体 <code class="computeroutput"><span class="identifier">is_resizeable</span></code> 将状态标记为可调整大小, 该结构体由一个 typedef 和一个 bool 值组成:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>名称</p>
+                </th>
+<th>
+                  <p>表达式</p>
+                </th>
+<th>
+                  <p>类型</p>
+                </th>
+<th>
+                  <p>语义</p>
+                </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                  <p>可调整大小性</p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">is_resizeable</span><span class="special">&lt;</span><span class="identifier">State</span><span class="special">&gt;::</span><span class="identifier">type</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">true_type</span></code> 或者 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">false_type</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>判定状态类型的可调整大小性, 如果状态可调整大小, 则返回 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">true_type</span></code>.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>可调整大小性</p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">is_resizeable</span><span class="special">&lt;</span><span class="identifier">State</span><span class="special">&gt;::</span><span class="identifier">value</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">bool</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>同上, 但值为 <code class="computeroutput"><span class="keyword">bool</span></code>.</p>
+                </td>
+</tr>
+</tbody>
+</table></div>
+<p>将 <code class="computeroutput"><span class="identifier">type</span></code> 定义为 <code class="computeroutput"><span class="identifier">true_type</span></code>、将 <code class="computeroutput"><span class="identifier">value</span></code> 定义为 <code class="computeroutput"><span class="keyword">true</span></code>, 就告诉 odeint 你的状态是可调整大小的. 默认情况下, odeint 现在期望支持 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">size</span><span class="special">(</span><span class="identifier">x</span><span class="special">)</span></code> 以及一个用于调整大小的 <code class="computeroutput"><span class="identifier">x</span><span class="special">.</span><span class="identifier">resize</span><span class="special">(</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">size</span><span class="special">(</span><span class="identifier">y</span><span class="special">)</span> <span class="special">)</span></code> 成员函数:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>名称</p>
+                </th>
+<th>
+                  <p>表达式</p>
+                </th>
+<th>
+                  <p>类型</p>
+                </th>
+<th>
+                  <p>语义</p>
+                </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                  <p>获取大小</p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">size</span><span class="special">(</span>
+                    <span class="identifier">x</span> <span class="special">)</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">size_type</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>返回 x 的当前大小.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>调整大小</p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">x</span><span class="special">.</span><span class="identifier">resize</span><span class="special">(</span>
+                    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">size</span><span class="special">(</span>
+                    <span class="identifier">y</span> <span class="special">)</span>
+                    <span class="special">)</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>将 x 调整为与 y 相同的大小.</p>
+                </td>
+</tr>
+</tbody>
+</table></div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.construction_resizing.using_the_container_interface"></a><a class="link" href="state_types__algebras_and_operations.html#boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.construction_resizing.using_the_container_interface" title="使用容器接口">使用容器接口</a>
+</h5></div></div></div>
+<p>作为第一个示例, 我们取最简单的情况, 实现自己的向量 <code class="computeroutput"><span class="identifier">my_vector</span></code>, 它将提供容器接口. 这使 <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a> 开箱即用. 我们为向量添加了一点功能, 使它在构造时分配一些默认容量. 这在使用调整大小时很有帮助, 因为这样可以确保调整大小不需要新的分配.</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="identifier">size_t</span> <span class="identifier">MAX_N</span> <span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">my_vector</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">&gt;</span> <span class="identifier">vector</span><span class="special">;</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="keyword">typedef</span> <span class="identifier">vector</span><span class="special">::</span><span class="identifier">iterator</span> <span class="identifier">iterator</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="identifier">vector</span><span class="special">::</span><span class="identifier">const_iterator</span> <span class="identifier">const_iterator</span><span class="special">;</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">my_vector</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">size_t</span> <span class="identifier">N</span> <span class="special">)</span>
+        <span class="special">:</span> <span class="identifier">m_v</span><span class="special">(</span> <span class="identifier">N</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">m_v</span><span class="special">.</span><span class="identifier">reserve</span><span class="special">(</span> <span class="identifier">MAX_N</span> <span class="special">);</span>
+    <span class="special">}</span>
+
+    <span class="identifier">my_vector</span><span class="special">()</span>
+        <span class="special">:</span> <span class="identifier">m_v</span><span class="special">()</span>
+    <span class="special">{</span>
+        <span class="identifier">m_v</span><span class="special">.</span><span class="identifier">reserve</span><span class="special">(</span> <span class="identifier">MAX_N</span> <span class="special">);</span>
+    <span class="special">}</span>
+
+<span class="comment">// ... [ implement container interface ]</span>
+</pre>
+<p>
+          </p>
+<p>因此, 除定义之外, 唯一要做的事就是将 my_vector 声明为可调整大小:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// define my_vector as resizeable</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">numeric</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">odeint</span> <span class="special">{</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="identifier">size_t</span> <span class="identifier">N</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">is_resizeable</span><span class="special">&lt;</span> <span class="identifier">my_vector</span><span class="special">&lt;</span><span class="identifier">N</span><span class="special">&gt;</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">true_type</span> <span class="identifier">type</span><span class="special">;</span>
+    <span class="keyword">static</span> <span class="keyword">const</span> <span class="keyword">bool</span> <span class="identifier">value</span> <span class="special">=</span> <span class="identifier">type</span><span class="special">::</span><span class="identifier">value</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="special">}</span> <span class="special">}</span> <span class="special">}</span>
+</pre>
+<p>
+          </p>
+<p>如果我们不特化 <code class="computeroutput"><span class="identifier">is_resizeable</span></code> 模板, 代码仍能编译, 但 odeint 不会调整 my_vector 内部临时实例的大小, 从而尝试填充零长度的向量, 导致段错误! 完整示例见 <a href="https://github.com/headmyshoulder/odeint-v2/blob/master/examples/my_vector.cpp" target="_top">my_vector.cpp</a>
+          </p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.construction_resizing.std__list"></a><a class="link" href="state_types__algebras_and_operations.html#boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.construction_resizing.std__list" title="std::list">std::list</a>
+</h5></div></div></div>
+<p>如果你的状态类型可以配合 <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a> 工作, 但处理调整大小的方式不同, 你需要特化 odeint 用来检查状态大小和调整状态大小的两个实现:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                    <p>名称</p>
+                  </th>
+<th>
+                    <p>表达式</p>
+                  </th>
+<th>
+                    <p>类型</p>
+                  </th>
+<th>
+                    <p>语义</p>
+                  </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                    <p>检查大小</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">same_size_impl</span><span class="special">&lt;</span><span class="identifier">State</span><span class="special">,</span><span class="identifier">State</span><span class="special">&gt;::</span><span class="identifier">same_size</span><span class="special">(</span><span class="identifier">x</span>
+                      <span class="special">,</span> <span class="identifier">y</span><span class="special">)</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="keyword">bool</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>如果 x 的大小等于 y 的大小, 则返回 true.</p>
+                  </td>
+</tr>
+<tr>
+<td>
+                    <p>调整大小</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">resize_impl</span><span class="special">&lt;</span><span class="identifier">State</span><span class="special">,</span><span class="identifier">State</span><span class="special">&gt;::</span><span class="identifier">resize</span><span class="special">(</span><span class="identifier">x</span>
+                      <span class="special">,</span> <span class="identifier">y</span><span class="special">)</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="keyword">void</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>将 x 调整为与 y 相同的大小.</p>
+                  </td>
+</tr>
+</tbody>
+</table></div>
+<p>作为示例, 我们将在 odeint 中使用 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">list</span></code> 作为状态类型. 由于 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">list</span></code> 不受 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">size</span></code> 支持, 我们必须替换 same_size 和 resize 实现, 才能让 list 配合 odeint 工作. 以下代码展示了所需的模板特化:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">list</span><span class="special">&lt;</span> <span class="keyword">double</span> <span class="special">&gt;</span> <span class="identifier">state_type</span><span class="special">;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">numeric</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">odeint</span> <span class="special">{</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span> <span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">is_resizeable</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">&gt;</span>
+<span class="special">{</span> <span class="comment">// declare resizeability</span>
+    <span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">true_type</span> <span class="identifier">type</span><span class="special">;</span>
+    <span class="keyword">const</span> <span class="keyword">static</span> <span class="keyword">bool</span> <span class="identifier">value</span> <span class="special">=</span> <span class="identifier">type</span><span class="special">::</span><span class="identifier">value</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span> <span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">same_size_impl</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">&gt;</span>
+<span class="special">{</span> <span class="comment">// define how to check size</span>
+    <span class="keyword">static</span> <span class="keyword">bool</span> <span class="identifier">same_size</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">v1</span> <span class="special">,</span>
+                           <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">v2</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">v1</span><span class="special">.</span><span class="identifier">size</span><span class="special">()</span> <span class="special">==</span> <span class="identifier">v2</span><span class="special">.</span><span class="identifier">size</span><span class="special">();</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span> <span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">resize_impl</span><span class="special">&lt;</span> <span class="identifier">state_type</span> <span class="special">,</span> <span class="identifier">state_type</span> <span class="special">&gt;</span>
+<span class="special">{</span> <span class="comment">// define how to resize</span>
+    <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">resize</span><span class="special">(</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">v1</span> <span class="special">,</span>
+                        <span class="keyword">const</span> <span class="identifier">state_type</span> <span class="special">&amp;</span><span class="identifier">v2</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">v1</span><span class="special">.</span><span class="identifier">resize</span><span class="special">(</span> <span class="identifier">v2</span><span class="special">.</span><span class="identifier">size</span><span class="special">()</span> <span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="special">}</span> <span class="special">}</span> <span class="special">}</span>
+</pre>
+<p>
+          </p>
+<p>有了这些定义, odeint 就知道如何调整 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">list</span></code> 的大小, 因此它们可以用作状态类型. 完整示例见 <a href="https://github.com/headmyshoulder/odeint-v2/blob/master/examples/list_lattice.cpp" target="_top">list_lattice.cpp</a>.</p>
+</div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.algebras_and_operations"></a><a class="link" href="state_types__algebras_and_operations.html#boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.algebras_and_operations" title="代数与运算">代数与运算</a>
+</h4></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="state_types__algebras_and_operations.html#boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.algebras_and_operations.gsl_vector">GSL 向量</a></span></dt>
+<dt><span class="section"><a href="state_types__algebras_and_operations.html#boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.algebras_and_operations.vector_space_algebra">向量空间代数</a></span></dt>
+<dt><span class="section"><a href="state_types__algebras_and_operations.html#boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.algebras_and_operations.point_type">点类型</a></span></dt>
+</dl></div>
+<p>为提供最大灵活性, odeint 以高度模块化的方式实现. 这意味着可以在不改动积分算法的情况下更换底层数学运算. 基本数学运算就是向量空间的运算, 即 <code class="computeroutput"><span class="identifier">state_types</span></code> 的加法以及 <code class="computeroutput"><span class="identifier">state_type</span></code> 与标量的乘法 (<code class="computeroutput"><span class="identifier">time_type</span></code>). 在 odeint 中, 这通过两个概念实现: <span class="underline">Algebra</span> 和 <span class="underline">Operations</span>. 标准的实现方式是范围代数 (range algebra), 它基于 <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a> 库, 提供将特定运算施加到容器各个元素上的函数. 如果你的状态类型不受 <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a> 支持, 有多种方式可以告诉 odeint 如何执行代数运算:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">为你的状态类型实现 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">begin</span></code> 和 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">end</span></code>, 使其能配合 <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a> 工作.</li>
+<li class="listitem">实现向量-向量加法运算符 <code class="computeroutput"><span class="special">+</span></code> 和标量-向量乘法运算符 <code class="computeroutput"><span class="special">*</span></code>, 并使用非标准的 <code class="computeroutput"><span class="identifier">vector_space_algebra</span></code>.</li>
+<li class="listitem">实现你自己的、提供所需函数的代数.</li>
+</ul></div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.algebras_and_operations.gsl_vector"></a><a class="link" href="state_types__algebras_and_operations.html#boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.algebras_and_operations.gsl_vector" title="GSL 向量">GSL 向量</a>
+</h5></div></div></div>
+<p>在下面的示例中, 我们将尝试使用 <code class="computeroutput"><span class="identifier">gsl_vector</span></code> 类型 (来自 <a href="http://www.gsl.org" target="_top">GSL</a>, 即 GNU Scientific Library) 作为 odeint 中的状态类型. 我们通过在 gsl_vector 外实现一个负责构造/析构的包装器来实现这一点. 同时, 还对 <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a> 进行扩展, 使其也能配合 <code class="computeroutput"><span class="identifier">gsl_vector</span></code> 工作, 这还需要实现新的 <code class="computeroutput"><span class="identifier">gsl_iterator</span></code>.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>odeint 已经包含了这里展示的全部代码, 见 <a href="https://github.com/headmyshoulder/odeint-v2/blob/master/boost/numeric/odeint/external/gsl/gsl_wrapper.hpp" target="_top">gsl_wrapper.hpp</a>, 因此 <code class="computeroutput"><span class="identifier">gsl_vector</span></code> 可以直接开箱使用. 以下描述仅用于教学目的.</p></td></tr>
+</table></div>
+<p>GSL 是一个 C 库, 因此 <code class="computeroutput"><span class="identifier">gsl_vector</span></code> 既没有构造函数, 也没有析构函数或任何 <code class="computeroutput"><span class="identifier">begin</span></code> 或 <code class="computeroutput"><span class="identifier">end</span></code> 函数, 更没有任何迭代器. 要让它配合 odeint 工作, 需要实现很多东西. 注意, 这里展示的所有工作都已包含在 odeint 中, 因此在 odeint 中使用 <code class="computeroutput"><span class="identifier">gsl_vector</span></code> 不需要任何进一步调整. 我们在此仅将其作为教学示例呈现. 我们先从定义合适的构造函数和析构函数开始. 这是通过特化 <code class="computeroutput"><span class="identifier">state_wrapper</span></code> (针对 <code class="computeroutput"><span class="identifier">gsl_vector</span></code>) 完成的. 状态包装器 (state wrapper) 被步进器在内部用于创建和管理状态类型的临时实例:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">state_wrapper</span><span class="special">&lt;</span> <span class="identifier">gsl_vector</span><span class="special">*</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="keyword">double</span> <span class="identifier">value_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="identifier">gsl_vector</span><span class="special">*</span> <span class="identifier">state_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="identifier">state_wrapper</span><span class="special">&lt;</span> <span class="identifier">gsl_vector</span><span class="special">*</span> <span class="special">&gt;</span> <span class="identifier">state_wrapper_type</span><span class="special">;</span>
+
+    <span class="identifier">state_type</span> <span class="identifier">m_v</span><span class="special">;</span>
+
+    <span class="identifier">state_wrapper</span><span class="special">(</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">m_v</span> <span class="special">=</span> <span class="identifier">gsl_vector_alloc</span><span class="special">(</span> <span class="number">1</span> <span class="special">);</span>
+    <span class="special">}</span>
+
+    <span class="identifier">state_wrapper</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">state_wrapper_type</span> <span class="special">&amp;</span><span class="identifier">x</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">resize</span><span class="special">(</span> <span class="identifier">m_v</span> <span class="special">,</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">m_v</span> <span class="special">);</span>
+        <span class="identifier">gsl_vector_memcpy</span><span class="special">(</span> <span class="identifier">m_v</span> <span class="special">,</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">m_v</span> <span class="special">);</span>
+    <span class="special">}</span>
+
+
+    <span class="special">~</span><span class="identifier">state_wrapper</span><span class="special">()</span>
+    <span class="special">{</span>
+        <span class="identifier">gsl_vector_free</span><span class="special">(</span> <span class="identifier">m_v</span> <span class="special">);</span>
+    <span class="special">}</span>
+
+<span class="special">};</span>
+</pre>
+<p>
+          </p>
+<p>这个 <code class="computeroutput"><span class="identifier">state_wrapper</span></code> 特化告诉 odeint gsl_vector 如何被创建、复制和销毁. 接下来需要调整大小, 这是必需的, 因为 gsl_vector 是动态大小的对象:</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">is_resizeable</span><span class="special">&lt;</span> <span class="identifier">gsl_vector</span><span class="special">*</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">true_type</span> <span class="identifier">type</span><span class="special">;</span>
+    <span class="keyword">const</span> <span class="keyword">static</span> <span class="keyword">bool</span> <span class="identifier">value</span> <span class="special">=</span> <span class="identifier">type</span><span class="special">::</span><span class="identifier">value</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="keyword">template</span> <span class="special">&lt;&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">same_size_impl</span><span class="special">&lt;</span> <span class="identifier">gsl_vector</span><span class="special">*</span> <span class="special">,</span> <span class="identifier">gsl_vector</span><span class="special">*</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">static</span> <span class="keyword">bool</span> <span class="identifier">same_size</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">gsl_vector</span><span class="special">*</span> <span class="identifier">x</span> <span class="special">,</span> <span class="keyword">const</span> <span class="identifier">gsl_vector</span><span class="special">*</span> <span class="identifier">y</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">x</span><span class="special">-&gt;</span><span class="identifier">size</span> <span class="special">==</span> <span class="identifier">y</span><span class="special">-&gt;</span><span class="identifier">size</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="keyword">template</span> <span class="special">&lt;&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">resize_impl</span><span class="special">&lt;</span> <span class="identifier">gsl_vector</span><span class="special">*</span> <span class="special">,</span> <span class="identifier">gsl_vector</span><span class="special">*</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">resize</span><span class="special">(</span> <span class="identifier">gsl_vector</span><span class="special">*</span> <span class="identifier">x</span> <span class="special">,</span> <span class="keyword">const</span> <span class="identifier">gsl_vector</span><span class="special">*</span> <span class="identifier">y</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">gsl_vector_free</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">);</span>
+        <span class="identifier">x</span> <span class="special">=</span> <span class="identifier">gsl_vector_alloc</span><span class="special">(</span> <span class="identifier">y</span><span class="special">-&gt;</span><span class="identifier">size</span> <span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+          </p>
+<p>到目前为止, 我们定义了创建/析构和调整大小, 但 gsl_vector 也不支持迭代器, 所以我们先实现一个 gsl 迭代器:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">/*
+ * defines an iterator for gsl_vector
+ */</span>
+<span class="keyword">class</span> <span class="identifier">gsl_vector_iterator</span>
+      <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span> <span class="identifier">gsl_vector_iterator</span> <span class="special">,</span> <span class="keyword">double</span> <span class="special">,</span>
+                                       <span class="identifier">boost</span><span class="special">::</span><span class="identifier">random_access_traversal_tag</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+<span class="keyword">public</span> <span class="special">:</span>
+
+    <span class="identifier">gsl_vector_iterator</span><span class="special">(</span> <span class="keyword">void</span> <span class="special">):</span> <span class="identifier">m_p</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">,</span> <span class="identifier">m_stride</span><span class="special">(</span> <span class="number">0</span> <span class="special">)</span> <span class="special">{</span> <span class="special">}</span>
+    <span class="keyword">explicit</span> <span class="identifier">gsl_vector_iterator</span><span class="special">(</span> <span class="identifier">gsl_vector</span> <span class="special">*</span><span class="identifier">p</span> <span class="special">)</span> <span class="special">:</span> <span class="identifier">m_p</span><span class="special">(</span> <span class="identifier">p</span><span class="special">-&gt;</span><span class="identifier">data</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">m_stride</span><span class="special">(</span> <span class="identifier">p</span><span class="special">-&gt;</span><span class="identifier">stride</span> <span class="special">)</span> <span class="special">{</span> <span class="special">}</span>
+    <span class="keyword">friend</span> <span class="identifier">gsl_vector_iterator</span> <span class="identifier">end_iterator</span><span class="special">(</span> <span class="identifier">gsl_vector</span> <span class="special">*</span> <span class="special">);</span>
+
+<span class="keyword">private</span> <span class="special">:</span>
+
+    <span class="keyword">friend</span> <span class="keyword">class</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">iterator_core_access</span><span class="special">;</span>
+    <span class="keyword">friend</span> <span class="keyword">class</span> <span class="identifier">const_gsl_vector_iterator</span><span class="special">;</span>
+
+    <span class="keyword">void</span> <span class="identifier">increment</span><span class="special">(</span> <span class="keyword">void</span> <span class="special">)</span> <span class="special">{</span> <span class="identifier">m_p</span> <span class="special">+=</span> <span class="identifier">m_stride</span><span class="special">;</span> <span class="special">}</span>
+    <span class="keyword">void</span> <span class="identifier">decrement</span><span class="special">(</span> <span class="keyword">void</span> <span class="special">)</span> <span class="special">{</span> <span class="identifier">m_p</span> <span class="special">-=</span> <span class="identifier">m_stride</span><span class="special">;</span> <span class="special">}</span>
+    <span class="keyword">void</span> <span class="identifier">advance</span><span class="special">(</span> <span class="identifier">ptrdiff_t</span> <span class="identifier">n</span> <span class="special">)</span> <span class="special">{</span> <span class="identifier">m_p</span> <span class="special">+=</span> <span class="identifier">n</span><span class="special">*</span><span class="identifier">m_stride</span><span class="special">;</span> <span class="special">}</span>
+    <span class="keyword">bool</span> <span class="identifier">equal</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">gsl_vector_iterator</span> <span class="special">&amp;</span><span class="identifier">other</span> <span class="special">)</span> <span class="keyword">const</span> <span class="special">{</span> <span class="keyword">return</span> <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">m_p</span> <span class="special">==</span> <span class="identifier">other</span><span class="special">.</span><span class="identifier">m_p</span><span class="special">;</span> <span class="special">}</span>
+    <span class="keyword">bool</span> <span class="identifier">equal</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">const_gsl_vector_iterator</span> <span class="special">&amp;</span><span class="identifier">other</span> <span class="special">)</span> <span class="keyword">const</span><span class="special">;</span>
+    <span class="keyword">double</span><span class="special">&amp;</span> <span class="identifier">dereference</span><span class="special">(</span> <span class="keyword">void</span> <span class="special">)</span> <span class="keyword">const</span> <span class="special">{</span> <span class="keyword">return</span> <span class="special">*</span><span class="identifier">m_p</span><span class="special">;</span> <span class="special">}</span>
+
+    <span class="keyword">double</span> <span class="special">*</span><span class="identifier">m_p</span><span class="special">;</span>
+    <span class="identifier">size_t</span> <span class="identifier">m_stride</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>迭代器的 <code class="computeroutput"><span class="keyword">const</span></code> 版本存在类似的类. 然后我们有一个返回尾迭代器的函数 (<code class="computeroutput"><span class="keyword">const</span></code> 同样如此):</p>
+<pre class="programlisting"><span class="identifier">gsl_vector_iterator</span> <span class="identifier">end_iterator</span><span class="special">(</span> <span class="identifier">gsl_vector</span> <span class="special">*</span><span class="identifier">x</span> <span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">gsl_vector_iterator</span> <span class="identifier">iter</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">);</span>
+    <span class="identifier">iter</span><span class="special">.</span><span class="identifier">m_p</span> <span class="special">+=</span> <span class="identifier">iter</span><span class="special">.</span><span class="identifier">m_stride</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">-&gt;</span><span class="identifier">size</span><span class="special">;</span>
+    <span class="keyword">return</span> <span class="identifier">iter</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+          </p>
+<p>最后, 添加 <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a> 的绑定:</p>
+<pre class="programlisting"><span class="comment">// template&lt;&gt;</span>
+<span class="keyword">inline</span> <span class="identifier">gsl_vector_iterator</span> <span class="identifier">range_begin</span><span class="special">(</span> <span class="identifier">gsl_vector</span> <span class="special">*</span><span class="identifier">x</span> <span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">return</span> <span class="identifier">gsl_vector_iterator</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">);</span>
+<span class="special">}</span>
+
+<span class="comment">// template&lt;&gt;</span>
+<span class="keyword">inline</span> <span class="identifier">gsl_vector_iterator</span> <span class="identifier">range_end</span><span class="special">(</span> <span class="identifier">gsl_vector</span> <span class="special">*</span><span class="identifier">x</span> <span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">return</span> <span class="identifier">end_iterator</span><span class="special">(</span> <span class="identifier">x</span> <span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p> <code class="computeroutput"><span class="keyword">const</span></code> 版本也有类似的定义. 这最终使 odeint 能够以 gsl 向量作为状态类型工作. 这些绑定的完整代码见 <a href="https://github.com/headmyshoulder/odeint-v2/blob/master/boost/numeric/odeint/external/gsl/gsl_wrapper.hpp" target="_top">gsl_wrapper.hpp</a>. 它看起来可能相当复杂, 但请记住 gsl 是一个预编译的 C 库.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.algebras_and_operations.vector_space_algebra"></a><a class="link" href="state_types__algebras_and_operations.html#boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.algebras_and_operations.vector_space_algebra" title="向量空间代数">向量空间代数</a>
+</h5></div></div></div>
+<p>如上所述, 在 odeint 中对类容器状态类型执行代数运算的标准方式是遍历容器的元素, 并在底层值类型上逐元素执行运算. 这是通过 <code class="computeroutput"><span class="identifier">range_algebra</span></code> 实现的, 它使用 <a href="http://www.boost.org/doc/libs/release/libs/range/" target="_top">Boost.Range</a> 来获取状态类型的迭代器. 不过, 还有其他方式可以在容器上实现代数运算, 其中之一是直接为容器定义加法/乘法运算符, 然后使用 <code class="computeroutput"><span class="identifier">vector_space_algebra</span></code>. 如果你使用这种代数, 必须为 state_type 定义以下运算符:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                    <p>名称</p>
+                  </th>
+<th>
+                    <p>表达式</p>
+                  </th>
+<th>
+                    <p>类型</p>
+                  </th>
+<th>
+                    <p>语义</p>
+                  </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                    <p>加法</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">x</span> <span class="special">+</span>
+                      <span class="identifier">y</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">state_type</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>计算向量和 'x+y'.</p>
+                  </td>
+</tr>
+<tr>
+<td>
+                    <p>赋值加法</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">x</span> <span class="special">+=</span>
+                      <span class="identifier">y</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">state_type</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>就地执行 x+y.</p>
+                  </td>
+</tr>
+<tr>
+<td>
+                    <p>标量乘法</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">a</span> <span class="special">*</span>
+                      <span class="identifier">x</span> </code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">state_type</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>执行向量 x 与标量 a 的乘法.</p>
+                  </td>
+</tr>
+<tr>
+<td>
+                    <p>赋值标量乘法</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">x</span> <span class="special">*=</span>
+                      <span class="identifier">a</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">state_type</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>就地执行向量 x 与标量 a 的乘法.</p>
+                  </td>
+</tr>
+</tbody>
+</table></div>
+<p>定义这些运算符使你的状态类型可以与任何基本 Runge-Kutta 步进器配合工作. 不过, 如果你想使用步长控制, 还需要一些额外功能. 具体来说, 必须执行 <span class="emphasis"><em>max<sub>i</sub>( |err<sub>i</sub>| / (alpha * |s<sub>i</sub>|) )</em></span> 之类的运算. <span class="emphasis"><em>err</em></span> 和 <span class="emphasis"><em>s</em></span> 是 state_type, alpha 是标量. 可以看到, 我们需要逐元素的绝对值和除法, 以及一个求最大值的归并 (reduce) 运算. 因此, 对于受控步进器, 必须实现以下内容:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                    <p>名称</p>
+                  </th>
+<th>
+                    <p>表达式</p>
+                  </th>
+<th>
+                    <p>类型</p>
+                  </th>
+<th>
+                    <p>语义</p>
+                  </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                    <p>除法</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">x</span> <span class="special">/</span>
+                      <span class="identifier">y</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">state_type</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>计算逐元素除法 'x/y'</p>
+                  </td>
+</tr>
+<tr>
+<td>
+                    <p>绝对值</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">abs</span><span class="special">(</span>
+                      <span class="identifier">x</span> <span class="special">)</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">state_type</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>逐元素绝对值</p>
+                  </td>
+</tr>
+<tr>
+<td>
+                    <p>归并 (Reduce)</p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">vector_space_reduce_impl</span><span class="special">&lt;</span> <span class="identifier">state_type</span>
+                      <span class="special">&gt;::</span><span class="identifier">reduce</span><span class="special">(</span> <span class="identifier">state</span>
+                      <span class="special">,</span> <span class="identifier">operation</span>
+                      <span class="special">,</span> <span class="identifier">init</span>
+                      <span class="special">)</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">value_type</span></code>
+                    </p>
+                  </td>
+<td>
+                    <p>对 <code class="computeroutput"><span class="identifier">operation</span></code> 依次作用于 <code class="computeroutput"><span class="identifier">state</span></code> 的每个元素, 并返回聚合值. 例如</p>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">init</span> <span class="special">=</span>
+                      <span class="keyword">operator</span><span class="special">(</span>
+                      <span class="identifier">init</span> <span class="special">,</span>
+                      <span class="identifier">state</span><span class="special">[</span><span class="number">0</span><span class="special">]</span>
+                      <span class="special">);</span></code>
+                    </p>
+                    <p>
+                      <code class="computeroutput"><span class="identifier">init</span> <span class="special">=</span>
+                      <span class="keyword">operator</span><span class="special">(</span>
+                      <span class="identifier">init</span> <span class="special">,</span>
+                      <span class="identifier">state</span><span class="special">[</span><span class="number">1</span><span class="special">]</span>
+                      <span class="special">)</span></code>
+                    </p>
+                    <p>
+                      <code class="computeroutput"><span class="special">...</span></code>
+                    </p>
+                  </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h5 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.algebras_and_operations.point_type"></a><a class="link" href="state_types__algebras_and_operations.html#boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.algebras_and_operations.point_type" title="点类型">点类型</a>
+</h5></div></div></div>
+<p>这里我们展示如何在状态类型上实现所需的运算符. 作为示例, 我们定义一个新类 <code class="computeroutput"><span class="identifier">point3D</span></code>, 表示具有 x,y,z 分量的三维向量, 并为它定义加法和标量乘法运算符. 我们使用 <a href="http://www.boost.org/doc/libs/release/libs/utility/operators.htm" target="_top">Boost.Operators</a> 来减少需要编写的代码量. 点类型的类如下所示:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">point3D</span> <span class="special">:</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">additive1</span><span class="special">&lt;</span> <span class="identifier">point3D</span> <span class="special">,</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">additive2</span><span class="special">&lt;</span> <span class="identifier">point3D</span> <span class="special">,</span> <span class="keyword">double</span> <span class="special">,</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">multiplicative2</span><span class="special">&lt;</span> <span class="identifier">point3D</span> <span class="special">,</span> <span class="keyword">double</span> <span class="special">&gt;</span> <span class="special">&gt;</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+
+    <span class="keyword">double</span> <span class="identifier">x</span> <span class="special">,</span> <span class="identifier">y</span> <span class="special">,</span> <span class="identifier">z</span><span class="special">;</span>
+
+    <span class="identifier">point3D</span><span class="special">()</span>
+        <span class="special">:</span> <span class="identifier">x</span><span class="special">(</span> <span class="number">0.0</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">y</span><span class="special">(</span> <span class="number">0.0</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">z</span><span class="special">(</span> <span class="number">0.0</span> <span class="special">)</span>
+    <span class="special">{</span> <span class="special">}</span>
+
+    <span class="identifier">point3D</span><span class="special">(</span> <span class="keyword">const</span> <span class="keyword">double</span> <span class="identifier">val</span> <span class="special">)</span>
+        <span class="special">:</span> <span class="identifier">x</span><span class="special">(</span> <span class="identifier">val</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">y</span><span class="special">(</span> <span class="identifier">val</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">z</span><span class="special">(</span> <span class="identifier">val</span> <span class="special">)</span>
+    <span class="special">{</span> <span class="special">}</span>
+
+    <span class="identifier">point3D</span><span class="special">(</span> <span class="keyword">const</span> <span class="keyword">double</span> <span class="identifier">_x</span> <span class="special">,</span> <span class="keyword">const</span> <span class="keyword">double</span> <span class="identifier">_y</span> <span class="special">,</span> <span class="keyword">const</span> <span class="keyword">double</span> <span class="identifier">_z</span>  <span class="special">)</span>
+        <span class="special">:</span> <span class="identifier">x</span><span class="special">(</span> <span class="identifier">_x</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">y</span><span class="special">(</span> <span class="identifier">_y</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">z</span><span class="special">(</span> <span class="identifier">_z</span> <span class="special">)</span>
+    <span class="special">{</span> <span class="special">}</span>
+
+    <span class="identifier">point3D</span><span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">+=(</span> <span class="keyword">const</span> <span class="identifier">point3D</span> <span class="special">&amp;</span><span class="identifier">p</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">x</span> <span class="special">+=</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">x</span><span class="special">;</span> <span class="identifier">y</span> <span class="special">+=</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">y</span><span class="special">;</span> <span class="identifier">z</span> <span class="special">+=</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">z</span><span class="special">;</span>
+        <span class="keyword">return</span> <span class="special">*</span><span class="keyword">this</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="identifier">point3D</span><span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">*=(</span> <span class="keyword">const</span> <span class="keyword">double</span> <span class="identifier">a</span> <span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">x</span> <span class="special">*=</span> <span class="identifier">a</span><span class="special">;</span> <span class="identifier">y</span> <span class="special">*=</span> <span class="identifier">a</span><span class="special">;</span> <span class="identifier">z</span> <span class="special">*=</span> <span class="identifier">a</span><span class="special">;</span>
+        <span class="keyword">return</span> <span class="special">*</span><span class="keyword">this</span><span class="special">;</span>
+    <span class="special">}</span>
+
+<span class="special">};</span>
+</pre>
+<p>
+          </p>
+<p>通过从 <a href="http://www.boost.org/doc/libs/release/libs/utility/operators.htm" target="_top">Boost.Operators</a> 的类派生, 我们不必定义 <code class="computeroutput"><span class="keyword">operator</span><span class="special">+(</span> <span class="identifier">point3D</span> <span class="special">,</span>
+            <span class="identifier">point3D</span> <span class="special">)</span></code> 之类的外部类运算符, 因为 operators 库已经处理好了. 注意, 对于简单的 Runge-Kutta 格式 (如 <code class="computeroutput"><span class="identifier">runge_kutta4</span></code>), 只需要 <code class="computeroutput"><span class="special">+</span></code> 和 <code class="computeroutput"><span class="special">*</span></code> 运算符. 但如果使用受控步进器, 还需要指定除法运算符 <code class="computeroutput"><span class="special">/</span></code>, 因为误差项的计算涉及状态类型的逐元素除法. 此外, 受控步进器还需要一个 <code class="computeroutput"><span class="identifier">abs</span></code> 函数来计算状态类型的逐元素绝对值:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// only required for steppers with error control</span>
+<span class="identifier">point3D</span> <span class="keyword">operator</span><span class="special">/(</span> <span class="keyword">const</span> <span class="identifier">point3D</span> <span class="special">&amp;</span><span class="identifier">p1</span> <span class="special">,</span> <span class="keyword">const</span> <span class="identifier">point3D</span> <span class="special">&amp;</span><span class="identifier">p2</span> <span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">return</span> <span class="identifier">point3D</span><span class="special">(</span> <span class="identifier">p1</span><span class="special">.</span><span class="identifier">x</span><span class="special">/</span><span class="identifier">p2</span><span class="special">.</span><span class="identifier">x</span> <span class="special">,</span> <span class="identifier">p1</span><span class="special">.</span><span class="identifier">y</span><span class="special">/</span><span class="identifier">p2</span><span class="special">.</span><span class="identifier">y</span> <span class="special">,</span> <span class="identifier">p1</span><span class="special">.</span><span class="identifier">z</span><span class="special">/</span><span class="identifier">p2</span><span class="special">.</span><span class="identifier">z</span> <span class="special">);</span>
+<span class="special">}</span>
+
+<span class="identifier">point3D</span> <span class="identifier">abs</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">point3D</span> <span class="special">&amp;</span><span class="identifier">p</span> <span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">return</span> <span class="identifier">point3D</span><span class="special">(</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">abs</span><span class="special">(</span><span class="identifier">p</span><span class="special">.</span><span class="identifier">x</span><span class="special">)</span> <span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">abs</span><span class="special">(</span><span class="identifier">p</span><span class="special">.</span><span class="identifier">y</span><span class="special">)</span> <span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">abs</span><span class="special">(</span><span class="identifier">p</span><span class="special">.</span><span class="identifier">z</span><span class="special">)</span> <span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>
+          </p>
+<p>最后, 我们必须提供一个特化, 用于计算状态的无穷范数:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="comment">// also only for steppers with error control</span>
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">numeric</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">odeint</span> <span class="special">{</span>
+<span class="keyword">template</span><span class="special">&lt;&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">vector_space_norm_inf</span><span class="special">&lt;</span> <span class="identifier">point3D</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="keyword">double</span> <span class="identifier">result_type</span><span class="special">;</span>
+    <span class="keyword">double</span> <span class="keyword">operator</span><span class="special">()(</span> <span class="keyword">const</span> <span class="identifier">point3D</span> <span class="special">&amp;</span><span class="identifier">p</span> <span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">using</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">max</span><span class="special">;</span>
+        <span class="keyword">using</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">abs</span><span class="special">;</span>
+        <span class="keyword">return</span> <span class="identifier">max</span><span class="special">(</span> <span class="identifier">max</span><span class="special">(</span> <span class="identifier">abs</span><span class="special">(</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">x</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">abs</span><span class="special">(</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">y</span> <span class="special">)</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">abs</span><span class="special">(</span> <span class="identifier">p</span><span class="special">.</span><span class="identifier">z</span> <span class="special">)</span> <span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+<span class="special">}</span> <span class="special">}</span> <span class="special">}</span>
+</pre>
+<p>
+          </p>
+<p>同样注意, 只有在你想使用受控步进器时才需要最后两步. 对于简单步进器, 只需定义简单的 <code class="computeroutput"><span class="special">+=</span></code> 和 <code class="computeroutput"><span class="special">*=</span></code> 运算符即可. 定义了这样的点类型之后, 我们就可以在步进器的模板参数列表中显式配置 <code class="computeroutput"><span class="identifier">vector_space_algebra</span></code>, 轻松对 Lorenz 系统执行积分:</p>
+<p>
+</p>
+<pre class="programlisting"><span class="keyword">const</span> <span class="keyword">double</span> <span class="identifier">sigma</span> <span class="special">=</span> <span class="number">10.0</span><span class="special">;</span>
+<span class="keyword">const</span> <span class="keyword">double</span> <span class="identifier">R</span> <span class="special">=</span> <span class="number">28.0</span><span class="special">;</span>
+<span class="keyword">const</span> <span class="keyword">double</span> <span class="identifier">b</span> <span class="special">=</span> <span class="number">8.0</span> <span class="special">/</span> <span class="number">3.0</span><span class="special">;</span>
+
+<span class="keyword">void</span> <span class="identifier">lorenz</span><span class="special">(</span> <span class="keyword">const</span> <span class="identifier">point3D</span> <span class="special">&amp;</span><span class="identifier">x</span> <span class="special">,</span> <span class="identifier">point3D</span> <span class="special">&amp;</span><span class="identifier">dxdt</span> <span class="special">,</span> <span class="keyword">const</span> <span class="keyword">double</span> <span class="identifier">t</span> <span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">dxdt</span><span class="special">.</span><span class="identifier">x</span> <span class="special">=</span> <span class="identifier">sigma</span> <span class="special">*</span> <span class="special">(</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">y</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">x</span> <span class="special">);</span>
+    <span class="identifier">dxdt</span><span class="special">.</span><span class="identifier">y</span> <span class="special">=</span> <span class="identifier">R</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">x</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">y</span> <span class="special">-</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">x</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">z</span><span class="special">;</span>
+    <span class="identifier">dxdt</span><span class="special">.</span><span class="identifier">z</span> <span class="special">=</span> <span class="special">-</span><span class="identifier">b</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">z</span> <span class="special">+</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">x</span> <span class="special">*</span> <span class="identifier">x</span><span class="special">.</span><span class="identifier">y</span><span class="special">;</span>
+<span class="special">}</span>
+
+<span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">numeric</span><span class="special">::</span><span class="identifier">odeint</span><span class="special">;</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">()</span>
+<span class="special">{</span>
+
+    <span class="identifier">point3D</span> <span class="identifier">x</span><span class="special">(</span> <span class="number">10.0</span> <span class="special">,</span> <span class="number">5.0</span> <span class="special">,</span> <span class="number">5.0</span> <span class="special">);</span>
+    <span class="comment">// point type defines it's own operators -&gt; use vector_space_algebra !</span>
+    <span class="keyword">typedef</span> <span class="identifier">runge_kutta_dopri5</span><span class="special">&lt;</span> <span class="identifier">point3D</span> <span class="special">,</span> <span class="keyword">double</span> <span class="special">,</span> <span class="identifier">point3D</span> <span class="special">,</span>
+                                <span class="keyword">double</span> <span class="special">,</span> <span class="identifier">vector_space_algebra</span> <span class="special">&gt;</span> <span class="identifier">stepper</span><span class="special">;</span>
+    <span class="keyword">int</span> <span class="identifier">steps</span> <span class="special">=</span> <span class="identifier">integrate_adaptive</span><span class="special">(</span> <span class="identifier">make_controlled</span><span class="special">&lt;</span><span class="identifier">stepper</span><span class="special">&gt;(</span> <span class="number">1E-10</span> <span class="special">,</span> <span class="number">1E-10</span> <span class="special">)</span> <span class="special">,</span> <span class="identifier">lorenz</span> <span class="special">,</span> <span class="identifier">x</span> <span class="special">,</span>
+                                    <span class="number">0.0</span> <span class="special">,</span> <span class="number">10.0</span> <span class="special">,</span> <span class="number">0.1</span> <span class="special">);</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">x</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"steps: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">steps</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+          </p>
+<p>完整示例见 <a href="https://github.com/headmyshoulder/odeint-v2/blob/master/examples/lorenz_point.cpp" target="_top">lorenz_point.cpp</a>
+          </p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>对于大多数 <code class="computeroutput"><span class="identifier">state_types</span></code>, odeint 能够自动确定正确的代数和运算. 但如果你想使用自己的 <code class="computeroutput"><span class="identifier">state_type</span></code>, 如本例中配合 <code class="computeroutput"><span class="identifier">point3D</span></code> 的情形, 就必须手动配置正确的代数/运算, 除非你的 <code class="computeroutput"><span class="identifier">state_type</span></code> 可以配合 <code class="computeroutput"><span class="identifier">range_algebra</span></code> 和 <code class="computeroutput"><span class="identifier">default_operations</span></code> 的默认选择工作.</p></td></tr>
+</table></div>
+</div>
+</div>
+<p>
+        gsl_vector, gsl_matrix, ublas::matrix, blitz::matrix, thrust
+      </p>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.adapt_your_own_operations"></a><a class="link" href="state_types__algebras_and_operations.html#boost_numeric_odeint.odeint_in_detail.state_types__algebras_and_operations.adapt_your_own_operations" title="适配你自己的运算">适配你自己的运算</a>
+</h4></div></div></div>
+<p>待续</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+              thrust
+            </li>
+<li class="listitem">
+              gsl_complex
+            </li>
+<li class="listitem">
+              min, max, pow
+            </li>
+</ul></div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2009-2015 Karsten Ahnert 和 Mario Mulansky<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="iterators_and_ranges.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../odeint_in_detail.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="using_boost__ref.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

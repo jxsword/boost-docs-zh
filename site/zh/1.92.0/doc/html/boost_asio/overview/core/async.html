@@ -1,0 +1,117 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>前摄器设计模式: 无线程的并发</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../../boost_asio.html" title="Boost.Asio">
+<link rel="up" href="../core.html" title="核心概念与功能">
+<link rel="prev" href="../core.html" title="核心概念与功能">
+<link rel="next" href="threads.html" title="线程与 Boost.Asio">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../core.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../core.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="threads.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_asio.overview.core.async"></a><a class="link" href="async.html" title="前摄器设计模式: 无线程的并发">前摄器设计模式: 无线程的并发</a>
+</h4></div></div></div>
+<p>Boost.Asio 库同时提供对同步和异步操作的支持. 异步支持基于前摄器 (Proactor) 设计模式 <a class="link" href="async.html#boost_asio.overview.core.async.references">[POSA2]</a>. 与仅同步方式或 Reactor 方式相比, 这种方式的优缺点概述如下.</p>
+<h6>
+<a name="boost_asio.overview.core.async.h0"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.async.proactor_and_boost_asio"></a></span><a class="link" href="async.html#boost_asio.overview.core.async.proactor_and_boost_asio">前摄器与 Boost.Asio</a>
+        </h6>
+<p>让我们在不涉及平台特定细节的情况下, 考察前摄器设计模式在 Boost.Asio 中的实现方式.</p>
+<p>
+          <span class="inlinemediaobject"><img src="../../proactor.png"></span>
+        </p>
+<p>
+          <span class="bold"><strong>前摄器设计模式 (改编自 [POSA2]) </strong></span>
+        </p>
+<p>—— 异步操作</p>
+<div class="blockquote"><blockquote class="blockquote"><p>定义一个异步执行的操作, 例如对套接字的异步读或写.</p></blockquote></div>
+<p>—— 异步操作处理器</p>
+<div class="blockquote"><blockquote class="blockquote"><p>执行异步操作, 并在操作完成时把事件排入完成事件队列. 从较高的层面看, 类似 <code class="computeroutput"><span class="identifier">reactive_socket_service</span></code> 的内部服务就是异步操作处理器.</p></blockquote></div>
+<p>—— 完成事件队列</p>
+<div class="blockquote"><blockquote class="blockquote"><p>缓冲完成事件, 直到它们被异步事件多路分解器出队.</p></blockquote></div>
+<p>—— 完成处理器</p>
+<div class="blockquote"><blockquote class="blockquote"><p>处理异步操作的结果. 它们是函数对象, 通常使用 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">bind</span></code> 创建.</p></blockquote></div>
+<p>—— 异步事件多路分解器</p>
+<div class="blockquote"><blockquote class="blockquote"><p>阻塞等待完成事件队列上的事件发生, 并把一个已完成的事件返回给其调用者.</p></blockquote></div>
+<p>—— 前摄器</p>
+<div class="blockquote"><blockquote class="blockquote"><p>调用异步事件多路分解器将事件出队, 并分派与该事件关联的完成处理器 (即调用该函数对象) . 这一抽象由 <code class="computeroutput"><span class="identifier">io_context</span></code> 类表示.</p></blockquote></div>
+<p>—— 发起者</p>
+<div class="blockquote"><blockquote class="blockquote"><p>启动异步操作的应用程序特定代码. 发起者通过诸如 <code class="computeroutput"><span class="identifier">basic_stream_socket</span></code> 之类的高层接口与异步操作处理器交互, 后者再委托给类似 <code class="computeroutput"><span class="identifier">reactive_socket_service</span></code> 的服务.</p></blockquote></div>
+<h6>
+<a name="boost_asio.overview.core.async.h1"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.async.implementation_using_reactor"></a></span><a class="link" href="async.html#boost_asio.overview.core.async.implementation_using_reactor">基于 Reactor 的实现</a>
+        </h6>
+<p>在许多平台上, Boost.Asio 借助 Reactor (例如 <code class="computeroutput"><span class="identifier">select</span></code>、<code class="computeroutput"><span class="identifier">epoll</span></code> 或 <code class="computeroutput"><span class="identifier">kqueue</span></code>) 来实现前摄器设计模式. 这一实现方式与前摄器设计模式的对应关系如下:</p>
+<p>—— 异步操作处理器</p>
+<div class="blockquote"><blockquote class="blockquote"><p>使用 <code class="computeroutput"><span class="identifier">select</span></code>、<code class="computeroutput"><span class="identifier">epoll</span></code> 或 <code class="computeroutput"><span class="identifier">kqueue</span></code> 实现的 Reactor. 当 Reactor 表明资源已就绪、可以执行操作时, 处理器执行该异步操作, 并把关联的完成处理器排入完成事件队列.</p></blockquote></div>
+<p>—— 完成事件队列</p>
+<div class="blockquote"><blockquote class="blockquote"><p>完成处理器 (即函数对象) 的链表.</p></blockquote></div>
+<p>—— 异步事件多路分解器</p>
+<div class="blockquote"><blockquote class="blockquote"><p>通过在事件或条件变量上等待, 直到完成事件队列中出现可用的完成处理器来实现.</p></blockquote></div>
+<h6>
+<a name="boost_asio.overview.core.async.h2"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.async.implementation_using_windows_overlapped_i_o"></a></span><a class="link" href="async.html#boost_asio.overview.core.async.implementation_using_windows_overlapped_i_o">基于 Windows Overlapped I/O 的实现</a>
+        </h6>
+<p>在 Windows NT、2000、XP、Vista、7 及更高版本上, Boost.Asio 利用 overlapped I/O 提供前摄器设计模式的高效实现. 这一实现方式与前摄器设计模式的对应关系如下:</p>
+<p>—— 异步操作处理器</p>
+<div class="blockquote"><blockquote class="blockquote"><p>由操作系统实现. 操作通过调用诸如 <code class="computeroutput"><span class="identifier">AcceptEx</span></code> 之类的 overlapped 函数来发起.</p></blockquote></div>
+<p>—— 完成事件队列</p>
+<div class="blockquote"><blockquote class="blockquote"><p>由操作系统实现, 并与一个 I/O 完成端口相关联. 每个 <code class="computeroutput"><span class="identifier">io_context</span></code> 实例对应一个 I/O 完成端口.</p></blockquote></div>
+<p>—— 异步事件多路分解器</p>
+<div class="blockquote"><blockquote class="blockquote"><p>由 Boost.Asio 调用, 用于将事件及其关联的完成处理器出队.</p></blockquote></div>
+<h6>
+<a name="boost_asio.overview.core.async.h3"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.async.advantages"></a></span><a class="link" href="async.html#boost_asio.overview.core.async.advantages">优点</a>
+        </h6>
+<p>—— 可移植性.</p>
+<div class="blockquote"><blockquote class="blockquote"><p>许多操作系统都提供原生异步 I/O API (例如 <span class="emphasis"><em>Windows</em></span> 上的 overlapped I/O) , 作为开发高性能网络应用的首选方案. 本库可以基于原生异步 I/O 实现. 但是, 如果没有原生支持, 本库也可以使用体现 Reactor 模式的同步事件多路分解器来实现, 例如 <span class="emphasis"><em>POSIX</em></span>
+            <code class="computeroutput"><span class="identifier">select</span><span class="special">()</span></code>.</p></blockquote></div>
+<p>—— 将线程与并发解耦.</p>
+<div class="blockquote"><blockquote class="blockquote"><p>长时操作由实现代表应用程序异步执行. 因此, 应用程序不需要派生大量线程来提高并发度.</p></blockquote></div>
+<p>—— 性能与可伸缩性.</p>
+<div class="blockquote"><blockquote class="blockquote"><p>诸如每线程一连接 (thread-per-connection, 仅同步方式所需) 之类的实现策略会因上下文切换、同步以及 CPU 间数据移动的增多而降低系统性能. 使用异步操作, 可以通过尽量减少操作系统线程——这通常是一种有限资源——并只激活有事件需要处理的逻辑控制线程, 来避免上下文切换的开销.</p></blockquote></div>
+<p>—— 简化应用程序同步.</p>
+<div class="blockquote"><blockquote class="blockquote"><p>异步操作完成处理器可以写成仿佛存在于单线程环境中一样, 因此应用逻辑的开发几乎无需关心同步问题.</p></blockquote></div>
+<p>—— 函数组合.</p>
+<div class="blockquote"><blockquote class="blockquote"><p>函数组合指的是通过实现函数来提供更高层的操作, 例如以特定格式发送一条消息. 每个函数都借助对更低层读或写操作的多次调用来实现.</p></blockquote></div>
+<div class="blockquote"><blockquote class="blockquote"><p>例如, 考虑这样一种协议: 每条消息由一个定长报头后跟一个变长正文组成, 正文的长度在报头中指明. 一个假想的 read_message 操作可以用两次更低层的读来实现: 第一次接收报头, 一旦得知长度, 第二次便接收正文.</p></blockquote></div>
+<div class="blockquote"><blockquote class="blockquote"><p>要在异步模型中组合函数, 可以把异步操作链接起来. 也就是说, 一个操作的完成处理器可以发起下一个操作. 链中第一次调用的启动可以被封装起来, 使调用者无需知道这个更高层的操作是作为一条异步操作链实现的.</p></blockquote></div>
+<div class="blockquote"><blockquote class="blockquote"><p>以这种方式组合新操作的能力, 简化了在网络库之上构建更高层抽象的开发工作, 例如支持特定协议的函数.</p></blockquote></div>
+<h6>
+<a name="boost_asio.overview.core.async.h4"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.async.disadvantages"></a></span><a class="link" href="async.html#boost_asio.overview.core.async.disadvantages">缺点</a>
+        </h6>
+<p>—— 程序复杂度.</p>
+<div class="blockquote"><blockquote class="blockquote"><p>由于操作的发起与完成在时间和空间上相互分离, 使用异步机制开发应用更为困难. 由于控制流倒置, 应用程序也可能更难调试.</p></blockquote></div>
+<p>—— 内存使用.</p>
+<div class="blockquote"><blockquote class="blockquote"><p>在读或写操作的持续期间必须预留缓冲区空间, 而操作可能无限期地持续下去, 且每个并发操作都需要单独的缓冲区. 相比之下, Reactor 模式在套接字尚未就绪可读或可写之前不需要缓冲区空间.</p></blockquote></div>
+<h6>
+<a name="boost_asio.overview.core.async.h5"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.async.references"></a></span><a class="link" href="async.html#boost_asio.overview.core.async.references">参考文献</a>
+        </h6>
+<p>[POSA2] D. Schmidt 等, <span class="emphasis"><em>Pattern Oriented Software Architecture, Volume 2</em></span>. Wiley, 2000 年.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2003-2026 Christopher M. Kohlhoff<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../core.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../core.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="threads.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

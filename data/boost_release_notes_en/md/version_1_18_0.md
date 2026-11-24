@@ -1,0 +1,23 @@
+# Version 1.18.0
+
+## Version 1.18.0
+
+September 28th, 2000 12:00 GMT
+
+- Preliminary release of two important new libraries:
+  - [Graph Library](/libs/graph/doc/table_of_contents.html) - Generic graph components and algorithms from Jeremy Siek and a University of Notre Dame team.
+
+  - [Regular Expression Library](/libs/regex/index.html) - Text pattern matching in all its glory from John Maddock.
+
+- Other changes:
+  - [Array Library](/libs/array/index.html) improvements reflecting formal review comments.
+
+  - [functional.hpp](/boost/functional.hpp) compiler workarounds added.
+
+  - `tie``()`` ``function`` ``template` added to utility.hpp for easier handling of std::pair\<\> return values.
+
+  - [Integer Library](/libs/integer/index.html) improved handling of 64-bit integers.
+
+  - Minor web site page updates.
+
+Copyright Rene Rivera 2006-2007.

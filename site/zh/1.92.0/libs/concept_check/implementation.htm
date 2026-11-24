@@ -1,0 +1,146 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<!-- Copyright (c) Jeremy Siek and Andrew Lumsdaine 2000, David Abrahams 2007 -->
+<!-- Distributed under the Boost -->
+<!-- Software License, Version 1.0. (See accompanying -->
+<!-- file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt) -->
+
+<head>
+  <meta name="generator" content=
+  "HTML Tidy for Linux/x86 (vers 1 September 2005), see www.w3.org" />
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <link rel="stylesheet" href="../../rst.css" type="text/css" />
+
+  <title>概念检查实现</title>
+</head>
+
+<body bgcolor="#FFFFFF" link="#0000EE" text="#000000" vlink="#551A8B" alink=
+"#FF0000">
+  <img src="../../boost.png" alt="C++ Boost" width="277" height=
+  "86" /><br clear="none" />
+
+  <h2><a name="warning" id="warning"><font color=
+  "red">警告</font></a></h2>
+
+  <p><font color="red">本文档已过时; 现在使用的是类似但更新的实现技术. 本文档还引用了库旧接口中的组件和协议, 例如 <code>BOOST_CLASS_REQUIRES</code> 和 <code>constraints()</code> 函数, 它们仍受支持但已弃用.</font></p>
+
+  <h2><a name="implementation" id="implementation">实现</a></h2>
+
+  <p>理想情况下, 我们希望在实例化点捕获并指明概念违规. 如 D&amp;E[<a href=
+  "bibliography.htm#stroustrup94:_design_evolution">2</a>] 中所述, 可以通过练习函数模板所需的全部要求来捕获错误. 具体如何练习这些要求 (尤其是有效表达式) 是个棘手的问题, 因为我们希望代码被编译——<i>而不是被执行</i>. 我们的做法是: 把练习要求的过程放在一个单独的函数中, 并把它赋给一个函数指针. 这样, 编译器会实例化该函数, 但不会真正调用它. 此外, 优化编译器会把该指针赋值当作 "死代码" 移除 (不过无论如何, 该赋值增加的运行期开销都可以忽略不计). 可以设想, 编译器或许会一开始就跳过约束函数的语义分析和编译, 从而使我们的函数指针技术失效. 然而, 这不太可能, 因为移除不必要的代码和函数通常是编译器后期阶段的工作. 我们已在 GNU C++、Microsoft Visual C++ 以及若干基于 EDG 的编译器 (KAI C++、SGI MIPSpro) 上成功使用了函数指针技术. 下面的代码展示了如何把该技术应用于 <tt>std::stable_sort()</tt> 函数:</p>
+  <pre>
+  template &lt;class RandomAccessIterator&gt;
+  void stable_sort_constraints(RandomAccessIterator i)
+  {
+    typename std::iterator_traits&lt;RandomAccessIterator&gt;
+      ::difference_type n;
+    i += n;  // exercise the requirements for RandomAccessIterator
+    ...
+  }
+  template &lt;class RandomAccessIterator&gt;
+  void stable_sort(RandomAccessIterator first, RandomAccessIterator last)
+  {
+    typedef void (*fptr_type)(RandomAccessIterator);
+    fptr_type x = &amp;stable_sort_constraints;
+    ...
+  }
+</pre>
+
+  <p>通常需要检查的要求集合很大, 让库实现者为每个公开函数编写像 <tt>stable_sort_constraints()</tt> 这样的约束函数会很繁琐. 因此, 我们按照相应概念的定义, 把若干有效表达式组合成组. 对每个概念, 我们定义一个概念检查类模板, 其模板参数是被检查的类型. 该类包含一个 <tt>constraints()</tt> 成员函数, 练习该概念的所有有效表达式. 约束函数中使用的对象 (如 <tt>n</tt> 和 <tt>i</tt>) 被声明为概念检查类的数据成员.</p>
+  <pre>
+  template &lt;class Iter&gt;
+  struct RandomAccessIteratorConcept
+  {
+    void constraints()
+    {
+      i += n;
+      ...
+    }
+    typename std::iterator_traits&lt;RandomAccessIterator&gt;
+      ::difference_type n;
+    Iter i;
+    ...
+  };
+</pre>
+
+  <p>我们仍然可以用函数指针机制来促使约束函数被实例化, 只不过现在它是成员函数指针. 为了让库实现者方便地调用概念检查, 我们把成员函数指针机制包装在一个名为 <tt>function_requires()</tt> 的函数中. 下面的代码片段展示了如何使用 <tt>function_requires()</tt> 来确保迭代器是 <a href=
+  "http://www.boost.org/sgi/stl/RandomAccessIterator.html">RandomAccessIterator</a>.</p>
+  <pre>
+  template &lt;class Iter&gt;
+  void stable_sort(Iter first, Iter last)
+  {
+    function_requires&lt; RandomAccessIteratorConcept&lt;Iter&gt; &gt;();
+    ...
+  }
+</pre>
+
+  <p> <tt>function_requires()</tt> 的定义如下. <tt>Concept</tt> 是已经用建模类型实例化的概念检查类. 我们把 constraints 成员函数的地址赋给函数指针 <tt>x</tt>, 这会促使约束函数被实例化, 并检查该概念的有效表达式. 然后我们把 <tt>x</tt> 赋给 <tt>x</tt> 以避免未使用变量的编译器警告, 并把所有内容包在一个 do-while 循环中以防止名字冲突.</p>
+  <pre>
+  template &lt;class Concept&gt;
+  void function_requires()
+  {
+    void (Concept::*x)() = BOOST_FPTR Concept::constraints;
+    ignore_unused_variable_warning(x);
+  }
+</pre>
+
+  <p>为了检查类模板的类型参数, 我们提供了 <tt>BOOST_CLASS_REQUIRE</tt> 宏, 它可以用在类定义体内 (而 <tt>function_requires()</tt> 只能用在函数体内). 该宏声明一个嵌套类模板, 其模板参数是一个函数指针. 然后我们在一个 typedef 中使用该嵌套类类型, 以约束函数的函数指针类型作为模板实参. 我们在嵌套类和 typedef 的名字中使用 <tt>type_var</tt> 和 <tt>concept</tt> 名称, 以帮助防止名字冲突.</p>
+  <pre>
+#define BOOST_CLASS_REQUIRE(type_var, ns, concept) \
+  typedef void (ns::concept &lt;type_var&gt;::* func##type_var##concept)(); \
+  template &lt;func##type_var##concept _Tp1&gt; \
+  struct concept_checking_##type_var##concept { }; \
+  typedef concept_checking_##type_var##concept&lt; \
+    BOOST_FPTR ns::concept&lt;type_var&gt;::constraints&gt; \
+    concept_checking_typedef_##type_var##concept
+</pre>
+
+  <p>此外, 还有接受更多参数的 <tt>BOOST_CLASS_REQUIRE</tt> 版本, 用于处理包含两个或更多类型之间交互的概念. BCCL 概念检查的实现中没有使用 <tt>BOOST_CLASS_REQUIRE</tt>, 因为有些编译器不实现函数指针类型的模板参数. <!-- We decided not to go with this version since it is easier to misuse
+
+To check the type parameters of class templates, we provide the
+<tt>class_requires</tt> class which can be used inside the body of a
+class definition (whereas <tt>function_requires()</tt> can only be
+used inside of a function body).  <tt>class_requires</tt> declares a
+nested class template, where the template parameter is a function
+pointer. We then use the nested class type in a typedef with the
+function pointer type of the constraint function as the template
+argument.
+
+<pre>
+  template &lt;class Concept&gt;
+  class class_requires
+  {
+    typedef void (Concept::* function_pointer)();
+
+    template &lt;function_pointer Fptr&gt;
+    struct dummy_struct { };
+  public:
+    typedef dummy_struct&lt; BOOST_FPTR Concept::constraints &gt; check;
+  };
+</pre>
+
+<tt>class_requires</tt> was not used in the implementation of the
+Boost Concept Checking Library concept checks because several
+compilers do not implement template parameters of function pointer
+type.
+
+--></p>
+
+  <p><a href="./reference.htm">下一页: 参考</a><br />
+  <a href="prog_with_concepts.htm">上一页: 用概念编程</a><br /></p>
+  <hr />
+
+  <table>
+    <tr valign="top">
+      <td nowrap="nowrap">版权所有 © 2000</td>
+
+      <td><a href="http://www.boost.org/people/jeremy_siek.htm">Jeremy Siek</a>(<a href=
+      "mailto:jsiek@osl.iu.edu">jsiek@osl.iu.edu</a>) Andrew
+      Lumsdaine(<a href="mailto:lums@osl.iu.edu">lums@osl.iu.edu</a>),
+        2007 <a href="mailto:dave@boost-consulting.com">David Abrahams</a>.
+    </tr>
+  </table>
+</body>
+</html>

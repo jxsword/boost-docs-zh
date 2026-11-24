@@ -1,0 +1,540 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0.1 Transitional//EN">
+
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+<title>Boost.MultiIndex 文档 - 性能</title>
+<link rel="stylesheet" href="style.css" type="text/css">
+<link rel="start" href="index.html">
+<link rel="prev" href="reference/key_extraction.html">
+<link rel="up" href="index.html">
+<link rel="next" href="examples.html">
+</head>
+
+<body>
+<h1><img src="../../../boost.png" alt="boost.png (6897 字节)" align=
+"middle" width="277" height="86">Boost.MultiIndex 性能</h1>
+
+<div class="prev_link"><a href="reference/key_extraction.html"><img src="prev.gif" alt="键提取" border="0"><br>键提取</a></div>
+<div class="up_link"><a href="index.html"><img src="up.gif" alt="索引" border="0"><br>索引</a></div>
+<div class="next_link"><a href="examples.html"><img src="next.gif" alt="示例" border="0"><br>示例</a></div><br clear="all" style="clear: all;">
+
+<hr>
+
+<h2>目录</h2>
+
+<ul>
+  <li><a href="#intro">引言</a></li>
+  <li><a href="#simulation">手工模拟 <code>multi_index_container</code></a></li>
+  <li><a href="#spatial_efficiency">空间效率</a></li>
+  <li><a href="#time_efficiency">时间效率</a></li>
+  <li><a href="#tests">性能测试</a>
+    <ul>
+      <li><a href="#test_1r">1 个有序索引的结果</a>
+	    <ul>
+          <li><a href="#memory_1r">内存消耗</a></li>
+          <li><a href="#time_1r">执行时间</a></li>
+        </ul>
+	  </li>
+      <li><a href="#test_1s">1 个序列索引的结果</a>
+	    <ul>
+          <li><a href="#memory_1s">内存消耗</a></li>
+          <li><a href="#time_1s">执行时间</a></li>
+        </ul>
+	  </li>
+      <li><a href="#test_2r">2 个有序索引的结果</a>
+	    <ul>
+          <li><a href="#memory_2r">内存消耗</a></li>
+          <li><a href="#time_2r">执行时间</a></li>
+        </ul>
+	  </li>
+      <li><a href="#test_1r1s">1 个有序索引 + 1 个序列索引的结果</a>
+	    <ul>
+          <li><a href="#memory_1r1s">内存消耗</a></li>
+          <li><a href="#time_1r1s">执行时间</a></li>
+        </ul>
+	  </li>
+      <li><a href="#test_3r">3 个有序索引的结果</a>
+	    <ul>
+          <li><a href="#memory_3r">内存消耗</a></li>
+          <li><a href="#time_3r">执行时间</a></li>
+        </ul>
+	  </li>
+      <li><a href="#test_2r1s">2 个有序索引 + 1 个序列索引的结果</a>
+	    <ul>
+          <li><a href="#memory_2r1s">内存消耗</a></li>
+          <li><a href="#time_2r1s">执行时间</a></li>
+        </ul>
+	  </li>
+    </ul>
+  </li>
+  <li><a href="#conclusions">结论</a></li>
+</ul>
+
+<h2><a name="intro">引言</a></h2>
+
+<p>当需要多索引能力时, Boost.MultiIndex 帮助程序员免去手工构造繁琐的容器组合. 不仅如此, 它在空间与时间消耗两方面都十分高效. 空间节省源于底层数据结构的紧凑表示——每个元素只需一个节点. 至于时间效率, Boost.MultiIndex 大量运用元编程技术, 为每个索引的基本操作生成极为紧凑的成员函数实现: 对于拥有两个或更多索引的 <code>multi_index_container</code>, 其运行时间可以缩短到涉及多个 STL 容器的手工模拟的一半.</p>
+
+<h2><a name="simulation">手工模拟 <code>multi_index_container</code></a></h2>
+
+<p>关于 <a href="tutorial/techniques.html#emulate_std_containers">用 <code>multi_index_container</code></a> 模拟标准容器的一节展示了单索引 <code>multi_index_container</code> 与某些 STL 容器的等价性. 现在我们来集中讨论如何用标准容器的恰当组合来模拟具有两个或更多索引的 <code>multi_index_container</code>.</p>
+
+<p>考虑 <code>multi_index_container</code> 的如下实例化:</p>
+
+<blockquote><pre>
+<span class=keyword>typedef</span> <span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=keyword>int</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;,</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;,</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>greater</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;,</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>indexed_t</span><span class=special>;</span>
+</pre></blockquote>
+
+<p>
+<code>indexed_t</code> 在 <code>int</code> 类型的元素上维护两个内部索引. 若仅依靠标准 STL 容器来模拟这一数据结构, 初步可以采用以下类型:</p>
+
+<blockquote><pre>
+<span class=comment>// dereferencing compare predicate</span>
+<span class=keyword>template</span><span class=special>&lt;</span><span class=keyword>typename</span> <span class=identifier>Iterator</span><span class=special>,</span><span class=keyword>typename</span> <span class=identifier>Compare</span><span class=special>&gt;</span>
+<span class=keyword>struct</span> <span class=identifier>it_compare</span>
+<span class=special>{</span>
+  <span class=keyword>bool</span> <span class=keyword>operator</span><span class=special>()(</span><span class=keyword>const</span> <span class=identifier>Iterator</span><span class=special>&amp;</span> <span class=identifier>x</span><span class=special>,</span><span class=keyword>const</span> <span class=identifier>Iterator</span><span class=special>&amp;</span> <span class=identifier>y</span><span class=special>)</span><span class=keyword>const</span>
+  <span class=special>{</span>
+    <span class=keyword>return</span> <span class=identifier>comp</span><span class=special>(*</span><span class=identifier>x</span><span class=special>,*</span><span class=identifier>y</span><span class=special>);</span>
+  <span class=special>}</span>
+
+<span class=keyword>private</span><span class=special>:</span>
+  <span class=identifier>Compare</span> <span class=identifier>comp</span><span class=special>;</span>
+<span class=special>};</span>
+
+<span class=keyword>typedef</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>set</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span>  <span class=identifier>manual_t1</span><span class=special>;</span> <span class=comment>// equivalent to indexed_t's index #0</span>
+<span class=keyword>typedef</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>multiset</span><span class=special>&lt;</span>
+  <span class=keyword>const</span> <span class=keyword>int</span><span class=special>*,</span>
+  <span class=identifier>it_compare</span><span class=special>&lt;</span>
+    <span class=keyword>const</span> <span class=keyword>int</span><span class=special>*,</span>
+    <span class=identifier>std</span><span class=special>::</span><span class=identifier>greater</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span>                      <span class=identifier>manual_t2</span><span class=special>;</span> <span class=comment>// equivalent to indexed_t's index #1</span>
+</pre></blockquote>    
+
+<p>其中 <code>manual_t1</code> 是保存实际元素的“基础”容器, <code>manual_t2</code> 则存储指向 <code>manual_t1</code> 元素的指针. 不过这一方案的效率相当低: 尽管向数据结构中插入十分简单:</p>
+
+<blockquote><pre>
+<span class=identifier>manual_t1</span> <span class=identifier>c1</span><span class=special>;</span>
+<span class=identifier>manual_t2</span> <span class=identifier>c2</span><span class=special>;</span>
+
+<span class=comment>// insert the element 5</span>
+<span class=identifier>manual_t1</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it1</span><span class=special>=</span><span class=identifier>c1</span><span class=special>.</span><span class=identifier>insert</span><span class=special>(</span><span class=number>5</span><span class=special>).</span><span class=identifier>first</span><span class=special>;</span>
+<span class=identifier>c2</span><span class=special>.</span><span class=identifier>insert</span><span class=special>(&amp;*</span><span class=identifier>it1</span><span class=special>);</span>
+</pre></blockquote> 而删除操作则相反, 需要对数查找, 而 <code>indexed_t</code> 以常量时间删除: <blockquote><pre>
+<span class=comment>// remove the element pointed to by it2</span>
+<span class=identifier>manual_t2</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it2</span><span class=special>=...;</span>
+<span class=identifier>c1</span><span class=special>.</span><span class=identifier>erase</span><span class=special>(**</span><span class=identifier>it2</span><span class=special>);</span> <span class=comment>// watch out! performs in logarithmic time</span>
+<span class=identifier>c2</span><span class=special>.</span><span class=identifier>erase</span><span class=special>(</span><span class=identifier>it2</span><span class=special>);</span> 
+</pre></blockquote>
+
+<p>正确的做法是让第二个容器保存的不是原始指针, 而是 <code>manual_t1::iterator</code> 类型的元素:</p>
+
+<blockquote><pre>
+<span class=keyword>typedef</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>set</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span>    <span class=identifier>manual_t1</span><span class=special>;</span> <span class=comment>// equivalent to indexed_t's index #0</span>
+<span class=keyword>typedef</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>multiset</span><span class=special>&lt;</span>
+  <span class=identifier>manual_t1</span><span class=special>::</span><span class=identifier>iterator</span><span class=special>,</span>
+  <span class=identifier>it_compare</span><span class=special>&lt;</span>
+    <span class=identifier>manual_t1</span><span class=special>::</span><span class=identifier>iterator</span><span class=special>,</span>
+    <span class=identifier>std</span><span class=special>::</span><span class=identifier>greater</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span>                        <span class=identifier>manual_t2</span><span class=special>;</span> <span class=comment>// equivalent to indexed_t's index #1</span>
+</pre></blockquote>    
+
+<p>如此一来, 插入与删除便可以以与 <code>indexed_t</code> 等价的复杂度界完成:</p>
+
+<blockquote><pre>
+<span class=identifier>manual_t1</span> <span class=identifier>c1</span><span class=special>;</span>
+<span class=identifier>manual_t2</span> <span class=identifier>c2</span><span class=special>;</span>
+
+<span class=comment>// insert the element 5</span>
+<span class=identifier>manual_t1</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it1</span><span class=special>=</span><span class=identifier>c1</span><span class=special>.</span><span class=identifier>insert</span><span class=special>(</span><span class=number>5</span><span class=special>).</span><span class=identifier>first</span><span class=special>;</span>
+<span class=identifier>c2</span><span class=special>.</span><span class=identifier>insert</span><span class=special>(</span><span class=identifier>it1</span><span class=special>);</span>
+
+<span class=comment>// remove the element pointed to by it2</span>
+<span class=identifier>manual_t2</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>it2</span><span class=special>=...;</span>
+<span class=identifier>c1</span><span class=special>.</span><span class=identifier>erase</span><span class=special>(*</span><span class=identifier>it2</span><span class=special>);</span> <span class=comment>// OK: constant time</span>
+<span class=identifier>c2</span><span class=special>.</span><span class=identifier>erase</span><span class=special>(</span><span class=identifier>it2</span><span class=special>);</span> 
+</pre></blockquote>
+
+<p>这种构造可以以直接的方式扩展到多于两个索引的情形. 下文中, 我们将把 <code>multi_index_container</code> 的实例化与此类手工模拟进行比较.</p>
+
+<h2><a name="spatial_efficiency">空间效率</a></h2>
+
+<p> <code>multi_index_container</code> 相对其手工模拟在空间消耗上的收益可以用非常简单的理论分析来说明. 为简单起见, 我们将忽略对齐问题 (总体而言对齐问题有利于 <code>multi_index_container</code>) .</p>
+
+<p> <code>multi_index_container</code> 在 <i>N</i> 个索引下的节点保存元素值外加 <i>N</i> 个头结构, 后者包含每个索引的链接信息. 因此节点大小为</p>
+
+<blockquote>
+<i>S<sub>I</sub></i> = <i>e</i> + <i>h</i><sub>0</sub> + ··· + <i>h</i><sub><i>N</i>-1</sub>, 其中<br>
+<i>e</i> = 元素的大小, <br>
+<i>h</i><sub><i>i</i></sub> = 第 <i>i</i> 个头结构的大小.</blockquote>
+
+<p>另一方面, 手工模拟为每个元素分配 <i>N</i> 个节点, 第一个节点保存元素本身, 其余节点存储指向“基础”容器的迭代器. 实际上, 迭代器只保存一个指向其关联节点的原始指针, 因此其大小与元素类型无关. 把所有开销相加, 手工模拟中每个元素所占的空间为</p>
+
+<blockquote>
+<i>S<sub>M</sub></i> = (<i>e</i> + <i>h</i><sub>0</sub>) + (<i>p</i> + <i>h</i><sub>1</sub>) + ··· + (<i>p</i> + <i>h</i><sub><i>N</i>-1</sub>) = <i>S<sub>I</sub></i> + (<i>N</i>-1)<i>p</i>, 其中<br>
+<i>p</i> = 一个指针的大小. <br>
+</blockquote>
+
+<p> <code>multi_index_container</code> 相对其手工模拟所占内存的比例就是 <i>S<sub>I</sub></i> / <i>S<sub>M</sub></i>, 于是可以表示为:</p>
+
+<blockquote>
+<i>S<sub>I</sub></i>&nbsp;/&nbsp;<i>S<sub>M</sub></i> =
+<i>S<sub>I</sub></i>&nbsp;/&nbsp;(<i>S<sub>I</sub></i> + (<i>N</i>-1)<i>p</i>).
+</blockquote>
+
+<p>该公式表明, 随着索引数目的增加, <code>multi_index_container</code> 在内存消耗方面更具优势. 这里隐含地假设 <code>multi_index_container</code> 索引节点的头结构与 STL 容器中对应部分大小相同; 但在一种特定情形下这往往不成立: 有序索引使用了一种 <a href="tutorial/indices.html#ordered_node_compression">空间优化技术</a>, 而 <code>std::set</code> 的许多实现并不具备该技术, 这为 <code>multi_index_container</code> 带来每个有序索引一个系统字长的额外优势. 考虑这一事实后, 前述公式可以调整为:</p>
+
+<blockquote>
+<i>S<sub>I</sub></i>&nbsp;/&nbsp;<i>S<sub>M</sub></i> =
+<i>S<sub>I</sub></i>&nbsp;/&nbsp;(<i>S<sub>I</sub></i> + (<i>N</i>-1)<i>p</i> + <i>Ow</i>),
+</blockquote>
+
+<p>其中 <i>O</i> 是容器的有序索引数目, <i>w</i> 是系统字长 (在 32 位架构上通常为 4 字节) .</p>
+
+<p>上述考虑忽略了一个实践上极为重要的方面: 与手工模拟所构建的众多不同大小的节点相比, <code>multi_index_container</code> 为每个元素只分配一个节点, 这会减少内存碎片, 从而可能带来更多可用内存和更好的性能.</p>
+
+<h2><a name="time_efficiency">时间效率</a></h2>
+
+<p>从计算复杂度 (即 big-O 刻画) 的角度看, <code>multi_index_container</code> 与其对应的手工模拟是等价的: 向 <code>multi_index_container</code> 插入元素可归约为对各索引的基本插入操作的简单组合, 删除亦然. 因此, 我们最多只能期望执行时间按大致恒定的因子缩短 (或增长) . 后文将看到, 对于拥有两个或更多索引的 <code>multi_index_container</code>, 这一缩减可以非常显著.</p>
+
+<p>在只有单个索引的 <code>multi_index_container</code> 这一特殊情形下, 最终性能大致与相应的 STL 容器相当: 测试表明相对 STL 至多有可忽略的退化, 某些情况下甚至还有小幅改进.</p>
+
+<h2><a name="tests">性能测试</a></h2>
+
+<p>参见测量所用的 <a href="../perf/test_perf.cpp">源代码</a>.<p>为了评估 <code>multi_index_container</code> 的效率, 以下基本算法</p>
+
+<blockquote><pre>
+<span class=identifier>multi_index_container</span><span class=special>&lt;...&gt;</span> <span class=identifier>c</span><span class=special>;</span>
+<span class=keyword>for</span><span class=special>(</span><span class=keyword>int</span> <span class=identifier>i</span><span class=special>=</span><span class=number>0</span><span class=special>;</span><span class=identifier>i</span><span class=special>&lt;</span><span class=identifier>n</span><span class=special>;++</span><span class=identifier>i</span><span class=special>)</span><span class=identifier>c</span><span class=special>.</span><span class=identifier>insert</span><span class=special>(</span><span class=identifier>i</span><span class=special>);</span>
+<span class=keyword>for</span><span class=special>(</span><span class=identifier>iterator</span> <span class=identifier>it</span><span class=special>=</span><span class=identifier>c</span><span class=special>.</span><span class=identifier>begin</span><span class=special>();</span><span class=identifier>it</span><span class=special>!=</span><span class=identifier>c</span><span class=special>.</span><span class=identifier>end</span><span class=special>();)</span><span class=identifier>c</span><span class=special>.</span><span class=identifier>erase</span><span class=special>(</span><span class=identifier>it</span><span class=special>++);</span>
+</pre></blockquote>
+
+<p>针对 <code>multi_index_container</code> 的不同实例化, 在 <i>n</i> 为 1,000、10,000 和 100,000 的取值下进行了测量, 并将其执行时间与基于 STL 容器的相应数据结构手工模拟的等价算法进行了比较. 下表描述了所用的测试环境.</p>
+
+<p align="center">
+<table cellspacing="0" cellpadding="5">
+  <caption><b>测试环境. </b></caption>
+<tr>
+  <th>编译器</th>
+  <th>设置</th>
+  <th>操作系统与 CPU</th>
+</tr>
+<tr>
+  <td>GCC 3.4.5 (mingw special)</td>
+  <td><code>-O3</code></td>
+  <td>Windows 2000 Pro, P4 1.5 GHz, 256 MB RAM</td>
+</tr>
+<tr class="odd_tr">
+  <td>Intel C++ 7.1</td>
+  <td>默认发布设置</td>
+  <td>Windows 2000 Pro, P4 1.5 GHz, 256 MB RAM</td>
+</tr>
+<tr>
+  <td>Microsoft Visual C++ 8.0</td>
+  <td>默认发布设置, <code>_SECURE_SCL=0</code></td>
+  <td>Windows XP, P4 Xeon 3.2 GHz, 1 GB RAM</td>
+</tr>
+</table>
+</p>
+
+<p>相对内存消耗 (即 <code>multi_index_container</code> 相对其手工模拟所分配的内存量) 由 <code>multi_index_container</code> 节点的大小除以构成模拟数据结构的所有容器的节点大小之和来确定.</p>
+
+<h3><a name="test_1r">1 个有序索引的结果</a></h3>
+
+<p>测试了 <code>multi_index_container</code> 的如下实例化:</p>
+
+<blockquote><pre>
+<span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=keyword>int</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span>
+</pre></blockquote>
+
+<p>其在功能上等价于 <code>std::set&lt;int></code>.</p>
+
+<h4><a name="memory_1r">内存消耗</a></h4>
+
+<p align="center">
+<table cellspacing="0">
+<tr>
+  <th width="33%">GCC 3.4.5</th>
+  <th width="33%">ICC 7.1</th>
+  <th width="33%">MSVC 8.0</th>
+</tr>
+<tr>
+  <td align="center">80%</td>
+  <td align="center">80%</td>
+  <td align="center">80%</td>
+</tr>
+</table>
+<b>表 1: <code>multi_index_container</code> 配 1 个有序索引时的相对内存消耗. </b>
+</p>
+
+<p>内存用量的减少归因于 Boost.MultiIndex 有序索引所实现的优化技术, 如上文 <a href="#spatial_efficiency">所述</a>.</p>
+
+<h4><a name="time_1r">执行时间</a></h4>
+
+<p align="center">
+<img src="perf_1o.png" alt="multi_index_container 配 1 个有序索引时的性能"
+width="556" height="372"><br>
+<b>图 1: <code>multi_index_container</code> 配 1 个有序索引时的性能. </b>
+</p>
+
+<p>有些出人意料, <code>multi_index_container</code> 的表现略优于 <code>std::set</code>. 对这种行为的一个很可能的解释是, <code>multi_index_container</code> 内存消耗更低, 从而带来更高的处理器缓存命中率. GCC 上的改进最小, 大概是因为该编译器优化器的质量较差, 掩盖了与缓存相关的收益.</p>
+
+<h3><a name="test_1s">1 个序列索引的结果</a></h3>
+
+<p>测试了 <code>multi_index_container</code> 的如下实例化:</p>
+
+<blockquote><pre>
+<span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=keyword>int</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>sequenced</span><span class=special>&lt;&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span>
+</pre></blockquote>
+
+<p>其在功能上等价于 <code>std::list&lt;int></code>.</p>
+
+<h4><a name="memory_1s">内存消耗</a></h4>
+
+<p align="center">
+<table cellspacing="0">
+<tr>
+  <th width="33%">GCC 3.4.5</th>
+  <th width="33%">ICC 7.1</th>
+  <th width="33%">MSVC 8.0</th>
+</tr>
+<tr>
+  <td align="center">100%</td>
+  <td align="center">100%</td>
+  <td align="center">100%</td>
+</tr>
+</table>
+<b>表 2: <code>multi_index_container</code> 配 1 个序列索引时的相对内存消耗. </b>
+</p>
+
+<p>数据证实, 此处 <code>multi_index_container</code> 节点与其 <code>std::list</code> 对应物的节点大小相同.</p>
+
+<h4><a name="time_1s">执行时间</a></h4>
+
+<p align="center">
+<img src="perf_1s.png" alt="multi_index_container 配 1 个序列索引时的性能"
+width="556" height="372"><br>
+<b>图 2: <code>multi_index_container</code> 配 1 个序列索引时的性能. </b>
+</p>
+
+<p>
+<code>multi_index_container</code> 未能达到其 STL 对应物的性能, 但数据差距不大. 同样, 最差的结果来自 GCC, 退化最多达 7%, 而 ICC 和 MSVC 则不超过区区 5%.</p>
+
+<h3><a name="test_2r">2 个有序索引的结果</a></h3>
+
+<p>测试了 <code>multi_index_container</code> 的如下实例化:</p>
+
+<blockquote><pre>
+<span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=keyword>int</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;,</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span>
+</pre></blockquote>
+
+<h4><a name="memory_2r">内存消耗</a></h4>
+
+<p align="center">
+<table cellspacing="0">
+<tr>
+  <th width="33%">GCC 3.4.5</th>
+  <th width="33%">ICC 7.1</th>
+  <th width="33%">MSVC 8.0</th>
+</tr>
+<tr>
+  <td align="center">70%</td>
+  <td align="center">70%</td>
+  <td align="center">70%</td>
+</tr>
+</table>
+<b>表 3: <code>multi_index_container</code> 配 2 个有序索引时的相对内存消耗. </b>
+</p>
+
+<p>这些结果与理论公式相符, 此时 <i>S<sub>I</sub></i> = 28, <i>N</i> = <i>O</i> = 2 且 <i>p</i> = <i>w</i> = 4.</p>
+
+<h4><a name="time_2r">执行时间</a></h4>
+
+<p align="center">
+<img src="perf_2o.png" alt="multi_index_container 配 2 个有序索引时的性能"
+width="556" height="372"><br>
+<b>图 3: <code>multi_index_container</code> 配 2 个有序索引时的性能. </b>
+</p>
+
+<p>实验结果证实了我们的假设: <code>multi_index_container</code> 以大致恒定的因子改善执行时间, 此处该因子约为 60%. 至于 <code>multi_index_container</code> 在 MSVC 上当 <i>n</i>=10<sup>5</sup> 时优势反而更大, 则没有明显的解释.</p>
+
+<h3><a name="test_1r1s">1 个有序索引 + 1 个序列索引的结果</a></h3>
+
+<p>测试了 <code>multi_index_container</code> 的如下实例化:</p>
+
+<blockquote><pre>
+<span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=keyword>int</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;,</span>
+    <span class=identifier>sequenced</span><span class=special>&lt;&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span>
+</pre></blockquote>
+
+<h4><a name="memory_1r1s">内存消耗</a></h4>
+
+<p align="center">
+<table cellspacing="0">
+<tr>
+  <th width="33%">GCC 3.4.5</th>
+  <th width="33%">ICC 7.1</th>
+  <th width="33%">MSVC 8.0</th>
+</tr>
+<tr>
+  <td align="center">75%</td>
+  <td align="center">75%</td>
+  <td align="center">75%</td>
+</tr>
+</table>
+<b>表 4: <code>multi_index_container</code> 配 1 个有序索引 + 1 个序列索引时的相对内存消耗. </b>
+</p>
+
+<p>这些结果与理论公式相符, 此时 <i>S<sub>I</sub></i> = 24, <i>N</i> = 2, <i>O</i> = 1 且 <i>p</i> = <i>w</i> = 4.</p>
+
+<h4><a name="time_1r1s">执行时间</a></h4>
+
+<p align="center">
+<img src="perf_1o1s.png"
+alt="multi_index_container 配 1 个有序索引 + 1 个序列索引时的性能"
+width="556" height="372"><br>
+<b>图 4: <code>multi_index_container</code> 配 1 个有序索引 + 1 个序列索引时的性能. </b>
+</p>
+
+<p>当 <i>n</i>=10<sup>3</sup> 和 <i>n</i>=10<sup>4</sup> 时, 结果与我们的理论分析一致, 相对基于 STL 的手工模拟表现出 50-65% 的恒定因子改进. 有趣的是, 当 <i>n</i>=10<sup>5</sup> 时, GCC 和 ICC 这两个编译器的加速比反而更高. 为排除虚假结果, 测试已运行多次, 结果相似. 两个测试环境部署在同一台机器上, 这表明该现象可能存在某种与操作系统相关的原因.</p>
+
+<h3><a name="test_3r">3 个有序索引的结果</a></h3>
+
+<p>测试了 <code>multi_index_container</code> 的如下实例化:</p>
+
+<blockquote><pre>
+<span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=keyword>int</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;,</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;,</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span>
+</pre></blockquote>
+
+<h4><a name="memory_3r">内存消耗</a></h4>
+
+<p align="center">
+<table cellspacing="0">
+<tr>
+  <th width="33%">GCC 3.4.5</th>
+  <th width="33%">ICC 7.1</th>
+  <th width="33%">MSVC 8.0</th>
+</tr>
+<tr>
+  <td align="center">66.7%</td>
+  <td align="center">66.7%</td>
+  <td align="center">66.7%</td>
+</tr>
+</table>
+<b>表 5: <code>multi_index_container</code> 配 3 个有序索引时的相对内存消耗. </b>
+</p>
+
+<p>这些结果与理论公式相符, 此时 <i>S<sub>I</sub></i> = 40, <i>N</i> = <i>O</i> = 3 且 <i>p</i> = <i>w</i> = 4.</p>
+
+<h4><a name="time_3r">执行时间</a></h4>
+
+<p align="center">
+<img src="perf_3o.png" alt="multi_index_container 配 3 个有序索引时的性能"
+width="556" height="372"><br>
+<b>图 5: <code>multi_index_container</code> 配 3 个有序索引时的性能. </b>
+</p>
+
+<p>此情形下的执行时间比基于 STL 的同一数据结构手工模拟低 45% 至 55%.</p>
+
+<h3><a name="test_2r1s">2 个有序索引 + 1 个序列索引的结果</a></h3>
+
+<p>测试了 <code>multi_index_container</code> 的如下实例化:</p>
+
+<blockquote><pre>
+<span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=keyword>int</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;,</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;,</span>
+    <span class=identifier>sequenced</span><span class=special>&lt;&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span>
+</pre></blockquote>
+
+<h4><a name="memory_2r1s">内存消耗</a></h4>
+
+<p align="center">
+<table cellspacing="0">
+<tr>
+  <th width="33%">GCC 3.4.5</th>
+  <th width="33%">ICC 7.1</th>
+  <th width="33%">MSVC 8.0</th>
+</tr>
+<tr>
+  <td align="center">69.2%</td>
+  <td align="center">69.2%</td>
+  <td align="center">69.2%</td>
+</tr>
+</table>
+<b>表 6: <code>multi_index_container</code> 配 2 个有序索引 + 1 个序列索引时的相对内存消耗. </b>
+</p>
+
+<p>这些结果与理论公式相符, 此时 <i>S<sub>I</sub></i> = 36, <i>N</i> = 3, <i>O</i> = 2 且 <i>p</i> = <i>w</i> = 4.</p>
+
+<h4><a name="time_2r1s">执行时间</a></h4>
+
+<p align="center">
+<img src="perf_2o1s.png"
+alt="multi_index_container 配 2 个有序索引 + 1 个序列索引时的性能"
+width="556" height="372"><br>
+<b>图 6: <code>multi_index_container</code> 配 2 个有序索引 + 1 个序列索引时的性能. </b>
+</p>
+
+<p>与预期相符, 执行时间以相当恒定的因子得到改善, 范围在 45% 至 55% 之间.</p>
+
+<h2><a name="conclusions">结论</a></h2>
+
+<p>我们已经证明, <code>multi_index_container</code> 在空间与时间效率上都优于由 STL 容器手工组合而成的等价数据结构. 索引数目越多, 这一改进越明显.</p>
+
+<p>在用单索引 <code>multi_index_container</code> 替代标准容器的特殊情形下, Boost.MultiIndex 的性能与所测 STL 实现相当, 甚至在空间消耗与执行时间两方面还能带来一些改进.</p>
+
+<hr>
+
+<div class="prev_link"><a href="reference/key_extraction.html"><img src="prev.gif" alt="键提取" border="0"><br>键提取</a></div>
+<div class="up_link"><a href="index.html"><img src="up.gif" alt="索引" border="0"><br>索引</a></div>
+<div class="next_link"><a href="examples.html"><img src="next.gif" alt="示例" border="0"><br>示例</a></div><br clear="all" style="clear: all;">
+
+<br>
+
+<p>修订于 November 7th 2025</p>
+
+<p>版权所有 © 2003-2025 Joaquín M López Muñoz. 按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <a href="../../../LICENSE_1_0.txt">LICENSE_1_0.txt</a> 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+
+</body>
+</html>

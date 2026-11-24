@@ -1,0 +1,1168 @@
+<html>
+
+<head>
+<meta http-equiv="Content-Language" content="en-us">
+<meta name="GENERATOR" content="Microsoft FrontPage 5.0">
+<meta name="ProgId" content="FrontPage.Editor.Document">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Filesystem 教程</title>
+<link href="styles.css" rel="stylesheet">
+</head>
+
+<body>
+
+<table border="0" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111">
+  <tr>
+    <td width="277">
+<a href="../../../index.htm">
+<img src="../../../boost.png" alt="boost.png (6897 字节)" align="middle" width="300" height="86" border="0"></a></td>
+    <td align="middle">
+    <font size="7">Filesystem 教程</font>
+    </td>
+  </tr>
+</table>
+
+<table border="0" cellpadding="5" cellspacing="0" style="border-collapse: collapse"
+ bordercolor="#111111" bgcolor="#D7EEFF" width="100%">
+  <tr>
+    <td><a href="index.htm">首页</a> <a href="tutorial.html">教程</a> <a href="reference.html">参考</a> <a href="faq.htm">常见问题 (FAQ)</a> <a href="release_history.html">发布</a> <a href="portability_guide.htm">可移植性</a> <a href="v4.html">V4</a> <a href="v3.html">V3 简介</a> <a href="v3_design.html">V3 设计</a> <a href="deprecated.html">已弃用</a> <a href="issue_reporting.html">缺陷报告</a> </td>
+</table>
+
+<p>
+      <a href="#Introduction">引言</a><br>
+      <a href="#Preliminaries">准备工作</a><br>
+      <a href="#Reporting-size">报告文件大小 - (tut1.cpp)</a><br>
+      <a href="#Using-status-queries">使用状态查询确定文件存在性与类型 - (tut2.cpp)</a><br>
+      <a href="#Directory-iteration">目录迭代加捕获异常 - (tut3.cpp)</a><br>
+      <a href="#Using-path-decomposition">使用 path 分解并排序结果 - (tut4.cpp)</a><br>
+      <a href="#Class-path-Constructors">类 path: 构造函数, 包括 Unicode - (tut5.cpp)</a><br>
+      <a href="#Class-path-formats">类 path: 通用格式与原生格式</a><br>
+      <a href="#Class path-iterators-etc">类 path: 迭代器、观察器、组合、分解与查询 - (path_info.cpp)</a><br>
+      <a href="#Error-reporting">错误报告</a><br>
+</p>
+<h2><a name="Introduction">引言</a></h2>
+
+<p>本教程开发一个小型命令行程序, 用于列出文件与目录的信息——本质上是 POSIX <code>ls</code> 或 Windows <code>dir</code> 命令的极大简化版. 我们将从最简单的版本开始, 逐步走向更复杂的功能. 过程中我们会穿插讲解理解 Boost.Filesystem 所需的主题.</p>
+
+<p>每个教程程序的源代码都可获得, 鼓励你对它进行编译、测试与试验. 为节省篇幅, 我们不会总是在这里展示样板代码, 但提供的源代码是完整的, 可以直接构建.</p>
+
+<h2><a name="Preliminaries">准备工作</a></h2>
+
+<p>如果尚未安装, 请安装 Boost 发行版. 参见<a href="http://www.boost.org/more/getting_started/index.html">Boost 入门</a>文档.</p>
+
+<p>本教程假定你已按《入门》一文的描述完成 Boost.Build 的引导 (bootstrap) 并编译了 Boost.Filesystem. <code>b2</code> 可执行文件应当可以在 <code>PATH</code> 中找到.</p>
+
+<blockquote>
+
+</blockquote>
+<p>启动你的命令行解释器, 并输入以下命令:</p>
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Ubuntu Linux</b></i></td>
+    </tr>
+    <tr>
+      <td>
+      <pre>$ cd <i><b>boost-root</b></i>/libs/filesystem/example
+
+$ b2 tutorial
+Compiling example programs...
+
+$ ./tut1
+Usage: tut1 path</pre>
+      </td>
+    </tr>
+  </table>
+
+  &nbsp;
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Microsoft Windows</b></i></td>
+    </tr>
+    <tr>
+    <td>
+      <pre>&gt;cd <i><b>boost-root</b></i>\libs\filesystem\example
+
+&gt;b2.exe tutorial
+Compiling example programs...
+
+&gt;tut1
+Usage: tut1 path</pre>
+      </td>
+    </tr>
+  </table>
+
+<p>如果 <code>tut1</code> 命令输出 "<code>Usage: tut1 path</code>", 那么一切正常. 教程示例程序位于 <code><i><b>boost-root</b></i>/libs/filesystem/example</code>. 随着教程推进, 如果你修改并试验它们, 只需再次调用 <code>b2 tutorial</code> 重新构建.</p>
+
+<p>如果有地方不能正常工作, 下面是一些排障建议:</p>
+
+  <ul>
+    <li>如果找不到 <code>b2</code> 程序可执行文件, 请检查你的 path 环境变量或参见<a href="http://www.boost.org/more/getting_started/windows.html">Boost 入门</a>. <br> </li>
+    <li>查看 Boost 引导 (bootstrap) 输出, 尝试找出问题的迹象.</li>
+  </ul>
+
+<h2><a name="Reporting-size">报告文件大小</a> - (<a href="../example/tut1.cpp">tut1.cpp</a>)</h2>
+
+<p>开始吧. 第一个示例程序 <a href="../example/tut1.cpp">tut1.cpp</a> 报告文件的大小:</p>
+
+<table border="1" cellpadding="3" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+  <tr>
+    <td>
+      <pre><!-- include file "../example/tut1.cpp" -->#include &lt;iostream&gt;
+#include &lt;boost/filesystem.hpp&gt;
+using namespace boost::filesystem;
+
+int main(int argc, char* argv[])
+{
+  if (argc &lt; 2)
+  {
+    std::cout &lt;&lt; &quot;Usage: tut1 path\n&quot;;
+    return 1;
+  }
+  std::cout &lt;&lt; argv[1] &lt;&lt; &quot; &quot; &lt;&lt; file_size(argv[1]) &lt;&lt; '\n';
+  return 0;
+}<!-- end include file --></pre>
+    </td>
+  </tr>
+</table>
+
+<p>Boost.Filesystem <code><a href="reference.html#file_size">file_size</a></code> 函数返回一个 <code>uintmax_t</code>, 其中包含参数所命名文件的大小. 声明形如:</p>
+
+<blockquote>
+  <pre><code>uintmax_t file_size(const path&amp; p);</code> </pre>
+</blockquote>
+<p>眼下你只需要知道 <code>class path</code> 具有接受 <code>const char *</code> 及其他字符串类型的构造函数. (如果你迫不及待想了解更多, 可以跳到教程的<a href="#Class-path-Constructors">类 path</a>一节. )</p>
+<p>请花一分钟在你的系统上试用 <code>tut1</code>, 使用一个确定存在的文件, 例如 <code>tut1.cpp</code>. 下面是两个不同操作系统上结果的样子:</p>
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Ubuntu Linux</b></i></td>
+    </tr>
+    <tr>
+      <td valign="top">
+      <pre>$ ./tut1 tut1.cpp
+tut1.cpp 569</pre>
+      <pre>$ ls -l tut1.cpp
+-rw-rw-r-- 1 beman beman 569 Jul 26 12:04 tut1.cpp</pre>
+      </td>
+    </tr>
+  </table>
+
+  &nbsp;
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Microsoft Windows</b></i></td>
+    </tr>
+    <tr>
+
+      <td valign="top">
+      <pre>&gt;tut1 tut1.cpp
+tut1.cpp 592
+
+&gt;dir tut1.cpp
+...
+07/26/2015 07:20 AM 592 tut1.cpp
+...</pre>
+      </td>
+    </tr>
+  </table>
+
+<p>到目前为止一切顺利. 报告的 Linux 与 Windows 大小不同, 因为 Linux 测试使用 <code>&quot;\n&quot;</code> 行结束符, 而 Windows 测试使用 <code>&quot;\r\n&quot;</code> 行结束符. 如果 <code>tut1.cpp</code> 有过改动, 报告的大小可能与上面不同.</p>
+  <p>现在再试一次, 但给出一个不存在的路径:</p>
+
+  <table border="1" cellpadding="5" cellspacing="0"
+    style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Ubuntu Linux</b></i></td>
+    </tr>
+    <tr>
+      <td valign="top">
+      <pre>$ ./tut1 foo
+terminate called after throwing an instance of &#39;boost::filesystem::filesystem_error&#39;
+what(): boost::filesystem::file_size: No such file or directory: &quot;foo&quot;
+Aborted (core dumped)</pre>
+      </td>
+    </tr>
+  </table>
+
+&nbsp;
+
+  <table border="1" cellpadding="5" cellspacing="0"
+    style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Microsoft Windows</b></i></td>
+    </tr>
+    <tr>
+      <td valign="top">
+      <pre>&gt;tut1 foo</pre>
+      <p><b><i>抛出了异常; <br> 响应的确切形式取决于 Windows 系统选项. </i></b></td>
+    </tr>
+  </table>
+
+  <p>发生了什么? 当前目录中没有名为 <code>foo</code> 的文件, 因此默认抛出异常. 参见<a href="#Error-reporting">错误报告</a>以了解通过错误码而不是异常进行错误报告的方式.</p>
+  <p>试试这个:</p>
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Ubuntu Linux</b></i></td>
+    </tr>
+    <tr>
+      <td>
+      <pre>$ ./tut1 .
+terminate called after throwing an instance of &#39;boost::filesystem::filesystem_error&#39;
+what(): boost::filesystem::file_size: Operation not permitted: &quot;.&quot;
+Aborted (core dumped)</pre>
+      </td>
+    </tr>
+  </table>
+
+  &nbsp;
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Microsoft Windows</b></i></td>
+    </tr>
+    <tr>
+      <td valign="top">
+      <pre>&gt;tut1 .</pre>
+      <p><b><i>抛出了异常; <br> 响应的确切形式取决于 Windows 系统选项. </i></b></td>
+    </tr>
+  </table>
+
+  <p>当前目录存在, 但 <code>file_size()</code> 作用于普通文件而不是目录, 因此再次抛出异常.</p>
+
+  <p>我们将在 <code>tut2.cpp</code> 中处理这些情形.</p>
+
+<h2><a name="Using-status-queries">使用状态查询确定文件存在性与类型</a> - (<a href="../example/tut2.cpp">tut2.cpp</a>)</h2>
+
+<p>Boost.Filesystem 包含诸如 <code>
+<a href="reference.html#exists-path">exists</a></code>、<code><a href="reference.html#is_directory-path">is_directory</a></code> 和 <code>
+<a href="reference.html#is_regular_file-path">is_regular_file</a></code> 的状态查询函数. 它们返回 <code>bool</code>, 如果其名称所描述的条件满足则返回 <code>true</code>. 否则返回 <code>false</code>, 包括当路径参数的任何元素找不到时.</p>
+
+<p><a href="../example/tut2.cpp">tut2.cpp</a> 使用多个状态查询函数来应对不存在的文件与不同种类的文件:</p>
+
+<table border="1" cellpadding="3" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+  <tr>
+    <td>
+      <pre><!-- include file "../example/tut2.cpp" -->#include &lt;iostream&gt;
+#include &lt;boost/filesystem.hpp&gt;
+using namespace std;
+using namespace boost::filesystem;
+
+int main(int argc, char* argv[])
+{
+  if (argc &lt; 2)
+  {
+    cout &lt;&lt; &quot;Usage: tut2 path\n&quot;;
+    return 1;
+  }
+
+  path p(argv[1]);  // avoid repeated path construction below
+
+  if (exists(p))    // does path p actually exist?
+  {
+    if (is_regular_file(p))        // is path p a regular file?
+      cout &lt;&lt; p &lt;&lt; &quot; size is &quot; &lt;&lt; file_size(p) &lt;&lt; '\n';
+
+    else if (is_directory(p))      // is path p a directory?
+      cout &lt;&lt; p &lt;&lt; &quot; is a directory\n&quot;;
+
+    else
+      cout &lt;&lt; p &lt;&lt; &quot; exists, but is not a regular file or directory\n&quot;;
+  }
+  else
+    cout &lt;&lt; p &lt;&lt; &quot; does not exist\n&quot;;
+
+  return 0;
+}<!-- end include file --></pre>
+    </td>
+  </tr>
+</table>
+
+<p>试一试:</p>
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Ubuntu Linux</b></i></td>
+    </tr>
+    <tr>
+      <td valign="top">
+      <pre>$ ./tut2 tut2.cpp
+&quot;tut2.cpp&quot; size is 997
+
+$ ./tut2 foo
+&quot;foo&quot; does not exist
+
+$ ./tut2 .
+&quot;.&quot; is a directory</pre>
+      </td>
+    </tr>
+  </table>
+
+&nbsp;
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Microsoft Windows</b></i></td>
+    </tr>
+    <tr>
+       <td valign="top">
+      <pre>&gt;tut2 tut2.cpp
+tut2.cpp size is 1039
+
+&gt;tut2 foo
+&quot;foo&quot; does not exist
+
+&gt;tut2 .
+&quot;.&quot; is a directory</pre>
+      </td>
+    </tr>
+  </table>
+
+<p>虽然 tut2 在这些测试中工作正常, 但对目录而言输出并不令人满意. 我们通常希望看到目录内容的列表. 在 <code>tut3.cpp</code> 中我们将看到如何迭代目录.</p>
+
+<p>但首先, 让我们再做一个测试:</p>
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Ubuntu Linux</b></i></td>
+    </tr>
+    <tr>
+      <td valign="top">
+      <pre>$ ls /home/jane/foo
+ls: cannot access /home/jane/foo: No such file or directory
+
+$ ./tut2 /home/jane/foo
+terminate called after throwing an instance of 'boost::
+filesystem::filesystem_error&gt;'
+   what(): boost::filesystem::status: Permission denied:
+     &quot;/home/jane/foo&quot;
+Aborted</pre>
+      </td>
+     </tr>
+  </table>
+
+  &nbsp;
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Microsoft Windows</b></i></td>
+    </tr>
+    <tr>
+      <td valign="top">
+      <pre>&gt;dir e:\
+The device is not ready.
+
+&gt;tut2 e:\</pre>
+      <p dir="ltr"><b><i>抛出了异常; <br> 响应的确切形式取决于 Windows 系统选项. </i></b></td>
+    </tr>
+  </table>
+
+<p>在 Linux 系统上, 测试是从一个没有权限访问 <code>/home/jane/foo</code> 的账户运行的. 在 Windows 系统上, <code>
+e:</code> 是一个尚未就绪的光盘读取/写入器. 最终用户不应被迫去解读晦涩的异常报告, 因此在进入 <code>tut3.cpp</code> 时, 我们也会提高代码的健壮性.</p>
+
+<h2><a name="Directory-iteration">目录迭代</a>加捕获异常 - (<a href="../example/tut3.cpp">tut3.cpp</a>)</h2>
+
+<p>Boost.Filesystem 的 <code><a href="reference.html#directory_iterator">
+directory_iterator</a></code> 类正是我们这里需要的. 它遵循标准库 <code>istream_iterator</code> 的一般模式. 从路径构造后, 它对目录内容进行迭代. 默认构造的 <code>directory_iterator</code> 充当尾迭代器.</p>
+
+<p> <code>directory_iterator</code> 的值类型是 <code>
+<a href="reference.html#directory_entry">directory_entry</a></code>. <code>
+directory_entry</code> 对象包含 <code>path</code> 与 <code><a href="reference.html#file_status">file_status</a></code> 信息. <code>directory_entry</code> 对象可以直接使用, 也可以传给函数调用中的 <code>path</code> 参数.</p>
+
+<p>另一个需要是在可能影响文件系统操作的多种错误面前提高健壮性. 我们可以在每次调用 Boost.Filesystem 函数的层面做到这一点 (参见<a href="#Error-reporting">错误报告</a>), 但为简单起见, <a href="../example/tut3.cpp">tut3.cpp</a> 使用一个整体的 try/catch 块.</p>
+
+<table border="1" cellpadding="3" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+  <tr>
+    <td>
+      <pre><!-- include file "../example/tut3.cpp" -->#include &lt;iostream&gt;
+#include &lt;boost/filesystem.hpp&gt;
+using std::cout;
+using namespace boost::filesystem;
+
+int main(int argc, char* argv[])
+{
+  if (argc &lt; 2)
+  {
+    cout &lt;&lt; &quot;Usage: tut3 path\n&quot;;
+    return 1;
+  }
+
+  path p (argv[1]);
+
+  try
+  {
+    if (exists(p))
+    {
+      if (is_regular_file(p))
+        cout &lt;&lt; p &lt;&lt; &quot; size is &quot; &lt;&lt; file_size(p) &lt;&lt; '\n';
+
+      else if (is_directory(p))
+      {
+        cout &lt;&lt; p &lt;&lt; &quot; is a directory containing:\n&quot;;
+
+        for (directory_entry&amp; x : directory_iterator(p))
+          cout &lt;&lt; &quot;    &quot; &lt;&lt; x.path() &lt;&lt; '\n';
+      }
+      else
+        cout &lt;&lt; p &lt;&lt; &quot; exists, but is not a regular file or directory\n&quot;;
+    }
+    else
+      cout &lt;&lt; p &lt;&lt; &quot; does not exist\n&quot;;
+  }
+
+  catch (const filesystem_error&amp; ex)
+  {
+    cout &lt;&lt; ex.what() &lt;&lt; '\n';
+  }
+
+  return 0;
+}<!-- end include file --></pre>
+    </td>
+  </tr>
+</table>
+
+<p>试一下 <code>tut3</code>, 把一个目录路径作为命令行参数传给它. 下面是在 Boost Git develop 分支的一次 checkout 上的一次运行, 随后重复了在 Linux 和 Windows 上引发异常的测试用例:</p>
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Ubuntu Linux</b></i></td>
+    </tr>
+    <tr>
+      <td valign="top">
+      <pre>$ ./tut3 ~/boost/develop
+    &quot;/home/beman/boost/develop&quot; is a directory containing:
+    &quot;/home/beman/boost/develop/rst.css&quot;
+    &quot;/home/beman/boost/develop/boost&quot;
+    &quot;/home/beman/boost/develop/boost.png&quot;
+    &quot;/home/beman/boost/develop/libs&quot;
+    &quot;/home/beman/boost/develop/doc&quot;
+    &quot;/home/beman/boost/develop/project-config.jam.2&quot;
+    &quot;/home/beman/boost/develop/.gitmodules&quot;
+    &quot;/home/beman/boost/develop/boostcpp.py&quot;
+    &quot;/home/beman/boost/develop/.travis.yml&quot;
+    &quot;/home/beman/boost/develop/.gitattributes&quot;
+    &quot;/home/beman/boost/develop/index.htm&quot;
+    &quot;/home/beman/boost/develop/index.html&quot;
+    &quot;/home/beman/boost/develop/bjam&quot;
+    &quot;/home/beman/boost/develop/project-config.jam.1&quot;
+    &quot;/home/beman/boost/develop/LICENSE_1_0.txt&quot;
+    &quot;/home/beman/boost/develop/.git&quot;
+    &quot;/home/beman/boost/develop/tools&quot;
+    &quot;/home/beman/boost/develop/stage&quot;
+    &quot;/home/beman/boost/develop/boostcpp.jam&quot;
+    &quot;/home/beman/boost/develop/Jamroot&quot;
+    &quot;/home/beman/boost/develop/.gitignore&quot;
+    &quot;/home/beman/boost/develop/INSTALL&quot;
+    &quot;/home/beman/boost/develop/more&quot;
+    &quot;/home/beman/boost/develop/bin.v2&quot;
+    &quot;/home/beman/boost/develop/project-config.jam&quot;
+    &quot;/home/beman/boost/develop/boost-build.jam&quot;
+    &quot;/home/beman/boost/develop/bootstrap.bat&quot;
+    &quot;/home/beman/boost/develop/bootstrap.sh&quot;
+    &quot;/home/beman/boost/develop/status&quot;
+    &quot;/home/beman/boost/develop/boost.css&quot;</pre>
+    </td>
+     </tr>
+  </table>
+
+  &nbsp;
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+       <td align="center"><i><b>Microsoft Windows</b></i></td>
+    </tr>
+    <tr>
+
+      <td valign="top">
+      <pre>&gt;tut3 \boost\develop
+"\boost\develop" is a directory containing:
+    "\boost\develop\.git"
+    "\boost\develop\.gitattributes"
+    "\boost\develop\.gitignore"
+    "\boost\develop\.gitmodules"
+    "\boost\develop\.travis.yml"
+    "\boost\develop\bin.v2"
+    "\boost\develop\boost"
+    "\boost\develop\boost-build.jam"
+    "\boost\develop\boost.css"
+    "\boost\develop\boost.png"
+    "\boost\develop\boostcpp.jam"
+    "\boost\develop\boostcpp.py"
+    "\boost\develop\bootstrap.bat"
+    "\boost\develop\bootstrap.sh"
+    "\boost\develop\doc"
+    "\boost\develop\index.htm"
+    "\boost\develop\index.html"
+    "\boost\develop\INSTALL"
+    "\boost\develop\Jamroot"
+    "\boost\develop\libs"
+    "\boost\develop\LICENSE_1_0.txt"
+    "\boost\develop\more"
+    "\boost\develop\project-config.jam"
+    "\boost\develop\rst.css"
+    "\boost\develop\stage"
+    "\boost\develop\status"
+    "\boost\develop\tools"</pre>
+      <pre>&gt;tut3 e:\
+boost::filesystem::status: The device is not ready: &quot;e:\&quot;</pre>
+      </td>
+    </tr>
+  </table>
+
+<p>不错, 但我们可以作进一步改进:</p>
+
+    <ul>
+      <li>如果只显示文件名而不是完整路径, 列表会更容易阅读. <br> </li>
+      <li>Linux 列表没有排序. 这是因为目录迭代的次序未作规定. 次序取决于底层操作系统 API 与文件系统的具体情况. 所以我们需要自己排序结果.</li>
+    </ul>
+
+<p>接下来的几节展示这些改动如何落实, 请继续阅读!</p>
+
+<h2><a name="Using-path-decomposition">使用 path 分解, 加排序结果</a> - (<a href="../example/tut4.cpp">tut4.cpp</a>)</h2>
+
+<p>对目录, <a href="../example/tut4.cpp">tut4.cpp</a> 先构建一个包含所有条目的 <code>
+std::vector</code>, 排序后再写入 <code>
+cout</code>.</p>
+
+<table border="1" cellpadding="3" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+  <tr>
+    <td>
+    <pre><!-- include file "../example/tut4.cpp" -->#include &lt;iostream&gt;
+#include &lt;vector&gt;
+#include &lt;algorithm&gt;
+#include &lt;boost/filesystem.hpp&gt;
+using std::cout;
+using namespace boost::filesystem;
+
+int main(int argc, char* argv[])
+{
+  if (argc &lt; 2)
+  {
+    cout &lt;&lt; &quot;Usage: tut4 path\n&quot;;
+    return 1;
+  }
+
+  path p (argv[1]);
+
+  try
+  {
+    if (exists(p))
+    {
+      if (is_regular_file(p))
+        cout &lt;&lt; p &lt;&lt; &quot; size is &quot; &lt;&lt; file_size(p) &lt;&lt; '\n';
+
+      else if (is_directory(p))
+      {
+        cout &lt;&lt; p &lt;&lt; &quot; is a directory containing:\n&quot;;
+
+        std::vector&lt;path&gt; v;
+
+        for (auto&amp;&amp; x : directory_iterator(p))
+          v.push_back(x.path());
+
+        std::sort(v.begin(), v.end());
+
+        for (auto&amp;&amp; x : v)
+          cout &lt;&lt; &quot;    &quot; &lt;&lt; x.filename() &lt;&lt; '\n';
+      }
+      else
+        cout &lt;&lt; p &lt;&lt; &quot; exists, but is not a regular file or directory\n&quot;;
+    }
+    else
+      cout &lt;&lt; p &lt;&lt; &quot; does not exist\n&quot;;
+  }
+
+  catch (const filesystem_error&amp; ex)
+  {
+    cout &lt;&lt; ex.what() &lt;&lt; '\n';
+  }
+
+  return 0;
+}<!-- end include file --></pre>
+    </td>
+  </tr>
+</table>
+
+    <p> <code>tut3.cpp</code> 与 <code>tut4.cpp</code> 之间的唯一差别是对目录的处理方式. 我们把:</p>
+    <blockquote>
+      <pre>for (const directory_entry&amp; x : directory_iterator(p))
+  cout &lt;&lt; &quot; &quot; &lt;&lt; x.path() &lt;&lt; &#39;\n&#39;;</pre>
+    </blockquote>
+    <p>改为:</p>
+    <blockquote>
+      <pre>std::vector&lt;path&gt; v;
+
+for (auto&amp;&amp; x : directory_iterator(p))
+  v.push_back(x.path());
+
+std::sort(v.begin(), v.end());
+
+for (auto&amp;&amp; x : v)
+  cout &lt;&lt; &quot; &quot; &lt;&lt; x.filename() &lt;&lt; &#39;\n&#39;;
+</pre>
+    </blockquote>
+    <p> <code>
+    <a href="reference.html#path-filename">filename()</a></code> 是类 <code>path</code> 若干分解函数之一. 它从路径中提取文件名部分 (即 <code>&quot;index.html&quot;</code> 取自 <code>&quot;/home/beman/boost/trunk/index.html&quot;</code>). 这些分解函数在本教程的<a href="#Class path-iterators-etc">Path iterators, observers, composition, decomposition and query</a>部分有更完整的探讨.</p>
+    <p>为了清晰, 上面的代码写成了两行. 其实可以写得更简洁:</p>
+    <blockquote>
+      <pre>v.push_back(it-&gt;path().filename()); // we only care about the filename</pre>
+    </blockquote>
+    <p>下面是对 <code><a href="../example/tut4.cpp">tut4.cpp</a></code> 进行测试的输出:</p>
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Ubuntu Linux</b></i></td>
+    </tr>
+    <tr>
+      <td>
+      <pre>$ ./tut4 ~/boost/develop
+"/home/beman/boost/develop" is a directory containing:
+    ".git"
+    ".gitattributes"
+    ".gitignore"
+    ".gitmodules"
+    ".travis.yml"
+    "INSTALL"
+    "Jamroot"
+    "LICENSE_1_0.txt"
+    "bin.v2"
+    "boost"
+    "boost-build.jam"
+    "boost.css"
+    "boost.png"
+    "boostcpp.jam"
+    "boostcpp.py"
+    "bootstrap.bat"
+    "bootstrap.sh"
+    "doc"
+    "index.htm"
+    "index.html"
+    "libs"
+    "more"
+    "project-config.jam"
+    "project-config.jam.1"
+    "project-config.jam.2"
+    "rst.css"
+    "stage"
+    "status"
+    "tools"</pre>
+      </td>
+    </tr>
+  </table>
+
+&nbsp;
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Microsoft Windows</b></i></td>
+    </tr>
+    <tr>
+      <td>
+      <pre>&gt;tut4 \boost\develop
+"\boost\develop" is a directory containing:
+    ".git"
+    ".gitattributes"
+    ".gitignore"
+    ".gitmodules"
+    ".travis.yml"
+    "INSTALL"
+    "Jamroot"
+    "LICENSE_1_0.txt"
+    "bin.v2"
+    "boost"
+    "boost-build.jam"
+    "boost.css"
+    "boost.png"
+    "boostcpp.jam"
+    "boostcpp.py"
+    "bootstrap.bat"
+    "bootstrap.sh"
+    "doc"
+    "index.htm"
+    "index.html"
+    "libs"
+    "more"
+    "project-config.jam"
+    "project-config.jam.1"
+    "project-config.jam.2"
+    "rst.css"
+    "stage"
+    "status"
+    "tools"</pre>
+      </td>
+    </tr>
+  </table>
+
+    <p>教程主体到此结束. 如果你还没有学完本教程的<a href="#Class-path-Constructors">类 path</a>各节, 现在就去钻研它们. <a href="#Error-reporting">错误报告</a>一节也可能让你感兴趣, 不过除非你深切关注错误处理问题, 也可以跳过.</p>
+
+<h2><a name="Class-path-Constructors">类 path: 构造函数</a>, 包括 Unicode - (<a href="../example/tut5.cpp">tut5.cpp</a>)</h2>
+
+<p>传统 C 接口以 <code>const char*</code> 参数传递路径. C++ 接口可以添加 <code>const std::string&amp;</code> 重载, 但如果需要支持宽字符、容器与迭代器范围, 添加重载就难以为继了.</p>
+<p>以 <code>const path&amp;</code> 参数传递路径要简单得多, 然而又灵活得多, 因为类 <code>path</code> 本身要灵活得多:</p>
+<ol>
+  <li>类 <code>path</code> 支持多种字符类型与编码, 包括 Unicode, 以便于国际化.</li>
+  <li>类 <code>path</code> 支持多种源类型, 例如用于以空字符结尾序列的迭代器、迭代器范围、字符串类类型 (包括 <code>std::basic_string</code> 和 <code>std::basic_string_view</code>) 以及 <code><a href="reference.html#Class-directory_entry">directory_entry</a></code>, 因此接受路径的函数无需提供多个重载.</li>
+  <li>类 <code>path</code> 同时支持原生与通用路径名格式, 因此程序可以在操作系统之间可移植, 同时在需要时使用原生格式.</li>
+  <li>类 <code>path</code> 提供整套迭代器、观察器、组合、分解与查询函数, 使路径名操作简单、方便、可靠且可移植.</li>
+</ol>
+<p>下面说明 (1) 与 (2) 是如何工作的. 类 path 的构造函数、赋值与追加都有针对源类型的成员模板. 例如, 下面是接受源的构造函数:</p>
+
+<blockquote>
+  <pre>template &lt;class <a href="reference.html#Source">Source</a>&gt;
+  path(Source const&amp; source);</pre>
+  <pre>template &lt;class InputIterator&gt;
+  path(InputIterator begin, InputIterator end);</pre>
+</blockquote>
+<p>让我们看一个小程序, 它展示类 <code>path</code> 对 C 风格字符串、C++ 字符串以及通过 C++ 迭代器中的窄字符与宽字符都处理得多么自如:</p>
+
+<table border="1" cellpadding="3" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+  <tr>
+    <td>
+      <pre><!-- include file "../example/tut5.cpp" -->#include &lt;boost/filesystem/fstream.hpp&gt;
+#include &lt;string&gt;
+#include &lt;list&gt;
+namespace fs = boost::filesystem;
+
+int main()
+{
+  // \u263A is &quot;Unicode WHITE SMILING FACE = have a nice day!&quot;
+  std::string narrow_string (&quot;smile2&quot;);
+  std::wstring wide_string (L&quot;smile2\u263A&quot;);
+  std::list&lt;char&gt; narrow_list;
+  narrow_list.push_back('s');
+  narrow_list.push_back('m');
+  narrow_list.push_back('i');
+  narrow_list.push_back('l');
+  narrow_list.push_back('e');
+  narrow_list.push_back('3');
+  std::list&lt;wchar_t&gt; wide_list;
+  wide_list.push_back(L's');
+  wide_list.push_back(L'm');
+  wide_list.push_back(L'i');
+  wide_list.push_back(L'l');
+  wide_list.push_back(L'e');
+  wide_list.push_back(L'3');
+  wide_list.push_back(L'\u263A');
+
+  { fs::ofstream f(&quot;smile&quot;); }
+  { fs::ofstream f(L&quot;smile\u263A&quot;); }
+  { fs::ofstream f(narrow_string); }
+  { fs::ofstream f(wide_string); }
+  { fs::ofstream f(fs::path(narrow_list.begin(), narrow_list.end())); }
+  { fs::ofstream f(fs::path(wide_list.begin(), wide_list.end())); }
+  narrow_list.pop_back();
+  narrow_list.push_back('4');
+  wide_list.pop_back();
+  wide_list.pop_back();
+  wide_list.push_back(L'4');
+  wide_list.push_back(L'\u263A');
+  { fs::ofstream f(fs::path(narrow_list.begin(), narrow_list.end())); }
+  { fs::ofstream f(fs::path(wide_list.begin(), wide_list.end())); }
+
+  return 0;
+}<!-- end include file --></pre>
+    </td>
+  </tr>
+</table>
+
+<p>测试 <code>tut5</code>:</p>
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Ubuntu Linux</b></i></td>
+    </tr>
+    <tr>
+      <td valign="top">
+      <pre>$ ./tut5
+
+$ ls smile*
+smile smile&#9786; smile2 smile2&#9786; smile3 smile3&#9786; smile4 smile4&#9786;</pre>
+      </td>
+    </tr>
+  </table>
+
+&nbsp;
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Microsoft Windows</b></i></td>
+    </tr>
+    <tr>
+      <td valign="top">
+      <pre>&gt;tut5
+
+&gt;dir /b smile*
+smile
+smile2
+smile2&#9786;
+smile3
+smile3&#9786;
+smile4
+smile4&#9786;
+smile&#9786;</pre>
+      </td>
+    </tr>
+  </table>
+
+<p>笑脸的确切外观取决于命令行窗口的字体、字号和其他设置. 以上测试在开箱即用的 Ubuntu 14.04 与美版 Windows 7 上运行. 如果你没有得到上述结果, 请用系统的 GUI 文件浏览器 (如 Linux Nautilus、Mac OS X Finder 或 Windows 资源管理器) 查看 <code><i><b>boost-root</b></i>/libs/filesystem/example</code> 目录. 比起命令行解释器, 它们对国际字符集的处理通常更自如.</p>
+
+  <p>类 <code>path</code> 会处理特定操作系统所需的任何字符类型或编码转换. 因此正如 <code>
+  tut5</code> 所展示的, 即使底层操作系统使用窄字符, 把宽字符串传给 Boost.Filesystem 操作函数也不成问题, 反之亦然. 对接受 <code>const path&amp;</code> 参数的用户自备函数同样如此.</p>
+
+  <p>类 <code>path</code> 还提供跨操作系统可移植的路径语法、元素迭代器, 以及用于操作路径元素的观察器、组合、分解与查询函数. 本教程下一节讨论路径语法.</p>
+
+<h2><a name="Class-path-formats">类 path: 通用格式与原生格式</a></h2>
+
+<p>类 <code>path</code> 处理两种不同的路径名格式——通用格式与原生格式. 对类 POSIX 文件系统, 这两种格式是相同的. 但对 Windows 及其他非 POSIX 文件系统的用户, 这一区分很重要. 即使是面向类 POSIX 系统编写的程序员, 如果希望其代码可移植到非 POSIX 系统, 也需要理解这一区分.</p>
+
+<p> <b>通用格式</b>是类 POSIX 操作系统 (如 Unix 变体、Linux 和 Mac OS X) 使用的熟悉的 <code>/my_directory/my_file.txt</code> 格式. Windows 也识别通用格式, 它是人们熟悉的 Internet URL 格式的基础. 目录分隔符总是一个或多个斜杠字符.</p>
+
+<p> <b>原生格式</b>是特定操作系统定义的格式. 对 Windows, 斜杠或反斜杠都可用作目录分隔符, 因此 <code>/my_directory\my_file.txt</code> 也能正常工作. 当然, 如果在 C++ 字符串字面量中这样写, 它就变成 <code>&quot;/my_directory\\my_file.txt&quot;</code>.</p>
+
+<p>如果 Windows 系统的路径名中出现驱动器指示符或反斜杠, 它总是被当作原生格式.</p>
+
+<p>类 <code>path</code> 具有观察器函数, 让你能以原生格式或通用格式获得 path 对象的字符串表示. 具体如何, 参见<a href="#Class path-iterators-etc">下一节</a>.</p>
+
+  <p>与原生 C 风格 API 以及与用户交流时, 通用格式与原生格式的区分很重要. 两者都倾向于期望原生格式的路径, 可能会被通用格式弄糊涂. 不过, 对于编写不依赖操作系统的可移植程序, 通用格式非常好用.</p>
+
+  <p>下一节介绍类 <code>path</code> 的观察器、组合、分解、查询以及路径元素的迭代.</p>
+
+<h2><a name="Class path-iterators-etc">类 path: 迭代器、观察器、组合、分解与查询</a> - (<a href="../example/path_info.cpp">path_info.cpp</a>)</h2>
+
+<p> <code><a href="../example/path_info.cpp">path_info.cpp</a></code> 程序对了解类 <code>path</code> 的迭代器、观察器、组合、分解与查询函数在你的系统上如何工作很方便.</p>
+
+
+<table border="1" cellpadding="3" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+  <tr>
+    <td>
+      <pre><!-- include file "../example/path_info.cpp" -->#include &lt;iostream&gt;
+#include &lt;boost/filesystem.hpp&gt;
+using namespace std;
+using namespace boost::filesystem;
+
+const char * say_what(bool b) { return b ? &quot;true&quot; : &quot;false&quot;; }
+
+int main(int argc, char* argv[])
+{
+  if (argc &lt; 2)
+  {
+    cout &lt;&lt; &quot;Usage: path_info path-element [path-element...]\n&quot;
+            &quot;Composes a path via operator/= from one or more path-element arguments\n&quot;
+            &quot;Example: path_info foo/bar baz\n&quot;
+#            ifdef BOOST_FILESYSTEM_POSIX_API
+            &quot;         would report info about the composed path foo/bar/baz\n&quot;;
+#            else  // BOOST_FILESYSTEM_WINDOWS_API
+            &quot;         would report info about the composed path foo/bar\\baz\n&quot;;
+#            endif
+    return 1;
+  }
+
+  path p;
+  for (; argc &gt; 1; --argc, ++argv)
+    p /= argv[1];  // compose path p from the command line arguments
+
+  cout  &lt;&lt;  &quot;\ncomposed path:\n&quot;;
+  cout  &lt;&lt;  &quot;  operator&lt;&lt;()---------: &quot; &lt;&lt; p &lt;&lt; &quot;\n&quot;;
+  cout  &lt;&lt;  &quot;  make_preferred()-----: &quot; &lt;&lt; p.make_preferred() &lt;&lt; &quot;\n&quot;;
+
+  cout &lt;&lt; &quot;\nelements:\n&quot;;
+  for (auto element : p)
+    cout &lt;&lt; &quot;  &quot; &lt;&lt; element &lt;&lt; '\n';
+
+  cout  &lt;&lt;  &quot;\nobservers, native format:&quot; &lt;&lt; endl;
+# ifdef BOOST_FILESYSTEM_POSIX_API
+  cout  &lt;&lt;  &quot;  native()-------------: &quot; &lt;&lt; p.native() &lt;&lt; endl;
+  cout  &lt;&lt;  &quot;  c_str()--------------: &quot; &lt;&lt; p.c_str() &lt;&lt; endl;
+# else  // BOOST_FILESYSTEM_WINDOWS_API
+  wcout &lt;&lt; L&quot;  native()-------------: &quot; &lt;&lt; p.native() &lt;&lt; endl;
+  wcout &lt;&lt; L&quot;  c_str()--------------: &quot; &lt;&lt; p.c_str() &lt;&lt; endl;
+# endif
+  cout  &lt;&lt;  &quot;  string()-------------: &quot; &lt;&lt; p.string() &lt;&lt; endl;
+  wcout &lt;&lt; L&quot;  wstring()------------: &quot; &lt;&lt; p.wstring() &lt;&lt; endl;
+
+  cout  &lt;&lt;  &quot;\nobservers, generic format:\n&quot;;
+  cout  &lt;&lt;  &quot;  generic_string()-----: &quot; &lt;&lt; p.generic_string() &lt;&lt; endl;
+  wcout &lt;&lt; L&quot;  generic_wstring()----: &quot; &lt;&lt; p.generic_wstring() &lt;&lt; endl;
+
+  cout  &lt;&lt;  &quot;\ndecomposition:\n&quot;;
+  cout  &lt;&lt;  &quot;  root_name()----------: &quot; &lt;&lt; p.root_name() &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  root_directory()-----: &quot; &lt;&lt; p.root_directory() &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  root_path()----------: &quot; &lt;&lt; p.root_path() &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  relative_path()------: &quot; &lt;&lt; p.relative_path() &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  parent_path()--------: &quot; &lt;&lt; p.parent_path() &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  filename()-----------: &quot; &lt;&lt; p.filename() &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  stem()---------------: &quot; &lt;&lt; p.stem() &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  extension()----------: &quot; &lt;&lt; p.extension() &lt;&lt; '\n';
+
+  cout  &lt;&lt;  &quot;\nquery:\n&quot;;
+  cout  &lt;&lt;  &quot;  empty()--------------: &quot; &lt;&lt; say_what(p.empty()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  is_absolute()--------: &quot; &lt;&lt; say_what(p.is_absolute()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  has_root_name()------: &quot; &lt;&lt; say_what(p.has_root_name()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  has_root_directory()-: &quot; &lt;&lt; say_what(p.has_root_directory()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  has_root_path()------: &quot; &lt;&lt; say_what(p.has_root_path()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  has_relative_path()--: &quot; &lt;&lt; say_what(p.has_relative_path()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  has_parent_path()----: &quot; &lt;&lt; say_what(p.has_parent_path()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  has_filename()-------: &quot; &lt;&lt; say_what(p.has_filename()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  has_stem()-----------: &quot; &lt;&lt; say_what(p.has_stem()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  has_extension()------: &quot; &lt;&lt; say_what(p.has_extension()) &lt;&lt; '\n';
+
+  return 0;
+}<!-- end include file --></pre>
+    </td>
+  </tr>
+</table>
+
+
+<p>在你的系统上运行下面的示例, 并在我们推进的过程中尝试一些不同的路径参数. 下面是我们将详细讨论的调用:</p>
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Ubuntu Linux</b></i></td>
+    </tr>
+    <tr>
+      <td>
+      <pre>$ ./path_info /foo bar baa.txt
+
+composed path:
+  operator&lt;&lt;()---------: "/foo/bar/baa.txt"
+  make_preferred()-----: "/foo/bar/baa.txt"
+
+elements:
+  "/"
+  "foo"
+  "bar"
+  "baa.txt"
+
+observers, native format:
+  native()-------------: /foo/bar/baa.txt
+  c_str()--------------: /foo/bar/baa.txt
+  string()-------------: /foo/bar/baa.txt
+  wstring()------------: /foo/bar/baa.txt
+
+observers, generic format:
+  generic_string()-----: /foo/bar/baa.txt
+  generic_wstring()----: /foo/bar/baa.txt
+
+decomposition:
+  root_name()----------: ""
+  root_directory()-----: "/"
+  root_path()----------: "/"
+  relative_path()------: "foo/bar/baa.txt"
+  parent_path()--------: "/foo/bar"
+  filename()-----------: "baa.txt"
+  stem()---------------: "baa"
+  extension()----------: ".txt"
+
+query:
+  empty()--------------: false
+  is_absolute()--------: true
+  has_root_name()------: false
+  has_root_directory()-: true
+  has_root_path()------: true
+  has_relative_path()--: true
+  has_parent_path()----: true
+  has_filename()-------: true
+  has_stem()-----------: true
+  has_extension()------: true</pre>
+      </td>
+    </tr>
+  </table>
+
+  &nbsp;
+
+  <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+    <tr>
+      <td align="center"><i><b>Microsoft Windows</b></i></td>
+    </tr>
+    <tr>
+    <td>
+      <pre>&gt;path_info \foo bar baa.txt
+
+composed path:
+operator&lt;&lt;()---------: &quot;\foo\bar\baa.txt&quot;
+make_preferred()-----: &quot;\foo\bar\baa.txt&quot;
+
+elements:
+  &quot;/&quot;
+  &quot;foo&quot;
+  &quot;bar&quot;
+  &quot;baa.txt&quot;
+
+observers, native format:
+native()-------------: \foo\bar\baa.txt
+c_str()--------------: \foo\bar\baa.txt
+string()-------------: \foo\bar\baa.txt
+wstring()------------: \foo\bar\baa.txt
+
+observers, generic format:
+generic_string()-----: /foo/bar/baa.txt
+generic_wstring()----: /foo/bar/baa.txt
+
+decomposition:
+root_name()----------: &quot;&quot;
+root_directory()-----: &quot;\&quot;
+root_path()----------: &quot;\&quot;
+relative_path()------: &quot;foo\bar\baa.txt&quot;
+parent_path()--------: &quot;\foo\bar&quot;
+filename()-----------: &quot;baa.txt&quot;
+stem()---------------: &quot;baa&quot;
+extension()----------: &quot;.txt&quot;
+
+query:
+empty()--------------: false
+is_absolute()--------: false
+has_root_name()------: false
+has_root_directory()-: true
+has_root_path()------: true
+has_relative_path()--: true
+has_parent_path()----: true
+has_filename()-------: true
+has_stem()-----------: true
+has_extension()------: true</pre>
+      </td>
+    </tr>
+  </table>
+
+<p>我们将详细过一遍上面的代码, 以更好地理解正在发生什么.</p>
+
+<p>一个常见需求是从路径的组成目录构建路径. 类 <code>path</code> 使用 <code>/</code> 与 <code>/=</code> 运算符来追加元素. 这提醒我们: 这些操作会在需要时追加操作系统的首选目录分隔符. 首选目录分隔符在类 POSIX 系统上是斜杠, 在类 Windows 系统上是反斜杠.</p>
+
+<p>这正是这段代码在显示结果 <code>
+path p</code> (使用 <code>class path</code> 流插入符) 之前所做的事情:</p>
+
+
+<table border="1" cellpadding="3" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+  <tr>
+    <td>
+      <pre><!-- include file "../example/path_info.cpp" -->  path p;
+  for (; argc &gt; 1; --argc, ++argv)
+    p /= argv[1];  // compose path p from the command line arguments
+
+  cout  &lt;&lt;  &quot;\ncomposed path:\n&quot;;
+  cout  &lt;&lt;  &quot;  operator&lt;&lt;()---------: &quot; &lt;&lt; p &lt;&lt; &quot;\n&quot;;
+  cout  &lt;&lt;  &quot;  make_preferred()-----: &quot; &lt;&lt; p.make_preferred() &lt;&lt; &quot;\n&quot;;</pre>
+    </td>
+  </tr>
+</table>
+
+
+<p>思考路径的一种抽象是把它看作元素的序列, 元素即目录名与文件名. 为支持这一抽象, 类 <code>path</code> 提供迭代器以及 <code>begin()</code> 和 <code>end()</code> 函数.</p>
+
+<p>下面是产生上述输出列表中元素列表的代码:</p>
+
+<table border="1" cellpadding="3" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+  <tr>
+    <td>
+    <pre>cout &lt;&lt; &quot;\nelements:\n&quot;;
+for (auto element : p)
+  cout &lt;&lt; &quot; &quot; &lt;&lt; element &lt;&lt; &#39;\n&#39;;</pre>
+    </td>
+  </tr>
+</table>
+
+<p>让我们看看类 path 的观察器函数:</p>
+
+
+<table border="1" cellpadding="3" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+  <tr>
+    <td>
+      <pre><!-- include file "../example/path_info.cpp" -->  cout  &lt;&lt;  &quot;\nobservers, native format:&quot; &lt;&lt; endl;
+# ifdef BOOST_FILESYSTEM_POSIX_API
+  cout  &lt;&lt;  &quot;  native()-------------: &quot; &lt;&lt; p.native() &lt;&lt; endl;
+  cout  &lt;&lt;  &quot;  c_str()--------------: &quot; &lt;&lt; p.c_str() &lt;&lt; endl;
+# else  // BOOST_FILESYSTEM_WINDOWS_API
+  wcout &lt;&lt; L&quot;  native()-------------: &quot; &lt;&lt; p.native() &lt;&lt; endl;
+  wcout &lt;&lt; L&quot;  c_str()--------------: &quot; &lt;&lt; p.c_str() &lt;&lt; endl;
+# endif
+  cout  &lt;&lt;  &quot;  string()-------------: &quot; &lt;&lt; p.string() &lt;&lt; endl;
+  wcout &lt;&lt; L&quot;  wstring()------------: &quot; &lt;&lt; p.wstring() &lt;&lt; endl;
+
+  cout  &lt;&lt;  &quot;\nobservers, generic format:\n&quot;;
+  cout  &lt;&lt;  &quot;  generic_string()-----: &quot; &lt;&lt; p.generic_string() &lt;&lt; endl;
+  wcout &lt;&lt; L&quot;  generic_wstring()----: &quot; &lt;&lt; p.generic_wstring() &lt;&lt; endl;</pre>
+    </td>
+  </tr>
+</table>
+
+
+<p>与操作系统或用户交互时应使用原生格式观察器; 那正是他们所期望的.</p>
+
+<p>当结果需要无论操作系统为何都保持可移植与一致时, 应使用通用格式观察器.</p>
+
+<p><code>path</code> 对象总是以原生格式保存路径名, 但除此之外不改源地保留其源内容. <a href="reference.html#preferred">preferred()</a> 函数会在原生格式有几种形式时转换为首选形式. 因此在 Windows 上, 它会把斜杠转换为反斜杠.</p>
+
+<p>接下来看分解函数:</p>
+
+
+<table border="1" cellpadding="3" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+  <tr>
+    <td>
+      <pre><!-- include file "../example/path_info.cpp" -->  cout  &lt;&lt;  &quot;\ndecomposition:\n&quot;;
+  cout  &lt;&lt;  &quot;  root_name()----------: &quot; &lt;&lt; p.root_name() &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  root_directory()-----: &quot; &lt;&lt; p.root_directory() &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  root_path()----------: &quot; &lt;&lt; p.root_path() &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  relative_path()------: &quot; &lt;&lt; p.relative_path() &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  parent_path()--------: &quot; &lt;&lt; p.parent_path() &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  filename()-----------: &quot; &lt;&lt; p.filename() &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  stem()---------------: &quot; &lt;&lt; p.stem() &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  extension()----------: &quot; &lt;&lt; p.extension() &lt;&lt; '\n';</pre>
+    </td>
+  </tr>
+</table>
+
+
+<p>最后是查询函数:</p>
+
+
+<table border="1" cellpadding="3" cellspacing="0" style="border-collapse: collapse" bordercolor="#111111" bgcolor="#D7EEFF">
+  <tr>
+    <td>
+      <pre><!-- include file "../example/path_info.cpp" -->  cout  &lt;&lt;  &quot;\nquery:\n&quot;;
+  cout  &lt;&lt;  &quot;  empty()--------------: &quot; &lt;&lt; say_what(p.empty()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  is_absolute()--------: &quot; &lt;&lt; say_what(p.is_absolute()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  has_root_name()------: &quot; &lt;&lt; say_what(p.has_root_name()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  has_root_directory()-: &quot; &lt;&lt; say_what(p.has_root_directory()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  has_root_path()------: &quot; &lt;&lt; say_what(p.has_root_path()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  has_relative_path()--: &quot; &lt;&lt; say_what(p.has_relative_path()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  has_parent_path()----: &quot; &lt;&lt; say_what(p.has_parent_path()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  has_filename()-------: &quot; &lt;&lt; say_what(p.has_filename()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  has_stem()-----------: &quot; &lt;&lt; say_what(p.has_stem()) &lt;&lt; '\n';
+  cout  &lt;&lt;  &quot;  has_extension()------: &quot; &lt;&lt; say_what(p.has_extension()) &lt;&lt; '\n';</pre>
+    </td>
+  </tr>
+</table>
+
+
+<p>这些相当不言自明, 但请注意 <code>is_absolute()</code> 的结果在 Linux 与 Windows 之间的差别. 因为没有根名称 (即驱动器指示符或网络名), 单独的斜杠 (或反斜杠) 在 Windows 上是相对路径, 而在类 POSIX 操作系统上是绝对路径.</p>
+
+  <h2><a name="Error-reporting">错误报告</a></h2>
+
+  <p>Boost.Filesystem 的 <code>file_size</code> 函数与许多操作函数一样, 有两个重载:</p>
+
+  <blockquote>
+  <pre>uintmax_t <a name="file_size">file_size</a>(const path&amp; p);
+uintmax_t <a name="file_size2">file_size</a>(const path&amp; p, system::error_code&amp; ec);</pre>
+</blockquote>
+<p>两者唯一的重要差别是报告错误的方式.</p>
+<p>第一个签名会抛出异常来报告错误. 发生操作错误时会抛出 <code>
+<a href="reference.html#Class-filesystem_error">filesystem_error</a></code> 异常. <code>filesystem_error</code> 派生自 <code>std::runtime_error</code>. 它有成员函数可获取错误来源报告的 <code>
+<a href="../../system/doc/reference.html#Class-error_code">error_code</a></code>. 它还有成员函数可获取导致错误的路径.</p>
+
+  <blockquote>
+
+  <p><b>第二个签名的动机:</b> 在错误时抛出异常曾是 Boost.Filesystem 最早版本的全部错误报告机制, 而且对许多应用而言, 在错误时抛出异常确实工作得非常好. 但用户反馈陆续而来: 一些代码被 try 与 catch 块塞满, 以至于不可读、不可维护. 在某些应用中 I/O 错误并非异常情况, 这正是第二个签名的用例.</p>
+
+  </blockquote>
+
+  <p>带 <code>system::error_code&amp;</code> 参数的函数会设置该参数以报告操作错误状态, 因而在发生 I/O 相关错误时不抛出异常. 完整说明参见参考文档中的<a href="reference.html#Error-reporting">错误报告</a>.</p>
+
+<hr>
+<p>版权所有 © Beman Dawes 2010, 2015</p>
+<p>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. 参见 <a href="http://www.boost.org/LICENSE_1_0.txt">www.boost.org/LICENSE_1_0.txt</a></p>
+
+</body>
+
+</html>

@@ -1,0 +1,274 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>衔接同步与异步代码: 在同步代码中使用 connection_pool</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="up" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="prev" href="async.html" title="转向异步">
+<link rel="next" href="error_handling.html" title="错误处理与可用重载">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="async.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="error_handling.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="mysql.interfacing_sync_async"></a><a class="link" href="interfacing_sync_async.html" title="衔接同步与异步代码: 在同步代码中使用 connection_pool">衔接同步与异步代码: 在同步代码中使用 connection_pool</a>
+</h2></div></div></div>
+<p>如你可能已经知道的, 我们建议使用异步函数而非同步函数, 因为它们更通用、更具可扩展性. 此外, 某些类 (如 <a class="link" href="ref/boost__mysql__connection_pool.html" title="connection_pool"><code class="literal">connection_pool</code></a>) 不提供同步 API.</p>
+<p>如果你的整个应用都使用 Asio, 可以像教程中说明的那样在各处使用异步函数. 然而, 某些遗留应用本质上是同步的, 可能需要调用异步代码并同步地等待它.</p>
+<p>本节说明如何处理这些情况. 我们将构建一个同步函数, 根据员工 ID 从数据库检索员工对象. 它会使用 <a class="link" href="ref/boost__mysql__connection_pool.html" title="connection_pool"><code class="literal">connection_pool</code></a> 和 <code class="computeroutput"><span class="identifier">asio</span><span class="special">::</span><span class="identifier">cancel_after</span></code>, 这两者只能通过异步函数访问.</p>
+<h4>
+<a name="mysql.interfacing_sync_async.h0"></a>
+      <span class="phrase"><a name="mysql.interfacing_sync_async.the_asio_use_future_completion_t"></a></span><a class="link" href="interfacing_sync_async.html#mysql.interfacing_sync_async.the_asio_use_future_completion_t">asio::use_future 完成标记</a>
+    </h4>
+<p>
+      <a href="../../../../../doc/html/boost_asio/reference/use_future.html" target="_top"><code class="literal">asio::use_future</code></a> 是一个 <a class="link" href="tutorial_error_handling.html#mysql.tutorial_error_handling.completion_token">完成标记</a>, 它实现了我们想要的功能: 启动一个异步操作并返回一个 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">future</span></code>, 该 future 将在任务完成时完成.</p>
+<p>有了这些知识, 我们可以写出该函数的第一个版本:</p>
+<pre class="programlisting"><span class="comment">// Gets an employee's name given their ID, using a connection pool. This is a sync function.</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="identifier">get_employee_by_id</span><span class="special">(</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">connection_pool</span><span class="special">&amp;</span> <span class="identifier">pool</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">int64_t</span> <span class="identifier">id</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="comment">// Get a connection from the pool. This will launch the operation, but won't wait for it</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">future</span><span class="special">&lt;</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pooled_connection</span><span class="special">&gt;</span> <span class="identifier">fut</span> <span class="special">=</span> <span class="identifier">pool</span><span class="special">.</span><span class="identifier">async_get_connection</span><span class="special">(</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">use_future</span><span class="special">);</span>
+
+    <span class="comment">// Block the current thread until the operation completes.</span>
+    <span class="comment">// As we will explain later, you need a thread running your execution context for this to complete</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pooled_connection</span> <span class="identifier">conn</span> <span class="special">=</span> <span class="identifier">fut</span><span class="special">.</span><span class="identifier">get</span><span class="special">();</span>
+
+    <span class="comment">// There is a sync version of execute, so we can use it</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">static_results</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="identifier">r</span><span class="special">;</span>
+    <span class="identifier">conn</span><span class="special">-&gt;</span><span class="identifier">execute</span><span class="special">(</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"SELECT * FROM employee WHERE id = {}"</span><span class="special">,</span> <span class="identifier">id</span><span class="special">),</span> <span class="identifier">r</span><span class="special">);</span>
+
+    <span class="comment">// Done</span>
+    <span class="keyword">return</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">empty</span><span class="special">()</span> <span class="special">?</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;()</span> <span class="special">:</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">rows</span><span class="special">()[</span><span class="number">0</span><span class="special">];</span>
+<span class="special">}</span>
+</pre>
+<p>为此, 我们需要一个运行执行上下文 (事件循环) 的线程. 也就是说, 对 future 调用 <code class="computeroutput"><span class="identifier">get</span><span class="special">()</span></code> 并不会运行事件循环. 还要注意, 我们的函数将从不同于运行执行上下文的线程调用, 因此需要将池设为线程安全:</p>
+<pre class="programlisting"><span class="comment">// Initialization code - run this once at program startup</span>
+
+<span class="comment">// Execution context, required to run all async operations.</span>
+<span class="comment">// This is equivalent to using asio::io_context and a thread that calls run()</span>
+<span class="identifier">asio</span><span class="special">::</span><span class="identifier">thread_pool</span> <span class="identifier">ctx</span><span class="special">(</span><span class="number">1</span><span class="special">);</span>  <span class="comment">// Use only one thread</span>
+
+<span class="comment">// Create the connection pool</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pool_params</span> <span class="identifier">params</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">server_address</span><span class="special">.</span><span class="identifier">emplace_host_and_port</span><span class="special">(</span><span class="identifier">server_hostname</span><span class="special">);</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">username</span> <span class="special">=</span> <span class="identifier">mysql_username</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">password</span> <span class="special">=</span> <span class="identifier">mysql_password</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">database</span> <span class="special">=</span> <span class="string">"boost_mysql_examples"</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">thread_safe</span> <span class="special">=</span> <span class="keyword">true</span><span class="special">;</span>  <span class="comment">// allow initiating async_get_connection from any thread</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">connection_pool</span> <span class="identifier">pool</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">params</span><span class="special">));</span>
+<span class="identifier">pool</span><span class="special">.</span><span class="identifier">async_run</span><span class="special">(</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">detached</span><span class="special">);</span>
+</pre>
+<h4>
+<a name="mysql.interfacing_sync_async.h1"></a>
+      <span class="phrase"><a name="mysql.interfacing_sync_async.adding_timeouts"></a></span><a class="link" href="interfacing_sync_async.html#mysql.interfacing_sync_async.adding_timeouts">添加超时</a>
+    </h4>
+<p>你可能知道, <a class="link" href="ref/boost__mysql__connection_pool/async_get_connection.html" title="connection_pool::async_get_connection"><code class="literal">async_get_connection</code></a> 可能无限期阻塞, 因此我们应该使用 <a href="../../../../../doc/html/boost_asio/reference/cancel_after.html" target="_top"><code class="literal">asio::cancel_after</code></a> 来设置超时. 我们可能会想这样做:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="identifier">get_employee_by_id</span><span class="special">(</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">connection_pool</span><span class="special">&amp;</span> <span class="identifier">pool</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">int64_t</span> <span class="identifier">id</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono_literals</span><span class="special">;</span>
+
+    <span class="comment">// Do NOT do this!! This is a race condition!!</span>
+    <span class="keyword">auto</span> <span class="identifier">fut</span> <span class="special">=</span> <span class="identifier">pool</span><span class="special">.</span><span class="identifier">async_get_connection</span><span class="special">(</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">cancel_after</span><span class="special">(</span><span class="number">10</span><span class="identifier">s</span><span class="special">,</span> <span class="identifier">asio</span><span class="special">::</span><span class="identifier">use_future</span><span class="special">));</span>
+
+    <span class="comment">// ...</span>
+<span class="special">}</span>
+</pre>
+<p>这可能并不明显, 但这是一个数据竞争. <code class="computeroutput"><span class="identifier">asio</span><span class="special">::</span><span class="identifier">cancel_after</span></code> 会在底层创建一个定时器. 该定时器由调用 <code class="computeroutput"><span class="identifier">async_get_connection</span></code> 的线程和运行执行上下文的线程共享. 竞态条件是这样的:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">调用 <code class="computeroutput"><span class="identifier">async_get_connection</span></code>的线程设置了 <code class="computeroutput"><span class="identifier">asio</span><span class="special">::</span><span class="identifier">cancel_after</span></code>所需的定时器.</li>
+<li class="listitem">与此同时, 运行执行上下文的线程发现有健康的连接, 并完成 <code class="computeroutput"><span class="identifier">async_get_connection</span></code>操作. 结果, 定时器被取消. 于是, 定时器在两个线程中被并发访问而没有保护.</li>
+</ul></div>
+<p>注意, 即使池是线程安全的也会发生这种情况, 因为定时器并不属于池.</p>
+<p>要规避这个问题, 我们可以使用 <a href="../../../../../doc/html/boost_asio/overview/core/strands.html" target="_top">strand</a> (Asio 防止数据竞争的机制). 我们将创建一个 strand, 然后进入它并使用它来运行 <code class="computeroutput"><span class="identifier">async_get_connection</span></code>. 这是一串异步操作, 因此我们可以使用 <a href="../../../../../doc/html/boost_asio/reference/deferred.html" target="_top"><code class="literal">asio::deferred</code></a> 链来实现:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="identifier">get_employee_by_id</span><span class="special">(</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">connection_pool</span><span class="special">&amp;</span> <span class="identifier">pool</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">int64_t</span> <span class="identifier">id</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono_literals</span><span class="special">;</span>
+
+    <span class="comment">// Create a strand for this operation. Strands require an underlying</span>
+    <span class="comment">// executor. Use the pool's executor, which points to the thread_pool we created.</span>
+    <span class="keyword">auto</span> <span class="identifier">strand</span> <span class="special">=</span> <span class="identifier">asio</span><span class="special">::</span><span class="identifier">make_strand</span><span class="special">(</span><span class="identifier">pool</span><span class="special">.</span><span class="identifier">get_executor</span><span class="special">());</span>
+
+    <span class="comment">// First enter the strand with asio::dispatch, then call async_get_connection through the strand.</span>
+    <span class="comment">// asio::dispatch + asio::bind_executor is Asio's standard way to "run a function in an executor"</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">future</span><span class="special">&lt;</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pooled_connection</span><span class="special">&gt;</span> <span class="identifier">fut</span> <span class="special">=</span> <span class="identifier">asio</span><span class="special">::</span><span class="identifier">dispatch</span><span class="special">(</span>
+        <span class="comment">// bind_executor binds an executor to a completion token.</span>
+        <span class="comment">// deferred creates an async chain</span>
+        <span class="identifier">asio</span><span class="special">::</span><span class="identifier">bind_executor</span><span class="special">(</span>
+            <span class="identifier">strand</span><span class="special">,</span>
+            <span class="identifier">asio</span><span class="special">::</span><span class="identifier">deferred</span><span class="special">([&amp;]</span> <span class="special">{</span>
+                <span class="comment">// This function will be called when we're in the strand and determines what to do next</span>
+                <span class="keyword">return</span> <span class="identifier">pool</span><span class="special">.</span><span class="identifier">async_get_connection</span><span class="special">(</span>
+                    <span class="identifier">asio</span><span class="special">::</span><span class="identifier">cancel_after</span><span class="special">(</span><span class="number">10</span><span class="identifier">s</span><span class="special">,</span> <span class="identifier">asio</span><span class="special">::</span><span class="identifier">bind_executor</span><span class="special">(</span><span class="identifier">strand</span><span class="special">,</span> <span class="identifier">asio</span><span class="special">::</span><span class="identifier">deferred</span><span class="special">))</span>
+                <span class="special">);</span>
+            <span class="special">})</span>
+        <span class="special">)</span>
+    <span class="special">)(</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">use_future</span><span class="special">);</span> <span class="comment">// Initiate the chain and convert it into a future</span>
+
+    <span class="comment">// Wait for the async chain to finish</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pooled_connection</span> <span class="identifier">conn</span> <span class="special">=</span> <span class="identifier">fut</span><span class="special">.</span><span class="identifier">get</span><span class="special">();</span>
+
+    <span class="comment">// Execute as in the previous version</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">static_results</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="identifier">r</span><span class="special">;</span>
+    <span class="identifier">conn</span><span class="special">-&gt;</span><span class="identifier">execute</span><span class="special">(</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"SELECT * FROM employee WHERE id = {}"</span><span class="special">,</span> <span class="identifier">id</span><span class="special">),</span> <span class="identifier">r</span><span class="special">);</span>
+    <span class="keyword">return</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">empty</span><span class="special">()</span> <span class="special">?</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;()</span> <span class="special">:</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">rows</span><span class="special">()[</span><span class="number">0</span><span class="special">];</span>
+<span class="special">}</span>
+</pre>
+<p>即使这看起来令人生畏也不要担心. 让我们把它拆解成几个部分:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">strand 是一个符合 Asio 规范的执行器. 这意味着我们可以使用 <code class="computeroutput"><span class="identifier">asio</span><span class="special">::</span><span class="identifier">dispatch</span></code> 和类似函数向它提交工作.</li>
+<li class="listitem">
+          <a href="../../../../../doc/html/boost_asio/reference/dispatch.html" target="_top"><code class="literal">asio::dispatch</code></a> 向执行器提交一段工作. 我们以完成标记的形式指定要执行的工作. 它使用与传入的完成标记绑定的执行器.</li>
+<li class="listitem">
+          <a href="../../../../../doc/html/boost_asio/reference/bind_executor.html" target="_top"><code class="literal">asio::bind_executor</code></a> 将执行器绑定到完成标记. 这里, 我们将 strand 绑定到 deferred 完成链. 这意味着 <code class="computeroutput"><span class="identifier">dispatch</span></code> 将使用 strand 来运行其工作.</li>
+<li class="listitem">将 <a href="../../../../../doc/html/boost_asio/reference/deferred.html" target="_top"><code class="literal">asio::deferred</code></a> 传递给异步操作 (例如 <code class="computeroutput"><span class="identifier">dispatch</span></code>) 时, 它会返回一个打包好的异步操作. 我们可以使用任何完成标记调用该操作来发起它. 这里, 我们使用 <code class="computeroutput"><span class="identifier">asio</span><span class="special">::</span><span class="identifier">use_future</span></code> 将该操作转换为 future. 如果我们在 C++20 协程中, 也可以对返回的对象进行 co_await.</li>
+<li class="listitem">传递给 <code class="computeroutput"><span class="identifier">deferred</span></code> 的函数将在第一个操作完成时执行, 并决定接下来做什么. 这类似于 JavaScript 的 promise 链. 我们的下一个操作是 <code class="computeroutput"><span class="identifier">async_get_connection</span></code>.</li>
+<li class="listitem">我们将 <code class="computeroutput"><span class="identifier">bind_executor</span></code> 与 <code class="computeroutput"><span class="identifier">asio</span><span class="special">::</span><span class="identifier">deferred</span></code> 结合使用, 使 <code class="computeroutput"><span class="identifier">async_get_connection</span></code> 和 <code class="computeroutput"><span class="identifier">asio</span><span class="special">::</span><span class="identifier">cancel_after</span></code> 所使用的所有中间处理器都经过 strand, 从而有效保护我们的定时器.</li>
+<li class="listitem">future 将在整个链完成后完成.</li>
+</ul></div>
+<h4>
+<a name="mysql.interfacing_sync_async.h2"></a>
+      <span class="phrase"><a name="mysql.interfacing_sync_async.refactoring_to_use_c_20_coroutin"></a></span><a class="link" href="interfacing_sync_async.html#mysql.interfacing_sync_async.refactoring_to_use_c_20_coroutin">重构为使用 C++20 协程</a>
+    </h4>
+<p>延迟组合即使在 C++11 中也可使用, 但很快就会变得混乱. 对其线程安全性的推理也不简单.</p>
+<p>如果你使用 C++20 或更高版本, 更简洁的做法是将所有涉及网络的操作封装到一个协程中:</p>
+<pre class="programlisting"><span class="comment">// Gets an employee's name given their ID, using a connection pool. This is a sync function.</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="identifier">get_employee_by_id</span><span class="special">(</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">connection_pool</span><span class="special">&amp;</span> <span class="identifier">pool</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">int64_t</span> <span class="identifier">id</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono_literals</span><span class="special">;</span>
+
+    <span class="comment">// Spawn a coroutine in the pool's executor - that is, in the thread_pool.</span>
+    <span class="comment">// Since the pool has only one thread, and all code in the coroutine runs within that thread,</span>
+    <span class="comment">// there is no need for a strand here.</span>
+    <span class="comment">// co_spawn is an async operation, and can be used with asio::use_future</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">future</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;&gt;</span> <span class="identifier">fut</span> <span class="special">=</span> <span class="identifier">asio</span><span class="special">::</span><span class="identifier">co_spawn</span><span class="special">(</span>
+        <span class="identifier">pool</span><span class="special">.</span><span class="identifier">get_executor</span><span class="special">(),</span>
+        <span class="special">[&amp;</span><span class="identifier">pool</span><span class="special">,</span> <span class="identifier">id</span><span class="special">]()</span> <span class="special">-&gt;</span> <span class="identifier">asio</span><span class="special">::</span><span class="identifier">awaitable</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;&gt;</span> <span class="special">{</span>
+            <span class="comment">// Get a connection from the pool</span>
+            <span class="keyword">auto</span> <span class="identifier">conn</span> <span class="special">=</span> <span class="identifier">co_await</span> <span class="identifier">pool</span><span class="special">.</span><span class="identifier">async_get_connection</span><span class="special">(</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">cancel_after</span><span class="special">(</span><span class="number">30</span><span class="identifier">s</span><span class="special">));</span>
+
+            <span class="comment">// Execute</span>
+            <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">static_results</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="identifier">r</span><span class="special">;</span>
+            <span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">-&gt;</span><span class="identifier">async_execute</span><span class="special">(</span>
+                <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"SELECT * FROM employee WHERE id = {}"</span><span class="special">,</span> <span class="identifier">id</span><span class="special">),</span>
+                <span class="identifier">r</span><span class="special">,</span>
+                <span class="identifier">asio</span><span class="special">::</span><span class="identifier">cancel_after</span><span class="special">(</span><span class="number">30</span><span class="identifier">s</span><span class="special">)</span>
+            <span class="special">);</span>
+
+            <span class="comment">// Done</span>
+            <span class="identifier">co_return</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">empty</span><span class="special">()</span> <span class="special">?</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;()</span> <span class="special">:</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">rows</span><span class="special">()[</span><span class="number">0</span><span class="special">];</span>
+        <span class="special">},</span>
+        <span class="identifier">asio</span><span class="special">::</span><span class="identifier">use_future</span>
+    <span class="special">);</span>
+
+    <span class="comment">// Wait for the future</span>
+    <span class="keyword">return</span> <span class="identifier">fut</span><span class="special">.</span><span class="identifier">get</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<p>我们将与 <code class="computeroutput"><span class="identifier">connection_pool</span></code> 的所有交互都保留在协程内, 因此不再需要使其线程安全:</p>
+<pre class="programlisting"><span class="comment">// Initialization code - run this once at program startup</span>
+
+<span class="comment">// Execution context, required to run all async operations.</span>
+<span class="comment">// This is equivalent to asio::io_context plus a thread calling run()</span>
+<span class="identifier">asio</span><span class="special">::</span><span class="identifier">thread_pool</span> <span class="identifier">ctx</span><span class="special">(</span><span class="number">1</span><span class="special">);</span>
+
+<span class="comment">// Create the connection pool. The pool is NOT thread-safe</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pool_params</span> <span class="identifier">params</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">server_address</span><span class="special">.</span><span class="identifier">emplace_host_and_port</span><span class="special">(</span><span class="identifier">server_hostname</span><span class="special">);</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">username</span> <span class="special">=</span> <span class="identifier">mysql_username</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">password</span> <span class="special">=</span> <span class="identifier">mysql_password</span><span class="special">;</span>
+<span class="identifier">params</span><span class="special">.</span><span class="identifier">database</span> <span class="special">=</span> <span class="string">"boost_mysql_examples"</span><span class="special">;</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">connection_pool</span> <span class="identifier">pool</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">params</span><span class="special">));</span>
+
+<span class="comment">// Run the pool. async_run should be executed in the thread_pool's thread -</span>
+<span class="comment">// otherwise, we have a race condition</span>
+<span class="identifier">asio</span><span class="special">::</span><span class="identifier">dispatch</span><span class="special">(</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">bind_executor</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">.</span><span class="identifier">get_executor</span><span class="special">(),</span> <span class="special">[&amp;]</span> <span class="special">{</span> <span class="identifier">pool</span><span class="special">.</span><span class="identifier">async_run</span><span class="special">(</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">detached</span><span class="special">);</span> <span class="special">}));</span>
+</pre>
+<h4>
+<a name="mysql.interfacing_sync_async.h3"></a>
+      <span class="phrase"><a name="mysql.interfacing_sync_async.if_c_20_is_not_available"></a></span><a class="link" href="interfacing_sync_async.html#mysql.interfacing_sync_async.if_c_20_is_not_available">如果 C++20 不可用</a>
+    </h4>
+<p>如果无法使用 C++20, 仍然可以使用 <code class="computeroutput"><span class="identifier">asio</span><span class="special">::</span><span class="identifier">spawn</span></code> 或用回调模仿 <code class="computeroutput"><span class="identifier">asio</span><span class="special">::</span><span class="identifier">use_future</span></code> 的行为. 后者大致如下:</p>
+<pre class="programlisting"><span class="comment">// Gets an employee's name given their ID, using a connection pool. This is a sync function.</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="identifier">get_employee_by_id</span><span class="special">(</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">connection_pool</span><span class="special">&amp;</span> <span class="identifier">pool</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">int64_t</span> <span class="identifier">id</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono_literals</span><span class="special">;</span>
+
+    <span class="comment">// A promise, so we can wait for the task to complete</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">promise</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;&gt;</span> <span class="identifier">prom</span><span class="special">;</span>
+
+    <span class="comment">// These temporary variables should be kept alive until all async operations</span>
+    <span class="comment">// complete, so they're declared here</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pooled_connection</span> <span class="identifier">conn</span><span class="special">;</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">static_results</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="identifier">r</span><span class="special">;</span>
+
+    <span class="comment">// Ensure that everything runs within the thread pool</span>
+    <span class="identifier">asio</span><span class="special">::</span><span class="identifier">dispatch</span><span class="special">(</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">bind_executor</span><span class="special">(</span><span class="identifier">pool</span><span class="special">.</span><span class="identifier">get_executor</span><span class="special">(),</span> <span class="special">[&amp;]</span> <span class="special">{</span>
+        <span class="comment">// Get a connection from the pool</span>
+        <span class="identifier">pool</span><span class="special">.</span><span class="identifier">async_get_connection</span><span class="special">(</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">cancel_after</span><span class="special">(</span>
+            <span class="number">30</span><span class="identifier">s</span><span class="special">,</span>
+            <span class="special">[&amp;](</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span> <span class="identifier">ec</span><span class="special">,</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pooled_connection</span> <span class="identifier">temp_conn</span><span class="special">)</span> <span class="special">{</span>
+                <span class="keyword">if</span> <span class="special">(</span><span class="identifier">ec</span><span class="special">)</span>
+                <span class="special">{</span>
+                    <span class="comment">// If there was an error getting the connection, complete the promise and return</span>
+                    <span class="identifier">prom</span><span class="special">.</span><span class="identifier">set_exception</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">make_exception_ptr</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">system_error</span><span class="special">(</span><span class="identifier">ec</span><span class="special">)));</span>
+                <span class="special">}</span>
+                <span class="keyword">else</span>
+                <span class="special">{</span>
+                    <span class="comment">// Store the connection somewhere. If it gets destroyed, it's returned to the pool</span>
+                    <span class="identifier">conn</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">temp_conn</span><span class="special">);</span>
+
+                    <span class="comment">// Start executing the query</span>
+                    <span class="identifier">conn</span><span class="special">-&gt;</span><span class="identifier">async_execute</span><span class="special">(</span>
+                        <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"SELECT * FROM employee WHERE id = {}"</span><span class="special">,</span> <span class="identifier">id</span><span class="special">),</span>
+                        <span class="identifier">r</span><span class="special">,</span>
+                        <span class="identifier">asio</span><span class="special">::</span><span class="identifier">cancel_after</span><span class="special">(</span>
+                            <span class="number">30</span><span class="identifier">s</span><span class="special">,</span>
+                            <span class="special">[&amp;](</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span> <span class="identifier">ec</span><span class="special">)</span> <span class="special">{</span>
+                                <span class="keyword">if</span> <span class="special">(</span><span class="identifier">ec</span><span class="special">)</span>
+                                <span class="special">{</span>
+                                    <span class="comment">// If there was an error, complete the promise and return</span>
+                                    <span class="identifier">prom</span><span class="special">.</span><span class="identifier">set_exception</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">make_exception_ptr</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">system_error</span><span class="special">(</span><span class="identifier">ec</span><span class="special">)</span>
+                                    <span class="special">));</span>
+                                <span class="special">}</span>
+                                <span class="keyword">else</span>
+                                <span class="special">{</span>
+                                    <span class="comment">// Done</span>
+                                    <span class="identifier">prom</span><span class="special">.</span><span class="identifier">set_value</span><span class="special">(</span>
+                                        <span class="identifier">r</span><span class="special">.</span><span class="identifier">rows</span><span class="special">().</span><span class="identifier">empty</span><span class="special">()</span> <span class="special">?</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;()</span> <span class="special">:</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">rows</span><span class="special">()[</span><span class="number">0</span><span class="special">]</span>
+                                    <span class="special">);</span>
+                                <span class="special">}</span>
+                            <span class="special">}</span>
+                        <span class="special">)</span>
+                    <span class="special">);</span>
+                <span class="special">}</span>
+            <span class="special">}</span>
+        <span class="special">));</span>
+    <span class="special">}));</span>
+
+    <span class="keyword">return</span> <span class="identifier">prom</span><span class="special">.</span><span class="identifier">get_future</span><span class="special">().</span><span class="identifier">get</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<p>虽然不如前者整洁, 但思路是相同的.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2019-2024 Ruben Perez<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="async.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="error_handling.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

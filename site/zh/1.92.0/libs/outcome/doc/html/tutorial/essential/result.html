@@ -1,0 +1,97 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>result&lt;&gt; - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="../../css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="../../images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="../../tutorial/essential/before.html"><img src="../../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../../tutorial/essential.html"><img src="../../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../../index.html"><img src="../../images/home.png" alt="首页"></a><a accesskey="n" href="../../tutorial/essential/result/inspecting.html"><img src="../../images/next.png" alt="下一页"></a></div><div id="content">
+
+  <div class="titlepage"><div><div><h1 style="clear: both">result&lt;&gt;</h1></div></div></div>
+<p>我们将定义一个把 <code>std::string</code> 转换为 <code>int</code> 的函数. 该函数可能因多种原因失败; 如果失败, 我们想要传达失败原因.</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="n">outcome</span><span class="o">::</span><span class="n">result</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span> <span class="n">convert</span><span class="p">(</span><span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span> <span class="n">str</span><span class="p">)</span> <span class="k">noexcept</span><span class="p">;</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/using_result.cpp#L42" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<p>模板别名 <a href="../../reference/aliases/result.html" class="api-reference"><code>result&lt;T, E = varies, NoValuePolicy = policy::default_policy&lt;T, E, void&gt;&gt;</code></a> 有三个模板参数, 但后两个有默认值. 第一个 (<code>T</code>) 表示函数成功时返回对象的类型. 第二个 (<code>EC</code>) 是函数失败时容纳失败原因信息的对象类型. result 对象在任一时刻要么存储 <code>T</code> 要么存储 <code>EC</code>, 因此概念上类似于 <code>variant&lt;T, EC&gt;</code>. 在独立版 Outcome 中 <code>EC</code> 默认为 <code>std::error_code</code>, 在 Boost.Outcome 中默认为 <code>boost::system::error_code</code> <sup class="footnote-ref" id="fnref:1"><a href="#fn:1">1</a></sup>. 第三个参数 (<code>NoValuePolicy</code>) 称为无值策略, 我们稍后介绍.</p>
+
+<p>如果 <code>T</code> 与 <code>EC</code> 都是<a href="https://en.cppreference.com/w/cpp/named_req/TriviallyCopyable">可平凡复制</a>的, <code>result&lt;T, EC, NVP&gt;</code> 也可平凡复制. 每个操作 (构造、拷贝构造、赋值、析构等) 的平凡性、复杂度与 constexpr 性总是 <code>T</code> 与 <code>EC</code> 中对应操作的交集, 例如若 <code>T</code> 与 <code>EC</code> 都是<a href="https://en.cppreference.com/w/cpp/named_req/LiteralType">字面类型</a>, <code>result&lt;T, EC, NVP&gt;</code> 也会是. 此外, 若 <code>T</code> 与 <code>EC</code> 都有<a href="https://en.cppreference.com/w/cpp/named_req/StandardLayoutType">标准布局</a>, <code>result&lt;T, EC, NVP&gt;</code> 有标准布局; 因此若 <code>T</code> 与 <code>EC</code> 是 C 兼容的, <code>result&lt;T, EC, NVP&gt;</code> 也会是 C 兼容的.</p>
+
+<p>现在, 我们将定义一个枚举, 描述转换过程中不同的失败情形.</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="k">enum</span> <span class="k">class</span><span class="err"> </span><span class="nc">ConversionErrc</span>
+<span class="p">{</span>
+  <span class="n">Success</span>     <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="c1">// 0 should not represent an error
+</span><span class="c1"></span>  <span class="n">EmptyString</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="c1">// (for rationale, see tutorial on error codes)
+</span><span class="c1"></span>  <span class="n">IllegalChar</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+  <span class="n">TooLong</span>     <span class="o">=</span> <span class="mi">3</span><span class="p">,</span>
+<span class="p">};</span>
+
+<span class="c1">// all boilerplate necessary to plug ConversionErrc
+</span><span class="c1">// into std::error_code framework
+</span><span class="c1"></span></code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/using_result.cpp#L46" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<p>假定我们已把它接入 <code>std::error_code</code> 框架, 如<a href="../../motivation/plug_error_code.html">本节</a>所述.</p>
+
+<p>这种接入的一个显著效果是: <code>ConversionErrc</code> 现在可转换为 <code>std::error_code</code>. 现在我们可以这样实现函数 <code>convert</code>:</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="n">outcome</span><span class="o">::</span><span class="n">result</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span> <span class="n">convert</span><span class="p">(</span><span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span> <span class="n">str</span><span class="p">)</span> <span class="k">noexcept</span>
+<span class="p">{</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">str</span><span class="p">.</span><span class="n">empty</span><span class="p">())</span>
+    <span class="k">return</span> <span class="n">ConversionErrc</span><span class="o">::</span><span class="n">EmptyString</span><span class="p">;</span>
+
+  <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">std</span><span class="o">::</span><span class="n">all_of</span><span class="p">(</span><span class="n">str</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span> <span class="n">str</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span> <span class="o">::</span><span class="n">isdigit</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">ConversionErrc</span><span class="o">::</span><span class="n">IllegalChar</span><span class="p">;</span>
+
+  <span class="k">if</span> <span class="p">(</span><span class="n">str</span><span class="p">.</span><span class="n">length</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">9</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ConversionErrc</span><span class="o">::</span><span class="n">TooLong</span><span class="p">;</span>
+
+  <span class="k">return</span> <span class="nf">atoi</span><span class="p">(</span><span class="n">str</span><span class="p">.</span><span class="n">c_str</span><span class="p">());</span>
+<span class="p">}</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/using_result.cpp#L65" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<p><code>result&lt;T, EC&gt;</code> 可从任何 <code>T2</code> (可转换为 <code>T</code>) 构造, 也可从任何 <code>EC2</code> (可转换为 <code>EC</code>) 构造——前提是 <code>T</code> 与 <code>EC</code> 之间任一方向都不可能构造. 如果可能, 所有隐式转换都被禁用, 你将需要使用带标签构造函数之一:</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="n">outcome</span><span class="o">::</span><span class="n">result</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span> <span class="n">r</span> <span class="p">{</span><span class="n">outcome</span><span class="o">::</span><span class="n">in_place_type</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">error_code</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">ConversionErrc</span><span class="o">::</span><span class="n">EmptyString</span><span class="p">};</span>
+<span class="n">outcome</span><span class="o">::</span><span class="n">result</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span> <span class="n">s</span> <span class="p">{</span><span class="n">outcome</span><span class="o">::</span><span class="n">in_place_type</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">,</span> <span class="mi">1</span><span class="p">};</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/using_result.cpp#L115" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<p>或使用辅助函数:</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="n">outcome</span><span class="o">::</span><span class="n">result</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span> <span class="n">r</span> <span class="o">=</span> <span class="n">outcome</span><span class="o">::</span><span class="n">failure</span><span class="p">(</span><span class="n">ConversionErrc</span><span class="o">::</span><span class="n">EmptyString</span><span class="p">);</span>
+<span class="n">outcome</span><span class="o">::</span><span class="n">result</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span> <span class="n">s</span> <span class="o">=</span> <span class="n">outcome</span><span class="o">::</span><span class="n">success</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/using_result.cpp#L123" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<div class="notices note" style="background: url('../../images/note.png') top left no-repeat padding-box padding-box;">
+<div class="notices heading">注释</div>
+<div class="notices message"><p>函数 <a href="../../reference/functions/failure.html" class="api-reference"><code>auto failure(T &amp;&amp;, &hellip;)</code></a> 与 <a href="../../reference/functions/success.html" class="api-reference"><code>auto success(T &amp;&amp;, &hellip;)</code></a> 返回特殊类型, 可隐式转换为失败或成功的 <code>result</code> (以及 <code>outcome</code>).</p>
+</div>
+</div>
+
+<div class="footnotes">
+
+<hr />
+
+<ol>
+<li id="fn:1">你可以使用 <code>std_result&lt;T&gt;</code> 或 <code>boost_result&lt;T&gt;</code> 强制做出选择. <a class="footnote-return" href="#fnref:1"><sup>[return]</sup></a></li>
+</ol>
+</div>
+
+
+
+        </div><p><small>最后修订: February 23, 2021 at 17:37:27 UTC</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../../tutorial/essential/before.html"><img src="../../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../../tutorial/essential.html"><img src="../../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../../index.html"><img src="../../images/home.png" alt="首页"></a><a accesskey="n" href="../../tutorial/essential/result/inspecting.html"><img src="../../images/next.png" alt="下一页"></a></div></body>
+</html>

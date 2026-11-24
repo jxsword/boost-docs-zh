@@ -1,0 +1,60 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>v2.1 =&gt; v2.2 升级指南 - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="../css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="../images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="../changelog.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../changelog.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../changelog/v22.html"><img src="../images/next.png" alt="下一页"></a></div><div id="content">
+  <div class="titlepage"><div><div><h1 style="clear: both">v2.1 =&gt; v2.2 升级指南</h1></div></div></div>
+  <p>2020 年初, 在进入 Boost 后花一年时间听取用户反馈之后, Outcome v2.2 发布, 相对 Outcome v2.1 包含多项破坏源码的变更. 整个 2020 年 (三个 Boost 发布版) 被用于预告这些即将到来的变更, 并在生产环境中测试 v2.2 分支. 2020 年 12 月下旬, Outcome v2.2 成为默认 Outcome, 所有 Outcome v2.1 代码都需要升级才能与 v2.2 配合工作.</p>
+
+<p>把基于 Outcome v2.1 的代码库升级到 Outcome v2.2 非常容易:</p>
+
+<ol>
+<li><p>你需要一个能够在目录树的所有源文件中查找正则表达式并替换它们的工具——大多数 IDE (如 Visual Studio) 都带有这类 GUI 工具; 在 POSIX 上, 像下面这样的 shell 脚本应当可用:</p>
+
+<pre><code>find /path/to/project -type f -name &quot;*.hpp&quot; | xargs sed -i &quot;s/_TRY\(([^(]*?),(.*?)\);/_TRY((auto &amp;&amp;, \1),\2);/g&quot;
+find /path/to/project -type f -name &quot;*.cpp&quot; | xargs sed -i &quot;s/_TRY\(([^(]*?),(.*?)\);/_TRY((auto &amp;&amp;, \1),\2);/g&quot;
+find /path/to/project -type f -name &quot;*.hpp&quot; | xargs sed -i &quot;s/_TRY\(([^(]*?)\);/_TRYV2(auto &amp;&amp;, \1);/g&quot;
+find /path/to/project -type f -name &quot;*.cpp&quot; | xargs sed -i &quot;s/_TRY\(([^(]*?)\);/_TRYV2(auto &amp;&amp;, \1);/g&quot;
+</code></pre>
+
+<p>所需的转换是正则表达式 <code>_TRY\(([^(]*?),(.*?)\);</code> =&gt; <code>_TRY((auto &amp;&amp;, \1),\2);</code> 与 <code>TRY\(([^(]*?)\);</code> =&gt; <code>_TRYV2(auto &amp;&amp;, \1);</code>. 这是因为从 Outcome v2.2 起, <code>BOOST_OUTCOME_TRY(var, expr)</code> 不再替你把所创建的变量隐式声明为 <code>auto&amp;&amp;</code>, 现在你必须自行指定变量的存储. 它还会把内部唯一命名的临时对象声明为值而非引用, 而起始方括号可以覆盖这一点, 强制对内部唯一命名的临时对象改用右值引用.</p>
+
+<p>这利用 Outcome 的 <a href="../tutorial/essential/result/try_ref.html">新 TRY 语法</a> 告知 TRY 操作对内部唯一命名的临时对象使用引用而非值, 从而避免任何拷贝与移动. 对不输出值的 TRY, 覆盖内部唯一命名临时对象存储的唯一途径是新的 <code>BOOST_OUTCOME_TRYV2()</code>, 它把你想要的存储说明符作为第一个参数.</p>
+
+<p>这一变更的主要优点是: 你现在可以把表达式的成功结果赋给既有变量, 不再被迫 TRY 进一个新变量, 再把该变量移动到你想要的目标. 此外, 由于现在可以指定存储, 你可以把 TRY 过的操作的结果赋给静态或线程局部存储.</p></li>
+
+<li><p>上面的查找正则与替换规则是为了与 Outcome v2.1 保持完全相同的语义, 即内部唯一命名的临时对象与值的变量都是右值引用. 如果你愿意多花些功夫, 尽可能多地把 <code>BOOST_OUTCOME_TRY((auto &amp;&amp;, v), expr)</code> 转换为 <code>BOOST_OUTCOME_TRY(auto &amp;&amp;v, expr)</code> 会更安全. 这意味着当 expr 是右值引用时, TRY 会 '消费' <code>expr</code>, 即把它移动进内部唯一命名的临时对象. 通常这不影响既有代码, 但偶尔也会影响, 一般来说稍作代码重排即可解决.</p></li>
+
+<li><p>如果你的代码使用 <a href="../tutorial/advanced/hooks.html">ADL 发现的事件钩子</a> 来拦截 <code>basic_result</code> 与 <code>basic_outcome</code> 被构造、拷贝或移动的时机, 你将需要: 或者把宏 <a href="../reference/macros/enable_legacy_support_for.html" class="api-reference"><code>BOOST_OUTCOME_ENABLE_LEGACY_SUPPORT_FOR</code></a> 定义为小于 <code>220</code> 以启用模拟, 或者升级代码以使用新机制.</p>
+
+<p>钩子本身的签名完全相同, <a href="../tutorial/advanced/hooks.html">只是名称与位置变了</a>. 因此升级通常就是把钩子实现复制粘贴到一个自定义 <code>NoValuePolicy</code> 实现中, 并把 ADL 自由函数的名称从 <code>hook_*</code> 改为 <code>on_*</code>.</p>
+
+<p>建议尽可能升级, 因为实际代码使用表明, ADL 发现的钩子既脆弱又出人意料.</p></li>
+
+<li><p>Outcome 中所有以 CamelCase 命名的 concepts 用法都必须替换为以 snake_case 命名的 concepts:</p>
+
+<ul>
+<li><code>concepts::ValueOrError&lt;T&gt;</code> =&gt; <code>concepts::value_or_error&lt;T&gt;</code></li>
+<li><code>concepts::ValueOrNone&lt;T&gt;</code> =&gt; <code>concepts::value_or_none&lt;T&gt;</code></li>
+</ul>
+
+<p>如果宏 <a href="../reference/macros/enable_legacy_support_for.html" class="api-reference"><code>BOOST_OUTCOME_ENABLE_LEGACY_SUPPORT_FOR</code></a> 被定义为小于 <code>220</code>, CamelCase 命名会别名到 snake_case 命名. 不过只要可能, 你仍应当升级, 因为由于 C++ 20 的一项较晚变更, 所有标准 concepts 现在都以 snake_case 命名.</p></li>
+
+<li><p>最后, 尽管 Outcome 目前不提供稳定的 ABI 保证 (希望 2022 年开始), v2.1 对 <code>basic_result</code> 与 <code>basic_outcome</code> 具有稳定的存储布局. 在 v2.2 中该存储布局已改变, 因此使用 v2.1 与 v2.2 生成的 ABI 互不兼容, 即升级到 v2.2 后, 你需要重新编译所有使用 Outcome 的内容.</p></li>
+</ol>
+
+
+        </div><p><small>最后修订: February 23, 2021 at 17:37:27 UTC</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../changelog.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../changelog.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../changelog/v22.html"><img src="../images/next.png" alt="下一页"></a></div></body>
+</html>

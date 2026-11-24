@@ -1,0 +1,213 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>使用 Boost.Atomic 进行线程协调</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.Atomic">
+<link rel="up" href="../index.html" title="第 1 章 Boost.Atomic">
+<link rel="prev" href="../index.html" title="第 1 章 Boost.Atomic">
+<link rel="next" href="interface.html" title="编程接口">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../index.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="interface.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="atomic.thread_coordination"></a><a class="link" href="thread_coordination.html" title="使用 Boost.Atomic 进行线程协调">使用 Boost.Atomic 进行线程协调</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="thread_coordination.html#atomic.thread_coordination.mutex">通过互斥实施 <span class="emphasis"><em>happens-before</em></span> </a></span></dt>
+<dt><span class="section"><a href="thread_coordination.html#atomic.thread_coordination.release_acquire"><span class="emphasis"><em>happens-before</em></span> 通过 <code class="literal">release</code> 与 <code class="literal">acquire</code></a></span></dt>
+<dt><span class="section"><a href="thread_coordination.html#atomic.thread_coordination.fences">栅栏</a></span></dt>
+<dt><span class="section"><a href="thread_coordination.html#atomic.thread_coordination.release_consume"><span class="emphasis"><em>happens-before</em></span> 通过 <code class="literal">release</code> 与 <code class="literal">consume</code></a></span></dt>
+<dt><span class="section"><a href="thread_coordination.html#atomic.thread_coordination.seq_cst">顺序一致性</a></span></dt>
+</dl></div>
+<p> <span class="bold"><strong>Boost.Atomic</strong></span> 最常见的用途是实现自定义线程同步协议: 目标是协调线程对共享变量的访问, 以避免 "冲突". 程序员必须意识到, 编译器、CPU 与缓存层次结构通常可以随意重排内存引用. 因此, 诸如以下的程序:</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">x</span> <span class="special">=</span> <span class="number">0</span><span class="special">,</span> <span class="keyword">int</span> <span class="identifier">y</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+
+<span class="identifier">thread1</span><span class="special">:</span>
+  <span class="identifier">x</span> <span class="special">=</span> <span class="number">1</span><span class="special">;</span>
+  <span class="identifier">y</span> <span class="special">=</span> <span class="number">1</span><span class="special">;</span>
+
+<span class="identifier">thread2</span><span class="special">:</span>
+  <span class="keyword">if</span> <span class="special">(</span><span class="identifier">y</span> <span class="special">==</span> <span class="number">1</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">assert</span><span class="special">(</span><span class="identifier">x</span> <span class="special">==</span> <span class="number">1</span><span class="special">);</span>
+  <span class="special">}</span>
+</pre>
+<p>确实可能失败, 因为不保证 thread2 对 <code class="computeroutput"><span class="identifier">x</span></code> 的读取能 "看见" thread1 的写入.</p>
+<p>
+      <span class="bold"><strong>Boost.Atomic</strong></span> 使用基于 <span class="emphasis"><em>happens-before</em></span> 关系的同步概念来描述在哪些情形下可确保上述情况不会发生.</p>
+<p>本节余下部分将以 "上手" 的方式讨论 <span class="emphasis"><em>happens-before</em></span>, 而不是给出完全形式化的定义. 鼓励读者另外查看后面对若干 <a class="link" href="usage_examples.html" title="用法示例">示例</a>正确性的讨论.</p>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="atomic.thread_coordination.mutex"></a><a class="link" href="thread_coordination.html#atomic.thread_coordination.mutex" title="通过互斥实施 happens-before">通过互斥实施 <span class="emphasis"><em>happens-before</em></span> </a>
+</h3></div></div></div>
+<p>作为理解如何用 <span class="emphasis"><em>happens-before</em></span> 进行推理的入门示例, 考虑两个线程使用共同的互斥量进行同步:</p>
+<pre class="programlisting"><span class="identifier">mutex</span> <span class="identifier">m</span><span class="special">;</span>
+
+<span class="identifier">thread1</span><span class="special">:</span>
+  <span class="identifier">m</span><span class="special">.</span><span class="identifier">lock</span><span class="special">();</span>
+  <span class="special">...</span> <span class="comment">/* A */</span>
+  <span class="identifier">m</span><span class="special">.</span><span class="identifier">unlock</span><span class="special">();</span>
+
+<span class="identifier">thread2</span><span class="special">:</span>
+  <span class="identifier">m</span><span class="special">.</span><span class="identifier">lock</span><span class="special">();</span>
+  <span class="special">...</span> <span class="comment">/* B */</span>
+  <span class="identifier">m</span><span class="special">.</span><span class="identifier">unlock</span><span class="special">();</span>
+</pre>
+<p>"基于锁集合的直觉" 会论证: A 与 B 不能并发执行, 因为代码路径要求持有共同的锁.</p>
+<p>然而也可以用 <span class="emphasis"><em>happens-before</em></span> 得出同样的结论: 要么 thread1 要么 thread2 会在 <code class="literal">m.lock()</code> 处率先成功. 若是 thread1, 则作为结果, thread2 不能在 <code class="literal">m.lock()</code> 处成功, 直到 thread1 执行了 <code class="literal">m.unlock()</code>, 因此在此情形下 A <span class="emphasis"><em>happens-before</em></span> B. 由对称性, 若 thread2 在 <code class="literal">m.lock()</code> 处率先成功, 我们可得出 B <span class="emphasis"><em>happens-before</em></span> A.</p>
+<p>由于这已穷尽所有可能, 我们可以得出: A <span class="emphasis"><em>happens-before</em></span> B 或 B <span class="emphasis"><em>happens-before</em></span> A 两者必有其一始终成立. 显然我们无法断言两个关系中 <span class="emphasis"><em>哪一个</em></span> 成立, 但任意一个都足以得出 A 与 B 不能冲突的结论.</p>
+<p>比较 <a class="link" href="usage_examples.html#boost_atomic.usage_examples.example_spinlock" title="自旋锁">自旋锁</a>实现, 以了解互斥概念如何映射到 <span class="bold"><strong>Boost.Atomic</strong></span>.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="atomic.thread_coordination.release_acquire"></a><a class="link" href="thread_coordination.html#atomic.thread_coordination.release_acquire" title="通过 release 与 acquire 建立 happens-before"><span class="emphasis"><em>happens-before</em></span> 通过 <code class="literal">release</code> 与 <code class="literal">acquire</code></a>
+</h3></div></div></div>
+<p>通过 <span class="bold"><strong>Boost.Atomic</strong></span> 协调线程的最基本模式, 是在一个原子变量上使用 <code class="literal">release</code> 与 <code class="literal">acquire</code> 进行协调: 如果 ...</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">... thread1 执行操作 A,</li>
+<li class="listitem">... thread1 随后以 <code class="literal">release</code> 语义写入 (或原子地修改) 一个原子变量,</li>
+<li class="listitem">... thread2 随后以 <code class="literal">acquire</code> 语义从同一个原子变量读取 (或原子地读-改) 该值, 并且</li>
+<li class="listitem">... thread2 随后执行操作 B,</li>
+</ul></div>
+<p>... 那么 A <span class="emphasis"><em>happens-before</em></span> B.</p>
+<p>考虑以下示例</p>
+<pre class="programlisting"><span class="identifier">atomic</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">a</span><span class="special">(</span><span class="number">0</span><span class="special">);</span>
+
+<span class="identifier">thread1</span><span class="special">:</span>
+  <span class="special">...</span> <span class="comment">/* A */</span>
+  <span class="identifier">a</span><span class="special">.</span><span class="identifier">fetch_add</span><span class="special">(</span><span class="number">1</span><span class="special">,</span> <span class="identifier">memory_order</span><span class="special">::</span><span class="identifier">release</span><span class="special">);</span>
+
+<span class="identifier">thread2</span><span class="special">:</span>
+  <span class="keyword">int</span> <span class="identifier">tmp</span> <span class="special">=</span> <span class="identifier">a</span><span class="special">.</span><span class="identifier">load</span><span class="special">(</span><span class="identifier">memory_order</span><span class="special">::</span><span class="identifier">acquire</span><span class="special">);</span>
+  <span class="keyword">if</span> <span class="special">(</span><span class="identifier">tmp</span> <span class="special">==</span> <span class="number">1</span><span class="special">)</span> <span class="special">{</span>
+    <span class="special">...</span> <span class="comment">/* B */</span>
+  <span class="special">}</span> <span class="keyword">else</span> <span class="special">{</span>
+    <span class="special">...</span> <span class="comment">/* C */</span>
+  <span class="special">}</span>
+</pre>
+<p>在此示例中, 有两种可能的执行路径:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">thread1 的 <code class="literal">store</code> 操作先于 thread2 的 <code class="literal">load</code>: 此时 thread2 将执行 B, 且 "A <span class="emphasis"><em>happens-before</em></span> B" 成立, 因为上述所有条件都满足.</li>
+<li class="listitem">thread2 的 <code class="literal">load</code> 操作先于 thread1 的 <code class="literal">store</code>: 此时 thread2 将执行 C, 但 "A <span class="emphasis"><em>happens-before</em></span> C" <span class="emphasis"><em>不</em></span> 成立: thread2 没有通过 <code class="literal">a</code> 读取 thread1 写入的值.</li>
+</ul></div>
+<p>因此, A 与 B 不能冲突, 但 A 与 C <span class="emphasis"><em>可能</em></span> 冲突.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="atomic.thread_coordination.fences"></a><a class="link" href="thread_coordination.html#atomic.thread_coordination.fences" title="栅栏">栅栏</a>
+</h3></div></div></div>
+<p>排序约束通常与对原子变量的访问一起指定. 不过也可以单独发出 "栅栏" 操作, 此时栅栏与先前 (对 <code class="computeroutput"><span class="identifier">acquire</span></code>、<code class="computeroutput"><span class="identifier">consume</span></code> 或 <code class="computeroutput"><span class="identifier">seq_cst</span></code> 操作) 或随后 (对 <code class="computeroutput"><span class="identifier">release</span></code> 或 <code class="computeroutput"><span class="identifier">seq_cst</span></code>) 的原子操作配合起作用.</p>
+<p>上一节的示例也可以写成如下形式:</p>
+<pre class="programlisting"><span class="identifier">atomic</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">a</span><span class="special">(</span><span class="number">0</span><span class="special">);</span>
+
+<span class="identifier">thread1</span><span class="special">:</span>
+  <span class="special">...</span> <span class="comment">/* A */</span>
+  <span class="identifier">atomic_thread_fence</span><span class="special">(</span><span class="identifier">memory_order</span><span class="special">::</span><span class="identifier">release</span><span class="special">);</span>
+  <span class="identifier">a</span><span class="special">.</span><span class="identifier">fetch_add</span><span class="special">(</span><span class="number">1</span><span class="special">,</span> <span class="identifier">memory_order</span><span class="special">::</span><span class="identifier">relaxed</span><span class="special">);</span>
+
+<span class="identifier">thread2</span><span class="special">:</span>
+  <span class="keyword">int</span> <span class="identifier">tmp</span> <span class="special">=</span> <span class="identifier">a</span><span class="special">.</span><span class="identifier">load</span><span class="special">(</span><span class="identifier">memory_order</span><span class="special">::</span><span class="identifier">relaxed</span><span class="special">);</span>
+  <span class="keyword">if</span> <span class="special">(</span><span class="identifier">tmp</span> <span class="special">==</span> <span class="number">1</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">atomic_thread_fence</span><span class="special">(</span><span class="identifier">memory_order</span><span class="special">::</span><span class="identifier">acquire</span><span class="special">);</span>
+    <span class="special">...</span> <span class="comment">/* B */</span>
+  <span class="special">}</span> <span class="keyword">else</span> <span class="special">{</span>
+    <span class="special">...</span> <span class="comment">/* C */</span>
+  <span class="special">}</span>
+</pre>
+<p>这提供与之前相同的排序保证, 但在执行 C 的情形下省去了一次 (可能昂贵的) 内存序操作.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>原子栅栏仅用于为线程同步目的约束常规与原子加载和存储的排序. <code class="computeroutput"><span class="identifier">atomic_thread_fence</span></code> 并不用于为某些体系结构特定的内存访问排序, 如 x86 上的非临时加载与存储或写合并内存访问. 请为这些目的使用专用指令.</p></td></tr>
+</table></div>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="atomic.thread_coordination.release_consume"></a><a class="link" href="thread_coordination.html#atomic.thread_coordination.release_consume" title="通过 release 与 consume 建立 happens-before"><span class="emphasis"><em>happens-before</em></span> 通过 <code class="literal">release</code> 与 <code class="literal">consume</code></a>
+</h3></div></div></div>
+<p>通过 <span class="bold"><strong>Boost.Atomic</strong></span> 协调线程的第二种模式, 是在一个原子变量上使用 <code class="literal">release</code> 与 <code class="literal">consume</code> 进行协调: 如果 ...</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">... thread1 执行操作 A,</li>
+<li class="listitem">... thread1 随后以 <code class="literal">release</code> 语义写入 (或原子地修改) 一个原子变量,</li>
+<li class="listitem">... thread2 随后以 <code class="literal">consume</code> 语义从同一个原子变量读取 (或原子地读-改) 该值, 并且</li>
+<li class="listitem">... thread2 随后执行操作 B, 且该操作 <span class="emphasis"><em>在计算上依赖于原子变量的值</em></span>,</li>
+</ul></div>
+<p>... 那么 A <span class="emphasis"><em>happens-before</em></span> B.</p>
+<p>考虑以下示例</p>
+<pre class="programlisting"><span class="identifier">atomic</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">a</span><span class="special">(</span><span class="number">0</span><span class="special">);</span>
+<span class="identifier">complex_data_structure</span> <span class="identifier">data</span><span class="special">[</span><span class="number">2</span><span class="special">];</span>
+
+<span class="identifier">thread1</span><span class="special">:</span>
+  <span class="identifier">data</span><span class="special">[</span><span class="number">1</span><span class="special">]</span> <span class="special">=</span> <span class="special">...;</span> <span class="comment">/* A */</span>
+  <span class="identifier">a</span><span class="special">.</span><span class="identifier">store</span><span class="special">(</span><span class="number">1</span><span class="special">,</span> <span class="identifier">memory_order</span><span class="special">::</span><span class="identifier">release</span><span class="special">);</span>
+
+<span class="identifier">thread2</span><span class="special">:</span>
+  <span class="keyword">int</span> <span class="identifier">index</span> <span class="special">=</span> <span class="identifier">a</span><span class="special">.</span><span class="identifier">load</span><span class="special">(</span><span class="identifier">memory_order</span><span class="special">::</span><span class="identifier">consume</span><span class="special">);</span>
+  <span class="identifier">complex_data_structure</span> <span class="identifier">tmp</span> <span class="special">=</span> <span class="identifier">data</span><span class="special">[</span><span class="identifier">index</span><span class="special">];</span> <span class="comment">/* B */</span>
+</pre>
+<p>在此示例中, 有两种可能的执行路径:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">thread1 的 <code class="literal">store</code> 操作先于 thread2 的 <code class="literal">load</code>: 此时 thread2 将读取 <code class="literal">data[1]</code>, 且 "A <span class="emphasis"><em>happens-before</em></span> B" 成立, 因为上述所有条件都满足.</li>
+<li class="listitem">thread2 的 <code class="literal">load</code> 操作先于 thread1 的 <code class="literal">store</code>: 此时 thread2 将读取 <code class="literal">data[0]</code>, 但 "A <span class="emphasis"><em>happens-before</em></span> B" <span class="emphasis"><em>不</em></span> 成立: thread2 没有通过 <code class="literal">a</code> 读取 thread1 写入的值.</li>
+</ul></div>
+<p>此处, <span class="emphasis"><em>happens-before</em></span> 关系有助于确保 thread1 对 <code class="literal">data[1]</code> 的任何访问 (推测为写入) 都发生在 thread2 对 <code class="literal">data[1]</code> 的访问 (推测为读取) 之前: 若缺少该关系, thread2 可能读到过时/不一致的数据.</p>
+<p>注意, 在此示例中, 操作 B 在计算上依赖于该原子变量; 因此以下程序将是错误的:</p>
+<pre class="programlisting"><span class="identifier">atomic</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">a</span><span class="special">(</span><span class="number">0</span><span class="special">);</span>
+<span class="identifier">complex_data_structure</span> <span class="identifier">data</span><span class="special">[</span><span class="number">2</span><span class="special">];</span>
+
+<span class="identifier">thread1</span><span class="special">:</span>
+  <span class="identifier">data</span><span class="special">[</span><span class="number">1</span><span class="special">]</span> <span class="special">=</span> <span class="special">...;</span> <span class="comment">/* A */</span>
+  <span class="identifier">a</span><span class="special">.</span><span class="identifier">store</span><span class="special">(</span><span class="number">1</span><span class="special">,</span> <span class="identifier">memory_order</span><span class="special">::</span><span class="identifier">release</span><span class="special">);</span>
+
+<span class="identifier">thread2</span><span class="special">:</span>
+  <span class="keyword">int</span> <span class="identifier">index</span> <span class="special">=</span> <span class="identifier">a</span><span class="special">.</span><span class="identifier">load</span><span class="special">(</span><span class="identifier">memory_order</span><span class="special">::</span><span class="identifier">consume</span><span class="special">);</span>
+  <span class="identifier">complex_data_structure</span> <span class="identifier">tmp</span><span class="special">;</span>
+  <span class="keyword">if</span> <span class="special">(</span><span class="identifier">index</span> <span class="special">==</span> <span class="number">0</span><span class="special">)</span>
+    <span class="identifier">tmp</span> <span class="special">=</span> <span class="identifier">data</span><span class="special">[</span><span class="number">0</span><span class="special">];</span>
+  <span class="keyword">else</span>
+    <span class="identifier">tmp</span> <span class="special">=</span> <span class="identifier">data</span><span class="special">[</span><span class="number">1</span><span class="special">];</span>
+</pre>
+<p>
+        <code class="literal">consume</code> 最常见 (也最安全! 见 <a class="link" href="limitations.html" title="局限">限制</a>) 的用法是与指针配合, 例如比较 <a class="link" href="usage_examples.html#boost_atomic.usage_examples.singleton" title="双重检查锁定模式的单例">双重检查锁定的单例</a>.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="atomic.thread_coordination.seq_cst"></a><a class="link" href="thread_coordination.html#atomic.thread_coordination.seq_cst" title="顺序一致性">顺序一致性</a>
+</h3></div></div></div>
+<p>通过 <span class="bold"><strong>Boost.Atomic</strong></span> 协调线程的第三种模式, 是使用 <code class="literal">seq_cst</code> 进行协调: 如果 ...</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">... thread1 执行操作 A,</li>
+<li class="listitem">... thread1 随后以 <code class="literal">seq_cst</code> 执行任何操作,</li>
+<li class="listitem">... thread1 随后执行操作 B,</li>
+<li class="listitem">... thread2 执行操作 C,</li>
+<li class="listitem">... thread2 随后以 <code class="literal">seq_cst</code> 执行任何操作,</li>
+<li class="listitem">... thread2 随后执行操作 D,</li>
+</ul></div>
+<p>则要么 "A <span class="emphasis"><em>happens-before</em></span> D" 成立, 要么 "C <span class="emphasis"><em>happens-before</em></span> B" 成立.</p>
+<p>在此情形下, thread1 与 thread2 操作的是相同还是不同的原子变量, 或是否使用 "独立" 的 <code class="literal">atomic_thread_fence</code> 操作, 都无关紧要.</p>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2011 Helge Bahmann<br>版权所有 © 2012 Tim Blechmann<br>版权所有 © 2013-2025 Andrey Semashev<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../index.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="interface.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

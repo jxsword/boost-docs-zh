@@ -1,0 +1,93 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>内置自动重连与重试机制</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.MQTT5: C++17 MQTT 客户端">
+<link rel="up" href="../index.html" title="第 1 章 Boost.MQTT5: C++17 MQTT 客户端">
+<link rel="prev" href="getting_started.html" title="入门">
+<link rel="next" href="connection_maintenance.html" title="保持稳定连接">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="getting_started.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="connection_maintenance.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="mqtt5.auto_reconnect"></a><a class="link" href="auto_reconnect.html" title="内置自动重连与重试机制">内置自动重连与重试机制</a>
+</h2></div></div></div>
+<p>自动重连与重试机制是 <a href="https://github.com/boostorg/mqtt5/" target="_top">Boost.MQTT5</a> 库的一项关键特性. 它设计为在内部管理断连、退避、重连与消息重传的复杂细节. 这些任务若手动处理, 会导致开发时间延长、测试困难以及可靠性受损. 通过将这些流程自动化, <a href="https://github.com/boostorg/mqtt5/" target="_top">Boost.MQTT5</a> 库使 <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 的用户能够专注于应用功能本身, 无需担忧网络连接中断带来的影响.</p>
+<p>无论当前连接状态如何, 你都可以在 <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 中调用任何异步函数. 若 <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 处于离线状态, 它会将所有外发请求排入队列, 并在连接恢复后立即传输. 若连接在协议流程进行途中意外丢失, <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 会遵循 MQTT 协议规定的消息投递重试机制.</p>
+<p>以下示例将展示 <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 在执行以 QoS 1 发布消息的请求时, 如何在内部管理各种场景, 包括成功传输、离线排队与连接丢失后的重传. 注意, 同样的原则适用于 <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 中的所有其他异步函数 (参见 <span class="emphasis"><em>完成条件</em></span> 一节, 见 <a class="link" href="ref/boost__mqtt5__mqtt_client/async_publish.html" title="boost::mqtt5::mqtt_client::async_publish"><code class="literal">mqtt_client::async_publish</code></a>、<a class="link" href="ref/boost__mqtt5__mqtt_client/async_subscribe.html" title="boost::mqtt5::mqtt_client::async_subscribe"><code class="literal">mqtt_client::async_subscribe</code></a>、<a class="link" href="ref/boost__mqtt5__mqtt_client/async_unsubscribe.html" title="boost::mqtt5::mqtt_client::async_unsubscribe"><code class="literal">mqtt_client::async_unsubscribe</code></a> 与 <a class="link" href="ref/boost__mqtt5__mqtt_client/async_disconnect.html" title="boost::mqtt5::mqtt_client::async_disconnect"><code class="literal">mqtt_client::async_disconnect</code></a>).</p>
+<pre class="programlisting"><span class="comment">// Publishing with QoS 1 involves a two-step process: sending a PUBLISH message to the Broker and awaiting a PUBACK (acknowledgement) response.</span>
+<span class="comment">// The scenarios that might happen are:</span>
+<span class="comment">//   1) The Client will immediately send the PUBLISH message and start to wait for the PUBACK reply. </span>
+<span class="comment">//       The user's completion handler will not be invoked yet, regardless of whether the Client successfully sent the message.</span>
+<span class="comment">//   2) When the Client fails to send the message, it will try to reconnect to the Broker automatically.</span>
+<span class="comment">//       If it succeeds, it will resend the message. If reconnect fails, the Client will try to connect again until it succeeds.</span>
+<span class="comment">//       Meanwhile, the user's completion handler will NOT be invoked except when the Client detects an unrecoverable error (for example, when the list of configured brokers is empty).</span>
+<span class="comment">//       Note that the Client will try to connect indefinitely, meaning the user's completion handler may never be invoked.</span>
+<span class="comment">//   3) When the Client successfully sends the PUBLISH message, the Broker is required to respond with a PUBACK message. </span>
+<span class="comment">//       The reply message may indicate success or an MQTT error (for example, signalling that the message is not accepted due to implementation or administrative limits).</span>
+<span class="comment">//       The Client will read the PUBACK message and call the user's completion handler with the appropriate arguments.</span>
+<span class="comment">//   4) The PUBACK message should arrive within 20 seconds of the PUBLISH message being successfully sent.</span>
+<span class="comment">//       If it does not, the PUBLISH message will be sent again. In the meantime, the user's callback will not be invoked.</span>
+
+<span class="identifier">client</span><span class="special">.</span><span class="identifier">async_publish</span><span class="special">&lt;</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">mqtt5</span><span class="special">::</span><span class="identifier">qos_e</span><span class="special">::</span><span class="identifier">at_least_once</span><span class="special">&gt;(</span>
+    <span class="string">"my-topic"</span><span class="special">,</span> <span class="string">"Hello world!"</span><span class="special">,</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">mqtt5</span><span class="special">::</span><span class="identifier">retain_e</span><span class="special">::</span><span class="identifier">no</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">mqtt5</span><span class="special">::</span><span class="identifier">publish_props</span> <span class="special">{},</span>
+    <span class="special">[](</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">mqtt5</span><span class="special">::</span><span class="identifier">error_code</span> <span class="identifier">ec</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">mqtt5</span><span class="special">::</span><span class="identifier">reason_code</span> <span class="identifier">rc</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">mqtt5</span><span class="special">::</span><span class="identifier">puback_props</span> <span class="identifier">props</span><span class="special">)</span> <span class="special">{</span>
+        <span class="comment">// This callback is invoked under any of the following circumstances:</span>
+        <span class="comment">//  a) The Client successfully sends the PUBLISH packet and receives a PUBACK from the Broker.</span>
+        <span class="comment">//  b) The Client encounters a non-recoverable error, such as a cancellation or providing invalid parameters</span>
+        <span class="comment">//     to async_publish, which prevents the message from being sent.</span>
+    <span class="special">}</span>
+<span class="special">);</span>
+</pre>
+<div class="section"><div class="titlepage"></div></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mqtt5.auto_reconnect.cons"></a><a class="link" href="auto_reconnect.html#mqtt5.auto_reconnect.cons" title="注意事项与限制">注意事项与限制</a>
+</h3></div></div></div>
+<p>集成的自动重连与重试机制通过简化复杂流程并确保连接持续可用, 大大改善了用户体验. 但需要注意与此特性相关的某些限制和考量.</p>
+<h5>
+<a name="mqtt5.auto_reconnect.cons.h0"></a>
+        <span class="phrase"><a name="mqtt5.auto_reconnect.cons.delayed_handler_invocation"></a></span><a class="link" href="auto_reconnect.html#mqtt5.auto_reconnect.cons.delayed_handler_invocation">处理器调用延迟</a>
+      </h5>
+<p>在 <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 长时间停机期间, 异步函数 (如 <a class="link" href="ref/boost__mqtt5__mqtt_client/async_publish.html" title="boost::mqtt5::mqtt_client::async_publish"><code class="literal">mqtt_client::async_publish</code></a> 中使用的) 的完成处理器在调用之前可能面临相当长的延迟. 由于发起的操作缺乏及时反馈, 用户可能对其请求的状态一无所知.</p>
+<h5>
+<a name="mqtt5.auto_reconnect.cons.h1"></a>
+        <span class="phrase"><a name="mqtt5.auto_reconnect.cons.concealing_configuration_related"></a></span><a class="link" href="auto_reconnect.html#mqtt5.auto_reconnect.cons.concealing_configuration_related">掩盖配置相关的问题</a>
+      </h5>
+<p>无论连接先前因何关闭, <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 总会尝试重新连接代理服务器. 当连接因底层流传输问题 (例如联网设备失去 GSM 连接) 而中断时, 这是理想的行为.</p>
+<p>然而, 连接可能因其他原因被关闭 (或从未建立), 这些原因通常与代理服务器 IP、端口配置错误、TLS 过期或不正确, 或 MQTT 相关错误 (例如试图与不支持 MQTT 5 的代理服务器通信) 有关. 在这些情况下, <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 仍会无休止地尝试连接代理服务器, 但连接永远不会成功.</p>
+<p>这里最具挑战性的问题是, <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 的用户不会以任何方式被告知连接无法建立. 因此, 如果你在代理服务器 IP 中打错一个字符, 运行 <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 并发布一条消息, <a class="link" href="ref/boost__mqtt5__mqtt_client/async_publish.html" title="boost::mqtt5::mqtt_client::async_publish"><code class="literal">mqtt_client::async_publish</code></a> 回调将永远不会被调用, 你也无法 “捕获” 错误或找出问题的根本原因.</p>
+<p>一种可能的替代方案是: 当你尝试向配置错误的代理服务器发布消息时, <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 返回类似 “不可恢复错误” 的结果. 但若代理服务器本身配置有误, 这种方案会带来严重后果. 例如, 假设有人忘记续期代理服务器上的 TLS 证书. 此时连接会中断, <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 会通过 <a class="link" href="ref/boost__mqtt5__mqtt_client/async_publish.html" title="boost::mqtt5::mqtt_client::async_publish"><code class="literal">mqtt_client::async_publish</code></a> 方法报告 “不可恢复错误”. 而代理服务器上 TLS 证书过期很可能是暂时性问题, 因此 <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 继续尝试重连直到证书续期才是自然的做法. 但如果 <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 在检测到这种 “不可恢复错误” 时就停止重试, 何时重连的决定就要留给用户了.</p>
+<p>按照设计, <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 的主要功能需求之一就是自动且正确地处理重连步骤. 若将重连的决定留给用户, 用户就需要手动处理所有这些错误状态, 这会大幅增加用户代码的复杂度, 更不用说覆盖所有可能的错误状态有多么困难.</p>
+<p>在 <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 中检测配置错误的建议方法是使用 <a class="link" href="getting_started.html#mqtt5.getting_started.debugging" title="调试客户端">调试客户端</a> 中所述的日志机制</p>
+<h5>
+<a name="mqtt5.auto_reconnect.cons.h2"></a>
+        <span class="phrase"><a name="mqtt5.auto_reconnect.cons.increased_resource_consumption"></a></span><a class="link" href="auto_reconnect.html#mqtt5.auto_reconnect.cons.increased_resource_consumption">资源消耗增加</a>
+      </h5>
+<p> <a class="link" href="ref/boost__mqtt5__mqtt_client.html" title="boost::mqtt5::mqtt_client"><code class="literal"><code class="computeroutput"><span class="identifier">mqtt_client</span></code></code></a> 设计为自动缓冲其在离线期间发起的请求. 当停机时间较长或累积大量请求时, 这可能导致内存使用量增加. 这一点对资源受限的设备尤为重要, 因为不断增长的内存消耗会影响其性能和功能.</p>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2023-2026 Mireo<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="getting_started.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="connection_maintenance.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.6: http://docutils.sourceforge.net/" />
+<title>Parallel BGL 分布式队列适配器</title>
+<link rel="stylesheet" href="../../../../rst.css" type="text/css" />
+</head>
+<body>
+<div class="document" id="logo-distributed-queue-adaptor">
+<h1 class="title"><a class="reference external" href="http://www.osl.iu.edu/research/pbgl"><img align="middle" alt="Parallel BGL" class="align-middle" src="pbgl-logo.png" /></a> 分布式队列适配器</h1>
+
+<!-- Copyright (C) 2004-2008 The Trustees of Indiana University.
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt) -->
+<pre class="literal-block">
+template&lt;typename ProcessGroup, typename Buffer&gt;
+class distributed_queue
+{
+public:
+  typedef ProcessGroup                     process_group_type;
+  typedef Buffer                           buffer_type;
+  typedef typename buffer_type::value_type value_type;
+  typedef typename buffer_type::size_type  size_type;
+
+  explicit
+  distributed_queue(const ProcessGroup&amp; process_group = ProcessGroup(),
+                    const Buffer&amp; buffer = Buffer(),
+                    bool polling = false);
+
+  distributed_queue(const ProcessGroup&amp; process_group, bool polling);
+
+  void push(const value_type&amp; x);
+  void pop();
+  value_type&amp; top();
+  const value_type&amp; top() const;
+  bool empty() const;
+  size_type size() const;
+};
+
+template&lt;typename ProcessGroup, typename Buffer&gt;
+inline distributed_queue&lt;ProcessGroup, Buffer&gt;
+make_distributed_queue(const ProcessGroup&amp; process_group, const Buffer&amp; buffer,
+                       bool polling = false);
+</pre>
+<p>类模板 <tt class="docutils literal"><span class="pre">distributed_queue</span></tt> 在进程组之上实现一个分布式队列. 分布式队列是对既有 (本地) 队列的适配器, 后者必须对 <a class="reference external" href="http://www.boost.org/libs/graph/doc/Buffer.html">缓冲区</a> 概念建模. 每个进程存储本地队列的一个独立副本, 并通过 <tt class="docutils literal"><span class="pre">pop</span></tt> 与 <tt class="docutils literal"><span class="pre">top</span></tt> 成员从中取出或移除元素.</p>
+<p>本地队列的值类型必须对 <a class="reference external" href="GlobalDescriptor.html">全局描述符</a> 概念建模. 分布式队列的 <tt class="docutils literal"><span class="pre">push</span></tt> 操作 (经由消息) 把值传递给其属主处理器. 因此, 特定本地队列中的元素保证以拥有该本地队列的进程为属主.</p>
+<p>分布式队列的同步发生在 <tt class="docutils literal"><span class="pre">empty</span></tt> 与 <tt class="docutils literal"><span class="pre">size</span></tt> 函数中, 只有当整个分布式队列为空时, 它们才会返回 "空" 值 (分别为 true 或 0). 如果本地队列为空但分布式队列非空, 该操作将阻塞, 直到任一条件改变. 当非空队列的 <tt class="docutils literal"><span class="pre">size</span></tt> 函数返回时, 它返回本地队列的大小. 选择这些语义是为了使通过以下惯用法处理队列中元素的顺序代码能够通过引入分布式队列而并行化:</p>
+<pre class="literal-block">
+distributed_queue&lt;...&gt; Q;
+Q.push(x);
+while (!Q.empty()) {
+  // do something, that may push a value onto Q
+}
+</pre>
+<p>在并行版本中, 初始的 <tt class="docutils literal"><span class="pre">push</span></tt> 操作将把值 <tt class="docutils literal"><span class="pre">x</span></tt> 放入其属主的队列. 所有进程将在对 empty 的调用处同步, 且只有拥有 <tt class="docutils literal"><span class="pre">x</span></tt> 的进程被允许执行循环 (<tt class="docutils literal"><span class="pre">Q.empty()</span></tt> 返回 false). 该迭代可能依次把值推入其他远程队列, 因此当该进程完成循环体的执行且所有进程在 <tt class="docutils literal"><span class="pre">empty</span></tt> 中再次同步时, 可能有更多进程拥有非空的本地队列可执行. 一旦所有本地队列为空, <tt class="docutils literal"><span class="pre">Q.empty()</span></tt> 对所有进程返回 <tt class="docutils literal"><span class="pre">false</span></tt>.</p>
+<p>分布式队列可以在两个不同时刻接收消息: 在同步期间以及轮询 <tt class="docutils literal"><span class="pre">empty</span></tt> 时. 消息总是在同步期间被接收, 以确保能确定准确的本地队列大小. 而 <tt class="docutils literal"><span class="pre">empty</span></tt> 是否应轮询消息则作为构造函数的一个选项指定. 当队列元素的处理顺序不重要时, 可能希望轮询, 因为它允许更少的同步步骤与更少的通信开销. 然而, 当需要更严格的顺序保证时, 轮询可能在语义上不正确. 通过禁用轮询, 可以确保使用上述惯用法的并行执行不会在较早 "层" 的元素之前处理较晚 "层" 的元素.</p>
+<p>分布式队列几乎对 <a class="reference external" href="http://www.boost.org/libs/graph/doc/Buffer.html">缓冲区</a> 概念建模. 但 <tt class="docutils literal"><span class="pre">push</span></tt> 例程不一定会使 <tt class="docutils literal"><span class="pre">size()</span></tt> 的结果加一 (尽管全局队列的大小确实会加一).</p>
+<div class="section" id="member-functions">
+<h1>成员函数</h1>
+<pre class="literal-block">
+explicit
+distributed_queue(const ProcessGroup&amp; process_group = ProcessGroup(),
+                  const Buffer&amp; buffer = Buffer(),
+                  bool polling = false);
+</pre>
+<p>构建一个新的分布式队列, 它通过给定的 <tt class="docutils literal"><span class="pre">process_group</span></tt> 通信, 其本地队列经由 <tt class="docutils literal"><span class="pre">buffer</span></tt> 初始化, 且可以轮询消息, 也可以不轮询.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+distributed_queue(const ProcessGroup&amp; process_group, bool polling);
+</pre>
+<p>构建一个新的分布式队列, 它通过给定的 <tt class="docutils literal"><span class="pre">process_group</span></tt> 通信, 其本地队列默认初始化, 且可以轮询消息, 也可以不轮询.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void push(const value_type&amp; x);
+</pre>
+<p>把一个元素推入分布式队列.</p>
+<p>该元素将被发送到其属主进程, 以加入该进程的本地队列. 如果该队列启用了轮询且属主进程是当前进程, 该值将被立即推入本地队列.</p>
+<p>复杂度: 将传输 O(1) 条大小为 O(<tt class="docutils literal"><span class="pre">sizeof(value_type)</span></tt>) 的消息.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+void pop();
+</pre>
+<p>从本地队列弹出一个元素. 队列不得为 <tt class="docutils literal"><span class="pre">empty()</span></tt>.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+value_type&amp; top();
+const value_type&amp; top();
+</pre>
+<p>返回本地队列的顶部元素. 队列不得为 <tt class="docutils literal"><span class="pre">empty()</span></tt>.</p>
+<hr class="docutils" />
+<pre class="literal-block">
+bool empty() const;
+</pre>
+<p>判断队列是否为空.</p>
+<p>当本地队列非空时, 返回 true. 如果本地队列为空, 则与进程组中的所有其他进程同步, 直到 (1) 本地队列非空 (返回 true) 或 (2) 整个分布式队列为空 (返回 false).</p>
+<hr class="docutils" />
+<pre class="literal-block">
+size_type size() const;
+</pre>
+<p>确定本地队列的大小.</p>
+<p>此例程的行为等价于 <tt class="docutils literal"><span class="pre">empty</span></tt> 的行为, 区别在于: 当 <tt class="docutils literal"><span class="pre">empty</span></tt> 返回 true 时, 此函数返回本地队列的大小; 当 <tt class="docutils literal"><span class="pre">empty</span></tt> 返回 false 时, 此函数返回零.</p>
+</div>
+<div class="section" id="free-functions">
+<h1>自由函数</h1>
+<pre class="literal-block">
+template&lt;typename ProcessGroup, typename Buffer&gt;
+inline distributed_queue&lt;ProcessGroup, Buffer&gt;
+make_distributed_queue(const ProcessGroup&amp; process_group, const Buffer&amp; buffer,
+                       bool polling = false);
+</pre>
+<p>构造一个分布式队列.</p>
+<hr class="docutils" />
+<p>版权所有 (C) 2004, 2005 The Trustees of Indiana University.</p>
+<p>作者: Douglas Gregor 和 Andrew Lumsdaine</p>
+</div>
+</div>
+<div class="footer">
+<hr class="footer" /> 生成时间: 2009-05-31 00:22 UTC. 由 <a class="reference external" href="http://docutils.sourceforge.net/">Docutils</a> 依据 <a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> 源生成.</div>
+</body>
+</html>

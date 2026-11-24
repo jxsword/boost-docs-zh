@@ -1,0 +1,385 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>Lanczos 逼近</title>
+<link rel="stylesheet" href="../math.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Math Toolkit 4.2.1">
+<link rel="up" href="../backgrounders.html" title="第 24 章 背景知识">
+<link rel="prev" href="relative_error.html" title="相对误差">
+<link rel="next" href="remez.html" title="Remez 方法">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="relative_error.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../backgrounders.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="remez.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="math_toolkit.lanczos"></a><a class="link" href="lanczos.html" title="Lanczos 近似">Lanczos 逼近</a>
+</h2></div></div></div>
+<h5>
+<a name="math_toolkit.lanczos.h0"></a>
+      <span class="phrase"><a name="math_toolkit.lanczos.motivation"></a></span><a class="link" href="lanczos.html#math_toolkit.lanczos.motivation">动机</a>
+    </h5>
+<p>
+      <span class="emphasis"><em>为何基于 Lanczos 逼近来实现 gamma 及类 gamma 函数? </em></span>
+    </p>
+<p>首先必须说明, 对于实数域 (而非复数域) 上的 gamma 函数, Lanczos 逼近 (参见 <a href="http://en.wikipedia.org/wiki/Lanczos_approximation" target="_top">Wikipedia 或 </a> <a href="http://mathworld.wolfram.com/LanczosApproximation.html" target="_top">Mathworld</a>) 相比 <a href="http://en.wikipedia.org/wiki/Stirling_approximation" target="_top">Stirling's approximation</a> 等更传统的方法似乎并没有明显优势. <a class="link" href="lanczos.html#pugh">Pugh</a> 对各种可用方法做了详尽比较, 发现它们在复杂度和相对误差方面都十分相似. 不过, Lanczos 逼近确实有几个值得进一步考虑的性质:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">该逼近的截断误差易于计算, 且对所有 <span class="emphasis"><em>z &gt; 0</em></span> 都成立. 实践中这意味着可以对所有 <span class="emphasis"><em>z &gt; 0</em></span> 使用同一个逼近, 并且无论 <span class="emphasis"><em>z</em></span> 多大或多小, 都可以确信截断误差 <span class="emphasis"><em>至多</em></span>被某个有限值所界定.</li>
+<li class="listitem">该逼近的形式特别便于解析操作, 尤其是 gamma 或类 gamma 函数的比值无需借助对数即可轻松计算.</li>
+</ul></div>
+<p>正是这两个性质的结合使该逼近颇具吸引力: Stirling 逼近对较大的 z 高度精确, 并具有与 Lanczos 逼近相同的某些解析性质, 但难以在 z 的整个取值范围上使用.</p>
+<p>举一个最简单的例子, 考虑两个 gamma 函数的比值: 可以通过 lgamma 来计算:</p>
+<pre class="programlisting"><span class="identifier">exp</span><span class="special">(</span><span class="identifier">lgamma</span><span class="special">(</span><span class="identifier">a</span><span class="special">)</span> <span class="special">-</span> <span class="identifier">lgamma</span><span class="special">(</span><span class="identifier">b</span><span class="special">));</span>
+</pre>
+<p>然而, 即使 lgamma 一致精确到 0.5ulp, 也可以轻易证明上式的最坏情况相对误差为:</p>
+<pre class="programlisting"><span class="identifier">Erel</span> <span class="special">&gt;</span> <span class="identifier">a</span> <span class="special">*</span> <span class="identifier">log</span><span class="special">(</span><span class="identifier">a</span><span class="special">)/</span><span class="number">2</span> <span class="special">+</span> <span class="identifier">b</span> <span class="special">*</span> <span class="identifier">log</span><span class="special">(</span><span class="identifier">b</span><span class="special">)/</span><span class="number">2</span>
+</pre>
+<p>当 <span class="emphasis"><em>a</em></span> 和 <span class="emphasis"><em>b</em></span> 较小时这不成问题, 但换一种方式表述这一关系: <span class="emphasis"><em>a 和 b 的数值每增大 10 倍, 就会至少损失一位十进制精度. </em></span>
+    </p>
+<p>相比之下, 通过解析地合并 Lanczos 逼近比值中的同类幂次项, 当 <span class="emphasis"><em>a</em></span> 和 <span class="emphasis"><em>b</em></span> 较小时这些误差几乎可以完全消除, 而当 <span class="emphasis"><em>a</em></span> 和 <span class="emphasis"><em>b</em></span> 非常大 (或非常小) 时也能将其控制在范围内. 当然, 计算高次幂本身就是出了名的难题, 但即便如此, Lanczos 逼近的解析组合往往决定了得到的是有效结果还是纯粹的垃圾. <a class="link" href="sf_beta/beta_function.html" title="Beta">beta</a> 函数的实现说明中有该方法实际应用的例子. 不完全 <a class="link" href="sf_gamma/igamma.html" title="不完全 Gamma 函数">gamma_p gamma</a> 和 <a class="link" href="sf_beta/ibeta_function.html" title="不完全 Beta 函数">beta</a> 函数也使用类似的幂次项解析组合, 把除以大幂次的 gamma 和 beta 函数合并为单个 (更简单的) 表达式.</p>
+<h5>
+<a name="math_toolkit.lanczos.h1"></a>
+      <span class="phrase"><a name="math_toolkit.lanczos.the_approximation"></a></span><a class="link" href="lanczos.html#math_toolkit.lanczos.the_approximation">该逼近</a>
+    </h5>
+<p>gamma 函数的 Lanczos 逼近由下式给出:</p>
+<div class="blockquote"><blockquote class="blockquote"><p>
+        <span class="inlinemediaobject"><img src="../../equations/lanczos0.svg"></span>
+
+      </p></blockquote></div>
+<p>其中 S<sub>g</sub>(z) 是一个对一切 z &gt; 0 都收敛的无穷和, 而 <span class="emphasis"><em>g</em></span> 是控制和中各项“形状”的任意参数, 该和由下式给出:</p>
+<div class="blockquote"><blockquote class="blockquote"><p>
+        <span class="inlinemediaobject"><img src="../../equations/lanczos0a.svg"></span>
+
+      </p></blockquote></div>
+<p>各个系数由以下闭式定义:</p>
+<div class="blockquote"><blockquote class="blockquote"><p>
+        <span class="inlinemediaobject"><img src="../../equations/lanczos0b.svg"></span>
+
+      </p></blockquote></div>
+<p>然而, 按这种形式求和会在计算升阶乘与降阶乘的比值时导致数值不稳定 (实际上相当于连乘一系列非常接近 1 的数, 因此舍入误差会相当快地累积) .</p>
+<p>因此, Lanczos 逼近常写成部分分式形式, 并把前面的常数吸收进求和的系数中:</p>
+<div class="blockquote"><blockquote class="blockquote"><p>
+        <span class="inlinemediaobject"><img src="../../equations/lanczos1.svg"></span>
+
+      </p></blockquote></div>
+<p>其中:</p>
+<div class="blockquote"><blockquote class="blockquote"><p>
+        <span class="inlinemediaobject"><img src="../../equations/lanczos2.svg"></span>
+
+      </p></blockquote></div>
+<p>参数 <span class="emphasis"><em>g</em></span> 同样是任意选取的常数, <span class="emphasis"><em>N</em></span> 则是任意选取的、在“Lanczos 和”部分中求值的项数.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>一些作者选择把和定义为从 k=1 到 N, 因此最终得到 N+1 个系数. 这恰好会同时扰乱下文的讨论和代码 (因为 C++ 处理的是半开数组区间, 而不是求和的闭区间) . 这一约定与 <a class="link" href="lanczos.html#godfrey">Godfrey</a> 一致, 但与 <a class="link" href="lanczos.html#pugh">Pugh</a> 不一致, 所以引用该领域文献时要当心.</p></td></tr>
+</table></div>
+<h5>
+<a name="math_toolkit.lanczos.h2"></a>
+      <span class="phrase"><a name="math_toolkit.lanczos.computing_the_coefficients"></a></span><a class="link" href="lanczos.html#math_toolkit.lanczos.computing_the_coefficients">计算系数</a>
+    </h5>
+<p>系数 C0..CN-1 需要在高精度下由 <span class="emphasis"><em>N</em></span> 和 <span class="emphasis"><em>g</em></span> 计算得出, 然后作为程序的一部分存储. 系数的计算采用 <a class="link" href="lanczos.html#godfrey">Godfrey</a> 的方法: 设这些常量包含在列向量 P 中, 则:</p>
+<p>
+      P = D B C F
+    </p>
+<p>其中 B 是一个 NxN 矩阵:</p>
+<div class="blockquote"><blockquote class="blockquote"><p>
+        <span class="inlinemediaobject"><img src="../../equations/lanczos4.svg"></span>
+
+      </p></blockquote></div>
+<p>D 是一个 NxN 矩阵:</p>
+<div class="blockquote"><blockquote class="blockquote"><p>
+        <span class="inlinemediaobject"><img src="../../equations/lanczos3.svg"></span>
+
+      </p></blockquote></div>
+<p>C 是一个 NxN 矩阵:</p>
+<div class="blockquote"><blockquote class="blockquote"><p>
+        <span class="inlinemediaobject"><img src="../../equations/lanczos5.svg"></span>
+
+      </p></blockquote></div>
+<p>而 F 是一个 N 元列向量:</p>
+<div class="blockquote"><blockquote class="blockquote"><p>
+        <span class="inlinemediaobject"><img src="../../equations/lanczos6.svg"></span>
+
+      </p></blockquote></div>
+<p>注意, 矩阵 B、D 和 C 只含整数项且仅取决于 <span class="emphasis"><em>N</em></span>, 因此应先计算该乘积, 最后一步再乘以 <span class="emphasis"><em>F</em></span>.</p>
+<h5>
+<a name="math_toolkit.lanczos.h3"></a>
+      <span class="phrase"><a name="math_toolkit.lanczos.choosing_the_right_parameters"></a></span><a class="link" href="lanczos.html#math_toolkit.lanczos.choosing_the_right_parameters">选择合适的参数</a>
+    </h5>
+<p>诀窍在于选择 <span class="emphasis"><em>N</em></span> 和 <span class="emphasis"><em>g</em></span> 以达到所需的精度水平: 把 <span class="emphasis"><em>g</em></span> 取得较小会得到严格收敛的级数, 但收敛缓慢. 把 <span class="emphasis"><em>g</em></span> 取得较大则会使级数中约前 <span class="emphasis"><em>g-1</em></span> 项偏大和/或发散, 然后突然“猛地”收敛.</p>
+<p>
+      <a class="link" href="lanczos.html#pugh">Pugh</a> 已确定了 <span class="emphasis"><em>1 &lt;= N &lt;= 60</em></span> 范围内各 <span class="emphasis"><em>N</em></span> 对应的 <span class="emphasis"><em>g</em></span> 最优值: 遗憾的是, 实践中选用这些值会在 Lanczos 和中引发消去误差, 因为 (交替) 级数中最大项约是结果的 1000 倍. 除非求值时可以使用若干保护位 <span class="emphasis"><em>并且</em></span>系数以高于结果所需的精度存储, 否则这些最优值在实践中似乎并无用处. 这些值最好留作特定用途, 例如用双精度算术计算到 float 精度.</p>
+<div class="table">
+<a name="math_toolkit.lanczos.optimal_choices_for_n_and_g_when"></a><p class="title"><b>表 24.1. 使用保护位计算时 N 和 g 的最优选择 (来源: Pugh) </b></p>
+<div class="table-contents"><table class="table" summary="Optimal choices for N and g when computing with guard digits (source:
+      Pugh)">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+              <p>尾数位数</p>
+            </th>
+<th>
+              <p>
+                N
+              </p>
+            </th>
+<th>
+              <p>
+                g
+              </p>
+            </th>
+<th>
+              <p>最大误差</p>
+            </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+              <p>
+                24
+              </p>
+            </td>
+<td>
+              <p>
+                6
+              </p>
+            </td>
+<td>
+              <p>
+                5.581
+              </p>
+            </td>
+<td>
+              <p>
+                9.51e-12
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                53
+              </p>
+            </td>
+<td>
+              <p>
+                13
+              </p>
+            </td>
+<td>
+              <p>
+                13.144565
+              </p>
+            </td>
+<td>
+              <p>
+                9.2213e-23
+              </p>
+            </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><p> <a class="link" href="lanczos.html#godfrey">Godfrey</a> 描述的替代方法是对 <span class="emphasis"><em>N</em></span> 和 <span class="emphasis"><em>g</em></span> 参数空间做穷举搜索, 为给定的 <span class="emphasis"><em>p</em></span> 位浮点类型确定最优组合. 重复这一工作为双精度算术找到了一个不错的逼近 (接近 <a class="link" href="lanczos.html#godfrey">Godfrey</a> 找到的那个) , 但未能为 80 位或 128 位 long double 找到真正好的逼近. 此外还观察到, 所得逼近倾向于针对用于对照阶乘测试实现的较小 z 值 (1 &lt; z &lt; 200) 进行优化. 用大参数计算 gamma 函数比值时, 观察到会因 Lanczos 级数的截断而产生误差.</p>
+<p>
+      <a class="link" href="lanczos.html#pugh">Pugh</a> 找出了逼近理论误差达到极小的所有位置, 但遗憾的是只发表了其中最大的极小值. 不过他观察到, 这些极小值与 Lanczos 级数 S<sub>g</sub>(z) 中第一个被忽略的项 (a<sub>N</sub>) 变号的位置几乎重合. 这些位置相当容易定位, 尽管要耗费不少机时. 这些“甜点”只需计算一次、制成表格, 然后在需要时查找, 即可得到能为某个固定精度类型提供所需精度的逼近.</p>
+<p>遗憾的是, 沿这条路径未能为 128 位 long double 找到真正好的逼近, 而找到的 64 位和 80 位实数逼近又需要过多项. 这里有两个相互冲突的因素: 高精度要求较大的 <span class="emphasis"><em>g</em></span>, 而避免求值中的消去误差又要求较小的 <span class="emphasis"><em>g</em></span>.</p>
+<p>此处应注意, Lanczos 和可以化为有理形式 (两个多项式之比, 由部分分式形式经多项式运算得到) , 这样做会改变系数, 使 <span class="emphasis"><em>它们全为正</em></span>. 这意味着有理形式的和可以在没有消去误差的情况下求值, 尽管对给定的 N 系数数量要翻倍. 再次搜索“甜点”——这次以有理形式求值 Lanczos 和, 并且只测试理论误差小于被测类型机器 epsilon 的“甜点”——为所有被测类型都找到了好的逼近. 所找到的最优值与 <a class="link" href="lanczos.html#pugh">Pugh</a> 报告的最佳情形相当接近 (对给定精度, <span class="emphasis"><em>N</em></span> 略大、<span class="emphasis"><em>g</em></span> 略小于 <a class="link" href="lanczos.html#pugh">Pugh</a> 的报告) ; 尽管化为有理形式会使存储的系数翻倍, 但应注意其中一半是整数 (因此占用较少存储空间) , 而且该逼近所需的 <span class="emphasis"><em>N</em></span> 比其他情形所需的小, 因此总体上需要的浮点运算可能更少.</p>
+<p>下表给出固定精度计算时 <span class="emphasis"><em>N</em></span> 和 <span class="emphasis"><em>g</em></span> 的最优值. 这些应视为进行中的工作: 106 位尾数机器 (Darwin long double 和 NTL quad_float) 尚无对应值, <span class="emphasis"><em>g</em></span> 的值还可能进一步优化. 表中给出的误差是将 Lanczos 无穷级数截断到 <span class="emphasis"><em>N</em></span> 项所致误差的估计值. 它们由前五个被忽略项之和计算得出——已知是相当悲观的估计——不过值得注意的是, <span class="emphasis"><em>N</em></span> 和 <span class="emphasis"><em>g</em></span> 的最佳组合出现时, 估计截断误差几乎正好等于相应类型的机器 epsilon.</p>
+<div class="table">
+<a name="math_toolkit.lanczos.optimum_value_for_n_and_g_when_c"></a><p class="title"><b>表 24.2. 固定精度计算时 N 和 g 的最优值</b></p>
+<div class="table-contents"><table class="table" summary="Optimum value for N and g when computing at fixed precision">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+              <p>尾数位数</p>
+            </th>
+<th>
+              <p>所用平台/编译器</p>
+            </th>
+<th>
+              <p>
+                N
+              </p>
+            </th>
+<th>
+              <p>
+                g
+              </p>
+            </th>
+<th>
+              <p>最大截断误差</p>
+            </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+              <p>
+                24
+              </p>
+            </td>
+<td>
+              <p>
+                Win32, VC++ 7.1
+              </p>
+            </td>
+<td>
+              <p>
+                6
+              </p>
+            </td>
+<td>
+              <p>
+                1.428456135094165802001953125
+              </p>
+            </td>
+<td>
+              <p>
+                9.41e-007
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                53
+              </p>
+            </td>
+<td>
+              <p>
+                Win32, VC++ 7.1
+              </p>
+            </td>
+<td>
+              <p>
+                13
+              </p>
+            </td>
+<td>
+              <p>
+                6.024680040776729583740234375
+              </p>
+            </td>
+<td>
+              <p>
+                3.23e-016
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                64
+              </p>
+            </td>
+<td>
+              <p>
+                Suse Linux 9 IA64, gcc-3.3.3
+              </p>
+            </td>
+<td>
+              <p>
+                17
+              </p>
+            </td>
+<td>
+              <p>
+                12.2252227365970611572265625
+              </p>
+            </td>
+<td>
+              <p>
+                2.34e-024
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                116
+              </p>
+            </td>
+<td>
+              <p>
+                HP Tru64 Unix 5.1B / Alpha, Compaq C++ V7.1-006
+              </p>
+            </td>
+<td>
+              <p>
+                24
+              </p>
+            </td>
+<td>
+              <p>
+                20.3209821879863739013671875
+              </p>
+            </td>
+<td>
+              <p>
+                4.75e-035
+              </p>
+            </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><p>最后请注意, 通过从分母中提出因子 exp(g)、并把所有系数除以 exp(g), Lanczos 逼近可以写成如下形式:</p>
+<div class="blockquote"><blockquote class="blockquote"><p>
+        <span class="inlinemediaobject"><img src="../../equations/lanczos7.svg"></span>
+
+      </p></blockquote></div>
+<p>这种形式更便于计算 lgamma, 但对 gamma 函数而言, 除以 <span class="emphasis"><em>e</em></span> 会把可能精确的量变成不精确的值: 在输入为精确值的常见情形下这会降低精度, 因此 gamma 函数不使用这种形式.</p>
+<h5>
+<a name="math_toolkit.lanczos.h4"></a>
+      <span class="phrase"><a name="math_toolkit.lanczos.references"></a></span><a class="link" href="lanczos.html#math_toolkit.lanczos.references">参考文献</a>
+    </h5>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">
+          <a name="godfrey"></a>Paul Godfrey, <a href="http://my.fit.edu/~gabdo/gamma.txt" target="_top">"A
+          note on the computation of the convergent Lanczos complex Gamma approximation"</a>.
+        </li>
+<li class="listitem">
+          <a name="pugh"></a>Glendon Ralph Pugh, <a href="http://bh0.physics.ubc.ca/People/matt/Doc/ThesesOthers/Phd/pugh.pdf" target="_top">"An Analysis of the Lanczos Gamma Approximation"</a>, 博士论文, 2004 年 11 月.</li>
+<li class="listitem">
+          Viktor T. Toth, <a href="http://www.rskey.org/gamma.htm" target="_top">"Calculators
+          and the Gamma Function"</a>.
+        </li>
+<li class="listitem">
+          Mathworld, <a href="http://mathworld.wolfram.com/LanczosApproximation.html" target="_top">The
+          Lanczos Approximation</a>.
+        </li>
+</ol></div>
+</div>
+<div class="copyright-footer">版权所有 © 2006-2021 Nikhar Agrawal, Anton Bikineev, Matthew Borland, Paul A. Bristow, Marco Guazzone, Christopher Kormanyos, Hubert Holin, Bruno Lalande, John Maddock, Evan Miller, Jeremy Murphy, Matthew Pulver, Johan Råde, Gautam Sewani, Benjamin Sobotta, Nicholas Thompson, Thijs van den Berg, Daryle Walker, Xiaogang Zhang, and Maksym Zhelyeznyakov<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="relative_error.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../backgrounders.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="remez.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

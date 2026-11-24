@@ -1,0 +1,251 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html>
+<head>
+  <meta http-equiv="Content-Language" content="en-us">
+  <meta http-equiv="Content-Type" content="text/html; charset=us-ascii">
+  <meta name="GENERATOR" content="Microsoft FrontPage 6.0">
+  <meta name="ProgId" content="FrontPage.Editor.Document">
+  <link rel="stylesheet" type="text/css" href="../../../boost.css">
+
+  <title>Boost Statechart 库 - 性能</title>
+</head>
+
+<body link="#0000FF" vlink="#800080">
+  <table border="0" cellpadding="7" cellspacing="0" width="100%" summary=
+  "header">
+    <tr>
+      <td valign="top" width="300">
+        <h3><a href="../../../index.htm"><img alt="C++ Boost" src=
+        "../../../boost.png" border="0" width="277" height="86"></a></h3>
+      </td>
+
+      <td valign="top">
+        <h1 align="center">Boost Statechart 库</h1>
+
+        <h2 align="center">性能</h2>
+      </td>
+    </tr>
+  </table>
+  <hr>
+
+  <dl class="index">
+    <dt><a href="#SpeedVersusScalabilityTradeoffs">速度与可扩展性权衡</a></dt>
+
+    <dt><a href="#MemoryManagementCustomization">内存管理定制</a></dt>
+
+    <dt><a href="#RttiCustomization">RTTI 定制</a></dt>
+
+    <dt><a href="#ResourceUsage">资源使用</a></dt>
+  </dl>
+
+  <h2><a name="SpeedVersusScalabilityTradeoffs" id=
+  "SpeedVersusScalabilityTradeoffs">速度与可扩展性权衡</a></h2>
+
+  <p>为了让本库对小型简单机器既快 <b>又</b>同时具备可扩展性, 已经投入了大量精力 (这只适用于 <code>state_machine&lt;&gt;</code>; <code>fifo_scheduler&lt;&gt;</code> 仍有优化空间, 尤其是多线程构建). 虽然我相信它在大多数应用中性能合理, 但可扩展性并非免费. 精心手工打造的小型状态机很容易胜过等效的 Boost.Statechart 状态机. 为了解差距有多大, 我在 BitMachine 示例中实现了一个简单的基准测试. Handcrafted 示例是 1-bit-BitMachine 的手工变体, 实现同样的基准测试.</p>
+
+  <p>我试图构造一个公平但有些不切实际的 <b>最坏情况</b>场景:</p>
+
+  <ul>
+    <li>对两台机器, 都在测试开始前只分配唯一事件的一个对象. 然后把这个同一个对象反复发送给机器</li>
+
+    <li>Handcrafted 机器采用 GOF 访问者模式的双分派. 状态是预分配的, 因此事件分派与转换不过是两次虚调用和一次指针赋值</li>
+  </ul>
+
+  <p>基准测试运行在 3.2GHz Intel Pentium 4 上, 得出每个事件的分派与转换耗时如下:</p>
+
+  <ul>
+    <li>Handcrafted:
+
+      <ul>
+        <li>MSVC7.1: 10ns</li>
+
+        <li>GCC3.4.2: 20ns</li>
+
+        <li>Intel9.0: 20ns</li>
+      </ul>
+    </li>
+
+    <li>定制内存管理的 1-bit-BitMachine: <ul>
+        <li>MSVC7.1: 150ns</li>
+
+        <li>GCC3.4.2: 320ns</li>
+
+        <li>Intel9.0: 170ns</li>
+      </ul>
+    </li>
+  </ul>
+
+  <p>虽然差距很大, 但我仍然认为在大多数实际应用中不会察觉到. 无论应用使用手工打造的状态机还是 Boost.Statechart 状态机, 它都将...</p>
+
+  <ul>
+    <li>几乎不会遇到状态机被如基准测试中那么多事件淹没的情况. 状态机几乎总是要花大量时间等待事件 (事件通常来自人工操作员、机械设备或电子设备, 且往往经过相对较慢的 I/O 通道). 解析器几乎是 FSM 唯一不属于这种情况的应用. 然而, 解析器 FSM 通常不直接在状态机这一层描述, 而是在更适合该任务的更高层描述. 此类更高层的例子有: Boost.Regex, Boost.Spirit, XML Schemas 等. 此外, 解析器的性质允许许多在通用 FSM 框架中不可能实现的优化. <br> 结论: 虽然用本库实现解析器是可能的, 但几乎从不建议这样做, 因为其他方法能带来性能更好、表达力更强的代码</li>
+
+    <li>常在各自的线程中运行状态机. 这会带来相当可观的锁定与线程切换开销. 用 PingPong 示例 (两个异步状态机相互交换事件) 做的性能测试, 给出了处理一个事件并执行相应状态内反应的耗时 (使用配置为 <code>boost::fast_pool_allocator&lt;&gt;</code> 的库): <ul>
+        <li>单线程 (无锁定与等待): 840ns / 840ns</li>
+
+        <li>带一个线程的多线程 (调度器使用互斥锁, 但从不需要等待事件): 6500ns / 4800ns</li>
+
+        <li>带两个线程的多线程 (两个调度器都使用互斥锁, 且恰好有一个总是在等待事件): 14000ns / 7000ns</li>
+      </ul>
+
+      <p>如上所述, 异步机器的耗时肯定还有改进空间. 此外, 这些基准测试非常粗糙, 旨在展示锁定与线程上下文切换的开销. 真实应用中的开销通常更小, 其他操作系统在这方面也肯定能做得更好. 不过, 我坚信在大多数平台上, 线程开销通常大于 Boost.Statechart 花在事件分派和转换上的时间. 手工打造的机器也必然有同样的开销, 这使得纯单线程分派与转换速度的重要性大大降低</p>
+    </li>
+
+    <li>几乎总是用 <code>new</code> 分配事件, 并在消费后销毁它们. 即使定制了事件内存管理, 这也会增加若干周期</li>
+
+    <li>常使用带有正交状态和其他高级特性的状态机. 这迫使手工机器采用更恰当但更耗时的簿记方式</li>
+  </ul>
+
+  <p>因此, 在真实应用中, 事件分派与转换通常不构成瓶颈, 手工机器与 Boost.Statechart 机器之间的相对差距也变得远小于最坏情况场景.</p>
+
+  <h3>详细性能数据</h3>
+
+  <p>为了找出主要性能瓶颈, 编写了示例程序 Performance. 它测量不同 BitMachine 变体处理一个事件所花的时间. 与只使用转换的 BitMachine 示例不同, Performance 将数量不等的状态内反应与转换结合使用. 状态内反应与转换的唯一区别是前者既不进入也不退出任何状态. 除此之外, 分派一个事件并执行相应动作所需的代码量是相同的.</p>
+
+  <p>下面的图显示库处理一个事件的平均耗时, 随所采用状态内反应的百分比变化. 0% 表示所有被触发的反应都是转换. 100% 表示所有被触发的反应都是状态内反应. 我从这些测量中得出以下结论:</p>
+
+  <ul>
+    <li>曲线相当线性的走势表明, 100% 状态内反应比例下的测量是准确的, 而不仅仅是编译器优化的产物. 这类优化之所以可能, 是因为在 100% 的情况下, 编译期就已知当前状态永远不会改变</li>
+
+    <li>100% 状态内反应比例且使用速度优化 RTTI 的数据点表明, 现代编译器似乎非常激进地内联看似复杂的分派代码, 以至于分派被简化为它本来的样子: 一次虚函数调用后接一次对合适反应的线性搜索. 例如, 在 1-bit BitMachine 的情况下, Intel9.0 产生的分派代码似乎与 Handcrafted 机器中的两次虚函数调用同等高效</li>
+
+    <li>在所有编译器和所有变体上, 花在事件分派上的时间与退出当前状态并进入目标状态所花的时间相比都相形见绌. 值得注意的是, BitMachine 是一台扁平的非正交状态机, 接近最坏情况. 真实机器在转换期间常常要退出和进入多个状态, 这使纯分派时间更加微不足道. 这使得实现常数时间分派 (正式评审期间有少数人提出此要求) 的价值不大. 相反, 未来的优化工作将集中在状态进入与状态退出上</li>
+
+    <li>只要代码量超过某个阈值, Intel9.0 在优化/内联代码方面似乎就有问题. 与其他两个编译器不同, 我不得不把 1、2、3 和 4-bit BitMachine 的测试分别编译成独立的可执行文件才能获得良好性能. 即便如此, 4-bit BitMachine 的性能仍然糟糕透顶. 当我把全部 4 个测试编译进同一个可执行文件时, 情况更糟. 这看起来肯定是编译器的缺陷</li>
+  </ul>
+
+  <h4>开箱即用</h4>
+
+  <p>库按原样使用, 不做任何优化/修改.</p>
+
+  <p><img alt="PerformanceNormal1" src="PerformanceNormal1.gif" border="0"
+  width="371" height="284"><img alt="PerformanceNormal2" src=
+  "PerformanceNormal2.gif" border="0" width="371" height="284"><img alt=
+  "PerformanceNormal3" src="PerformanceNormal3.gif" border="0" width="371"
+  height="284"><img alt="PerformanceNormal4" src="PerformanceNormal4.gif"
+  border="0" width="371" height="284"></p>
+
+  <h4>原生 RTTI</h4>
+
+  <p>库在定义了 <code><a href=
+  "configuration.html#ApplicationDefinedMacros">BOOST_STATECHART_USE_NATIVE_RTTI</a></code> 的情况下使用.</p>
+
+  <p><img alt="PerformanceNative1" src="PerformanceNative1.gif" border="0"
+  width="371" height="284"><img alt="PerformanceNative2" src=
+  "PerformanceNative2.gif" border="0" width="371" height="284"><img alt=
+  "PerformanceNative3" src="PerformanceNative3.gif" border="0" width="371"
+  height="284"><img alt="PerformanceNative4" src="PerformanceNative4.gif"
+  border="0" width="371" height="284"></p>
+
+  <h4>定制内存管理</h4>
+
+  <p>库在使用定制内存管理 (<code>boost::fast_pool_allocator</code>) 的情况下运行.</p>
+
+  <p><img alt="PerformanceCustom1" src="PerformanceCustom1.gif" border="0"
+  width="371" height="284"><img alt="PerformanceCustom2" src=
+  "PerformanceCustom2.gif" border="0" width="371" height="284"><img alt=
+  "PerformanceCustom3" src="PerformanceCustom3.gif" border="0" width="371"
+  height="284"><img alt="PerformanceCustom4" src="PerformanceCustom4.gif"
+  border="0" width="371" height="284"></p>
+
+  <h3><a name="DoubleDispatch" id="DoubleDispatch">双分派</a></h3>
+
+  <p>每个状态机的核心都是双分派的一个实现. 这是因为进入的事件 <b>和</b>活动状态共同决定了状态机将产生哪种 <a href=
+  "definitions.html#Reaction">反应</a>. 每次事件分派都是先一次虚函数调用, 再对合适的反应做线性搜索, 每个反应一次 RTTI 比较. 以下替代方案曾被考虑但被否决:</p>
+
+  <ul>
+    <li><a href=
+    "http://www.objectmentor.com/resources/articles/acv.pdf">无环访问者</a>: 这种双分派变体满足全部可扩展性要求, 但由于代价高昂的继承树交叉转换 (cross-cast) 而性能不佳. 此外, 状态必须为 <b>每个</b>反应存储一个 v 指针, 这减慢了构造, 并使内存管理定制效率低下. 另外, C++ RTTI 也不得不开启, 对可执行文件体积有负面影响. Boost.Statechart 最初采用无环访问者, 比现在慢约 4 倍 (Intel Pentium M 上的 MSVC7.1). 在其他平台上分派速度可能更好, 但其他负面影响依然存在</li>
+
+    <li><a href="http://en.wikipedia.org/wiki/Visitor_pattern">GOF 访问者</a>: GOF 访问者模式不可避免地使整台机器依赖于所有事件. 也就是说, 每当添加新事件, 都免不了重新编译整个状态机. 这违背可扩展性要求</li>
+
+    <li>单个二维函数指针数组: 为了满足要求 6, 应该可以把单个状态机分散到多个翻译单元. 但这意味着分派表必须在运行期填充, 且各翻译单元必须设法让自己被知晓, 以便把状态机中属于自己的部分加入表内. 根本没有办法既自动 <b>又</b>可移植地做到这一点. 分布在多个翻译单元的状态机若要采用基于表的双分派, 唯一可移植的方式依赖用户: 程序员必须以某种方式 <b>手工</b>把状态机的各个部分连接起来. 这不仅扩展性差, 而且极易出错</li>
+  </ul>
+
+  <h2><a name="MemoryManagementCustomization" id=
+  "MemoryManagementCustomization">内存管理定制</a></h2>
+
+  <p>开箱即用时, 一切 (事件对象、状态对象、内部数据等) 都通过 <code>std::allocator&lt; void &gt;</code> (Allocator 模板参数的默认值) 分配. 对于满足以下前提的应用, 这应该已经足够:</p>
+
+  <ul>
+    <li>没有确定性反应时间 (硬实时) 要求</li>
+
+    <li>应用程序的运行时间永远不会长到堆碎片成为问题. 这当然是所有长期运行程序的问题, 而不仅仅是使用本库的程序. 不过应当注意, 碎片问题可能比传统 FSM 框架更早出现</li>
+  </ul>
+
+  <p>如果应用程序不满足这些前提, Boost.Statechart 的内存管理可按以下方式定制:</p>
+
+  <ul>
+    <li>向支持相应参数的类模板传入标准 Allocator 概念的一个模型 (<code>event&lt;&gt;</code>、<code>state_machine&lt;&gt;</code>、<code>asynchronous_state_machine&lt;&gt;</code>、<code>fifo_scheduler&lt;&gt;</code>、<code>fifo_worker&lt;&gt;</code>). 这会把所有分配重定向到传入的自定义分配器, 应能满足几乎所有项目的需要</li>
+
+    <li>此外, 还可以 <b>单独</b>定制 <b>状态</b>的内存管理, 方法是为所有状态类重载 <code>operator new()</code> 和 <code>operator delete()</code>, 但这可能只在少数情况下有用</li>
+  </ul>
+
+  <h2><a name="RttiCustomization" id="RttiCustomization">RTTI 定制</a></h2>
+
+  <p>RTTI 用于事件分派和 <code>state_downcast&lt;&gt;()</code>. 目前恰好有两个选项:</p>
+
+  <ol>
+    <li>默认采用速度优化的内部实现</li>
+
+    <li>让库改用原生 C++ RTTI 的办法是定义 <code><a href=
+    "configuration.html#ApplicationDefinedMacros">BOOST_STATECHART_USE_NATIVE_RTTI</a></code></li>
+  </ol>
+
+  <p>倾向于选项 2 有两个理由:</p>
+
+  <ul>
+    <li>当状态机 (或其部分) 编译进 DLL 时, 使用内部 RTTI 机制可能出问题 (见常见问题条目 <a href="faq.html#Dll">如何把状态机编译成动态链接库 (DLL)?</a>). 使用选项 2 是绕过这类问题的一种办法 (在某些平台上, 似乎是唯一的办法)</li>
+
+    <li>状态与事件对象少存一个指针, 意味着最好情况下状态机对象的内存占用可缩小 15% (空事件通常小 30%, 当事件是突发而非稳定流时这可能是个优势). 然而, 在大多数平台上, 开启 C++ RTTI 会增大可执行文件体积. 因此, 鉴于每个机器对象节省的空间很小, 只有在同时满足以下两个条件的应用中这才有意义: <ul>
+        <li>事件分派永远不会成为瓶颈</li>
+
+        <li>需要减少运行期分配的内存 (以更大的可执行文件为代价)</li>
+      </ul>
+
+      <p>显而易见的候选是可执行文件驻留在 ROM 中的嵌入式系统. 其他候选是运行大量相同状态机的应用, 在这种情况下这一措施甚至可以减少 <b>总体</b>内存占用</p>
+    </li>
+  </ul>
+
+  <h2><a name="ResourceUsage" id="ResourceUsage">资源使用</a></h2>
+
+  <h3>内存</h3>
+
+  <p>在 32 位机器上, 一个空的活动状态通常需要不到 50 字节内存. 即使 <b>非常</b>复杂的机器, 同时活动状态通常也少于 20 个, 所以几乎所有机器都应能在不到 1KB 的内存下运行 (不计事件队列). 显然, 用户添加的任何状态局部成员都会增加每台机器的内存占用.</p>
+
+  <h3>处理器周期</h3>
+
+  <p>下面的排名可以大致说明哪个特性会消耗多少周期:</p>
+
+  <ol>
+    <li><code>state_cast&lt;&gt;()</code>: 迄今最耗周期的特性. 对合适的状态做线性搜索, 每访问一个状态使用一次 <code>dynamic_cast</code> </li>
+
+    <li>状态进入与退出: 对完全优化的 1-bit-BitMachine 的性能剖析表明, 总事件处理时间中约四分之三花在析构退出的状态和构造进入的状态上. 显然, 若 <a href=
+    "definitions.html#InnermostCommonContext">最内层公共上下文</a>距叶状态较远, 和/或正交状态很多, 转换就很容易导致相当多状态的析构与构造, 从而耗费大量时间</li>
+
+    <li><code>state_downcast&lt;&gt;()</code>: 对所请求的状态做线性搜索, 每访问一个状态使用一次虚调用和一次 RTTI 比较</li>
+
+    <li>深历史: 对于向其状态基类传入 <code>has_deep_history</code> 或 <code>has_full_history</code> 的状态内部的所有最内层状态, 每次退出都必须在 (通常很小的) 历史映射中做一次二分查找. 历史槽位的分配只进行一次, 在首次退出时</li>
+
+    <li>浅历史: 对于向其状态基类传入 <code>has_shallow_history</code> 或 <code>has_full_history</code> 的状态的所有直接内层状态, 每次退出都必须在 (通常很小的) 历史映射中做一次二分查找. 历史槽位的分配只进行一次, 在首次退出时</li>
+
+    <li>事件分派: 一次虚函数调用后接一次对合适 <a href="definitions.html#Reaction">反应</a>的线性搜索, 每访问一个反应使用一次 RTTI 比较</li>
+
+    <li>正交状态: 每退出一个状态需要额外一次虚调用, <b>前提是</b>转换前存在多个活动叶状态. 还应注意, 存在正交状态时, 最坏情况事件分派时间会成倍增加. 例如, 在给定状态配置中添加两个正交叶状态, 最坏情况耗时会增至三倍</li>
+  </ol>
+  <hr>
+
+  <p><a href="http://validator.w3.org/check?uri=referer"><img border="0" src=
+  "../../../doc/images/valid-html401.png" alt="Valid HTML 4.01 Transitional"
+  height="31" width="88"></a></p>
+
+  <p>修订于 <!--webbot bot="Timestamp" s-type="EDITED" s-format="%d %B, %Y" startspan -->03 December, 2006<!--webbot bot="Timestamp" endspan i-checksum="38512" --></p>
+
+  <p><i>版权所有 © 2003-<!--webbot bot="Timestamp" s-type="EDITED" s-format="%Y" startspan -->2006<!--webbot bot="Timestamp" endspan i-checksum="770" -->
+  <a href="contact.html">Andreas Huber Dönni</a></i></p>
+
+  <p><i>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <a href="../../../LICENSE_1_0.txt">LICENSE_1_0.txt</a> 或复制于 <a href=
+  "http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</a>)</i></p>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Outcome (提案中的 std result) - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="../css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="../images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="../alternatives/expected.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../alternatives.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../alternatives/leaf.html"><img src="../images/next.png" alt="下一页"></a></div><div id="content">
+  <div class="titlepage"><div><div><h1 style="clear: both">Outcome (提案中的 std result)</h1></div></div></div>
+  <div class="toc"><dl class="toc">
+<dt>
+<dd><dl>
+<dt>
+<dd><dl>
+<dt>
+<dd><dl>
+<dt><a href="#pros">优点:</a></dt>
+<dt><a href="#cons">缺点:</a></dt>
+</dl></dd></dt>
+</dl></dd></dt>
+</dl></dd></dt>
+</dl>
+  </div>
+  
+
+<p>Outcome (本文档所描述的库) 起因于对当时最初提案的 <code>std::expected&lt;T, E&gt;</code> 的负面反应, 不过最终被标准化为 <code>std::expected&lt;T, E&gt;</code> 的东西看起来更像是 Outcome 的 <code>result&lt;T, E&gt;</code>, 而不是最初的 Expected. <a href="../history.html">你可以在此阅读这些经历如何促使我开发 Outcome v1</a>. Outcome 同时提供独立版与 Boost 版, 其当前设计完成于 2018 年.</p>
+
+<p>Outcome 的核心是两个主力类型和一个宏:</p>
+
+<ul>
+<li><a href="../reference/types/basic_result.html" class="api-reference"><code>basic_result&lt;T, E, NoValuePolicy&gt;</code></a>
+</li>
+
+<li><a href="../reference/types/basic_outcome.html" class="api-reference"><code>basic_outcome&lt;T, EC, EP, NoValuePolicy&gt;</code></a>
+</li>
+
+<li><a href="../reference/macros/try.html" class="api-reference"><code>BOOST_OUTCOME_TRY(var, expr)</code></a>
+</li>
+</ul>
+
+<p>这三个核心条目随后混合成名副其实的大量 <a href="../reference/aliases.html">便捷 typedef</a> 与变体, 以支持广泛的使用场景, 包括 <a href="../tutorial/essential/coroutines.html">在 C++ 协程中使用</a>; 此外还有大量管道设施与定制点, 用于决定不兼容的类型应当如何交互, 或在生命周期事件发生时获得通知 (例如在 <code>result&lt;T, E&gt;</code> 携带错误构造时捕获栈回溯).</p>
+
+<p>Outcome 能完美传播你所配置类型的每个单独操作的 constexpr 性、平凡性与 <code>noexcept</code> 性. 它从不触及动态内存分配, 并且经过精心编写, 以便编译器在一切可能的场合将其从生成的代码中完全优化掉. 对于自声明为 '移动位拷贝兼容 (move bitcopying compatible)' 的类型, 它能够执行 '真正的移动 (true moves)', 即被移动源值的析构函数调用会被消除. 对带有虚析构函数的类型, '真正的移动' 可能带来改变局面的性能提升.</p>
+
+<p>Outcome 非常注意将对构建时间的可能影响降到最低, 并保证用它构建的二进制具有稳定的 ABI, 因此可以放心用于<em>真正</em>大型的 C++ 代码库 (仅限独立版). 为了与其他语言互操作, 它保证 C 代码可以使用 Outcome 数据类型, 并为此提供了一个 C 宏 API 头文件.</p>
+
+<p>Outcome 能够识别类似 Expected 的类型并从它们构造, 这有助于互操作性. <a href="https://wg21.link/P1028">一个简化版 Result 类型已提请标准化为 <code>std::result&lt;T&gt;</code></a>, 其中 <code>E</code> 类型被硬编码为提案中的 <code>std::error</code>. 截至写作本文时, 这项拟议的标准化成果已部署在数十亿台设备上, 而<a href="../experimental.html">你现在就可以经由 Experimental.Outcome 使用它</a>, 它是参考实现.</p>
+
+<h4 id="pros">优点:</h4>
+
+<ul>
+<li><p>正常路径上的运行时开销可预期.</p></li>
+
+<li><p>失败路径上的运行时开销可预期.</p></li>
+
+<li><p>给二进制增加的代码生成膨胀极少 (不过如果你使用 Outcome 自带的错误类型, 支持库存在固定的绝对开销).</p></li>
+
+<li><p>使用中既不偏向成功也不偏向失败——只要无歧义, 类型会同时从 <code>T</code> 与 <code>E</code> 隐式构造, 因此返回一个 <code>E</code> 无需笨重的附加标记.</p></li>
+
+<li><p>失败路径控制流在每种情形下都必须显式指明. 这会显著减少代码库中失败控制流路径的数量, 使覆盖测试它们容易得多. 这也意味着失败路径会在代码评审中得到审计与检查.</p></li>
+
+<li><p>宏 <code>TRY</code> 运算符用起来感觉有点别扭, 但当你只想表达 '让我的调用者去处理这个失败' 时, 它是避免视觉代码杂乱的一大救星. 它还能与非 Outcome 类型配合使用, 并为第三方扩展提供了自己的一套定制点.</p></li>
+
+<li><p>在 C++ 的所有配置下都工作良好, 包括全局禁用 C++ 异常与 RTTI 的配置.</p></li>
+
+<li><p>在所有小众架构上工作良好, 例如 HPC、GPU、DSP 与微控制器, 并且不进行动态内存分配.</p></li>
+</ul>
+
+<h4 id="cons">缺点:</h4>
+
+<ul>
+<li><p>失败路径控制流在每种情形下都必须显式指明. 对于失败极其罕见、或因总会中止当前操作而无足轻重的代码, 额外的视觉代码杂乱并无帮助.</p></li>
+
+<li><p>会产生分支繁多的代码, 这对嵌入式控制器 CPU 而言较慢 (尽管这种慢是可预期的).</p></li>
+
+<li><p>未检查一个 Outcome 类型会产生编译器诊断, 但未同时处理失败与成功则不会. 这可能意味着失败或成功被意外丢弃.</p></li>
+
+<li><p>为避免 variant 存储像广泛使用 <code>std::variant</code> 那样对构建时间产生过大影响, Outcome 仅在 <code>T</code> 与 <code>E</code> 都是可平凡复制或移动位拷贝兼容时才实现 union 存储. 否则就使用 struct 存储, 这意味着 Outcome 的类型比 Expected 的更大. 这是因为要在 union 存储中对不可平凡复制的类型执行拷贝与移动时实现异常保证, 每次使用拷贝和移动都会给编译器带来大量工作, 所以 Outcome 通过使用 struct 存储显著降低了拷贝与移动对构建时间的影响.</p>
+
+<p>注意, Outcome 类型的一个主要用途是作为函数的返回类型, 这种情况下在 C++ 14 中会发生拷贝消除, 而从 C++ 17 起则对此有保证. 这意味着 struct 存储的更大占用在优化代码中的影响, 通常远小于把这些类型存放在其他类型内部的情况.</p></li>
+</ul>
+
+
+        </div><p><small>最后修订: January 10, 2022 at 14:29:13 UTC</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../alternatives/expected.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../alternatives.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../alternatives/leaf.html"><img src="../images/next.png" alt="下一页"></a></div></body>
+</html>

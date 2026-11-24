@@ -1,0 +1,148 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>设计概述</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../variant.html" title="第 41 章 Boost.Variant">
+<link rel="prev" href="../boost/visitor_ptr.html" title="函数模板 visitor_ptr">
+<link rel="next" href="misc.html" title="Miscellaneous Notes">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../boost/visitor_ptr.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../variant.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="misc.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="variant.design"></a>设计概述</h2></div></div></div>
+<div class="toc"><dl class="toc"><dt><span class="section"><a href="design.html#variant.design.never-empty">"Never-Empty" Guarantee</a></span></dt></dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="variant.design.never-empty"></a>"永不空" (Never-Empty) 保证</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="design.html#variant.design.never-empty.guarantee">该保证</a></span></dt>
+<dt><span class="section"><a href="design.html#variant.design.never-empty.problem">实现问题</a></span></dt>
+<dt><span class="section"><a href="design.html#variant.design.never-empty.memcpy-solution">"理想"解法: 虚假的希望</a></span></dt>
+<dt><span class="section"><a href="design.html#variant.design.never-empty.double-storage-solution">初始解法: 双重存储</a></span></dt>
+<dt><span class="section"><a href="design.html#variant.design.never-empty.heap-backup-solution">当前方案: 临时堆备份</a></span></dt>
+<dt><span class="section"><a href="design.html#variant.design.never-empty.optimizations">启用优化</a></span></dt>
+<dt><span class="section"><a href="design.html#variant.design.never-empty.roadmap">未来方向: 基于策略的实现</a></span></dt>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="variant.design.never-empty.guarantee"></a>该保证</h4></div></div></div>
+<p>所有实例 <code class="computeroutput">v</code> (其类型为 <code class="computeroutput"><a class="link" href="../boost/variant.html" title="Class template variant">variant</a>&lt;T1,T2,...,TN&gt;</code>) 都保证 <code class="computeroutput">v</code> 具有已构造的内容, 其类型属于 <code class="computeroutput">T<span class="emphasis"><em>i</em></span></code> 之一, 即使先前对 <code class="computeroutput">v</code> 的某个操作已经失败.</p>
+<p>这意味着 <code class="computeroutput">variant</code> 可以被精确地视为其 <span class="emphasis"><em>全部</em></span> 有界类型的联合 (union). 这种 "永不空" 特性使用户免于出现未定义 <code class="computeroutput">variant</code> 内容的可能性, 以及随之而来的显著额外使用复杂度.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="variant.design.never-empty.problem"></a>实现问题</h4></div></div></div>
+<p>虽然 <a class="link" href="design.html#variant.design.never-empty.guarantee" title="该保证">never-empty 保证</a> 初看似乎"显而易见", 但事实上如何在一般情形下实现它 (即不对 <a class="link" href="reference.html#variant.concepts.bounded-type" title="BoundedType">有界类型</a> 施加不合理地苛刻的附加要求) 甚至都不是一件直接了当的事.</p>
+<p>核心难点出现在 <code class="computeroutput">variant</code> 赋值的细节中. 给定同一具体类型的两个实例 <code class="computeroutput">v1</code> 与 <code class="computeroutput">v2</code> (该类型为 <code class="computeroutput">variant</code>), 对于赋值 <code class="computeroutput">v1 = v2</code>, 我们必须考虑两种不同的基本情况.</p>
+<p>首先考虑 <code class="computeroutput">v1</code> 与 <code class="computeroutput">v2</code> 各自包含同类型值的情形. 称该类型为 <code class="computeroutput">T</code>. 此时赋值完全直接了当: 使用 <code class="computeroutput">T::operator=</code>.</p>
+<p>然而, 我们还必须考虑 <code class="computeroutput">v1</code> 与 <code class="computeroutput">v2</code> 包含 <span class="emphasis"><em>不同类型</em></span> 值的情形. 称这些类型为 <code class="computeroutput">T</code> 与 <code class="computeroutput">U</code>. 此时, 由于 <code class="computeroutput">variant</code> 在栈上管理其内容, 赋值的左侧 (即 <code class="computeroutput">v1</code>) 必须销毁其内容, 以便允许就右侧内容 (即 <code class="computeroutput">v2</code>) 进行就地拷贝构造. 最终, 虽然 <code class="computeroutput">v1</code> 开始时内容类型为 <code class="computeroutput">T</code>, 但结束时其内容类型为 <code class="computeroutput">U</code>, 即 <code class="computeroutput">v2</code> 内容的一份拷贝.</p>
+<p>于是问题的症结在于: 若 <code class="computeroutput">v2</code> 内容的拷贝构造失败, <code class="computeroutput">v1</code> 如何维持其 "永不空" 保证? 当尝试从 <code class="computeroutput">v2</code> 进行拷贝构造时, <code class="computeroutput">v1</code> 已经销毁了它的内容!</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="variant.design.never-empty.memcpy-solution"></a>"理想"解法: 虚假的希望</h4></div></div></div>
+<p>得知这一两难困境后, 聪明的人可能会提出以下方案试图解决问题:</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">提供一些适当对齐的"备份"存储, 能够容纳左侧所含类型的值.</li>
+<li class="listitem">把左侧存储的内存 (例如使用 <code class="computeroutput">memcpy</code>) 复制到备份存储.</li>
+<li class="listitem">尝试把右侧内容拷贝到 (现已复制的) 左侧存储.</li>
+<li class="listitem">若拷贝抛出异常, 则恢复备份 (即把内存从备份存储复制回左侧存储).</li>
+<li class="listitem">否则, 若拷贝成功, 则把左侧存储的内存复制到另一块"临时"对齐存储.</li>
+<li class="listitem">现在把备份恢复 (即再次复制内存) 到左侧存储; 在"旧"内容恢复之后, 对左侧存储调用所含类型的析构函数.</li>
+<li class="listitem">最后, 把临时存储的内存复制到 (现已为空的) 左侧存储.</li>
+</ol></div>
+<p>
+      </p>
+<p>虽然复杂, 但这样的方案似乎能以相对高效的方式提供所需的安全性. 实际上, 本库的几个早期迭代版本正是实现了这一方案.</p>
+<p>遗憾的是, 正如 Dave Abraham 最早指出的, 该方案会导致未定义行为:</p>
+<div class="blockquote"><blockquote class="blockquote">
+<p>"这段代码读起来很长, 但如果它做的是我认为它在做的事, 那么这就是未定义行为.</p>
+<p>"诀窍是不是把现有对象的比特移入缓冲区, 以便我们可以在那块内存中试验性地构造一个新对象, 之后再把旧比特临时移回去以销毁旧对象?</p>
+<p>"标准不允许这样做: 同一时间只能有一个对象拥有给定地址. 参见 3.8, 特别是第 4 段.</p>
+</blockquote></div>
+<p>
+      </p>
+<p>此外, 细察即可发现, 该方案有可能在并发环境中造成无法调和的竞态条件.</p>
+<p>归根结底, 即使上述方案能在某些平台上配合特定编译器工作, 仍然需要找到一个可移植的解决方案.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="variant.design.never-empty.double-storage-solution"></a>初始解法: 双重存储</h4></div></div></div>
+<p>在得知上述方案不可行之后, Anthony Williams 在 <a class="link" href="refs.html#variant.refs.wil02">[Wil02]</a> 中提出了一个方案, 它成为 <code class="computeroutput">variant</code> 某些预发布实现中可移植解决方案的基础.</p>
+<p>这一方案 (下称"双重存储"方案) 的核心思想是在 <code class="computeroutput">variant</code> 内部提供足够的空间, 以容纳任意有界类型的两个独立值.</p>
+<p>有了辅助存储, 就可以在不先销毁左侧内容的情况下尝试拷贝右侧; 因此, 即使发生异常, 左侧内容仍然可用.</p>
+<p>因此, 采用这一方案, <code class="computeroutput">variant</code> 实现只需跟踪哪个存储包含内容——并据此分派所有访问 (visitation) 请求、查询等.</p>
+<p>这一方案最明显的缺陷是带来的空间开销. 虽然在某些特殊情形下可以应用优化来消除双重存储的必要——对某些有界类型, 甚至在某些情形下完全消除 (更多细节见 <a class="xref" href="design.html#variant.design.never-empty.optimizations" title="启用优化">"启用优化"一节</a>)——但 Boost 邮件列表上的许多用户强烈反对使用双重存储. 特别有人指出, 双重存储的开销将始终存在——即使从未发生对 <code class="computeroutput">variant</code> 的赋值. 出于这一原因及其他原因, 人们开发了一种新方案.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="variant.design.never-empty.heap-backup-solution"></a>当前方案: 临时堆备份</h4></div></div></div>
+<p>尽管对双重存储方案有很多反对意见, 但人们意识到任何替代方案都不会没有缺点. 因此, 需要一种折衷.</p>
+<p>为此, Dave Abrahams 建议在 <code class="computeroutput">variant</code> 赋值的行为规范中加入以下内容: "<code class="computeroutput">variant</code> 从一种类型到另一种类型的赋值可能引发动态分配." 也就是说, 虽然 <code class="computeroutput">variant</code> 在构造之后以及涉及相同所含类型的赋值之后仍会 <span class="emphasis"><em>就地</em></span> 存储其内容, 但在涉及不同所含类型的赋值之后, <code class="computeroutput">variant</code> 会把内容存储在堆上.</p>
+<p>赋值算法将按如下进行:</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">把右侧的内容拷贝构造到堆上; 称指向该数据的指针为 <code class="computeroutput">p</code>.</li>
+<li class="listitem">销毁左侧的内容.</li>
+<li class="listitem">把 <code class="computeroutput">p</code> 拷贝到左侧存储.</li>
+</ol></div>
+<p>由于对指针的所有操作都不抛出异常, 该方案能让 <code class="computeroutput">variant</code> 满足其 never-empty 保证.</p>
+<p>这一方案最明显的问题是: 虽然它确实消除了双重存储的空间开销, 但它给 <code class="computeroutput">variant</code> 赋值引入了动态分配的开销——不仅是初始分配的开销, 还有内容持续存储在堆上的开销. 前一个问题不可避免, 但后一个问题可以用以下"临时堆备份"技术来避免:</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">把 <span class="emphasis"><em>左</em></span>侧的内容拷贝构造到堆上; 称指向该数据的指针为 <code class="computeroutput">backup</code>.</li>
+<li class="listitem">销毁左侧的内容.</li>
+<li class="listitem">在 (现已为空的) 左侧存储中拷贝构造右侧的内容.</li>
+<li class="listitem">若失败, 把 <code class="computeroutput">backup</code> 拷贝到左侧存储.</li>
+<li class="listitem">若成功, 释放 <code class="computeroutput">backup</code> 所指向的数据.</li>
+</ol></div>
+<p>
+      </p>
+<p>采用这一技术: 1) 只使用单一存储; 2) 只有在赋值失败时, 内容才长期存于堆上; 3) 在任何 <span class="emphasis"><em>成功</em></span> 的赋值之后, <code class="computeroutput">variant</code> 内的存储是有保证的. 就本库的初始发布而言, 这些特性被认为是令人满意的折衷方案.</p>
+<p>不过, 仍存在明显的不足. 特别是, 有些用户可能必须不惜一切代价避免堆分配; 另一些用户的任何分配都可能需要通过用户提供的分配器进行. 这些问题将在未来解决 (见 <a class="xref" href="design.html#variant.design.never-empty.roadmap" title="未来方向: 基于策略的实现">"未来方向: 基于策略的实现"一节</a>). 不过目前, 本库把其内容的存储视为实现细节. 尽管如此, 如下一节所述, 用户 <span class="emphasis"><em>确实</em></span> 可以做一些事情来确保 <code class="computeroutput">variant</code> 实例获得最大效率 (详见 <a class="xref" href="design.html#variant.design.never-empty.optimizations" title="启用优化">"启用优化"一节</a>).</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="variant.design.never-empty.optimizations"></a>启用优化</h4></div></div></div>
+<p>如 <a class="xref" href="design.html#variant.design.never-empty.problem" title="实现问题">"实现问题"一节</a> 所述, 实现 never-empty 保证的核心困难是 <code class="computeroutput">variant</code> 赋值期间拷贝构造失败的可能性. 然而, 具有不抛异常拷贝构造函数的类型显然永远不会面临这种可能性. 类似地, 若 <code class="computeroutput">variant</code> 的某个有界类型可无异常默认构造, 则在拷贝构造失败时可以用这种类型作为安全的"后备"类型.</p>
+<p>因此, 一旦其有界类型满足以下判据, <code class="computeroutput">variant</code> 的设计就会启用以下优化:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">对于每个有界类型 <code class="computeroutput">T</code>, 若其可无异常拷贝构造 (由 <code class="computeroutput">boost::has_nothrow_copy</code> 指示), 本库保证 <code class="computeroutput">variant</code> 对 <code class="computeroutput">T</code> 只使用单一存储和就地构造.</li>
+<li class="listitem">若 <span class="emphasis"><em>任何</em></span> 有界类型可无异常默认构造 (由 <code class="computeroutput">boost::has_nothrow_constructor</code> 指示), 本库保证 <code class="computeroutput">variant</code> 对 <span class="emphasis"><em>每个</em></span> 有界类型 (属于 <code class="computeroutput">variant</code>) 都只使用单一存储和就地构造. 但请注意, 若赋值失败, 会在左侧操作数中默认构造某个未指定的可无异常默认构造的有界类型, 以维持 never-empty 保证.</li>
+</ul></div>
+<p>
+
+      </p>
+<p><span class="bold"><strong>实现注释</strong></span>: 为了让 <code class="computeroutput">variant</code> 在异常发生后的行为更可预测, 当前实现优先默认构造 <code class="computeroutput">boost::blank</code> (若它被指定为有界类型), 而不是其他可无异常默认构造的有界类型. (若这一特性被认为有用, 它将成为 <code class="computeroutput">variant</code> 规范的一部分; 否则可能会被废弃. 请向 Boost 邮件列表提供反馈.)</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="variant.design.never-empty.roadmap"></a>未来方向: 基于策略的实现</h4></div></div></div>
+<p>如前几节所示, 人们已经投入了大量努力, 试图在性能、数据大小和堆使用之间取得平衡. 此外, <code class="computeroutput">variant</code> 可以基于其有界类型的某些特征启用显著的优化.</p>
+<p>然而, 有些用户会对所选的折衷不满意 (例如: 必须不惜一切代价避免堆分配; 若使用堆分配, 则必须使用自定义分配器; 等等). 出于这一原因, 本库的未来版本将支持基于策略的 <code class="computeroutput">variant</code> 实现. 虽然这不会消除前几节所述的问题, 但它将允许由用户而不是库设计者来决定各种权衡.</p>
+</div>
+</div>
+</div>
+<div class="copyright-footer">Copyright © 2002, 2003 Eric Friedman, Itay Maman<br>Copyright © 2014-2026 Antony Polukhin<p>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <code class="filename">LICENSE_1_0.txt</code> 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../boost/visitor_ptr.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../variant.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="misc.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

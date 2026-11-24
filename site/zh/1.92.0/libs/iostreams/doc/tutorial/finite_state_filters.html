@@ -1,0 +1,158 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+<HEAD>
+    <TITLE>Tutorial</TITLE>
+    <LINK REL="stylesheet" HREF="../../../../boost.css">
+    <LINK REL="stylesheet" HREF="../theme/iostreams.css">
+</HEAD>
+<BODY>
+
+<!-- Begin Banner -->
+
+    <H1 CLASS="title">Tutorial</H1>
+    <HR CLASS="banner">
+
+<!-- End Banner -->
+
+<!-- Begin Nav -->
+
+<DIV CLASS='nav'>
+    <A HREF='dual_use_filters.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/prev.png'></A>
+    <A HREF='tutorial.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/up.png'></A>
+    <A><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/next_disabled.png'></A>
+</DIV>
+
+<!-- End Nav -->
+
+<A NAME="finite_state"></A>
+<H2>2.2.10. 有限状态过滤器</H2>
+
+<A NAME="finite_state_machine"></A>
+<H4>有限状态机</H4>
+
+<P>本节展示如何从有限状态机构造 <A HREF="../concepts/dual_use_filter.html">双用途过滤器</A>. 就本节而言, 有限状态机由以下部分组成: 一个 <SPAN>状态</SPAN>集合 (表示为若干 <CODE>int</CODE>)、一个特定的 <SPAN>初始状态</SPAN>、一个 <SPAN>转移表</SPAN>、一组 <SPAN>事件处理器</SPAN> 以及一个字符栈. 这些有限状态机的灵感来自随 <A HREF="../../../mpl/doc/index.html" TARGET="_top"><CODE>Boost Metaprogamming library</CODE></A> 附带的有限状态机示例. <I>参见</I> <I>例如</I> <A HREF="../../../mpl/example/fsm/player1.cpp" TARGET="_top"><CODE>&lt;libs/mpl/example/player1.cpp&gt;</CODE></A>
+</P>
+
+<P> <SPAN>事件</SPAN>就是一个字符, 就我们而言. 转移表是一个 <A HREF="../../../mpl/doc/refmanual/forward-sequence.html" TARGET="_top">MPL Forward Sequence</A>, 由 <SPAN>行</SPAN>组成. 每行是一个四元组, 由 <SPAN>当前状态</SPAN>、<SPAN>字符类</SPAN>、<SPAN>下一状态</SPAN>和 <SPAN>事件处理器</SPAN>组成. 在有限状态机运行期间, 会查询其转移表, 以确定机器的状态应如何更新以及应调用哪个事件处理器. 当事件 <CODE>e</CODE> 发生时, 会在转移表中搜索第一行 — 其当前状态等于机器的当前状态, 且其字符类匹配 <CODE>e</CODE>. 然后机器的状态被更新为该行的下一状态, 并以 <CODE>e</CODE> 为参数调用事件处理器.</P>
+
+<P>字符类是一种类类型, 带有一个 <CODE>static</CODE> 成员函数 <CODE>test</CODE>, 该函数以一个字符和一个 <CODE>std::locale</CODE> 为参数. <I>例如</I>, <PRE class="broken_ie">    <SPAN CLASS="keyword">struct</SPAN> is_any {
+        <SPAN CLASS="keyword">static</SPAN> <SPAN CLASS="keyword">bool</SPAN> test(<SPAN CLASS="keyword">char</SPAN>, <SPAN CLASS="keyword">const</SPAN> std::locale&amp;);
+    };</PRE>
+
+<P>有若干内置的字符类. 字符类 <CODE>is_any</CODE> 匹配任何字符. 对任何字符 <CODE>c</CODE>, 字符类 <CODE>is&lt;c&gt;</CODE> 只匹配 <CODE>c</CODE>. 字符类 <CODE>alnum</CODE>、<CODE>is_alpha</CODE>、<CODE>is_cntrl</CODE>、<CODE>is_digit</CODE>、<CODE>is_graph</CODE>、<CODE>is_lower</CODE>、<CODE>is_print</CODE>、<CODE>is_punct</CODE>、<CODE>is_space</CODE>、<CODE>is_upper</CODE>、<CODE>is_xdigit</CODE> 实现区分 <CODE>locale</CODE> 的字符分类.</P>
+
+<P>事件处理器是有限状态机的成员函数, 以单个字符为参数并返回 <CODE>void</CODE>. 事件处理器的实现通常检查给定的字符, 并将零个或多个过滤后的数据字符压入栈中. 一个特殊的事件处理器 <CODE>on_eof</CODE> 不接受参数, 并在序列中最后一个字符被处理之后自动调用.</P>
+
+<P>有三个内置的事件处理器: <CODE>on_any</CODE>、<CODE>push</CODE> 与 <CODE>skip</CODE>. 当发生的事件未被转移表中的任何行覆盖时, 会自动调用处理器 <CODE>on_any</CODE>. <CODE>on_any</CODE> 的默认行为是什么也不做. 处理器 <CODE>push</CODE> 将给定字符压入栈中. 处理器 <CODE>skip</CODE> 忽略当前字符. 处理器 <CODE>push</CODE> 与 <CODE>skip</CODE> 默认未定义; 为使它们可用, 应在有限状态机的类定义内调用宏 <CODE>BOOST_IOSTREAM_FSM</CODE>, 并将状态机的名称作为宏参数传入.</P>
+
+<P>有限状态机必须派生自类模板 <CODE>boost::iostreams::finite_state_machine</CODE> — 定义于头文件 <A HREF="../../example/finite_state_filter.hpp"><CODE>&lt;libs/iostreams/example/finite_state_filter.hpp&gt;</CODE></A>. <CODE>finite_state_machine</CODE> 的第一个模板参数应为派生类本身; 第二个模板参数应为字符类型.<P>有限状态机的转移表应声明为名为 <CODE>transition_table</CODE> 的成员类型. 其事件处理器应实现为成员函数. 有限状态机可以定义一个 <CODE>static</CODE> 整数常量, 名为 <CODE>initial_state</CODE> — 该常量将被视为机器的初始状态. 或者, 也可以省略初始状态的定义, 此时它默认为 <CODE>0</CODE>.</P>
+
+<P>给定一个有限状态机 <CODE>my_fsm</CODE>, 你可以按如下方式定义一个 <A HREF="../concepts/dual_use_filter.html">双用途过滤器</A>:</P>
+
+<PRE class="broken_ie"><SPAN CLASS="keyword">namespace</SPAN> io = boost::iostreams;
+
+<SPAN CLASS="keyword">typedef</SPAN> io::finite_state_filter&lt;my_fsm&gt; my_finite_state_filter;</PRE>
+
+<A NAME="dos2unix_fsm"></A>
+<H4><CODE>dos2unix_fsm</CODE></H4>
+
+<P>以下状态机可用于将行尾从 <CODE>DOS</CODE> 转换为 <CODE>UNIX</CODE>. 常量 <CODE>initial_state</CODE>、类模板 <CODE>row</CODE> 以及字符类 <CODE>is</CODE> 与 <CODE>is_any</CODE> 都是基类 <CODE>boost::iostreams::finite_state_machine</CODE> 的成员.</P>
+
+<PRE class="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/mpl/vector.hpp"><SPAN CLASS="literal">&lt;boost/mpl/vector&gt;</SPAN></A>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../example/finite_state_filter.hpp"><SPAN CLASS="literal">&lt;libs/iostreams/example/finite_state_filter.hpp&gt;</SPAN></A>
+
+<SPAN CLASS="keyword">namespace</SPAN> io = boost::iostreams;
+
+<SPAN CLASS="keyword">struct</SPAN> dos2unix_fsm : io::finite_state_machine&lt;dos2unix_fsm&gt; {
+    BOOST_IOSTREAMS_FSM(dos2unix_fsm) <SPAN CLASS='comment'>// Define skip and push.</SPAN>
+    <SPAN CLASS="keyword">typedef</SPAN> dos2unix_fsm self;
+    <SPAN CLASS="keyword">typedef</SPAN> boost::mpl::vector&lt;
+                row&lt;initial_state, is&lt;<SPAN CLASS="literal">'\r'</SPAN>&gt;, initial_state, &amp;self::skip&gt;,
+                row&lt;initial_state, is_any,   initial_state, &amp;self::push&gt;
+            &gt; transition_table;
+};</PRE>
+
+<P>该状态机只有一个状态. 其转移表可理解如下: 若当前字符为 <CODE>'\r'</CODE>, 忽略它; 否则原样转发.</P>
+
+<A NAME="unix2dos_fsm"></A>
+<H4><CODE>unix2dos_fsm</CODE></H4>
+
+<P>以下状态机可用于将行尾从 <CODE>UNIX</CODE> 转换为 <CODE>DOS</CODE>:</P>
+
+<PRE class="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/mpl/vector.hpp"><SPAN CLASS="literal">&lt;boost/mpl/vector&gt;</SPAN></A>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../example/finite_state_filter.hpp"><SPAN CLASS="literal">&lt;libs/iostreams/example/finite_state_filter.hpp&gt;</SPAN></A>
+
+<SPAN CLASS="keyword">namespace</SPAN> io = boost::iostreams;
+
+<SPAN CLASS="keyword">struct</SPAN> unix2dos_fsm : io::finite_state_machine&lt;unix2dos_fsm&gt; {
+    BOOST_IOSTREAMS_FSM(unix2dos_fsm) <SPAN CLASS='comment'>// Define skip and push.</SPAN>
+    <SPAN CLASS="keyword">typedef</SPAN> unix2dos_fsm self;
+
+    <SPAN CLASS="keyword">void</SPAN> on_lf(<SPAN CLASS="keyword">char</SPAN>) { push(<SPAN CLASS="literal">'\r'</SPAN>); push(<SPAN CLASS="literal">'\n'</SPAN>); }
+
+    <SPAN CLASS="keyword">typedef</SPAN> boost::mpl::vector&lt;
+                row&lt;initial_state, is&lt;<SPAN CLASS="literal">'\n'</SPAN>&gt;, initial_state, &amp;self::on_lf&gt;,
+                row&lt;initial_state, is_any,   initial_state, &amp;self::push&gt;
+            &gt; transition_table;
+};</PRE>
+
+<P>该状态机同样只有一个状态. 事件处理器 <CODE>on_lf</CODE> 将一个 <CODE>DOS</CODE> 行尾序列压入栈中. 其转移表可理解如下: 若当前字符为 <CODE>'\n'</CODE>, 写入一个 <CODE>DOS</CODE> 行尾序列; 否则原样转发.</P>
+
+<A NAME="uncommenting_fsm"></A>
+<H4><CODE>uncommenting_fsm</CODE></H4>
+
+<P>以下状态机移除 C 风格注释. 虽然它还不够精细, 不足以处理源代码, 但它是多状态机的一个很好示例.</P>
+
+<PRE class="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/mpl/vector.hpp"><SPAN CLASS="literal">&lt;boost/mpl/vector&gt;</SPAN></A>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../example/finite_state_filter.hpp"><SPAN CLASS="literal">&lt;libs/iostreams/example/finite_state_filter.hpp&gt;</SPAN></A>
+
+
+<SPAN CLASS="keyword">namespace</SPAN> io = boost::iostreams;
+
+<SPAN CLASS="keyword">struct</SPAN> uncommenting_fsm : io::finite_state_machine&lt;uncommenting_fsm&gt; {
+    BOOST_IOSTREAMS_FSM(uncommenting_fsm) <SPAN CLASS='comment'>// Define skip and push.</SPAN>
+    <SPAN CLASS="keyword">typedef</SPAN> uncommenting_fsm self;
+
+    <SPAN CLASS="keyword">static</SPAN> <SPAN CLASS="keyword">const</SPAN> <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> no_comment   = initial_state;
+    <SPAN CLASS="keyword">static</SPAN> <SPAN CLASS="keyword">const</SPAN> <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> pre_comment  = no_comment <SPAN CLASS='numeric_literal'>+ 1</SPAN>;
+    <SPAN CLASS="keyword">static</SPAN> <SPAN CLASS="keyword">const</SPAN> <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> comment      = pre_comment <SPAN CLASS='numeric_literal'>+ 1</SPAN>;
+    <SPAN CLASS="keyword">static</SPAN> <SPAN CLASS="keyword">const</SPAN> <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> post_comment = comment <SPAN CLASS='numeric_literal'>+ 1</SPAN>;
+
+    <SPAN CLASS="keyword">void</SPAN> push_slash(<SPAN CLASS="keyword">char</SPAN> c) { push('/'); push(c); }
+
+    <SPAN CLASS="keyword">typedef</SPAN> boost::mpl::vector&lt;
+                row&lt;no_comment,   is&lt;<SPAN CLASS='literal'>'/'</SPAN>&gt;, pre_comment,  &amp;self::skip&gt;,
+                row&lt;no_comment,   is_any,  no_comment,   &amp;self::push&gt;,
+                row&lt;pre_comment,  is&lt;<SPAN CLASS='literal'>'*'</SPAN>&gt;, comment,      &amp;self::skip&gt;,
+                row&lt;pre_comment,  is&lt;<SPAN CLASS='literal'>'/'</SPAN>&gt;, pre_comment,  &amp;self::push&gt;,
+                row&lt;pre_comment,  is_any,  no_comment,   &amp;self::push_slash&gt;,
+                row&lt;comment,      is&lt;<SPAN CLASS='literal'>'*'</SPAN>&gt;, post_comment, &amp;self::skip&gt;,
+                row&lt;comment,      is_any,  comment,      &amp;self::skip&gt;,
+                row&lt;post_comment, is&lt;<SPAN CLASS='literal'>'/'</SPAN>&gt;, no_comment,   &amp;self::skip&gt;,
+                row&lt;post_comment, is&lt;<SPAN CLASS='literal'>'*'</SPAN>&gt;, post_comment, &amp;self::skip&gt;,
+                row&lt;post_comment, is_any,  comment,      &amp;self::skip&gt;
+            &gt; transition_table;
+};</PRE>
+
+<P>该状态机有四个状态和一个用户自定义的事件处理器. 它如何工作, 留给读者作为练习.</P>
+
+<!-- Begin Nav -->
+
+<DIV CLASS='nav'>
+    <A HREF='dual_use_filters.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/prev.png'></A>
+    <A HREF='tutorial.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/up.png'></A>
+    <A><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/next_disabled.png'></A>
+</DIV>
+
+<!-- End Nav -->
+
+<!-- Begin Footer -->
+
+<HR>
+
+
+<P CLASS="copyright">© 版权所有 2008 <a href="http://www.coderage.com/" target="_top">CodeRage, LLC</a><br/>© 版权所有 2004-2007 <a href="https://www.boost.org/users/people/jonathan_turkanis.html" target="_top">Jonathan Turkanis</a></P>
+<P CLASS="copyright">使用、修改与分发受 Boost 软件许可 2.0 版约束. (随附文件 <A HREF="../../../../LICENSE_1_0.txt">LICENSE_1_0.txt</A> 或复制于 <A HREF="http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</A>)</P>
+<!-- End Footer -->
+
+</BODY>

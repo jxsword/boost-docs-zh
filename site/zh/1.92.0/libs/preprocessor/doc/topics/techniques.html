@@ -1,0 +1,299 @@
+<html>
+<head>
+	<title>techniques.html</title>
+	<link rel="stylesheet" type="text/css" href="../styles.css">
+	<style>
+		u { font-weight:  normal; text-decoration:  none; }
+	</style>
+</head>
+<body>
+<h4>技术</h4>
+<div>预处理器元编程技术以示例的形式呈现.</div>
+
+<h4>示例<u> - 使用局部宏避免小规模重复.</u></h4>
+<div class="code"><pre>
+#define BOOST_PP_DEF(op) /* ..................................... */ \
+   template&lt;class T, int n&gt;                                          \
+   vec&lt;T, n&gt; operator op ## =(vec&lt;T, n&gt; lhs, const vec&lt;T, n&gt;& rhs) { \
+      for (int i = 0; i &lt; n; ++i) {                                  \
+         lhs(i) op ## = rhs(i);                                      \
+      }                                                              \
+   }                                                                 \
+   /**/
+
+BOOST_PP_DEF(+)
+BOOST_PP_DEF(-)
+BOOST_PP_DEF(*)
+BOOST_PP_DEF(/)
+
+#undef BOOST_PP_DEF
+</pre></div>
+<div>
+	<b>提示:</b> 对这类代码, 通常可以使用像 <code>BOOST_PP_DEF</code> 这样的标准宏名, 因为该宏在紧邻其使用处的地方既被定义又被取消定义.</div>
+<div>
+	<b>提示:</b> 续行运算符对齐排列时, 更容易核对它们的正确使用.</div>
+<div>
+	<b>注释:</b> 你可以通过定义更多、不同种类的运算符来扩展这个示例. 在此之前, 可以考虑使用 <i>代数范畴</i>技术 (在 <a href="../bibliography.html#barton">[Barton]</a> 中介绍), 或 <i>分层架构</i> (例如参见 <a href="../bibliography.html#czarnecki">[Czarnecki]</a>). 然而, 到某个时候你终归要亲手键入运算符记号 <code>*</code>、<code>/</code>、<code>+</code>、<code>-</code> 等, 因为不可能用模板生成它们. 由此产生的记号 <i>范畴性重复</i>可以通过预处理器元编程消除.</div>
+
+<h4>示例<u> - 在局部宏实例化中使用 BOOST_PP_EMPTY 作为未使用的参数.</u></h4>
+<div class="code"><pre>
+#define BOOST_PP_DEF(cv) /* ... */ \
+   template&lt;class base&gt;            \
+   cv() typename implement_subscript_using_begin_subscript&lt;base&gt;::value_type& \
+   implement_subscript_using_begin_subscript&lt;base&gt;::operator[](index_type i) cv() { \
+      return base::begin()[i];     \
+   }                               \
+   /**/
+
+   BOOST_PP_DEF(BOOST_PP_EMPTY)
+   BOOST_PP_DEF(BOOST_PP_IDENTITY(const))
+</pre></div>
+<div>
+	<b>方法:</b> BOOST_PP_EMPTY() 展开为空, 可以用作未使用的参数.</div>
+<div>
+	<b>注释:</b> 带有 () 的 BOOST_PP_EMPTY 永远不会被展开. () 是调用类函数宏所必需的.</div>
+<div>
+	<b>注意:</b> 在使用 BOOST_PP_EMPTY() 时不能安全地进行拼接.</div>
+<div>
+	<b>提示:</b> 偶尔会有一两行比其他行长得多. 此时 <i>不</i>对齐所有续行运算符通常能省些功夫, 又不至于让代码太过难读.</div>
+<div>
+	<b>提示:</b> 对预处理器元编程宏标识符 (如 <ul>
+		<li>BOOST_PP_DEF</li>
+		<li>BOOST_PP_EMPTY</li>
+		<li>BOOST_PP_REPEAT</li>
+		<li>...</li>
+	</ul>) 使用语法高亮. 这能显著提高可读性.</div>
+
+<h4>示例<u> - 必要时使用 BOOST_PP_CAT 而不是 ##.</u></h4>
+<div class="code"><pre>
+#define STATIC_ASSERT(expr) \
+   enum { BOOST_PP_CAT(static_check_, __LINE__) = (expr) ? 1 : -1 }; \
+   typedef char \
+      BOOST_PP_CAT(static_assert_, __LINE__)[BOOST_PP_CAT(static_check_, __LINE__)] \
+   /**/
+
+// ...
+
+STATIC_ASSERT(sizeof(int) &lt;= sizeof(long));
+</pre></div>
+<div>
+	<b>原因:</b> 宏展开按“层”递归进行. 记号粘贴会阻止预处理器执行宏展开, 因此常常需要延迟记号拼接.</div>
+
+<h4>示例<u> - 必要时使用 BOOST_PP_STRINGIZE 而不是 #.</u></h4>
+<div class="code"><pre>
+#define NOTE(str) \
+   message(__FILE__ "(" BOOST_PP_STRINGIZE(__LINE__) ") : " str) \
+   /**/
+
+// ...
+
+#pragma NOTE("TBD!")
+</pre></div>
+<div>
+	<b>原因:</b> 宏展开按“层”递归进行. 字符串化会阻止预处理器执行宏展开, 因此常常需要延迟字符串化.</div>
+
+<h4>示例<u> - 使用 BOOST_PP_ENUM_PARAMS (及其变体) 或 BOOST_PP_REPEAT 与 BOOST_PP_COMMA_IF, 以避免一般性地对列表进行 <i>O</i>(<i>n</i>) 重复.</u></h4>
+<div class="code"><pre>
+struct make_type_list_end;
+
+template&lt;
+   BOOST_PP_ENUM_PARAMS_WITH_A_DEFAULT(
+      MAKE_TYPE_LIST_MAX_LENGTH, 
+      class T, 
+      make_type_list_end
+   )
+&gt;
+struct make_type_list {
+   private:
+      enum { end = is_same&lt;T0, make_type_list_end&gt;::value };
+   public:
+      typedef typename type_if&lt;
+         end, type_cons_empty,
+         type_cons&lt;
+            T0,
+            typename type_inner_if&lt;
+               end, type_identity&lt;end&gt;,
+               make_type_list&lt;
+                  BOOST_PP_ENUM_SHIFTED_PARAMS(
+                     MAKE_TYPE_LIST_MAX_LENGTH,
+                     T
+                  )
+               &gt;
+            &gt;::type
+         &gt;
+      &gt;::type type;
+};
+</pre></div>
+<div>
+	<b>方法:</b> BOOST_PP_REPEAT 使用模拟的递归 (伪代码):</div>
+<div><pre>
+#define BOOST_PP_REPEAT(n, m, p) BOOST_PP_REPEAT ## n(m, p)
+
+#define BOOST_PP_REPEAT0(m, p)
+#define BOOST_PP_REPEAT1(m, p) m(0, p)
+#define BOOST_PP_REPEAT2(m, p) m(0, p) m(1, p)
+#define BOOST_PP_REPEAT3(m, p) BOOST_PP_REPEAT2(m, p) m(2, p)
+#define BOOST_PP_REPEAT4(m, p) BOOST_PP_REPEAT3(m, p) m(3, p)
+// ...
+</pre></div>
+<div>
+	<i>注释: 这已不再是 BOOST_PP_REPEAT 的实际实现方式, 所以上面的代码仅作说明之用! </i>
+</div>
+<div>BOOST_PP_ENUM_PARAMS 及其变体使用 BOOST_PP_REPEAT. 若 I != 0, BOOST_PP_COMMA_IF(I) 展开为一个逗号. BOOST_PP_INC(I) 实质上展开为 "I+1", 而 BOOST_PP_DEC(I) 实质上展开为 "I-1".</div>
+
+<h4>示例<u> - 使用 <i>条件宏定义</i>, 让用户能够根据需要 (而不是某个“合理”的上限) 配置代码重复.</u></h4>
+<div class="code"><pre>
+#ifndef MAKE_TYPE_LIST_MAX_LENGTH
+#define MAKE_TYPE_LIST_MAX_LENGTH 8
+#endif
+</pre></div>
+<div>现在, 用户无需修改库代码即可配置 <code>make_type_list</code> 原语.</div>
+
+<h4>示例<u> - 使用 BOOST_PP_REPEAT 和 <i>记号查找函数</i>来消除范畴性重复.</u></h4>
+<div class="code"><pre>
+// CAVEAT:  My compiler is not standard on arithmetic types.
+#define ARITHMETIC_TYPE(I) ARITHMETIC_TYPE ## I
+
+#define ARITHMETIC_TYPE0    bool
+#define ARITHMETIC_TYPE1    char
+#define ARITHMETIC_TYPE2    signed char
+#define ARITHMETIC_TYPE3    unsigned char
+#define ARITHMETIC_TYPE4    short
+#define ARITHMETIC_TYPE5    unsigned short
+#define ARITHMETIC_TYPE6    int
+#define ARITHMETIC_TYPE7    unsigned int
+#define ARITHMETIC_TYPE8    long
+#define ARITHMETIC_TYPE9    unsigned long
+#define ARITHMETIC_TYPE10   float
+#define ARITHMETIC_TYPE11   double
+#define ARITHMETIC_TYPE12   long double
+
+#define ARITHMETIC_TYPE_CNT 13
+
+// ...
+
+#define BOOST_PP_DEF(z, I, _) /* ... */ \
+   catch (ARITHMETIC_TYPE(I) t) {       \
+      report_typeid(t);                 \
+      report_value(t);                  \
+   }                                    \
+   /**/
+
+BOOST_PP_REPEAT(ARITHMETIC_TYPE_CNT, BOOST_PP_DEF, _)
+
+#undef BOOST_PP_DEF
+</pre></div>
+<div>
+	<b>注释:</b> 上面示例中的重复也可以用模板元编程 <a href="../bibliography.html#czarnecki">[Czarnecki]</a> 消除. 然而, 运算符记号的范畴性重复无法用模板元编程完全消除.</div>
+
+<h4>示例<u> - 使用 BOOST_PP_REPEAT 避免 <i>O</i>(<i>n</i>*<i>n</i>) 重复.</u></h4>
+<div class="code"><pre>
+#ifndef MAX_VEC_ARG_CNT
+#define MAX_VEC_ARG_CNT 8
+#endif
+
+// ...
+
+#define ARG_FUN(z, i, _) BOOST_PP_COMMA_IF(i) T a ## i
+#define ASSIGN_FUN(z, i, ) (*this)[i] = a ## i;
+
+#define DEF_VEC_CTOR_FUN(z, i, _) /* ... */ \
+   vec(BOOST_PP_REPEAT(i, ARG_FUN, _)) { \
+      BOOST_PP_REPEAT(i, ASSIGN_FUN, _)  \
+   }                                     \
+   /**/
+
+BOOST_PP_REPEAT(BOOST_PP_INC(MAX_VEC_ARG_CNT), DEF_VEC_CTOR_FUN, _)
+
+#undef ARG_FUN
+#undef ASSIGN_FUN
+#undef DEF_VEC_CTOR_FUN
+
+// ...
+</pre></div>
+<div>
+	<b>方法:</b> BOOST_PP_REPEAT 以一种特殊的方式实现, 以启用 <i>自动递归</i>.</div>
+
+<h4>示例<u> - 使用 BOOST_PP_IF 为第一个元素实现特例.</u></h4>
+<div class="code"><pre>
+#define COMMA_IF(c) \
+   BOOST_PP_IF(c, BOOST_PP_COMMA, BOOST_PP_EMPTY)() \
+   /**/
+
+BOOST_PP_IF(0, true, false) == false;
+BOOST_PP_IF(1, true, false) == true;
+</pre></div>
+<div>BOOST_PP_IF 使借助 BOOST_PP_REPEAT 方便地生成列表成为可能.</div>
+<div>
+	<b>注释:</b> <i>THEN</i> 和 <i>ELSE</i> 不必是宏. 然而, 如果其中至少一个是类函数宏, 而你又希望它被条件性地展开, 就必须把另一个参数也做成类函数宏. 这通常可以用 BOOST_PP_IDENTITY 做到. 考虑以下示例 (Aleksey Gurtovoy 提供):</div>
+<div><pre>
+#define NUMBERED_EXPRESSION(i, x) /* ... */ \
+   BOOST_PP_IF(                             \
+      i,                                    \
+      BOOST_PP_IDENTITY(x ## i)             \
+      BOOST_PP_EMPTY                        \
+   )()                                      \
+   /**/
+</pre></div>
+<div>
+	<b>注释:</b> 与上面 COMMA_IF 的实现一样, 被调用的是 BOOST_PP_IF 的结果, 而不是 <i>THEN</i> 和 <i>ELSE</i> 参数. 如果调用的是参数本身, 代码就不会正确展开, 因为在 <b>BOOST_PP_IF</b> 被正确展开之前, BOOST_PP_EMPTY 参数就会被展开为空.</div>
+<div>
+	<b>方法:</b> BOOST_PP_IF 对整个重复范围都有定义 (伪代码):</div>
+<div><pre>
+#define BOOST_PP_IF(c, THEN, ELSE) BOOST_PP_IF ## c(THEN, ELSE)
+
+#define BOOST_PP_IF0(THEN, ELSE) ELSE
+#define BOOST_PP_IF1(THEN, ELSE) THEN
+#define BOOST_PP_IF1(THEN, ELSE) THEN
+// ...
+</pre></div>
+
+<h4>示例:<u> 必要时使用算术、逻辑和比较运算.</u></h4>
+<div class="code"><pre>
+#define SPECIAL_NUMBERED_LIST(n, i, elem, special) \
+   BOOST_PP_ASSERT_MSG(                     \
+      BOOST_PP_LESS(i, n),                  \
+      bad params for SPECIAL_NUMBERED_LIST! \
+   )                                        \
+   BOOST_PP_ENUM_PARAMS(i, elem)            \
+   BOOST_PP_COMMA_IF(i) special             \
+   BOOST_PP_REPEAT(                         \
+      BOOST_PP_SUB(BOOST_PP_DEC(n), i),     \
+      SPECIAL_NUMBERED_LIST_HELPER,         \
+      (elem, i)                             \
+   )                                        \
+   /**/
+
+#define SPECIAL_NUMBERED_LIST_HELPER(z, i, elem_base) \
+   ,                                          \
+   BOOST_PP_CAT(                              \
+      BOOST_PP_TUPLE_ELEM(2, 0, elem_base),   \
+      BOOST_PP_ADD(                           \
+         i,                                   \
+         BOOST_PP_TUPLE_ELEM(2, 1, elem_base) \
+      )                                       \
+   )                                          \
+   /**/
+
+SPECIAL_NUMBERED_LIST(3, 0, E, S)
+SPECIAL_NUMBERED_LIST(3, 1, E, S)
+SPECIAL_NUMBERED_LIST(3, 2, E, S)
+SPECIAL_NUMBERED_LIST(3, 3, E, S)
+</pre></div>
+
+<hr size="1">
+<div style="margin-left: 0px;">
+	<i>版权所有 <a href="http://www.housemarque.com" target="_top">Housemarque Oy</a> 2002</i>
+</div>
+<div style="margin-left: 0px;">只要本版权声明出现在所有副本中, 即授予复制、使用、修改、销售和分发本文档的许可. 本文档按“原样”提供, 不附带任何明示或暗示的保证, 也不声明其适用于任何用途.</div>
+	<hr size="1">
+	<div style="margin-left: 0px;">
+		<i>版权所有 © <a href="http://www.housemarque.com" target="_top">Housemarque Oy</a> 2002</i>
+		</br><i>版权所有 Paul Mensonides 2002</i>
+	</div>
+	<div style="margin-left: 0px;">
+		<p><small>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <a href="../../../../LICENSE_1_0.txt">LICENSE_1_0.txt</a> 或复制于 <a href=
+		"http://www.boost.org/LICENSE_1_0.txt">www.boost.org/LICENSE_1_0.txt</a>)</small></p>
+	</div>
+</body>
+</html>

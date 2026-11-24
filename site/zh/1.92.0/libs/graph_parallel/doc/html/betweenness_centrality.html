@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.6: http://docutils.sourceforge.net/" />
+<title>Parallel BGL 介数中心性</title>
+<link rel="stylesheet" href="../../../../rst.css" type="text/css" />
+</head>
+<body>
+<div class="document" id="logo-betweenness-centrality">
+<h1 class="title"><a class="reference external" href="http://www.osl.iu.edu/research/pbgl"><img align="middle" alt="Parallel BGL" class="align-middle" src="pbgl-logo.png" /></a> 介数中心性</h1>
+
+<!-- Copyright (C) 2004-2009 The Trustees of Indiana University.
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt) -->
+<pre class="literal-block">
+// named parameter versions
+template&lt;typename Graph, typename Param, typename Tag, typename Rest&gt;
+void
+brandes_betweenness_centrality(const Graph&amp; g,
+                               const bgl_named_params&lt;Param,Tag,Rest&gt;&amp; params);
+
+template&lt;typename Graph, typename CentralityMap&gt;
+void
+brandes_betweenness_centrality(const Graph&amp; g, CentralityMap centrality);
+
+template&lt;typename Graph, typename CentralityMap, typename EdgeCentralityMap&gt;
+void
+brandes_betweenness_centrality(const Graph&amp; g, CentralityMap centrality,
+                               EdgeCentralityMap edge_centrality_map);
+
+// non-named parameter versions
+template&lt;typename Graph, typename CentralityMap, typename EdgeCentralityMap,
+         typename IncomingMap, typename DistanceMap, typename DependencyMap,
+         typename PathCountMap, typename VertexIndexMap, typename Buffer&gt;
+void
+brandes_betweenness_centrality(const Graph&amp; g,
+                               CentralityMap centrality,
+                               EdgeCentralityMap edge_centrality_map,
+                               IncomingMap incoming,
+                               DistanceMap distance,
+                               DependencyMap dependency,
+                               PathCountMap path_count,
+                               VertexIndexMap vertex_index,
+                               Buffer sources,
+                               typename property_traits&lt;DistanceMap&gt;::value_type delta);
+
+template&lt;typename Graph, typename CentralityMap, typename EdgeCentralityMap,
+         typename IncomingMap, typename DistanceMap, typename DependencyMap,
+         typename PathCountMap, typename VertexIndexMap, typename WeightMap,
+         typename Buffer&gt;
+void
+brandes_betweenness_centrality(const Graph&amp; g,
+                               CentralityMap centrality,
+                               EdgeCentralityMap edge_centrality_map,
+                               IncomingMap incoming,
+                               DistanceMap distance,
+                               DependencyMap dependency,
+                               PathCountMap path_count,
+                               VertexIndexMap vertex_index,
+                               Buffer sources,
+                               typename property_traits&lt;WeightMap&gt;::value_type delta,
+                               WeightMap weight_map);
+
+// helper functions
+template&lt;typename Graph, typename CentralityMap&gt;
+typename property_traits&lt;CentralityMap&gt;::value_type
+central_point_dominance(const Graph&amp; g, CentralityMap centrality);
+</pre>
+<p> <tt class="docutils literal"><span class="pre">brandes_betweenness_centrality()</span></tt> 函数计算图中顶点与边的介数中心性. 以 <em>O(V)</em> 空间计算介数中心性的方法出自 Brandes <a class="citation-reference" href="#brandes01" id="id1">[Brandes01]</a>. 该算法本身是 Edmonds <a class="citation-reference" href="#edmonds09" id="id2">[Edmonds09]</a> 对 Brandes 算法的一个修改.</p>
+<div class="contents topic" id="contents">
+<p class="topic-title first">目录</p>
+<ul class="simple">
+<li><a class="reference internal" href="#where-defined" id="id3">定义位置</a></li>
+<li><a class="reference internal" href="#parameters" id="id4">参数</a></li>
+<li><a class="reference internal" href="#complexity" id="id5">复杂度</a></li>
+<li><a class="reference internal" href="#algorithm-description" id="id6">算法描述</a></li>
+<li><a class="reference internal" href="#bibliography" id="id7">参考文献</a></li>
+</ul>
+</div>
+<div class="section" id="where-defined">
+<h1><a class="toc-backref" href="#id3">定义位置</a></h1>
+<p>&lt;<tt class="docutils literal"><span class="pre">boost/graph/distributed/betweenness_centrality.hpp</span></tt>&gt;</p>
+<p>亦可从</p>
+<p>&lt;<tt class="docutils literal"><span class="pre">boost/graph/betweenness_centrality.hpp</span></tt>&gt;</p>
+</div>
+<div class="section" id="parameters">
+<h1><a class="toc-backref" href="#id4">参数</a></h1>
+<dl class="docutils">
+<dt>IN:  <tt class="docutils literal"><span class="pre">const</span> <span class="pre">Graph&amp;</span> <span class="pre">g</span></tt></dt>
+<dd>图类型必须是 <a class="reference external" href="DistributedGraph.html">分布图</a> 的模型. 图类型还必须对 <a class="reference external" href="http://www.boost.org/libs/graph/doc/IncidenceGraph.html">关联图</a> 概念建模. <tt class="docutils literal"><span class="pre">g</span></tt> 中权重为 0 的边将导致未定义行为.</dd>
+<dt>IN: <tt class="docutils literal"><span class="pre">CentralityMap</span> <span class="pre">centrality</span></tt></dt>
+<dd><p class="first">可向算法提供一个中心性映射 (centrality map); 若未提供, 则将使用 <tt class="docutils literal"><span class="pre">dummy_property_map</span></tt>, 且不会记录任何顶点中心性信息. <tt class="docutils literal"><span class="pre">CentralityMap</span></tt> 类型必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a>. 其键类型必须是图的顶点描述符类型.</p>
+<p class="last"><strong>默认</strong>: 一个 <tt class="docutils literal"><span class="pre">dummy_property_map</span></tt>.</p>
+</dd>
+<dt>IN:  <tt class="docutils literal"><span class="pre">EdgeCentralityMap</span> <span class="pre">edge_centrality_map</span></tt></dt>
+<dd><p class="first">可向算法提供一个边中心性映射 (edge centrality map); 若未提供, 则将使用 <tt class="docutils literal"><span class="pre">dummy_property_map</span></tt>, 且不会记录任何边中心性信息. <tt class="docutils literal"><span class="pre">EdgeCentralityMap</span></tt> 类型必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a>. 其键类型必须是图的顶点描述符类型.</p>
+<p class="last"><strong>默认</strong>: 一个 <tt class="docutils literal"><span class="pre">dummy_property_map</span></tt>.</p>
+</dd>
+<dt>IN:  <tt class="docutils literal"><span class="pre">IncomingMap</span> <span class="pre">incoming</span></tt></dt>
+<dd><p class="first">入边映射 (incoming map) 保存指向某顶点、且属于通往该顶点的最短路径的那些入边. <tt class="docutils literal"><span class="pre">IncomingMap</span></tt> 类型必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a>. 其键类型与值类型都必须是图的顶点描述符类型.</p>
+<dl class="last docutils">
+<dt><strong>默认</strong>: 一个 <tt class="docutils literal"><span class="pre">iterator_property_map</span></tt>, 其基于</dt>
+<dd><tt class="docutils literal"><span class="pre">std::vector</span></tt> 的 <tt class="docutils literal"><span class="pre">std::vector</span></tt> (元素为图的顶点描述符类型).</dd>
+</dl>
+</dd>
+<dt>IN:  <tt class="docutils literal"><span class="pre">DistanceMap</span> <span class="pre">distance</span></tt></dt>
+<dd><p class="first">距离映射记录算法最短路径部分中到达各顶点的距离. <tt class="docutils literal"><span class="pre">DistanceMap</span></tt> 类型必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a>. 其键类型必须是图的顶点描述符类型.</p>
+<dl class="last docutils">
+<dt><strong>默认</strong>: 一个 <tt class="docutils literal"><span class="pre">iterator_property_map</span></tt>, 其基于</dt>
+<dd><tt class="docutils literal"><span class="pre">std::vector</span></tt>, 其元素类型为 <tt class="docutils literal"><span class="pre">CentralityMap</span></tt> 的值类型.</dd>
+</dl>
+</dd>
+<dt>IN: <tt class="docutils literal"><span class="pre">DependencyMap</span> <span class="pre">dependency</span></tt></dt>
+<dd><p class="first">依赖映射 (dependency map) 记录算法中心性计算部分中每个顶点的依赖. <tt class="docutils literal"><span class="pre">DependencyMap</span></tt> 类型必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a>. 其键类型必须是图的顶点描述符类型.</p>
+<dl class="last docutils">
+<dt><strong>默认</strong>: 一个 <tt class="docutils literal"><span class="pre">iterator_property_map</span></tt>, 其基于</dt>
+<dd><tt class="docutils literal"><span class="pre">std::vector</span></tt>, 其元素类型为 <tt class="docutils literal"><span class="pre">CentralityMap</span></tt> 的值类型.</dd>
+</dl>
+</dd>
+</dl>
+<p>IN:  <tt class="docutils literal"><span class="pre">PathCountMap</span> <span class="pre">path_count</span></tt></p>
+<blockquote>
+<p>路径计数映射 (path count map) 记录算法中心性计算部分中每个顶点所位于的最短路径的数量. <tt class="docutils literal"><span class="pre">PathCountMap</span></tt> 类型必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a>. 其键类型必须是图的顶点描述符类型.</p>
+<dl class="docutils">
+<dt><strong>默认</strong>: 一个 <tt class="docutils literal"><span class="pre">iterator_property_map</span></tt>, 其基于</dt>
+<dd><tt class="docutils literal"><span class="pre">std::vector</span></tt>, 元素为图的度数量类型.</dd>
+</dl>
+</blockquote>
+<dl class="docutils">
+<dt>IN:  <tt class="docutils literal"><span class="pre">VertexIndexMap</span> <span class="pre">vertex_index</span></tt></dt>
+<dd><p class="first">一个 <a class="reference external" href="http://www.boost.org/libs/property_map/ReadablePropertyMap.html">可读属性映射</a> 模型, 其键类型为图 <tt class="docutils literal"><span class="pre">g</span></tt> 的顶点描述符类型, 值类型为整数类型. 该属性映射应把顶点映射到其 (本地) 索引, 索引范围为 <em>[0, num_vertices(g))</em>.</p>
+<p class="last"><strong>默认</strong>: <tt class="docutils literal"><span class="pre">get(vertex_index,</span> <span class="pre">g)</span></tt></p>
+</dd>
+<dt>IN:  <tt class="docutils literal"><span class="pre">WeightMap</span> <span class="pre">weight_map</span></tt></dt>
+<dd>一个 <a class="reference external" href="http://www.boost.org/libs/property_map/ReadablePropertyMap.html">可读属性映射</a> 模型, 其键类型为图 <tt class="docutils literal"><span class="pre">g</span></tt> 的边描述符类型. 若未提供, 介数中心性的计算将不带权重.</dd>
+<dt>IN: <tt class="docutils literal"><span class="pre">Buffer</span> <span class="pre">sources</span></tt></dt>
+<dd><p class="first">一个 <a class="reference external" href="http://www.boost.org/libs/graph/doc/Buffer.html">缓冲区</a> 模型, 包含算法的起始顶点. 若 <tt class="docutils literal"><span class="pre">sources</span></tt> 为空, 则将使用 <tt class="docutils literal"><span class="pre">g</span></tt> 中的所有顶点执行完整的介数中心性计算. 缓冲区的值类型必须是图的顶点描述符类型.</p>
+<p class="last"><strong>默认</strong>: 一个 int 类型的空 <tt class="docutils literal"><span class="pre">boost::queue</span></tt>.</p>
+</dd>
+</dl>
+</div>
+<div class="section" id="complexity">
+<h1><a class="toc-backref" href="#id5">复杂度</a></h1>
+<p>计算最短路径、对它们计数并计算对中心性映射的贡献为 <em>O(V log V)</em>. 计算精确介数中心性需要对 <tt class="docutils literal"><span class="pre">g</span></tt> 中所有顶点的最短路径进行计数, 因此精确介数中心性为 <em>O(V^2 log V)</em>.</p>
+</div>
+<div class="section" id="algorithm-description">
+<h1><a class="toc-backref" href="#id6">算法描述</a></h1>
+<p>对于 <tt class="docutils literal"><span class="pre">sources</span></tt> 中的顶点 (当 <tt class="docutils literal"><span class="pre">sources</span></tt> 为空时为 <tt class="docutils literal"><span class="pre">g</span></tt> 中的所有顶点), 算法首先调用 <a class="reference external" href="dijkstra_shortest_paths.html">delta_stepping_shortest_paths</a> 的一个定制实现, 该实现使用 <tt class="docutils literal"><span class="pre">IncomingMap</span></tt> 维护一棵最短路径树. <tt class="docutils literal"><span class="pre">IncomingMap</span></tt> 包含最短路径上所有入边的来源.</p>
+<p> <tt class="docutils literal"><span class="pre">IncomingMap</span></tt> 在最短路径树中各边的目标点处定义了最短路径 DAG. 在双向情形下, 可使用边标志把最短路径信息转换到边的源点. 在最短路径计算期间设置边标志, 而不是使用 <tt class="docutils literal"><span class="pre">IncomingMap</span></tt>, 将会使最短路径计算的内层循环增加一个 <em>O(V)</em> 因子, 以顾及在发现新的最短路径时必须清除边标志. 这会提高算法的复杂度. 渐近意义上, 当前实现更优; 但在双向情形中使用边标志会把所需超步 (superstep) 的数量减少到每个顶点最短路径 DAG 的深度. 目前, <tt class="docutils literal"><span class="pre">outgoing</span></tt> 映射是通过简单地反转入边映射中的边来显式构造的. <tt class="docutils literal"><span class="pre">outgoing</span></tt> 映射构造完成后, 会从最短路径计算的源点开始按依赖顺序遍历它, 以计算路径计数. 路径计数计算完毕后, 再次从源点开始按依赖顺序遍历最短路径 DAG, 以计算每个顶点的依赖与中心性.</p>
+<p>当 <tt class="docutils literal"><span class="pre">g</span></tt> 中所有顶点的中心性都计算完毕后, 算法结束.</p>
+</div>
+<div class="section" id="bibliography">
+<h1><a class="toc-backref" href="#id7">参考文献</a></h1>
+<table class="docutils citation" frame="void" id="brandes01" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[Brandes01]</a></td><td>Ulrik Brandes.  A Faster Algorithm for Betweenness
+Centrality. In the Journal of Mathematical Sociology, volume 25
+number 2, pages 163--177, 2001.</td></tr>
+</tbody>
+</table>
+<table class="docutils citation" frame="void" id="edmonds09" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id2">[Edmonds09]</a></td><td>Nick Edmonds, Torsten Hoefler, and Andrew Lumsdaine.
+A Space-Efficient Parallel Algorithm for Computing Betweenness
+Centrality in Sparse Networks.  Indiana University tech report.
+2009.</td></tr>
+</tbody>
+</table>
+<hr class="docutils" />
+<p>版权所有 (C) 2009 The Trustees of Indiana University.</p>
+<p>作者: Nick Edmonds 和 Andrew Lumsdaine</p>
+</div>
+</div>
+<div class="footer">
+<hr class="footer" /> 生成时间: 2009-05-31 00:21 UTC. 由 <a class="reference external" href="http://docutils.sourceforge.net/">Docutils</a> 依据 <a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> 源生成.</div>
+</body>
+</html>

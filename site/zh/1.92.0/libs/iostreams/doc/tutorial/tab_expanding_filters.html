@@ -1,0 +1,266 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+<HEAD>
+    <TITLE>Tutorial</TITLE>
+    <LINK REL="stylesheet" HREF="../../../../boost.css">
+    <LINK REL="stylesheet" HREF="../theme/iostreams.css">
+</HEAD>
+<BODY>
+
+<!-- Begin Banner -->
+
+    <H1 CLASS="title">Tutorial</H1>
+    <HR CLASS="banner">
+
+<!-- End Banner -->
+
+<!-- Begin Nav -->
+
+<DIV CLASS='nav'>
+    <A HREF='line_wrapping_filters.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/prev.png'></A>
+    <A HREF='tutorial.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/up.png'></A>
+    <A HREF='dictionary_filters.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/next.png'></A>
+</DIV>
+
+<!-- End Nav -->
+
+<A NAME="tab_expanding"></A>
+<H2>2.2.5. 制表符展开过滤器</H2>
+
+<P>假设你想编写一个将每个制表符替换为一个或多个空格字符的过滤器, 使文档在显示时看起来不变. 基本算法如下: 你逐个检查字符, 将它们<I>原样</I>转发, 同时记录当前列号. 当你遇到制表符时, 用一串空格字符替换它, 其长度取决于当前列计数. 当你遇到换行字符时, 转发它并重置列计数.</P>
+
+<P>在下面三节中, 我将把这一算法分别表述为一个 <A HREF="../classes/stdio_filter.html"><CODE>stdio_filter</CODE></A>、一个 <A HREF="../concepts/input_filter.html">InputFilter</A> 和一个 <A HREF="../concepts/output_filter.html">OutputFilter</A>. 源代码可在头文件 <A HREF="../../example/tab_expanding_filter.hpp"><CODE>&lt;libs/iostreams/example/tab_expanding_filter.hpp&gt;</CODE></A> 中找到. 这些示例的灵感来自 James Kanze 的 <CODE>ExpandTabsInserter.hh</CODE> (<I>参见</I> <A CLASS="bib_ref" HREF="../bibliography.html#kanze">[Kanze]</A>).</P>
+
+<A NAME="tab_expanding_stdio_filter"></A>
+<H4><CODE>tab_expanding_stdio_filter</CODE></H4>
+
+<P>你可以将制表符展开过滤器表述为一个 <A HREF="../classes/stdio_filter.html"><CODE>stdio_filter</CODE></A>, 如下:</P>
+
+<PRE class="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <SPAN CLASS="literal">&lt;cstdio&gt;</SPAN>    <SPAN CLASS="comment">// EOF</SPAN>
+<SPAN CLASS="preprocessor">#include</SPAN> <SPAN CLASS="literal">&lt;iostream&gt;</SPAN>  <SPAN CLASS="comment">// cin, cout</SPAN>
+<SPAN CLASS="preprocessor">#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/filter/stdio.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/filter/stdio.hpp&gt;</SPAN></A>
+
+<SPAN CLASS="keyword">class</SPAN> tab_expanding_stdio_filter : <SPAN CLASS="keyword"><SPAN CLASS="keyword"><SPAN CLASS="keyword">public</SPAN></SPAN></SPAN> stdio_filter {
+<SPAN CLASS="keyword">public</SPAN>:
+    explicit tab_expanding_stdio_filter(<SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> tab_size = 8)
+        : tab_size_(tab_size), col_no_(0)
+    {
+        assert(tab_size &gt; 0);
+    }
+<SPAN CLASS="keyword">private</SPAN>:
+    <SPAN CLASS="keyword">void</SPAN> do_filter();
+    <SPAN CLASS="keyword">void</SPAN> do_close();
+    <SPAN CLASS="keyword">void</SPAN> put_char(<SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> c);
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN>  tab_size_;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN>  col_no_;
+};
+
+} } } <SPAN CLASS="comment">// End namespace boost::iostreams:example</SPAN></PRE>
+
+<P>辅助函数 <CODE>put_char</CODE> 与 <A HREF="line_wrapping_filters.html#line_wrapping_stdio_filter"><CODE>line_wrapping_stdio_filter::put_char</CODE></A> 相同. 它将一个字符写入 <CODE>std::cout</CODE> 并更新列计数:</P>
+
+<PRE class="broken_ie">    <SPAN CLASS="keyword">void</SPAN> put_char(<SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> c)
+    {
+        std::cout.put(c);
+        <SPAN CLASS="keyword">if</SPAN> (c == <SPAN CLASS="literal">'\n'</SPAN>) {
+            col_no_ = 0;
+        } <SPAN CLASS="keyword">else</SPAN> {
+            ++col_no_;
+        }
+    }</PRE>
+
+<P>使用 <CODE>put_char</CODE>, 你可以按如下方式实现 <CODE>do_filter</CODE>:</P>
+
+<PRE class="broken_ie">    <SPAN CLASS="keyword">void</SPAN> do_filter()
+    {
+        <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> c;
+        <SPAN CLASS="keyword">while</SPAN> ((c = std::cin.get()) != <SPAN CLASS="numeric_literal">EOF</SPAN>) {
+            <SPAN CLASS="keyword">if</SPAN> (c == '\t') {
+                <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> spaces = tab_size_ - (col_no_ % tab_size_);
+                for (; spaces &gt; 0; --spaces)
+                    put_char(' ');
+            } <SPAN CLASS="keyword">else</SPAN> {
+                put_char(c);
+            }
+        }
+    }</PRE>
+
+<P> <CODE>while</CODE> 循环从 <CODE>std::cin</CODE> 读取一个字符并写入 <CODE>std::cout</CODE> — 除非它是制表符, 此时它向 <CODE>std::cout</CODE> 写入适当数量的空格字符.</P>
+
+<P>与 <A HREF="line_wrapping_filters.html#line_wrapping_stdio_filter"><CODE>line_wrapping_stdio_filter</CODE></A> 一样, <CODE>virtual</CODE> 函数 <CODE>do_close</CODE> 重置过滤器的状态:</P>
+
+<PRE class="broken_ie">    <SPAN CLASS="keyword">void</SPAN> do_close() { col_no_ = 0; }</PRE>
+
+<A NAME="tab_expanding_input_filter"></A>
+<H4><CODE>tab_expanding_input_filter</CODE></H4>
+
+<P>你可以将制表符展开过滤器表述为一个 <A HREF="../concepts/input_filter.html">InputFilter</A>, 如下:</P>
+
+<PRE class="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/char_traits.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/char_traits.hpp&gt;</SPAN></A> <SPAN CLASS="comment">// EOF, WOULD_BLOCK</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/concepts.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/concepts.hpp&gt;</SPAN></A>    <SPAN CLASS="comment">// input_filter</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/operations.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/operations.hpp&gt;</SPAN></A>  <SPAN CLASS="comment">// get</SPAN>
+
+<SPAN CLASS='keyword'>namespace</SPAN> boost { <SPAN CLASS='keyword'>namespace</SPAN> iostreams { <SPAN CLASS='keyword'>namespace</SPAN> example {
+
+<SPAN CLASS="keyword">class</SPAN> tab_expanding_input_filter : <SPAN CLASS="keyword"><SPAN CLASS="keyword"><SPAN CLASS="keyword">public</SPAN></SPAN></SPAN> input_filter {
+<SPAN CLASS="keyword">public</SPAN>:
+    explicit tab_expanding_input_filter(<SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> tab_size = 8)
+        : tab_size_(tab_size), col_no_(0), spaces_(0)
+    { 
+        assert(tab_size &gt; 0); 
+    }
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> get(Source&amp; src);
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS="keyword">void</SPAN> close(Source&amp;);
+<SPAN CLASS="keyword">private</SPAN>:
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> get_char(<SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> c);
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN>   tab_size_;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN>   col_no_;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN>   spaces_;
+};
+
+} } } <SPAN CLASS="comment">// End namespace boost::iostreams:example</SPAN></PRE>
+
+<P>我们先看辅助函数 <CODE>get_char</CODE>:</P>
+
+<PRE class="broken_ie">    <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> get_char(<SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> c)
+    {
+        <SPAN CLASS="keyword">if</SPAN> (c == <SPAN CLASS="literal">'\n'</SPAN>) {
+            col_no_ = 0;
+        } <SPAN CLASS="keyword">else</SPAN> {
+            ++col_no_;
+        }
+        <SPAN CLASS="keyword">return</SPAN> c;
+    }</PRE>
+
+<P>此函数根据给定字符 <CODE>c</CODE> 更新列计数并返回 <CODE>c</CODE>. 使用 <CODE>get_char</CODE>, 你可以按如下方式实现 <CODE>get</CODE>:</P>
+
+<PRE class="broken_ie">    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Source&gt;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> get(Source&amp; src)
+    {
+        <SPAN CLASS="keyword">if</SPAN> (spaces_ &gt; 0) {
+            --spaces_;
+            <SPAN CLASS="keyword">return</SPAN> get_char(' ');
+        }
+
+        <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> c;
+        <SPAN CLASS="keyword">if</SPAN> ((c = iostreams::get(src)) == <SPAN CLASS="numeric_literal">EOF</SPAN> || c == WOULD_BLOCK)
+            <SPAN CLASS="keyword">return</SPAN> c;
+
+        <SPAN CLASS="keyword">if</SPAN> (c != '\t')
+            <SPAN CLASS="keyword">return</SPAN> get_char(c);
+
+        <SPAN CLASS='comment'>// Found a tab. Call this filter recursively.</SPAN>
+        spaces_ = tab_size_ - (col_no_ % tab_size_);
+        <SPAN CLASS="keyword">return</SPAN> this-&gt;get(src);
+    }</PRE>
+
+<P>该实现与 <A HREF="line_wrapping_filters.html#line_wrapping_input_filter"><CODE>line_wrapping_input_filter::get</CODE></A> 的实现类似. 由于 <CODE>get</CODE> 一次只能返回单个字符, 每当必须用一串空格字符替换制表符时, 只能返回第一个空格字符. 其余必须由后续的 <CODE>get</CODE> 调用返回. 成员变量 <CODE>spaces_</CODE> 用于存储此类空格字符的数量.</P>
+<P>该实现首先检查是否还有待返回的空格字符. 若有, 则递减 <CODE>spaces_</CODE> 并返回一个空格. 否则, 从 <CODE>src</CODE> 读取一个字符. 普通字符以及特殊值 <CODE>EOF</CODE> 与 <CODE>WOULD_BLOCK</CODE> 被<I>原样</I>返回. 遇到制表符时, 记录后续 get 调用必须返回的空格数, 并返回一个空格字符.</P>
+
+<P>照例, 函数 <CODE>close</CODE> 重置过滤器的状态:</P>
+
+<PRE class="broken_ie">    <SPAN CLASS="keyword">void</SPAN> close(Source&amp;)
+    {
+        col_no_ = 0;
+        spaces_ = 0;
+    }</PRE>
+
+<A NAME="tab_expanding_output_filter"></A>
+<H4><CODE>tab_expanding_output_filter</CODE></H4>
+
+<P>你可以将制表符展开过滤器表述为一个 <A HREF="../concepts/output_filter.html">OutputFilter</A>, 如下:</P>
+
+<PRE class="broken_ie"><SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/concepts.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/concepts.hpp&gt;</SPAN></A>    <SPAN CLASS="comment">// output_filter</SPAN>
+<SPAN CLASS='preprocessor'>#include</SPAN> <A CLASS="header" HREF="../../../../boost/iostreams/operations.hpp"><SPAN CLASS="literal">&lt;boost/iostreams/operations.hpp&gt;</SPAN></A>  <SPAN CLASS="comment">// put</SPAN>
+
+<SPAN CLASS='keyword'>namespace</SPAN> boost { <SPAN CLASS='keyword'>namespace</SPAN> iostreams { <SPAN CLASS='keyword'>namespace</SPAN> example {
+
+<SPAN CLASS="keyword">class</SPAN> tab_expanding_output_filter : <SPAN CLASS="keyword"><SPAN CLASS="keyword"><SPAN CLASS="keyword">public</SPAN></SPAN></SPAN> output_filter {
+<SPAN CLASS="keyword">public</SPAN>:
+    explicit tab_expanding_output_filter(<SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> tab_size = 8)
+        : tab_size_(tab_size), col_no_(0), spaces_(0)
+    { 
+        assert(tab_size &gt; 0); 
+    }
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">bool</SPAN></SPAN> put(Sink&amp; dest, <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> c);
+
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS="keyword">void</SPAN> close(Sink&amp;);
+<SPAN CLASS="keyword">private</SPAN>:
+    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">bool</SPAN></SPAN> put_char(Sink&amp; dest, <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> c);
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN>  tab_size_;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN>  col_no_;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN>  spaces_;
+};
+
+} } } <SPAN CLASS="comment">// End namespace boost::iostreams:example</SPAN></PRE>
+
+<P>实现辅助函数 <CODE>put_char</CODE> 与 <A HREF="line_wrapping_filters.html#line_wrapping_output_filter"><CODE>line_wrapping_output_filter::put_char</CODE></A> 的相同: 它将给定字符写入 <CODE>std::cout</CODE> 并递增列号 — 除非该字符是换行符, 此时列号被重置.</P>
+
+<PRE class="broken_ie">    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">bool</SPAN></SPAN> put_char(Sink&amp; dest, <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> c)
+    {
+        <SPAN CLASS="keyword">if</SPAN> (!iostreams::put(dest, c))
+            <SPAN CLASS="keyword">return</SPAN> <SPAN CLASS="keyword">false</SPAN>;
+        <SPAN CLASS="keyword">if</SPAN> (c != <SPAN CLASS="literal">'\n'</SPAN>)
+            ++col_no_;
+        <SPAN CLASS="keyword">else</SPAN>
+            col_no_ = 0;
+        <SPAN CLASS="keyword">return</SPAN> <SPAN CLASS="keyword">true</SPAN>;
+    }</PRE>
+
+<P>使用 <CODE>put_char</CODE>, 你可以按如下方式实现 <CODE>put</CODE>:</P>
+
+<PRE class="broken_ie">    <SPAN CLASS="keyword">template</SPAN>&lt;<SPAN CLASS="keyword">typename</SPAN> Sink&gt;
+    <SPAN CLASS="keyword"><SPAN CLASS="keyword">bool</SPAN></SPAN> put(Sink&amp; dest, <SPAN CLASS="keyword"><SPAN CLASS="keyword">int</SPAN></SPAN> c)
+    {
+        for (; spaces_ &gt; 0; --spaces_)
+            <SPAN CLASS="keyword">if</SPAN> (!put_char(dest, ' '))
+                <SPAN CLASS="keyword">return</SPAN> <SPAN CLASS="keyword">false</SPAN>;
+
+        <SPAN CLASS="keyword">if</SPAN> (c == '\t') {
+            spaces_ = tab_size_ - (col_no_ % tab_size_) - 1;
+            <SPAN CLASS="keyword">return</SPAN> this-&gt;put(dest, ' ');
+        } 
+
+        <SPAN CLASS="keyword">return</SPAN> put_char(dest, c);
+    }</PRE>
+
+<P>该实现首先尝试写入之前遇到的制表符遗留的空格字符. 若成功, 则检查给定字符 <CODE>c</CODE>. 若 <CODE>c</CODE> 不是制表符, 则尝试将其写入 <CODE>dest</CODE>. 否则, 计算必须插入的空格数并递归调用自身. 这里使用递归使我们不必在代码中两个不同位置递减成员变量 <CODE>spaces_</CODE>.</P>
+<P>注意, 遇到制表符之后, get 会返回 false, 直到所有关联的空格字符都已写入.</P>
+
+<P>照例, 函数 <CODE>close</CODE> 重置过滤器的状态:</P>
+
+<PRE class="broken_ie">    <SPAN CLASS="keyword">void</SPAN> close(Source&amp;)
+    {
+        col_no_ = 0;
+        spaces_ = 0;
+    }</PRE>
+
+<!-- Begin Nav -->
+
+<DIV CLASS='nav'>
+    <A HREF='line_wrapping_filters.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/prev.png'></A>
+    <A HREF='tutorial.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/up.png'></A>
+    <A HREF='dictionary_filters.html'><IMG BORDER=0 WIDTH=19 HEIGHT=19 SRC='../../../../doc/src/images/next.png'></A>
+</DIV>
+
+<!-- End Nav -->
+
+<!-- Begin Footer -->
+
+<HR>
+
+
+<P CLASS="copyright">© 版权所有 2008 <a href="http://www.coderage.com/" target="_top">CodeRage, LLC</a><br/>© 版权所有 2004-2007 <a href="https://www.boost.org/users/people/jonathan_turkanis.html" target="_top">Jonathan Turkanis</a></P>
+<P CLASS="copyright">使用、修改与分发受 Boost 软件许可 2.0 版约束. (随附文件 <A HREF="../../../../LICENSE_1_0.txt">LICENSE_1_0.txt</A> 或复制于 <A HREF="http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</A>)</P>
+<!-- End Footer -->
+
+</BODY>

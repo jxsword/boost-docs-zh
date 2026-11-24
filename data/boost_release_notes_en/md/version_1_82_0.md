@@ -1,0 +1,513 @@
+# Version 1.82.0
+
+## Version 1.82.0
+
+April 14th, 2023 03:08 GMT
+
+[Documentation](/doc/libs/1_82_0/)
+
+| Platform | File | SHA256 Hash |
+|----|----|----|
+| unix | [boost_1_82_0.tar.bz2](https://archives.boost.io/release/1.82.0/source/boost_1_82_0.tar.bz2) | a6e1ab9b0860e6a2881dd7b21fe9f737a095e5f33a3a874afc6a345228597ee6 |
+|  | [boost_1_82_0.tar.gz](https://archives.boost.io/release/1.82.0/source/boost_1_82_0.tar.gz) | 66a469b6e608a51f8347236f4912e27dc5c60c60d7d53ae9bfe4683316c6f04c |
+| windows | [boost_1_82_0.7z](https://archives.boost.io/release/1.82.0/source/boost_1_82_0.7z) | e72ff100482d4b371327b6c550dbd244d49c0186860ccc3b8c093dd621537e39 |
+|  | [boost_1_82_0.zip](https://archives.boost.io/release/1.82.0/source/boost_1_82_0.zip) | f7c9e28d242abcd7a2c1b962039fcdd463ca149d1883c3a950bbcc0ce6f7c6d9 |
+
+Downloads {.download-table}
+
+\* The download links are supported by grants from [The C++ Alliance](https://cppalliance.org/).  
+  
+
+### Known Issues
+
+These are patches from library authors which were found too late to be fixed in the release.
+
+- Filesystem
+  - Compilation on OpenBSD may fail because of broken support for `-``Wl``,--``no``-``undefined` compiler flag for shared libraries on this platform, see [\#283](https://github.com/boostorg/filesystem/issues/283). [Patch](/patches/1_82_0/0001-filesystem-fix-openbsd-build.patch).
+
+  - On Windows, creating directory iterators over directories in SMBv1 shares may fail with `ERROR_INVALID_LEVEL` error code, see [\#284](https://github.com/boostorg/filesystem/issues/284). [Patch](/patches/1_82_0/0002-filesystem-fix-win-smbv1-dir-iterator.patch).
+
+### Notice of Dropping C++03 Support
+
+The following libraries will be dropping C++03 support in release 1.84, two releases from now:
+
+- Align
+
+- Any
+
+- Asio
+
+- Atomic
+
+- Bind
+
+- Chrono
+
+- ContainerHash
+
+- Conversion
+
+- DLL
+
+- Endian
+
+- Filesystem
+
+- Function
+
+- Functional
+
+- Io
+
+- LexicalCast
+
+- Log
+
+- Random
+
+- Ratio
+
+- SmartPtr
+
+- System
+
+- Stacktrace
+
+- Thread
+
+- Timer
+
+- TypeIndex
+
+- Typeof
+
+- Unordered
+
+- Variant
+
+This release (1.82) and the next (1.83) will be the last releases offering C++03 support for the above libraries and most of their dependencies.
+
+The new baseline requirement for the above libraries, and for most of Boost, will be C++11. Since old compiler versions often implement C++11 only partially, due to missing support or bugs, what compilers are considered to meet the C++11 requirement may vary by library.
+
+However, a general rule is that if a compiler does not recognize a C++11 keyword or syntax at all (e.g. use of `noexcept`, use of `constexpr`, or defining a `=``delete`d function results in an immediate compile error), or if a compiler does not provide a required C++11 header at all (e.g. trying to include `<``atomic``>` or `<``chrono``>` fails), or the compiler provides a C++11 feature or a header that is completely unusable, this compiler is not considered a C++11 compiler.
+
+This rules out, for instance, Microsoft Visual C++ before 14.0, or GCC before 4.8.
+
+### New Libraries
+
+- [Mysql](/libs/mysql/): a C++11 client for the MySQL database server, based on Boost.Asio, from Ruben Perez.
+
+### Updated Libraries
+
+- [Any](/libs/any/):
+  - Now uses `core``/``enable_if``.``hpp` header instead of the deprecated `utility``/``enable_if``.``hpp`. Thanks to Michael Ford for the PR [PR#25](https://github.com/boostorg/any/pull/25).
+
+- [Asio](/libs/asio/):
+  - Added the ability to customise the execution of a completion handler when an operation completes immediately.
+
+  - Added user-defined literals for buffer types.
+
+  - Added a new protocol type `local``::``seq_packet_protocol` to represent `AF_UNIX` with `SOCK_SEQPACKET`.
+
+  - Exposed `sigaction``()` flags via an optional argument to `signal_set``::``add`.
+
+  - Change `allocator_binder`, `executor_binder`, and `cancellation_slot_binder` to support detection of unspecialised associators.
+
+  - Fixed ambiguity in `associated_cancellation_slot``<``reference_wrapper``>::``get``()`.
+
+  - Fixed `awaitable``<>` handling for completion signatures containing `std``::``exception_ptr`.
+
+  - Fixed `experimental``::``channel``<>` `try_send` failure after a `cancel`.
+
+  - Fixed `thread_pool``::``join``()` deadlock when the pool has no internal threads.
+
+  - Fixed pipe `release``()` when using `io_uring`.
+
+  - Fixed data initialisation and cleanup issues in the `io_uring` backend.
+
+  - Fixed a dangling reference issue in the execution context overload of `get_associated_executor``()`.
+
+  - Ensured buffered messages can still be received when an `experimental``::``channel``<>` is closed.
+
+  - Fixed the `any_completion_handler` assignment operator.
+
+  - Constrained the constructor of `any_completion_handler` to prevent accidental copying
+
+  - Changed to use `uint64_t` for OpenSSL options, to match OpenSSL 3.
+
+  - Fixed `deferred` interoperability with multiple completion signatures.
+
+  - Fixed channels to add partial support for C++11 and C++14.
+
+  - Added missing handler tracking source location support to `co_composed` and 'awaitable\<\>' coroutines, when awaiting packaged asynchronous operations.
+
+  - Fixed some 'potential null dereference' and shadow variable warnings.
+
+  - Fixed a `asio``::``buffer` overload selection when used with `const_buffers_1` and `mutable_buffers_1`.
+
+  - Disabled the runtime check for current Windows version unless targeting older Windows.
+
+  - Fixed compatibility between buffered stream wrappers and move-constructible streams, such as `ssl``::``stream``<>`.
+
+  - Fixed `basic_socket_acceptor``::``async_accept` compatibility with lambdas that have a deduced return type.
+
+  - Fixed `as_tuple` compatibility with legacy completion tokens.
+
+  - Fixed `redirect_error` compatibility with new completion tokens.
+
+  - Fixed a potential, Windows-specific program termination due to exceptions that should have been allowed to escape from a destructor.
+
+  - Prevented inadvertent `co_await` of boolean expressions.
+
+  - Fixed result handling and support for custom allocators in `experimental``::``use_coro`.
+
+  - Fixed variadic template emulation for `is_async_operation` and `completion_signature_of`.
+
+  - Fixed incorrect reuse of a moved-from result in `experimental``::``promise`.
+
+  - Fixed `experimental``::``coro` use with custom allocators.
+
+  - Fixed `seek_cur` behaviour with stream-oriented files on Windows.
+
+  - Various additions and modifications to the documentation.
+
+  - Consult the [Revision History](/doc/libs/1_82_0/doc/html/boost_asio/history.html) for further details.
+
+- [Atomic](/libs/atomic/):
+  - When compiled for x86 targets supporting AVX, vector instructions are now used for 128-bit atomic loads and stores.
+
+  - For 32-bit x86 targets, 64-bit atomic loads and stores with `memory_order_seq_cst` semantics will now issue a memory ordering instruction.
+
+  - Removed `atomic``<``T``>::``storage``()` accessors and `atomic``<``T``>::``storage_type` types that were deprecated in Boost.Atomic 1.73. Users are recommended to use `atomic``<``T``>::``value``()` and `atomic``<``T``>::``value_type` instead.
+
+- [Beast](/libs/beast):
+  - Add `error_code`s use source_location
+
+  - tcp_stream uses the correct executor of the timer.
+
+  - error_categories use numeric ids
+
+  - `file_body` supports seek
+
+- [ContainerHash](/libs/container_hash/):
+  - Added an overload of `hash_value` for `std``::``nullptr_t`.
+
+  - Added `is_tuple_like` and an overload of `hash_value` for tuple-like types.
+
+  - Changed string hashing to use [`mulxp1_hash`](https://github.com/pdimov/mulxp_hash). This improves both quality and speed.
+
+- [Core](/libs/core/):
+  - Added `boost``/``core``/``snprintf``.``hpp` header with portable definitions of `snprintf`, `vsnprintf` and their `wchar_t` counterparts.
+
+  - Deprecated `boost``/``core``/``is_same``.``hpp` and `boost``::``core``::``is_same`. The header will be removed in a future release. Users are advised to use Boost.TypeTraits or C++ standard library type traits instead.
+
+  - Marked `boost``::``ref` member functions and associated methods with `noexcept`.
+
+  - Marked `boost``::``swap` function with `noexcept`, depending on whether the type supports a non-throwing swap operation.
+
+  - Added `boost``::``core``::``launder`, a portable implementation of `std``::``launder`.
+
+  - Added `BOOST_CORE_ALIGNOF`, a portable implementation of `alignof`.
+
+  - Added `boost``::``core``::``max_align_t`, a portable equivalent of `std``::``max_align_t`, and `boost``::``core``::``max_align`, the alignment of `max_align_t`.
+
+  - Added `boost``::``core``::``memory_resource`, a portable equivalent of `std``::``pmr``::``memory_resource` from C++17.
+
+  - Added `boost``/``core``/``serialization``.``hpp`, a collection of primitives allowing libraries to implement Boost.Serialization support for their types without including a Serialization header and thereby making their libraries depend on Serialization.
+
+  - Added `boost``::``data`, an implementation of `std``::``data`.
+
+  - Added `boost``::``size`, an implementation of `std``::``size`.
+
+  - Updated `boost``::``span` to use `boost``::``data` which adds support for range construction from an `std``::``initializer_list`.
+
+  - Added `boost``::``identity`, an implementation of `std``::``identity`. This facility has been moved from Boost.Functional.
+
+- [DLL](/libs/dll/):
+  - Avoid implicit cast from size_t to uint32_t, thanks to Travers Biddle for the PR [PR#57](https://github.com/boostorg/dll/pull/57).
+
+- [Filesystem](/libs/filesystem/):
+  - Fixed compilation errors that could have been caused by `path` conversion constructors being too permissive on the accepted arguments. ([\#273](https://github.com/boostorg/filesystem/issues/273))
+
+  - **v4:** `path``::``remove_filename` now presesrves the trailing directory separator. ([\#271](https://github.com/boostorg/filesystem/issues/271))
+
+  - Added `path``::``remove_filename_and_trailing_separators`, which removes the filename and directory separators preceding it from the path. This behavior is similar to `path``::``remove_filename` in Filesystem **v3**, but is also usable in **v4**.
+
+  - Added `path``::``replace_filename`, which replaces filename in a path.
+
+  - Updated implementation of the library version selection to avoid ODR violations. ([\#279](https://github.com/boostorg/filesystem/issues/279))
+
+  - On Windows, added a workaround for querying file attributes for files in SMBv1 shares. Previously, directories in SMBv1 shares could have been reported as regular files. This does not affect SMBv2 or later. ([\#282](https://github.com/boostorg/filesystem/issues/282))
+
+- [Geometry](/libs/geometry/):
+  - Major improvements
+    - [PR#1045](https://github.com/boostorg/geometry/pull/1045) Support geographic buffer for (multi)linestrings and (multi)polygons
+
+  - Improvements
+    - [PR#1114](https://github.com/boostorg/geometry/pull/1114) Comparable distance: Add support for dynamic geometries
+
+    - [PR#1046](https://github.com/boostorg/geometry/pull/1046) Support covered_by() for box, geometry combinations
+
+  - Solved issues
+    - [\#705](https://github.com/boostorg/geometry/issues/705) WKT: allow tabs and new lines
+
+    - [\#1109](https://github.com/boostorg/geometry/issues/1109), [\#1108](https://github.com/boostorg/geometry/issues/1108) Fixes for union
+
+    - Various fixes in examples
+
+  - Breaking changes
+    - The WKT output presentation of an empty polygon is now POLYGON() to make it consistent with other geometries
+
+- [Histogram](/libs/histogram/):
+  - Replace `detail``::``span` and `detail``::``make_span` with implementations in `boost``::``core`
+
+  - Documentation improvements
+
+  - Protect usage of `std``::``min` and `std``::``max` in some cases, contributed by Han Jiang (min,max macros are illegially set by popular Windows headers so we need to work around)
+
+  - Added test to catch usage of unprotected min,max tokens in the library in the future
+
+  - Fixes to support latest clang-14 and deduction guides in gcc-11+
+
+- [JSON](/libs/json/):
+  - `set_at_pointer`.
+
+  - `boost``::``hash` support.
+
+  - Caller-provided serializer storage.
+
+  - `value_to` supports missing elements for `std``::``optional`.
+
+  - Fix parser suspend inside an escape character.
+
+  - Make sentinel() return a unique pointer.
+
+- [Locale](/libs/locale/):
+  - `get_system_locale` and dependents will now correctly favor `LC_ALL` over `LC_CTYPE` as defined by POSIX [PR#144](https://github.com/boostorg/locale/pull/144)
+
+  - `utf8_codecvt``::``out` returns `partial` for trailing (UTF) surrogates
+
+  - Add `boost``::``locale``::``util``::``locale_data` to parse a locale
+
+  - `boost``::``locale``::``info``::``encoding``()` result is now in uppercase as documented, e.g. "UTF-8" instead of "utf-8"
+
+  - Support M49 country codes such as `en_001` or `en_150` [PR#148](https://github.com/boostorg/locale/pull/148)
+
+  - Treat `en_US_POSIX` as an alias for the `C` locale [PR#148](https://github.com/boostorg/locale/pull/148)
+
+  - Improve error for missing segmentation support (i.e. without ICU) [PR#149](https://github.com/boostorg/locale/pull/149)
+
+  - Fix compiler warnings
+
+- [Math](/libs/math/):
+  - **Deprecated C++11 support**: We now require C++14 as a minimum standard. Our minimum tested compiler versions are now Clang-5, GCC-5 or MSVC-14.1.
+
+  - Added Estrin's method for polynomial evaluation.
+
+  - Fix various issues in non-central distributions to allow for larger non-centralities see [939](https://github.com/boostorg/math/pull/939).
+
+  - Added CMake install target.
+
+  - Fix special_functions.hpp to disable anything which can't be used in an exception-free environment.
+
+  - Get condition number calculation working in C++14.
+
+  - Fix `constexpr` table driven functions to avoid massive slowdown when the code is not actually `constexpr`, see [923](https://github.com/boostorg/math/issues/923).
+
+  - Improve tanh_sinh boundary handling, see [894](https://github.com/boostorg/math/pull/894).
+
+  - Add Linux arm64, s390x and Apple M1 testing, fix up test cases to handle 128-bit long doubles.
+
+  - Improve `constexpr` math functions to better handle infinities and NaN's.
+
+  - Make the integrators const-correct.
+
+  - Fix tanh_sinh integrator in case the function underflows, see [898](https://github.com/boostorg/math/issues/898).
+
+  - Don't use `std``::``cbrt` as some platforms still don't support it.
+
+  - Stop non-central T from raising spurious FE_INVALID exceptions, see [892](https://github.com/boostorg/math/pull/892).
+
+  - Fix binomial distribution edge case.
+
+  - Improve ibeta handling of very small arguments, see [884](https://github.com/boostorg/math/pull/884).
+
+  - Improve ibeta handling of infinities and NaN's, see [878](https://github.com/boostorg/math/issues/878).
+
+  - Improve error handling in powm1, see [781](https://github.com/boostorg/math/issues/781).
+
+  - Improve root-finder bracketing to bracket faster when the exponent is super-large or small.
+
+  - Fix root finding edge cases, see [873](https://github.com/boostorg/math/issues/873).
+
+  - Lots of miscellaneous warning fixes.
+
+  - Add assertions when using features which require C++17 for better error messages when invoking the compiler in a lower std version.
+
+- [Multi-index Containers](/libs/multi_index/doc/index.html):
+  - Serialization now uses `unsigned`` ``long` instead of [`collection_size_type`](/libs/serialization/doc/wrappers.html#collection_size_type), and `multi_index_container` serialization [class version](/libs/serialization/doc/tutorial.html#versioning) has been bumped from 2 to 3 to reflect this change. Reading old archives may fail for custom archive types giving special treatment to `collection_size_type` values: if this is the case, globally define the macro `BOOST_MULTI_INDEX_ENABLE_SERIALIZATION_COMPATIBILITY_V2` to ensure backwards compatibility in reading operations.
+
+  - Maintenance work.
+
+- [Multiprecision](/libs/multiprecision/):
+  - **Deprecated C++11 support**: We now require C++14 as a minimum standard. Our minimum tested compiler versions are now Clang-5, GCC-5 or MSVC-14.1.
+
+  - Added a new forward declaration header.
+
+  - Update Eigen interoperability so we no longer rely on Eigen's details, see [479](https://github.com/boostorg/multiprecision/issues/479).
+
+  - Add Cmake install target.
+
+  - Fix cpp_dec_float construction from string in standalone case for better error handling, see [499](https://github.com/boostorg/multiprecision/issues/499).
+
+  - Remove redundent definitions when in C++17 mode, see [530](https://github.com/boostorg/multiprecision/pull/530).
+
+  - Fix the error handling in standalone itrunc and ltrunc.
+
+  - Fix potentially uninitialized storage when parsing octal strings.
+
+  - Add arm64 and s390x CI testing.
+
+  - Add some missing expression template unpacking code for `powm`, see [506](https://github.com/boostorg/multiprecision/issues/506).
+
+- [Nowide](/libs/nowide/):
+  - Add `convert_string` overload accepting a (`std``::`)string instance
+
+  - Add `quoted` to output (quoted UTF-8) paths (`std``::``filesystem` or `boost``::``filesystem`) to streams [PR#170](https://github.com/boostorg/nowide/pull/170)
+
+- [PFR](/libs/pfr/):
+  - Implemented the `boost``::``pfr``::``is_implicitly_reflectable` and the machinery for specializing aggregates as reflectable or not, thanks to Denis Mikhailov for the PR [PR#111](https://github.com/boostorg/pfr/pull/111).
+
+  - Implemented `boost``::``pfr``::``get` by type of an element in the aggregate.
+
+  - Implemented the `BOOST_PFR_ENABLED` macro to detect library support for reflection, thanks to Denis Mikhailov for the PR [PR#86](https://github.com/boostorg/pfr/pull/86).
+
+  - Fixed missing terminating character, thanks to Denis Mikhailov for the PR [PR#114](https://github.com/boostorg/pfr/pull/114).
+
+  - Fixed the `boost``/``pfr``/``config``.``hpp` compilation on older compilers, thanks to Denis Mikhailov for the PR [PR#118](https://github.com/boostorg/pfr/pull/118).
+
+  - Workaround for broken C++17 stuctured binding in old compilers, thanks to Denis Mikhailov for the PR [PR#119](https://github.com/boostorg/pfr/pull/119).
+
+  - Avoid -Wzero-as-null-pointer-constant warnings, thanks to Markus F.X.J. Oberhumer for the PR [PR#117](https://github.com/boostorg/pfr/pull/117).
+
+  - Fixed multiple typos, thanks to Denis Mikhailov for the fixes.
+
+  - Added missing `#pragma`` ``once`, thanks to [caozhanhao](https://github.com/caozhanhao) for the PR [PR#121](https://github.com/boostorg/pfr/pull/121).
+
+  - Multiple fixes and improvements for the docs.
+
+- [Process](/libs/process):
+  - Added management for extern processes to V2 (still experimental)
+
+  - Deprecated `wait_for` & `wait_until` in V1 - they will be removed in the future!
+
+- [Stacktrace](/libs/stacktrace/):
+  - Fixed typos in docs and comments, thanks to Chocobo1 for the PR [PR#132](https://github.com/boostorg/stacktrace/pull/132).
+
+  - Fixed multithreading flag detection for `backtrace_create_state` if `BOOST_STACKTRACE_BACKTRACE_FORCE_STATIC` is defined.
+
+- [StaticString](/libs/static_string/):
+  - Boost.Core `string_view` and `std``::``string_view` interoperability
+
+- [Test](/libs/test/):
+  - Fixed several unused variable warnings
+
+  - Fixed sprintf deprecation warnings
+
+  - Fixed undefined behavior in `basic_cstring``::``rfind`
+
+  - Added CI through Github Actions
+
+- [Unordered](/libs/unordered/):
+  - **Major update.**
+
+  - Added node-based, open-addressing containers `boost``::``unordered_node_map` and `boost``::``unordered_node_set`.
+
+  - Extended heterogeneous lookup to more member functions as specified in [P2363](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2023/p2363r5.html).
+
+  - Replaced the previous post-mixing process for open-addressing containers with a new algorithm based on extended multiplication by a constant.
+
+  - Fixed bug in internal `emplace` impl where stack-local types were not properly constructed using the allocator of the container which breaks uses-allocator construction.
+
+- [URL](/libs/url/):
+  - Add `url``::``format` with automatic percent-encoding
+
+  - URL router example
+
+  - `set_params` convenience function
+
+  - Support implicit conversions to `string_view`
+
+  - Parsing constructors are implicit
+
+  - `string_token``::``arg` has virtual destructor and slice protection
+
+  - Support `BOOST_URL_DISABLE_THREADS`
+
+  - Improvements and Bug fixes:
+    - WIN32_LEAN_AND_MEAN macro redefinition warning
+
+    - Comparison differentiates absent and empty components
+
+    - Detect `hier_part_rule` with empty-port-like segments
+
+    - Segments comparison as if normalized works above root
+
+    - hier-part path-rootless considers invalid segments
+
+    - port as number is set to 0 when it overflows
+
+    - ipv4 to string overflow detection algorithm
+
+- [Variant](/libs/variant/):
+  - Now uses core/addressof instead of the deprecated utility/addressof. Thanks to Michael Ford for the PR [PR#105](https://github.com/boostorg/variant/pull/105).
+
+### Updated Tools
+
+- [Build](/tools/build/):
+  - Includes release of [B2 version 4.9.4](/tools/build/doc/html/#_version_4_9_4).
+
+### Compilers Tested
+
+Boost's primary test compilers are:
+
+- Linux:
+  - Clang, C++03: 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 12.0.0, 13.0.0, 14.0.0, 15.0.0
+
+  - Clang, C++11: 3.4, 11.0.0, 13.0.0, 14.0.0, 15.0.0
+
+  - Clang, C++14: 3.5, 3.6, 3.7, 3.8, 3.9, 4.0, 5.0, 12.0.0, 13.0.0, 14.0.0, 15.0.0
+
+  - Clang, C++17: 6.0.1, 7.0.0, 8.0.0, 9.0.0, 10.0.0, 11.0.0, 12.0.0, 13.0.0, 14.0.0, 15.0.0
+
+  - Clang, C++20: 11.0.0, 12.0.0, 13.0.0, 14.0.0, 15.0.0
+
+  - GCC, C++03: 4.6.3, 11, 12
+
+  - GCC, C++11: 4.7.3, 4.8.5, 11, 12
+
+  - GCC, C++14: 5.4.0, 6.4.0, 7.3.0, 8.0.1, 9.1.0, 11, 12
+
+  - GCC, C++17: 7.3.0, 8.0.1, 9.1.0, 11, 12
+
+  - GCC, C++20: 8.0.1, 9.1.0, 10, 11, 12
+
+- OS X:
+  - Apple Clang, C++03: 11.0.3
+
+  - Apple Clang, C++11: 11.0.3
+
+  - Apple Clang, C++14: 11.0.3
+
+  - Apple Clang, C++17: 11.0.3
+
+  - Apple Clang, C++20: 11.0.3
+
+- Windows:
+  - Visual C++: 10.0, 11.0, 12.0, 14.0, 14.1, 14.2, 14.3
+
+### Acknowledgements
+
+Marshall Clow and Glen Fernandes managed this release.
+
+Copyright Rene Rivera 2006-2007.

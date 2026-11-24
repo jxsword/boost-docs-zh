@@ -1,0 +1,88 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>窄契约 - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="../css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="../images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="../motivation/plug_error_code2.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../motivation.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../abi-stability.html"><img src="../images/next.png" alt="下一页"></a></div><div id="content">
+  <div class="titlepage"><div><div><h1 style="clear: both">窄契约</h1></div></div></div>
+  <p>程序的执行线程可能因两个原因进入 “令人失望” 的状态:</p>
+
+<ul>
+<li>由于环境 (操作系统、外部输入) 中的令人失望的情形, 或</li>
+<li>由于程序中的缺陷.</li>
+</ul>
+
+<p>正确处理这些失望的关键是识别它们属于哪一类, 并使用适合该类别的工具. 在本教程中, 当我们说 “错误” 或 “失败” 时, 只指第一类. 缺陷不是错误.</p>
+
+<p>缺陷是指程序与其应有的样子不符. 此时的正确行动是修改程序, 使它恰如应有. 遗憾的是, 有时缺陷的症状只有在系统运行时才被发现, 而此时已无法修改代码.</p>
+
+<p>与之相对, 失败是指正确程序中的正确函数反映了环境中某种令人失望的行为. 此时的正确行动是让程序采取不同于平常的控制路径, 这很可能会取消某些操作, 并很可能导致与外界的不同通信.</p>
+
+<p>缺陷的症状有时可以在编译期、静态程序分析期被检测到, 或在运行期观察到在特定点被声明为永不有效的对象特定值时被检测到. 一个经典例子是把空指针传给期望有效对象指针的函数:</p>
+<div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="kt">int</span> <span class="nf">f</span><span class="p">(</span><span class="kt">int</span> <span class="o">*</span> <span class="n">pi</span><span class="p">)</span> <span class="c1">// expects: pi != nullptr
+</span><span class="c1"></span><span class="p">{</span>
+  <span class="k">return</span> <span class="o">*</span><span class="n">pi</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>在未预期处传递空指针是非常常见的缺陷, 工具非常擅长找出它们. 例如, 静态分析器通常甚至无需执行你的代码就能检测到它. 类似地, 未定义行为 sanitizer 之类的工具会把上述代码编译成执行安全检查以确认指针是否为空的形式, 记录错误消息并可选择终止程序.</p>
+
+<p>此外, 编译器可以基于解引用空指针造成的未定义行为执行优化. 在如下代码中:</p>
+<div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="n">pair</span><span class="o">&lt;</span><span class="kt">int</span><span class="p">,</span> <span class="kt">int</span><span class="o">&gt;</span> <span class="n">g</span><span class="p">(</span><span class="kt">int</span> <span class="o">*</span> <span class="n">pi</span><span class="p">)</span> <span class="c1">// expects: pi != nullptr
+</span><span class="c1"></span><span class="p">{</span>
+  <span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="o">*</span><span class="n">pi</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="p">(</span><span class="n">pi</span> <span class="o">==</span> <span class="k">nullptr</span><span class="p">)</span> <span class="o">?</span> <span class="mi">1</span> <span class="o">:</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="k">return</span> <span class="p">{</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">};</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>编译器可以看出: 如果 <code>pi</code> 为空, 程序将有未定义行为. 由于 C++ 标准要求未定义行为永远不是程序员的意图, 编译器便假定这个函数显然从不以 <code>pi == nullptr</code> 被调用. 若是如此, <code>j</code> 总是 <code>0</code>, 代码就可以被转换成更快的版本:</p>
+<div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="n">pair</span><span class="o">&lt;</span><span class="kt">int</span><span class="p">,</span> <span class="kt">int</span><span class="o">&gt;</span> <span class="n">g</span><span class="p">(</span><span class="kt">int</span> <span class="o">*</span> <span class="n">pi</span><span class="p">)</span> <span class="c1">// expects: pi != nullptr
+</span><span class="c1"></span><span class="p">{</span>
+  <span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="o">*</span><span class="n">pi</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="k">return</span> <span class="p">{</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">};</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>像上述函数那样声明某些输入参数值不得传入的函数, 被称为具有<em>窄契约</em>.</p>
+
+<p>编译器提供非标准工具让你告知它们窄契约, 使它们能像检测无效空指针那样检测并利用它. 例如, 如果你的库中有一个函数接受 <code>int</code>, 并声明该 <code>int</code> 的值绝不能为负. 你可以使用 GCC 与 clang 中可用的 <code>__builtin_trap()</code>:</p>
+<div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="kt">void</span> <span class="nf">h</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span><span class="p">)</span> <span class="c1">// expects: i &gt;= 0
+</span><span class="c1"></span><span class="p">{</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">i</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="n">__builtin_trap</span><span class="p">();</span>
+
+  <span class="c1">// normal program logic follows ...
+</span><span class="c1"></span><span class="p">}</span>
+</code></pre></div>
+<p>该指令被执行到时, 会使程序异常退出, 这意味着:</p>
+
+<ul>
+<li>可以启动调试器,</li>
+<li>如果静态分析器能检测到会到达此点的程序流, 它可以警告你,</li>
+<li>UB sanitizer 执行到此处时可以记录错误消息.</li>
+</ul>
+
+<p>你可以使用的另一个工具是 <code>__builtin_unreachable()</code>, 它在 GCC 与 clang 中同样可用:</p>
+<div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="kt">void</span> <span class="nf">h</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span><span class="p">)</span> <span class="c1">// expects: i &gt;= 0
+</span><span class="c1"></span><span class="p">{</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">i</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="n">__builtin_unreachable</span><span class="p">();</span>
+
+  <span class="c1">// normal program logic follows ...
+</span><span class="c1"></span><span class="p">}</span>
+</code></pre></div>
+<p>这给工具一个提示: 程序员保证程序流永远不会到达执行它的那一点. 换言之, 如果控制流到达该点, 就是未定义行为. 编译器与其他工具可以对此深信不疑. 这样它们可以推导出表达式 <code>i &lt; 0</code> 永不为真, 并进一步利用这一假设来发出警告或优化代码. UB sanitizer 可以用它注入一条日志消息, 并在仍然到达该点时终止程序.</p>
+
+<p>允许某些输入值无效, 其原理类似于循环冗余校验. 它使人们有机会观察到缺陷的症状 (而非缺陷本身), 症状一旦显现, 对缺陷的追捕便可开始. 如今不仅能轻松检测缺陷症状的不只是工具, 还有代码评审中的人. 评审者现在可以说: “嘿, 函数 <code>h()</code> 期望一个非负值, 但这个 <code>i</code> 实际是 <code>-1</code>; 也许你想传的是 <code>j</code>?”.</p>
+
+
+        </div><p><small>最后修订: April 26, 2019 at 17:43:41 +0200</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../motivation/plug_error_code2.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../motivation.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../abi-stability.html"><img src="../images/next.png" alt="下一页"></a></div></body>
+</html>

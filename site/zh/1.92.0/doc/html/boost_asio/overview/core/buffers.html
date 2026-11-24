@@ -1,0 +1,123 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>缓冲区</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../../boost_asio.html" title="Boost.Asio">
+<link rel="up" href="../core.html" title="核心概念与功能">
+<link rel="prev" href="strands.html" title="Strands: 无需显式加锁地使用线程">
+<link rel="next" href="streams.html" title="流、短读与短写">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="strands.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../core.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="streams.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_asio.overview.core.buffers"></a><a class="link" href="buffers.html" title="缓冲区">缓冲区</a>
+</h4></div></div></div>
+<p>从根本上说, I/O 涉及在与称为缓冲区的连续内存区域之间传输数据. 这些缓冲区可以简单地表示为一个由指针和字节大小组成的元组. 然而, 为了支持高效网络应用的开发, Boost.Asio 包含对 scatter-gather 操作的支持. 这类操作涉及一个或多个缓冲区:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">scatter 读把数据接收到多个缓冲区中.</li>
+<li class="listitem">gather 写传输多个缓冲区.</li>
+</ul></div>
+<p>因此, 我们需要一个抽象来表示缓冲区的集合. Boost.Asio 采用的方法是定义一个类型 (实际上是两个类型) 来表示单个缓冲区. 它们可以存储在容器中, 容器可以传递给 scatter-gather 操作.</p>
+<p>除了以指针和字节大小来指定缓冲区之外, Boost.Asio 还区分可修改内存 (称为 mutable) 和不可修改内存 (后者由 const 限定变量的存储空间创建) . 因此这两个类型可以定义如下:</p>
+<pre class="programlisting"><span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">*,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span><span class="special">&gt;</span> <span class="identifier">mutable_buffer</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span><span class="special">&lt;</span><span class="keyword">const</span> <span class="keyword">void</span><span class="special">*,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span><span class="special">&gt;</span> <span class="identifier">const_buffer</span><span class="special">;</span>
+</pre>
+<p>这里, mutable_buffer 可以转换为 const_buffer, 但反方向的转换是无效的.</p>
+<p>不过, Boost.Asio 并没有按原样使用上述定义, 而是定义了两个类: <code class="computeroutput"><span class="identifier">mutable_buffer</span></code> 和 <code class="computeroutput"><span class="identifier">const_buffer</span></code>. 其目标是提供连续内存的不透明表示, 其中:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">这些类型在转换中的行为与 std::pair 相同. 也就是说, <code class="computeroutput"><span class="identifier">mutable_buffer</span></code> 可以转换为 <code class="computeroutput"><span class="identifier">const_buffer</span></code>, 但反方向的转换是不允许的.</li>
+<li class="listitem">对缓冲区越界提供保护. 给定一个缓冲区实例, 用户只能创建表示同一内存范围或其子范围的另一个缓冲区. 为了提供进一步的安全性, 库还包含一些机制, 可以从数组、由 POD 元素组成的 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">array</span></code> 或 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span></code>, 或从 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span></code> 自动确定缓冲区的大小.</li>
+<li class="listitem">底层内存可以通过 <code class="computeroutput"><span class="identifier">data</span><span class="special">()</span></code> 成员函数显式访问. 一般而言, 应用程序永远不需要这样做, 但库实现需要用它把原始内存传递给底层的操作系统函数.</li>
+</ul></div>
+<p>最后, 可以把多个缓冲区放入容器, 从而传递给 scatter-gather 操作 (例如 <a class="link" href="../../reference/read.html" title="read">read()</a> 或 <a class="link" href="../../reference/write.html" title="write">write()</a>) . <code class="computeroutput"><span class="identifier">MutableBufferSequence</span></code> 和 <code class="computeroutput"><span class="identifier">ConstBufferSequence</span></code> 这两个概念已被定义, 从而使得诸如 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span></code>、<code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">list</span></code>、<code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span></code> 或 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">array</span></code> 这样的容器可以使用.</p>
+<h6>
+<a name="boost_asio.overview.core.buffers.h0"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.buffers.streambuf_for_integration_with_iostreams"></a></span><a class="link" href="buffers.html#boost_asio.overview.core.buffers.streambuf_for_integration_with_iostreams">Streambuf 用于与 Iostreams 集成</a>
+        </h6>
+<p> <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">basic_streambuf</span></code> 类派生自 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">basic_streambuf</span></code>, 用于把输入序列和输出序列与一个或多个某种字符数组类型的对象关联起来, 这些对象的元素存储任意值. 这些字符数组对象位于 streambuf 对象内部, 但提供了对数组元素的直接访问, 以便它们可以与 I/O 操作 (例如套接字的 send 或 receive 操作) 配合使用:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">streambuf 的输入序列可以通过 <a class="link" href="../../reference/basic_streambuf/data.html" title="basic_streambuf::data">data()</a> 成员函数访问. 该函数的返回类型满足 <code class="computeroutput"><span class="identifier">ConstBufferSequence</span></code> 要求.</li>
+<li class="listitem">streambuf 的输出序列可以通过 <a class="link" href="../../reference/basic_streambuf/prepare.html" title="basic_streambuf::prepare">prepare()</a> 成员函数访问. 该函数的返回类型满足 <code class="computeroutput"><span class="identifier">MutableBufferSequence</span></code> 要求.</li>
+<li class="listitem">通过调用 <a class="link" href="../../reference/basic_streambuf/commit.html" title="basic_streambuf::commit">commit()</a> 成员函数, 数据从输出序列的前端转移到输入序列的后端.</li>
+<li class="listitem">通过调用 <a class="link" href="../../reference/basic_streambuf/consume.html" title="basic_streambuf::consume">consume()</a> 成员函数, 数据从输入序列的前端移除.</li>
+</ul></div>
+<p>streambuf 构造函数接受一个 <code class="computeroutput"><span class="identifier">size_t</span></code> 实参, 指定输入序列与输出序列大小之和的最大值. 任何若成功便会把内部数据增长到超出此限制的操作, 都会抛出一个 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">length_error</span></code> 异常.</p>
+<h6>
+<a name="boost_asio.overview.core.buffers.h1"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.buffers.bytewise_traversal_of_buffer_sequences"></a></span><a class="link" href="buffers.html#boost_asio.overview.core.buffers.bytewise_traversal_of_buffer_sequences">缓冲区序列的逐字节遍历</a>
+        </h6>
+<p> <code class="computeroutput"><span class="identifier">buffers_iterator</span><span class="special">&lt;&gt;</span></code> 类模板允许把缓冲区序列 (即满足 <code class="computeroutput"><span class="identifier">MutableBufferSequence</span></code> 或 <code class="computeroutput"><span class="identifier">ConstBufferSequence</span></code> 要求的类型) 当作连续字节序列来遍历. 此外还提供了名为 buffers_begin() 和 buffers_end() 的辅助函数, 此时 buffers_iterator&lt;&gt; 模板参数会被自动推导.</p>
+<p>例如, 要从套接字读取一行并读入 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span></code>, 可以这样写:</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">streambuf</span> <span class="identifier">sb</span><span class="special">;</span>
+<span class="special">...</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">n</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">read_until</span><span class="special">(</span><span class="identifier">sock</span><span class="special">,</span> <span class="identifier">sb</span><span class="special">,</span> <span class="char">'\n'</span><span class="special">);</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">streambuf</span><span class="special">::</span><span class="identifier">const_buffers_type</span> <span class="identifier">bufs</span> <span class="special">=</span> <span class="identifier">sb</span><span class="special">.</span><span class="identifier">data</span><span class="special">();</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">line</span><span class="special">(</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">buffers_begin</span><span class="special">(</span><span class="identifier">bufs</span><span class="special">),</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">buffers_begin</span><span class="special">(</span><span class="identifier">bufs</span><span class="special">)</span> <span class="special">+</span> <span class="identifier">n</span><span class="special">);</span>
+</pre>
+<h6>
+<a name="boost_asio.overview.core.buffers.h2"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.buffers.buffer_literals"></a></span><a class="link" href="buffers.html#boost_asio.overview.core.buffers.buffer_literals">缓冲区字面量</a>
+        </h6>
+<p> <code class="computeroutput"><span class="identifier">_buf</span></code> 字面量后缀定义于命名空间 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">buffer_literals</span></code> 中, 可用于从字符串、二进制整数和十六进制整数字面量创建 <code class="computeroutput"><span class="identifier">const_buffer</span></code> 对象. 这些缓冲区字面量可以是任意长度. 例如:</p>
+<pre class="programlisting">using namespace boost::asio::buffer_literals;
+
+boost::asio::const_buffer b1 = "hello"_buf;
+boost::asio::const_buffer b2 = 0xdeadbeef_buf;
+boost::asio::const_buffer b3 = 0x01234567'89abcdef'01234567'89abcdef_buf;
+boost::asio::const_buffer b4 = 0b1010101011001100_buf;
+</pre>
+<p>与缓冲区字面量关联的内存在程序的整个生存期内有效. 这意味着该缓冲区可以安全地用于异步操作:</p>
+<pre class="programlisting"><span class="identifier">async_write</span><span class="special">(</span><span class="identifier">my_socket</span><span class="special">,</span> <span class="string">"hello"</span><span class="identifier">_buf</span><span class="special">,</span> <span class="identifier">my_handler</span><span class="special">);</span>
+</pre>
+<h6>
+<a name="boost_asio.overview.core.buffers.h3"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.buffers.buffer_debugging"></a></span><a class="link" href="buffers.html#boost_asio.overview.core.buffers.buffer_debugging">缓冲区调试</a>
+        </h6>
+<p>一些标准库实现 (例如 Microsoft Visual C++ 8.0 及更高版本自带的实现) 提供了一项称为迭代器调试 (iterator debugging) 的特性. 这意味着迭代器的有效性会在运行期进行检查. 如果程序试图使用一个已经失效的迭代器, 就会触发断言. 例如:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">v</span><span class="special">(</span><span class="number">1</span><span class="special">)</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;::</span><span class="identifier">iterator</span> <span class="identifier">i</span> <span class="special">=</span> <span class="identifier">v</span><span class="special">.</span><span class="identifier">begin</span><span class="special">();</span>
+<span class="identifier">v</span><span class="special">.</span><span class="identifier">clear</span><span class="special">();</span> <span class="comment">// invalidates iterators</span>
+<span class="special">*</span><span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="comment">// assertion!</span>
+</pre>
+<p>Boost.Asio 利用这一特性来增加缓冲区调试功能. 考虑以下代码:</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">dont_do_this</span><span class="special">()</span>
+<span class="special">{</span>
+ <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">msg</span> <span class="special">=</span> <span class="string">"Hello, world!"</span><span class="special">;</span>
+ <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">async_write</span><span class="special">(</span><span class="identifier">sock</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">buffer</span><span class="special">(</span><span class="identifier">msg</span><span class="special">),</span> <span class="identifier">my_handler</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>调用异步读或写时, 你需要确保操作的缓冲区在完成处理器被调用之前保持有效. 在上面的例子中, 缓冲区是 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span></code> 变量 <code class="computeroutput"><span class="identifier">msg</span></code>. 该变量位于栈上, 因此在异步操作完成之前它就会离开作用域. 如果幸运, 应用程序会崩溃; 但更可能出现的是随机故障.</p>
+<p>启用缓冲区调试后, Boost.Asio 会把一个指向该字符串的迭代器保存到异步操作完成, 然后解引用它以检查其有效性. 在上面的例子中, 你会在 Boost.Asio 试图调用完成处理器之前观察到一次断言失败.</p>
+<p>对于 Microsoft Visual Studio 8.0 或更高版本, 以及定义了 <code class="computeroutput"><span class="identifier">_GLIBCXX_DEBUG</span></code> 的 GCC, 这一特性会自动可用. 这种检查有性能开销, 因此缓冲区调试只在调试构建中启用. 对于其他编译器, 可以通过定义 <code class="computeroutput"><span class="identifier">BOOST_ASIO_ENABLE_BUFFER_DEBUGGING</span></code> 来启用它, 也可以通过定义 <code class="computeroutput"><span class="identifier">BOOST_ASIO_DISABLE_BUFFER_DEBUGGING</span></code> 来显式禁用它.</p>
+<h6>
+<a name="boost_asio.overview.core.buffers.h4"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.buffers.see_also"></a></span><a class="link" href="buffers.html#boost_asio.overview.core.buffers.see_also">参见</a>
+        </h6>
+<p>
+          <a class="link" href="../../reference/buffer.html" title="buffer">buffer</a>、<a class="link" href="../../reference/buffers_begin.html" title="buffers_begin">buffers_begin</a>、<a class="link" href="../../reference/buffers_end.html" title="buffers_end">buffers_end</a>、<a class="link" href="../../reference/buffers_iterator.html" title="buffers_iterator">buffers_iterator</a>、<a class="link" href="../../reference/const_buffer.html" title="const_buffer">const_buffer</a>、<a class="link" href="../../reference/mutable_buffer.html" title="mutable_buffer">mutable_buffer</a>、<a class="link" href="../../reference/streambuf.html" title="streambuf">streambuf</a>、<a class="link" href="../../reference/ConstBufferSequence.html" title="常量缓冲区序列要求">ConstBufferSequence</a>、<a class="link" href="../../reference/MutableBufferSequence.html" title="可变缓冲区序列要求">MutableBufferSequence</a>、<a class="link" href="../../examples/cpp11_examples.html#boost_asio.examples.cpp11_examples.buffers">buffers 示例 (C++11) </a>.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2003-2026 Christopher M. Kohlhoff<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="strands.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../core.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="streams.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

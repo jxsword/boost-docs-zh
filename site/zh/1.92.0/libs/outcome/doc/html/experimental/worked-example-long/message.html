@@ -1,0 +1,66 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>重定义 message() - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="../../css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="../../images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="../../experimental/worked-example-long/string_ref.html"><img src="../../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../../experimental/worked-example-long.html"><img src="../../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../../index.html"><img src="../../images/home.png" alt="首页"></a><a accesskey="n" href="../../experimental/worked-example-long/source.html"><img src="../../images/next.png" alt="下一页"></a></div><div id="content">
+  <div class="titlepage"><div><div><h1 style="clear: both">重定义 <code>message()</code></h1></div></div></div>
+  <p>你可能记得, 我们自定义的 <code>_file_io_error_domain</code> 继承自 <code>outcome_e::posix_code::domain_type</code>, 因而不必实现 <code>outcome_e::status_code_domain</code> 所要求的众多纯虚函数.</p>
+
+<p>我们确实需要做的是重新实现 <code>_do_message()</code>, 把文件与行信息追加到 <code>outcome_e::posix_code::domain_type</code> 返回的 POSIX 错误描述字符串后面. 这会使状态码的 <code>.message()</code> 观察器返回一个以文本表示额外负载信息的字符串.</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++">  <span class="c1">// Return a string describing a specific code. We will return the
+</span><span class="c1"></span>  <span class="c1">// string returned by our POSIX code base domain, with the source
+</span><span class="c1"></span>  <span class="c1">// file and line number appended
+</span><span class="c1"></span>  <span class="k">virtual</span> <span class="kt">int</span> <span class="nf">_do_message</span><span class="p">(</span><span class="n">_vtable_message_args</span> <span class="o">&amp;</span><span class="n">args</span><span class="p">)</span> <span class="k">const</span> <span class="k">noexcept</span> <span class="k">override</span> <span class="k">final</span>
+  <span class="p">{</span>
+    <span class="n">assert</span><span class="p">(</span><span class="n">args</span><span class="p">.</span><span class="n">code</span><span class="p">.</span><span class="n">domain</span><span class="p">()</span> <span class="o">==</span> <span class="o">*</span><span class="k">this</span><span class="p">);</span>
+
+    <span class="c1">// Fetch message from base domain (POSIX)
+</span><span class="c1"></span>    <span class="k">const</span> <span class="kt">int</span> <span class="n">errcode</span> <span class="o">=</span> <span class="n">_base</span><span class="o">::</span><span class="n">_do_message</span><span class="p">(</span><span class="n">args</span><span class="p">);</span>
+    <span class="k">if</span><span class="p">(</span><span class="n">errcode</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="p">{</span>
+      <span class="k">return</span> <span class="n">errcode</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">const</span> <span class="k">auto</span> <span class="n">msg</span> <span class="o">=</span> <span class="n">std</span><span class="o">::</span><span class="n">move</span><span class="p">(</span><span class="n">args</span><span class="p">.</span><span class="n">ret</span><span class="p">);</span>
+    <span class="k">const</span> <span class="k">auto</span> <span class="o">&amp;</span><span class="n">c1</span> <span class="o">=</span> <span class="k">static_cast</span><span class="o">&lt;</span><span class="k">const</span> <span class="n">file_io_error</span> <span class="o">&amp;&gt;</span><span class="p">(</span><span class="n">args</span><span class="p">.</span><span class="n">code</span><span class="p">);</span>  <span class="c1">// NOLINT
+</span><span class="c1"></span>    <span class="k">const</span> <span class="n">value_type</span> <span class="o">&amp;</span><span class="n">v</span> <span class="o">=</span> <span class="n">c1</span><span class="p">.</span><span class="n">value</span><span class="p">();</span>
+
+    <span class="c1">// Append my source file and line number
+</span><span class="c1"></span>    <span class="k">if</span><span class="p">(</span><span class="n">v</span><span class="p">.</span><span class="n">file</span> <span class="o">==</span> <span class="k">nullptr</span><span class="p">)</span>
+    <span class="p">{</span>
+      <span class="n">args</span><span class="p">.</span><span class="n">ret</span> <span class="o">=</span> <span class="n">msg</span><span class="p">;</span>
+      <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>  <span class="c1">// errno value if failed
+</span><span class="c1"></span>    <span class="p">}</span>
+    <span class="n">size_t</span> <span class="n">length</span> <span class="o">=</span> <span class="n">strlen</span><span class="p">(</span><span class="n">v</span><span class="p">.</span><span class="n">file</span><span class="p">)</span> <span class="o">+</span> <span class="mi">16</span> <span class="o">+</span> <span class="n">msg</span><span class="p">.</span><span class="n">size</span><span class="p">();</span>
+    <span class="k">auto</span> <span class="o">*</span><span class="n">p</span> <span class="o">=</span> <span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">char</span> <span class="o">*&gt;</span><span class="p">(</span><span class="n">malloc</span><span class="p">(</span><span class="n">length</span><span class="p">));</span>  <span class="c1">// NOLINT
+</span><span class="c1"></span>    <span class="k">if</span><span class="p">(</span><span class="n">p</span> <span class="o">==</span> <span class="k">nullptr</span><span class="p">)</span>
+    <span class="p">{</span>
+      <span class="n">args</span><span class="p">.</span><span class="n">ret</span> <span class="o">=</span> <span class="n">_base</span><span class="o">::</span><span class="n">string_ref</span><span class="p">(</span><span class="s">&#34;failed to get message from system&#34;</span><span class="p">);</span>
+      <span class="k">return</span> <span class="n">ENOMEM</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="n">snprintf</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">length</span><span class="p">,</span> <span class="s">&#34;%s (%s:%d)&#34;</span><span class="p">,</span> <span class="n">msg</span><span class="p">.</span><span class="n">data</span><span class="p">(),</span> <span class="n">v</span><span class="p">.</span><span class="n">file</span><span class="p">,</span> <span class="n">v</span><span class="p">.</span><span class="n">lineno</span><span class="p">);</span>
+
+    <span class="c1">// Return as atomically reference counted string
+</span><span class="c1"></span>    <span class="n">args</span><span class="p">.</span><span class="n">ret</span> <span class="o">=</span> <span class="n">_base</span><span class="o">::</span><span class="n">atomic_refcounted_string_ref</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">length</span><span class="p">);</span>
+    <span class="n">free</span><span class="p">(</span><span class="n">p</span><span class="p">);</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>  <span class="c1">// errno value if failed
+</span><span class="c1"></span>  <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/experimental_status_code.cpp#L115" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+
+        </div><p><small>最后修订: July 16, 2024 at 21:33:35 +0100</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../../experimental/worked-example-long/string_ref.html"><img src="../../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../../experimental/worked-example-long.html"><img src="../../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../../index.html"><img src="../../images/home.png" alt="首页"></a><a accesskey="n" href="../../experimental/worked-example-long/source.html"><img src="../../images/next.png" alt="下一页"></a></div></body>
+</html>

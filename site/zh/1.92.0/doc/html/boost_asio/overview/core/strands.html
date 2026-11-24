@@ -1,0 +1,104 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>Strands: 无需显式加锁地使用线程</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../../boost_asio.html" title="Boost.Asio">
+<link rel="up" href="../core.html" title="核心概念与功能">
+<link rel="prev" href="threads.html" title="线程与 Boost.Asio">
+<link rel="next" href="buffers.html" title="缓冲区">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="threads.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../core.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="buffers.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_asio.overview.core.strands"></a><a class="link" href="strands.html" title="Strands: 无需显式加锁地使用线程">Strands: 无需显式加锁地使用线程</a>
+</h4></div></div></div>
+<p>strand 被定义为事件处理器的严格串行调用 (即不并发调用) . 使用 strand 可以在多线程程序中执行代码, 而无需显式加锁 (例如使用互斥量) .</p>
+<p>strand 可以是隐式的, 也可以是显式的, 如下列几种可选方式所示:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">只从一个线程调用 io_context::run() 意味着所有事件处理器都在一个隐式 strand 中执行, 这是由于 io_context 保证处理器只从 run() 内部调用.</li>
+<li class="listitem">当与一个连接相关联的异步操作只有单一链条时 (例如在 HTTP 这类半双工协议实现中) , 处理器不可能并发执行. 这就是隐式 strand.</li>
+<li class="listitem">显式 strand 是 <code class="computeroutput"><span class="identifier">strand</span><span class="special">&lt;&gt;</span></code> 或 <code class="computeroutput"><span class="identifier">io_context</span><span class="special">::</span><span class="identifier">strand</span></code> 的实例. 所有事件处理器函数对象都需要使用 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">bind_executor</span><span class="special">()</span></code> 绑定到 strand, 或者以其他方式通过该 strand 对象进行投递/派发.</li>
+</ul></div>
+<p>对于组合异步操作, 例如 <code class="computeroutput"><span class="identifier">async_read</span><span class="special">()</span></code> 或 <code class="computeroutput"><span class="identifier">async_read_until</span><span class="special">()</span></code>, 如果某个完成处理器经由 strand, 那么所有中间处理器也应经由同一个 strand. 这是为了确保对调用方与组合操作之间共享的任何对象的线程安全访问 (就 <code class="computeroutput"><span class="identifier">async_read</span><span class="special">()</span></code> 而言, 该对象是套接字, 调用方可以对其 <code class="computeroutput"><span class="identifier">close</span><span class="special">()</span></code> 来取消操作) .</p>
+<p>为此, 所有异步操作都通过 <code class="computeroutput"><span class="identifier">get_associated_executor</span></code> 函数获取处理器的关联执行器. 例如:</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">associated_executor_t</span><span class="special">&lt;</span><span class="identifier">Handler</span><span class="special">&gt;</span> <span class="identifier">a</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">get_associated_executor</span><span class="special">(</span><span class="identifier">h</span><span class="special">);</span>
+</pre>
+<p>关联执行器必须满足 Executor 要求. 异步操作将使用它来提交中间处理器和最终处理器以供执行.</p>
+<p>可以通过指定嵌套类型 <code class="computeroutput"><span class="identifier">executor_type</span></code> 和成员函数 <code class="computeroutput"><span class="identifier">get_executor</span><span class="special">()</span></code>, 为特定的处理器类型定制执行器:</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">my_handler</span>
+<span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+  <span class="comment">// Custom implementation of Executor type requirements.</span>
+  <span class="keyword">typedef</span> <span class="identifier">my_executor</span> <span class="identifier">executor_type</span><span class="special">;</span>
+
+  <span class="comment">// Return a custom executor implementation.</span>
+  <span class="identifier">executor_type</span> <span class="identifier">get_executor</span><span class="special">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span>
+  <span class="special">{</span>
+    <span class="keyword">return</span> <span class="identifier">my_executor</span><span class="special">();</span>
+  <span class="special">}</span>
+
+  <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()()</span> <span class="special">{</span> <span class="special">...</span> <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>在更复杂的情况下, 可以直接对 <code class="computeroutput"><span class="identifier">associated_executor</span></code> 模板进行偏特化:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">my_handler</span>
+<span class="special">{</span>
+  <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()()</span> <span class="special">{</span> <span class="special">...</span> <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">asio</span> <span class="special">{</span>
+
+  <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Executor</span><span class="special">&gt;</span>
+  <span class="keyword">struct</span> <span class="identifier">associated_executor</span><span class="special">&lt;</span><span class="identifier">my_handler</span><span class="special">,</span> <span class="identifier">Executor</span><span class="special">&gt;</span>
+  <span class="special">{</span>
+    <span class="comment">// Custom implementation of Executor type requirements.</span>
+    <span class="keyword">typedef</span> <span class="identifier">my_executor</span> <span class="identifier">type</span><span class="special">;</span>
+
+    <span class="comment">// Return a custom executor implementation.</span>
+    <span class="keyword">static</span> <span class="identifier">type</span> <span class="identifier">get</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">my_handler</span><span class="special">&amp;,</span>
+        <span class="keyword">const</span> <span class="identifier">Executor</span><span class="special">&amp;</span> <span class="special">=</span> <span class="identifier">Executor</span><span class="special">())</span> <span class="keyword">noexcept</span>
+    <span class="special">{</span>
+      <span class="keyword">return</span> <span class="identifier">my_executor</span><span class="special">();</span>
+    <span class="special">}</span>
+  <span class="special">};</span>
+
+<span class="special">}</span> <span class="special">}</span> <span class="comment">// namespace boost::asio</span>
+</pre>
+<p> <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">bind_executor</span><span class="special">()</span></code> 函数用于将特定的执行器对象 (例如 strand) 绑定到完成处理器. 这种绑定会如上所示自动关联执行器. 例如, 要将 strand 绑定到完成处理器, 只需这样写:</p>
+<pre class="programlisting"><span class="identifier">my_socket</span><span class="special">.</span><span class="identifier">async_read_some</span><span class="special">(</span><span class="identifier">my_buffer</span><span class="special">,</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">bind_executor</span><span class="special">(</span><span class="identifier">my_strand</span><span class="special">,</span>
+      <span class="special">[](</span><span class="identifier">error_code</span> <span class="identifier">ec</span><span class="special">,</span> <span class="identifier">size_t</span> <span class="identifier">length</span><span class="special">)</span>
+      <span class="special">{</span>
+        <span class="comment">// ...</span>
+      <span class="special">}));</span>
+</pre>
+<h6>
+<a name="boost_asio.overview.core.strands.h0"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.strands.see_also"></a></span><a class="link" href="strands.html#boost_asio.overview.core.strands.see_also">参见</a>
+        </h6>
+<p>
+          <a class="link" href="../../reference/associated_executor.html" title="associated_executor">associated_executor</a>、<a class="link" href="../../reference/get_associated_executor.html" title="get_associated_executor">get_associated_executor</a>、<a class="link" href="../../reference/bind_executor.html" title="bind_executor">bind_executor</a>、<a class="link" href="../../reference/strand.html" title="strand">strand</a>、<a class="link" href="../../reference/io_context__strand.html" title="io_context::strand">io_context::strand</a>、<a class="link" href="../../tutorial/tuttimer5.html" title="Timer.5 - 在多线程程序中同步完成处理器">教程 Timer.5</a>、<a class="link" href="../../examples/cpp11_examples.html#boost_asio.examples.cpp11_examples.http_server_3">HTTP server 3 示例</a>.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2003-2026 Christopher M. Kohlhoff<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="threads.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../core.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="buffers.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+  <head>
+    <meta content="text/html; charset=utf-8"
+      http-equiv="content-type">
+    <title>emptiness.html</title>
+    <link rel="stylesheet" type="text/css" href="../styles.css">
+    <style>
+    u { font-weight: normal; text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <h4>传递空实参</h4>
+    <div>尽管很少有这种需求, 但在 C++ 中调用宏时传递空 (即不传递任何预处理器记号) 作为实参一直是合法的, 无论对应的参数是普通参数还是变参参数.</div>
+    <div class="code">
+      <pre>      #define SOME_MACRO(Parameter1,Parameter2) macro expansion using Parameter1 and Parameter2
+      #define SOME_VARIADIC_MACRO(Parameter1,...) macro expansion using Parameter1 and __VA_ARGS__
+      
+      SOME_MACRO(a,b) // Normal
+      SOME_MACRO(a,)  // Legal, second argument is empty
+      SOME_MACRO(,b)  // Legal, first argument is empty
+      SOME_MACRO(a)   // Preprocessor error, passing the wrong number of arguments
+      
+      SOME_VARIADIC_MACRO(a,b,c,d) // Normal
+      SOME_VARIADIC_MACRO(a,)      // Legal, variadic argument is empty
+      SOME_VARIADIC_MACRO(,b,c,d)  // Legal, first argument is empty
+      SOME_VARIADIC_MACRO(a)       /* Preprocessor error in standard below C++20 level,
+                                      but in C++20 exactly equivalent to SOME_VARIADIC_MACRO(a,) */</pre>
+    </div>
+    <h4>展开为空</h4>
+    <div>对于某些实参, 宏可能展开为空 (即不产生任何预处理器记号). 这种情况可能比前一种“宏实参为空”的情况更常发生, 因为宏的展开结果常被用于初始化某个 C++ 构造, 而 C++ 中有些地方允许编译期构造的某一部分为空. 然而, 当一个宏的展开结果被用作另一个宏的实参时, 展开为空的宏很少出现, 因为那样我们又遇到了一个传递空实参的宏.</div>
+    <div class="code">
+      <pre>      #define ANOTHER_MACRO(Parameter1,Parameter2) /* expands to nothing when Parameter1 and Parameter2
+                                                      are numbers, otherwise expands to some preprocessing
+                                                      token, such as '1' */
+      
+      int another_int = { ANOTHER_MACRO(x,y) }; // ANOTHER_MACRO Expands to 1
+      int some_int = { ANOTHER_MACRO(1,2) };    // ANOTHER_MACRO Expands to nothing
+      SOME_MACRO(ANOTHER_MACRO(x,y),z)          // Normal, ANOTHER_MACRO Expands to 1
+      SOME_MACRO(ANOTHER_MACRO(1,2),z)          // Legal, first argument is empty as ANOTHER_MACRO Expands to nothing</pre>
+    </div>
+    <h4>“空”的定义</h4>
+    <div>把空作为宏实参传递, 或宏展开为空, 我将其称为“空” (emptiness), 因为“nothing”这个词太含糊, 可用于太多其他语境, 不合我意. 在绝大多数情况下, 设计供使用的宏时并不会把“空”纳入设计, 编写宏的人向其他程序员解释宏应当如何使用时, 也不会考虑把空作为实参传递或展开为空的情况.<br>
+      <br> 除了宏通常是为传递或生成某种特定类型的实际预处理器数据而创建的这一事实之外, 处理“空”之所以不是宏设计的一部分, 还有另一个很好的理由: 在宏展开期间测试是否为空, 历来没有完全万无一失的方法——无论是仅用 C++ 标准设施创建宏, 还是使用第三方库 (如这个 Boost 预处理库), 都是如此. 我说“万无一失” (fail-safe) 的意思是: 总会存在某些实参输入, 无论潜在情形的数目多么小, 会使设计用于测试“调用宏时作为实参传给它的预处理器数据是否实际为空”的宏以某种方式失败, 而这种失败通常表现为预处理器错误.<br>
+      <br> 当然, 这并不意味着设计最佳的测试空的宏在绝大多数时候不能正确工作. 它只是意味着无法保证这样的宏在 100% 的时间里都能正确工作. 尽管如此, 测试空仍有其用途: 当宏文档说明某个特定实参通常应包含什么内容时, 即便该测试在传入特定的意外实观数据时不能保证 100% 有效, 也可以进行这种测试.</div>
+    <h4>一种测试“空”的 C++20 方案</h4>
+    <div>C++ 标准委员会在即将出台的 C++20 标准规范中认识到, 在设计某些类型的宏时, 能够测试变参宏展开中的变参数据是否为空会非常有用. 因此, C++20 标准增加了一个预处理器构造, 它能以某种方式对变参宏展开中的变参数据做到这一点. 该构造名为 __VA_OPT__, 形如变参宏替换列表中所指定的 '__VA_OPT__ ( 预处理记号 )'. <br>
+      <br> __VA_OPT__ 构造的工作方式是: 如果变参宏的变参实参为空或展开为空, 那么 __VA_OPT__ 构造及其所包围的预处理记号数据展开为空, 用 C++ 的术语说就是“单个占位预处理记号” (a single placemarker preprocessing token). 否则, __VA_OPT__ 构造展开为其所包围的预处理记号. 向 C++20 加入 __VA_OPT__ 构造带来的另一个可能并非有意为之的结果是: 只要编译器在编译预处理器代码时支持 __VA_OPT__ 构造, 现在就可以创建一个在测试空方面 100% 可靠的变参宏. <br>
+      <br> 要让这样的测试空的宏始终有效, 代码必须知道 __VA_OPT__ 构造何时可用. 仅仅知道编译器工作在 C++20 级别是不够的, 因为所有 C++ 程序员都知道, 遵循某个 C++ 标准级别永远不能保证特定编译器支持该级别的每一个方面. 令人高兴的是, 只要编译器支持变参宏, 就有一种方法可以测试编译器是否支持 __VA_OPT__ 构造, 而且这种方法已在互联网上公开发表; 即便它没有公开出现, 实际的宏代码也不难编写. 本库使用那段代码来测试 __VA_OPT__, 把它作为创建在测试空方面 100% 可靠的变参宏的必要前提. <br>
+      <br> Boost Preprocessor 库中用于测试编译期间是否支持 __VA_OPT__ 构造的宏名为 BOOST_PP_VARIADIC_HAS_OPT, 它是一个无参的类函数宏, 若支持 __VA_OPT__ 构造则返回 1, 否则返回 0. 该宏只在编译器工作在 C++20 级别、且按照 C++20 标准 __VA_OPT__ 构造可以使用时才返回 1. 特别地, 尽管至少有一个主流编译器在其最近的某些版本中, 即使工作在低于 C++20 的 C++ 标准级别上也支持 __VA_OPT__ 构造, 该宏仍要求编译器工作在 C++20 级别. 这个 Boost 预处理库要求 C++20 级别的原因在于: 同一主流编译器在低于 C++20 的级别上, 只要看到使用 __VA_OPT__ 构造的宏, 即便它支持该构造, 如果命令行上传递了要求严格遵守所用 C++ 标准级别的其他编译器选项, 也可能产生警告甚至错误. 因此, 采取保守的做法, BOOST_PP_VARIADIC_HAS_OPT 宏要求以 C++20 级别编译, 并且测试代码展开为 1, 才认定支持 __VA_OPT__. <br>
+      <br> Boost Preprocessor 库中实际用于在 C++20 模式下测试空的宏名为 BOOST_PP_CHECK_EMPTY. 该宏是一个带单个变参参数的变参宏. 只有当用于测试 __VA_OPT__ 的前述宏——名为 BOOST_PP_VARIADIC_HAS_OPT——在以 BOOST_PP_VARIADIC_HAS_OPT() 形式调用时展开为 1, 该宏才存在. 如果 BOOST_PP_VARIADIC_HAS_OPT() 展开为 0, 那么 BOOST_PP_CHECK_EMPTY 宏在本库中根本不存在. 传给 BOOST_PP_CHECK_EMPTY 宏的输入可以是任何变参数据. 如果传给宏的数据为空, 或者传给宏的数据虽不为空但数据本身展开后为空, 宏返回 1, 否则返回 0. 无论传给它什么预处理器数据, 该宏都能 100% 正常工作, 完全可靠. 但当然, 它只在使用支持 __VA_OPT__ 构造的编译器以 C++20 级别编译时才有效. 它解决了一个老问题: 在 C++20 之前, 在 C++ 中一直无法提供 100% 可靠的测试空宏实现. <br>
+      <br> 除了宝贵的 BOOST_PP_CHECK_EMPTY 宏之外, Boost Preprocessor 库还增加了一个 __VA_OPT__ 构造的替代品——它更灵活, 尽管略微冗长——其工作原理是利用 BOOST_PP_CHECK_EMPTY 可靠测试空的能力. 这个宏名为 BOOST_PP_VA_OPT, 它允许程序员同时为变参数据 <b>不</b> 为空以及变参数据为空这两种情况指定要展开的预处理记号. 这改进了 __VA_OPT__ 构造只能在变参数据不为空时指定要展开的预处理记号的能力. 与它所使用的 BOOST_PP_CHECK_EMPTY 一样, BOOST_PP_VA_OPT 宏只在 BOOST_PP_VARIADIC_HAS_OPT() 展开为 1 时才存在. 关于该宏如何作为 C++20 __VA_OPT__ 构造的替代品工作的更多信息, 请阅读该宏自身的文档. <br>
+      <br> 最终会有更多 C++ 编译器支持 C++20 和 __VA_OPT__ 构造, 也会有更多程序员使用 C++20 级别的编译器. 到那时, 所有这些程序员都可以在宏代码中可靠地使用 BOOST_PP_CHECK_EMPTY 宏来测试预处理器数据是否为空. BOOST_PP_VA_OPT 宏就是这种用法的一个有益示例. 这并不意味着设计宏时必须考虑空, 更不是说必须时刻惦记它, 而是说: 如果宏程序员需要, 以完全可靠的方式处理空的可能性就在那里. 连同 C++20 标准强制规定的 __VA_OPT__ 构造, BOOST_PP_CHECK_EMPTY 和 BOOST_PP_VA_OPT 宏为宏编程的武库又增添了三件工具, 这是一件好事; 而那些想在宏代码中回避空问题的程序员仍然可以继续回避.</div>
+    <b>参见</b> <b> </b><br>
+    <ul>
+      <li><a href="../ref/variadic_has_opt.html">BOOST_PP_VARIADIC_HAS_OPT</a></li>
+      <li><a href="../ref/check_empty.html">BOOST_PP_CHECK_EMPTY</a></li>
+      <li><a href="../ref/va_opt.html">BOOST_PP_VA_OPT</a><br>
+      </li>
+    </ul>
+    <hr size="1">
+    <div style="margin-left: 0px;"> <i>版权所有 Edward Diener 2019</i>
+    </div>
+    <div style="margin-left: 0px;">
+      <p><small>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <a
+            href="../../../../LICENSE_1_0.txt">LICENSE_1_0.txt</a> 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt">www.boost.org/LICENSE_1_0.txt</a>)</small></p>
+    </div>
+  </body>
+</html>

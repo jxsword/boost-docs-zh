@@ -1,0 +1,372 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>使用纤程进行上下文切换</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Context">
+<link rel="up" href="../index.html" title="第 1 章 Context">
+<link rel="prev" href="requirements.html" title="要求">
+<link rel="next" href="ff/implementations__fcontext_t__ucontext_t_and_winfiber.html" title="实现: fcontext_t、ucontext_t 与 WinFiber">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="requirements.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="ff/implementations__fcontext_t__ucontext_t_and_winfiber.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="context.ff"></a><a name="ff"></a><a class="link" href="ff.html" title="使用纤程进行上下文切换">使用纤程进行上下文切换</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="ff/implementations__fcontext_t__ucontext_t_and_winfiber.html">实现: fcontext_t、ucontext_t 与 WinFiber</a></span></dt>
+<dt><span class="section"><a href="ff/class__fiber_.html">类 <code class="computeroutput"><span class="identifier">fiber</span></code></a></span></dt>
+</dl></div>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>
+        <span class="emphasis"><em>fiber</em></span> 是 C++ 提案 <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2018/p0876r0.pdf" target="_top">P0876R0: fibers without scheduler</a> 的参考实现.</p></td></tr>
+</table></div>
+<p> <span class="emphasis"><em>fiber</em></span> (纤程) 表示程序的控制流在某一给定时间点上的状态. 纤程可以被挂起, 并在之后恢复, 以此改变程序的控制流.</p>
+<p>现代微处理器是寄存器机; 处理器寄存器的内容即所执行程序在给定时间点上的一个纤程. 操作系统通过保存并恢复纤程 (例如全部寄存器的内容) 在程序之间切换 (上下文切换), 从而在单个处理器上模拟程序的并行执行.</p>
+<h4>
+<a name="context.ff.h0"></a>
+      <span class="phrase"><a name="context.ff._link_linkend__ff___emphasis_fiber__emphasis___link_"></a></span><a class="link" href="ff.html#context.ff._link_linkend__ff___emphasis_fiber__emphasis___link_"><span class="emphasis"><em>fiber</em></span></a>
+    </h4>
+<p>
+      <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a> 捕获当前纤程 (即计算的剩余部分; <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a> 之后的代码) 并触发一次上下文切换. 上下文切换的实现方式是: 按 ABI 调用约定所定义, 保存当前纤程的某些寄存器 (包括指令指针与栈指针), 并恢复被恢复纤程的这些寄存器. 被恢复纤程的控制流得以继续执行. 当前纤程被挂起, 并作为实参传递给被恢复的纤程.</p>
+<p>
+      <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a> 要求传入一个 <span class="emphasis"><em>context-function</em></span>, 其签名为 <code class="computeroutput"><span class="char">'fiber(fiber &amp;&amp; f)'</span></code>. 参数 <code class="computeroutput"><span class="identifier">f</span></code> 表示当前纤程, 即本次从中恢复本纤程的那个纤程 (例如调用了 <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a> 的纤程).</p>
+<p>返回时, 当前纤程的 <span class="emphasis"><em>context-function</em></span> 必须指定一个 <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a>, 在当前纤程终止后, 执行控制权将转移到该纤程.</p>
+<p>若一个处于有效状态的实例离开其作用域, 而 <span class="emphasis"><em>context-function</em></span> 尚未返回, 则会遍历栈以访问控制结构 (存储在第一个栈帧中的地址), 并通过 <span class="emphasis"><em>StackAllocator</em></span> 释放该纤程的栈.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>
+        <a class="link" href="stack/segmented.html#segmented"><span class="emphasis"><em>分段栈</em></span></a> 由 <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a> 使用 <a class="link" href="ff/implementations__fcontext_t__ucontext_t_and_winfiber.html#implementation"><span class="emphasis"><em>ucontext_t</em></span></a> 提供支持.</p></td></tr>
+</table></div>
+<p>
+      <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a> 表示一个 <span class="emphasis"><em>fiber</em></span> (纤程); 它包含被保存寄存器的内容, 并管理相关联的栈 (分配/释放). <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a> 是一次性 (one-shot) 纤程 - 只能使用一次, 在调用 <span class="emphasis"><em>continuation::resume()</em></span> 或 <span class="emphasis"><em>continuation::resume_with()</em></span> 之后即被置为无效.</p>
+<p>
+      <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a> 仅可移动构造和移动赋值.</p>
+<p>作为一等对象, <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a> 可以传给函数并从函数返回, 可以赋给变量或存入容器.</p>
+<p>通过调用 <code class="computeroutput"><span class="identifier">resume</span><span class="special">()</span></code>/<code class="computeroutput"><span class="identifier">resume_with</span><span class="special">()</span></code> 来继续执行一个纤程.</p>
+<h4>
+<a name="context.ff.h1"></a>
+      <span class="phrase"><a name="context.ff.usage"></a></span><a class="link" href="ff.html#context.ff.usage">用法</a>
+    </h4>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">ctx</span><span class="special">=</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">context</span><span class="special">;</span>
+<span class="keyword">int</span> <span class="identifier">a</span><span class="special">;</span>
+<span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span> <span class="identifier">source</span><span class="special">{[&amp;</span><span class="identifier">a</span><span class="special">](</span><span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span><span class="special">&amp;&amp;</span> <span class="identifier">sink</span><span class="special">){</span>
+    <span class="identifier">a</span><span class="special">=</span><span class="number">0</span><span class="special">;</span>
+    <span class="keyword">int</span> <span class="identifier">b</span><span class="special">=</span><span class="number">1</span><span class="special">;</span>
+    <span class="keyword">for</span><span class="special">(;;){</span>
+        <span class="identifier">sink</span><span class="special">=</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">sink</span><span class="special">).</span><span class="identifier">resume</span><span class="special">();</span>
+        <span class="keyword">int</span> <span class="identifier">next</span><span class="special">=</span><span class="identifier">a</span><span class="special">+</span><span class="identifier">b</span><span class="special">;</span>
+        <span class="identifier">a</span><span class="special">=</span><span class="identifier">b</span><span class="special">;</span>
+        <span class="identifier">b</span><span class="special">=</span><span class="identifier">next</span><span class="special">;</span>
+    <span class="special">}</span>
+    <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">sink</span><span class="special">);</span>
+<span class="special">}};</span>
+<span class="keyword">for</span> <span class="special">(</span><span class="keyword">int</span> <span class="identifier">j</span><span class="special">=</span><span class="number">0</span><span class="special">;</span><span class="identifier">j</span><span class="special">&lt;</span><span class="number">10</span><span class="special">;++</span><span class="identifier">j</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">source</span><span class="special">=</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">source</span><span class="special">).</span><span class="identifier">resume</span><span class="special">();</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="identifier">a</span> <span class="special">&lt;&lt;</span> <span class="string">" "</span><span class="special">;</span>
+<span class="special">}</span>
+
+<span class="identifier">output</span><span class="special">:</span>
+    <span class="number">0</span> <span class="number">1</span> <span class="number">1</span> <span class="number">2</span> <span class="number">3</span> <span class="number">5</span> <span class="number">8</span> <span class="number">13</span> <span class="number">21</span> <span class="number">34</span>
+</pre>
+<p>这个简单的示例演示了将 <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a> 用作 <span class="emphasis"><em>generator</em></span> (生成器) 的基本用法. 纤程 <code class="computeroutput"><span class="identifier">sink</span></code> 表示 <span class="emphasis"><em>main</em></span>-纤程 (函数 <code class="computeroutput"><span class="identifier">main</span><span class="special">()</span></code>). <code class="computeroutput"><span class="identifier">sink</span></code> 通过调用 <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a> 被捕获 (当前纤程), 并作为参数传递给 lambda.</p>
+<p>由于每次调用 <span class="emphasis"><em> continuation::resume() </em></span> 都会使状态失效 (一次性纤程), <a class="link" href="ff.html#ff"><span class="emphasis"><em> fiber </em></span></a> 的新状态, 即 <span class="emphasis"><em> continuation::resume() </em></span> 所返回的状态, 需要在每次调用后赋给 <code class="computeroutput"><span class="identifier">sink</span></code> . 为了表达被恢复纤程的失效, 成员函数 <code class="computeroutput"><span class="identifier">resume</span><span class="special">()</span></code> 和 <code class="computeroutput"><span class="identifier">resume_with</span><span class="special">()</span></code> 被限定为右值引用 (rvalue-ref qualified). 这两个函数只绑定到右值. 因此, 左值纤程必须通过 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">()</span></code> 转换为右值.</p>
+<p>计算斐波那契数的 lambda 在由 <code class="computeroutput"><span class="identifier">source</span></code> 表示的纤程中执行. 计算出的斐波那契数通过变量 <code class="computeroutput"><span class="identifier">a</span></code> (lambda 捕获引用) 在两个纤程之间传递.</p>
+<p>局部变量 <code class="computeroutput"><span class="identifier">b</span></code> 和 <code class="computeroutput"> <span class="identifier">next</span></code> 在每次上下文切换期间都保持其值. 这是可能的, 因为 <code class="computeroutput"><span class="identifier">source</span></code> 拥有自己的栈, 而每次上下文切换都会交换该栈.</p>
+<h4>
+<a name="context.ff.h2"></a>
+      <span class="phrase"><a name="context.ff.parameter_passing"></a></span><a class="link" href="ff.html#context.ff.parameter_passing">参数传递</a>
+    </h4>
+<p>数据可以通过全局指针、调用包装器 (如 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">bind</span></code>) 或 lambda 捕获在两个纤程之间传递.</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">ctx</span><span class="special">=</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">context</span><span class="special">;</span>
+<span class="keyword">int</span> <span class="identifier">i</span><span class="special">=</span><span class="number">1</span><span class="special">;</span>
+<span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span> <span class="identifier">f1</span><span class="special">{[&amp;</span><span class="identifier">i</span><span class="special">](</span><span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span><span class="special">&amp;&amp;</span> <span class="identifier">f2</span><span class="special">){</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">printf</span><span class="special">(</span><span class="string">"inside f1,i==%d\n"</span><span class="special">,</span><span class="identifier">i</span><span class="special">);</span>
+    <span class="identifier">i</span><span class="special">+=</span><span class="number">1</span><span class="special">;</span>
+    <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">f2</span><span class="special">).</span><span class="identifier">resume</span><span class="special">();</span>
+<span class="special">}};</span>
+<span class="identifier">f1</span><span class="special">=</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">f1</span><span class="special">).</span><span class="identifier">resume</span><span class="special">();</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">printf</span><span class="special">(</span><span class="string">"i==%d\n"</span><span class="special">,</span><span class="identifier">i</span><span class="special">);</span>
+
+<span class="identifier">output</span><span class="special">:</span>
+    <span class="identifier">inside</span> <span class="identifier">c1</span><span class="special">,</span><span class="identifier">i</span><span class="special">==</span><span class="number">1</span>
+    <span class="identifier">i</span><span class="special">==</span><span class="number">2</span>
+</pre>
+<p>
+      <code class="computeroutput"><span class="identifier">f1</span><span class="special">.</span><span class="identifier">resume</span><span class="special">()</span></code> 进入由 <code class="computeroutput"><span class="identifier">f1</span></code> 表示的纤程中的 lambda, 并带有 lambda 捕获引用 <code class="computeroutput"><span class="identifier">i</span><span class="special">=</span><span class="number">1</span></code> . 表达式 <code class="computeroutput"><span class="identifier">f2</span><span class="special">.</span><span class="identifier">resume</span><span class="special">()</span></code> 恢复纤程 <code class="computeroutput"><span class="identifier">f2</span></code> . 当 <code class="computeroutput"><span class="identifier">f1</span><span class="special">.</span><span class="identifier">resume</span><span class="special">()</span></code> 返回时, 变量 <code class="computeroutput"><span class="identifier">i</span></code> 的值为 <code class="computeroutput"><span class="identifier">i</span><span class="special">+</span><span class="number">1</span></code> .</p>
+<h4>
+<a name="context.ff.h3"></a>
+      <span class="phrase"><a name="context.ff.exception_handling"></a></span><a class="link" href="ff.html#context.ff.exception_handling">异常处理</a>
+    </h4>
+<p>若在 <span class="emphasis"><em> context-function </em></span> 中执行的函数抛出异常, 应用程序将通过调用 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">terminate</span><span class="special">()</span></code> 而终止. <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">exception_ptr</span></code> 可用于在不同的纤程之间传递异常.</p>
+<div class="important"><table border="0" summary="Important">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[重要]" src="../../../../../doc/src/images/important.png"></td>
+<th align="left">重要</th>
+</tr>
+<tr><td align="left" valign="top"><p>不要从 catch 块内部跳转.</p></td></tr>
+</table></div>
+<a name="ff_ontop"></a><h4>
+<a name="context.ff.h4"></a>
+      <span class="phrase"><a name="context.ff.executing_function_on_top_of_a_fiber"></a></span><a class="link" href="ff.html#context.ff.executing_function_on_top_of_a_fiber">在纤程之上执行函数</a>
+    </h4>
+<p>有时, 在被恢复的纤程之上执行一个新函数会很有用. 为此, 必须使用 <span class="emphasis"><em>continuation::resume_with()</em></span>. 作为实参传入的函数必须接受一个指向 <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a> 的右值引用, 并返回 <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a>.</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">ctx</span><span class="special">=</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">context</span><span class="special">;</span>
+<span class="keyword">int</span> <span class="identifier">data</span><span class="special">=</span><span class="number">0</span><span class="special">;</span>
+<span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span> <span class="identifier">f1</span><span class="special">{[&amp;</span><span class="identifier">data</span><span class="special">](</span><span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span><span class="special">&amp;&amp;</span> <span class="identifier">f2</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"f1: entered first time: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">data</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="identifier">data</span><span class="special">+=</span><span class="number">1</span><span class="special">;</span>
+    <span class="identifier">f2</span><span class="special">=</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">f2</span><span class="special">).</span><span class="identifier">resume</span><span class="special">();</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"f1: entered second time: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">data</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="identifier">data</span><span class="special">+=</span><span class="number">1</span><span class="special">;</span>
+    <span class="identifier">f2</span><span class="special">=</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">f2</span><span class="special">).</span><span class="identifier">resume</span><span class="special">();</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"f1: entered third time: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">data</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">f2</span><span class="special">);</span>
+<span class="special">}};</span>
+<span class="identifier">f1</span><span class="special">=</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">f1</span><span class="special">).</span><span class="identifier">resume</span><span class="special">();</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"f1: returned first time: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">data</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="identifier">data</span><span class="special">+=</span><span class="number">1</span><span class="special">;</span>
+<span class="identifier">f1</span><span class="special">=</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">f1</span><span class="special">).</span><span class="identifier">resume</span><span class="special">();</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"f1: returned second time: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">data</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="identifier">data</span><span class="special">+=</span><span class="number">1</span><span class="special">;</span>
+<span class="identifier">f1</span><span class="special">=</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">f1</span><span class="special">).</span><span class="identifier">resume_with</span><span class="special">([&amp;</span><span class="identifier">data</span><span class="special">](</span><span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span><span class="special">&amp;&amp;</span> <span class="identifier">f2</span><span class="special">){</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"f2: entered: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">data</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="identifier">data</span><span class="special">=-</span><span class="number">1</span><span class="special">;</span>
+    <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">f2</span><span class="special">);</span>
+<span class="special">});</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"f1: returned third time"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+
+<span class="identifier">output</span><span class="special">:</span>
+    <span class="identifier">f1</span><span class="special">:</span> <span class="identifier">entered</span> <span class="identifier">first</span> <span class="identifier">time</span><span class="special">:</span> <span class="number">0</span>
+    <span class="identifier">f1</span><span class="special">:</span> <span class="identifier">returned</span> <span class="identifier">first</span> <span class="identifier">time</span><span class="special">:</span> <span class="number">1</span>
+    <span class="identifier">f1</span><span class="special">:</span> <span class="identifier">entered</span> <span class="identifier">second</span> <span class="identifier">time</span><span class="special">:</span> <span class="number">2</span>
+    <span class="identifier">f1</span><span class="special">:</span> <span class="identifier">returned</span> <span class="identifier">second</span> <span class="identifier">time</span><span class="special">:</span> <span class="number">3</span>
+    <span class="identifier">f2</span><span class="special">:</span> <span class="identifier">entered</span><span class="special">:</span> <span class="number">4</span>
+    <span class="identifier">f1</span><span class="special">:</span> <span class="identifier">entered</span> <span class="identifier">third</span> <span class="identifier">time</span><span class="special">:</span> <span class="special">-</span><span class="number">1</span>
+    <span class="identifier">f1</span><span class="special">:</span> <span class="identifier">returned</span> <span class="identifier">third</span> <span class="identifier">time</span>
+</pre>
+<p>The expression <code class="computeroutput"><span class="identifier">f1</span><span class="special">.</span><span class="identifier">resume_with</span><span class="special">(...)</span></code> 在纤程 <code class="computeroutput"><span class="identifier">f1</span></code> 之上执行一个 lambda, 即在该栈的顶部额外分配一个栈帧. 该 lambda 将 <code class="computeroutput"><span class="special">-</span><span class="number">1</span></code> 赋给 <code class="computeroutput"><span class="identifier">data</span></code> , 然后返回到 <code class="computeroutput"><span class="identifier">f1</span><span class="special">.</span><span class="identifier">resume</span><span class="special">()</span></code> 的第二次调用.</p>
+<p>另一种做法是在纤程之上执行一个会抛出异常的函数.</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">ctx</span><span class="special">=</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">context</span><span class="special">;</span>
+<span class="keyword">struct</span> <span class="identifier">my_exception</span> <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">runtime_error</span> <span class="special">{</span>
+    <span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span>    <span class="identifier">f</span><span class="special">;</span>
+    <span class="identifier">my_exception</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span><span class="special">&amp;&amp;</span> <span class="identifier">f_</span><span class="special">,</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">what</span><span class="special">)</span> <span class="special">:</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">runtime_error</span><span class="special">{</span> <span class="identifier">what</span> <span class="special">},</span>
+        <span class="identifier">f</span><span class="special">{</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">f_</span><span class="special">)</span> <span class="special">}</span> <span class="special">{</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span> <span class="identifier">f</span><span class="special">{[](</span><span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span> <span class="special">&amp;&amp;</span> <span class="identifier">f</span><span class="special">)</span> <span class="special">-&gt;</span><span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span> <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"entered"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="keyword">try</span> <span class="special">{</span>
+        <span class="identifier">f</span><span class="special">=</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">f</span><span class="special">).</span><span class="identifier">resume</span><span class="special">();</span>
+    <span class="special">}</span> <span class="keyword">catch</span> <span class="special">(</span><span class="identifier">my_exception</span> <span class="special">&amp;</span> <span class="identifier">ex</span><span class="special">)</span> <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cerr</span> <span class="special">&lt;&lt;</span> <span class="string">"my_exception: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">ex</span><span class="special">.</span><span class="identifier">what</span><span class="special">()</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+        <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">ex</span><span class="special">.</span><span class="identifier">f</span><span class="special">);</span>
+    <span class="special">}</span>
+    <span class="keyword">return</span> <span class="special">{};</span>
+<span class="special">});</span>
+<span class="identifier">f</span><span class="special">=</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">f</span><span class="special">).</span><span class="identifier">resume</span><span class="special">();</span>
+<span class="identifier">f</span><span class="special">=</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">f</span><span class="special">).</span><span class="identifier">resume_with</span><span class="special">([](</span><span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span> <span class="special">&amp;&amp;</span> <span class="identifier">f</span><span class="special">)</span> <span class="special">-&gt;</span><span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span> <span class="special">{</span>
+    <span class="keyword">throw</span> <span class="identifier">my_exception</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">f</span><span class="special">),</span><span class="string">"abc"</span><span class="special">);</span>
+    <span class="keyword">return</span> <span class="special">{};</span>
+<span class="special">});</span>
+
+<span class="identifier">output</span><span class="special">:</span>
+    <span class="identifier">entered</span>
+    <span class="identifier">my_exception</span><span class="special">:</span> <span class="identifier">abc</span>
+</pre>
+<p>在该示例中, 异常 <code class="computeroutput"><span class="identifier">my_exception</span></code> 从在纤程 <code class="computeroutput"><span class="identifier">f</span></code> 之上调用的函数中抛出, 并在 <code class="computeroutput"><span class="keyword">for</span></code> 循环内被捕获.</p>
+<h4>
+<a name="context.ff.h5"></a>
+      <span class="phrase"><a name="context.ff.stack_unwinding"></a></span><a class="link" href="ff.html#context.ff.stack_unwinding">栈展开</a>
+    </h4>
+<p>构造 <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a> 时会分配一个栈. 若 <span class="emphasis"><em>context-function</em></span> 返回, 该栈将被销毁. 若 <span class="emphasis"><em>context-function</em></span> 尚未返回, 而一个有效的 <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a> 实例的析构函数被调用 (例如 <span class="emphasis"><em>fiber::operator bool()</em></span> 返回 <code class="computeroutput"><span class="keyword">true</span></code>), 则该栈也会被销毁.</p>
+<div class="important"><table border="0" summary="Important">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[重要]" src="../../../../../doc/src/images/important.png"></td>
+<th align="left">重要</th>
+</tr>
+<tr><td align="left" valign="top"><p>由 <span class="emphasis"><em>context-function</em></span> 执行的代码不得阻止 <span class="emphasis"><em>detail::forced_unwind</em></span> 异常的传播. 吞掉该异常会导致栈展开失败. 因此, 任何捕获所有异常的代码都必须重新抛出尚未处理的 <span class="emphasis"><em>detail::forced_unwind</em></span> 异常.</p></td></tr>
+</table></div>
+<a name="ff_prealloc"></a><h4>
+<a name="context.ff.h6"></a>
+      <span class="phrase"><a name="context.ff.allocating_control_structures_on_top_of_stack"></a></span><a class="link" href="ff.html#context.ff.allocating_control_structures_on_top_of_stack">在栈顶分配控制结构</a>
+    </h4>
+<p>在栈顶分配控制结构要求: 先分配 <span class="emphasis"><em>stack_context</em></span>, 并用 placement new 创建控制结构, 然后再创建 <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a>.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>用户负责销毁位于栈顶的控制结构.</p></td></tr>
+</table></div>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">ctx</span><span class="special">=</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">context</span><span class="special">;</span>
+<span class="comment">// stack-allocator used for (de-)allocating stack</span>
+<span class="identifier">fixedsize_stack</span> <span class="identifier">salloc</span><span class="special">(</span><span class="number">4048</span><span class="special">);</span>
+<span class="comment">// allocate stack space</span>
+<span class="identifier">stack_context</span> <span class="identifier">sctx</span><span class="special">(</span><span class="identifier">salloc</span><span class="special">.</span><span class="identifier">allocate</span><span class="special">());</span>
+<span class="comment">// reserve space for control structure on top of the stack</span>
+<span class="keyword">void</span> <span class="special">*</span> <span class="identifier">sp</span><span class="special">=</span><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">*&gt;(</span><span class="identifier">sctx</span><span class="special">.</span><span class="identifier">sp</span><span class="special">)-</span><span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">my_control_structure</span><span class="special">);</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">size</span><span class="special">=</span><span class="identifier">sctx</span><span class="special">.</span><span class="identifier">size</span><span class="special">-</span><span class="keyword">sizeof</span><span class="special">(</span><span class="identifier">my_control_structure</span><span class="special">);</span>
+<span class="comment">// placement new creates control structure on reserved space</span>
+<span class="identifier">my_control_structure</span> <span class="special">*</span> <span class="identifier">cs</span><span class="special">=</span><span class="keyword">new</span><span class="special">(</span><span class="identifier">sp</span><span class="special">)</span><span class="identifier">my_control_structure</span><span class="special">(</span><span class="identifier">sp</span><span class="special">,</span><span class="identifier">size</span><span class="special">,</span><span class="identifier">sctx</span><span class="special">,</span><span class="identifier">salloc</span><span class="special">);</span>
+<span class="special">...</span>
+<span class="comment">// destructing the control structure</span>
+<span class="identifier">cs</span><span class="special">-&gt;~</span><span class="identifier">my_control_structure</span><span class="special">();</span>
+<span class="special">...</span>
+<span class="keyword">struct</span> <span class="identifier">my_control_structure</span>  <span class="special">{</span>
+    <span class="comment">// captured fiber</span>
+    <span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span>   <span class="identifier">f</span><span class="special">;</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">StackAllocator</span> <span class="special">&gt;</span>
+    <span class="identifier">my_control_structure</span><span class="special">(</span><span class="keyword">void</span> <span class="special">*</span> <span class="identifier">sp</span><span class="special">,</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">size</span><span class="special">,</span><span class="identifier">stack_context</span> <span class="identifier">sctx</span><span class="special">,</span><span class="identifier">StackAllocator</span> <span class="identifier">salloc</span><span class="special">)</span> <span class="special">:</span>
+        <span class="comment">// create captured fiber</span>
+        <span class="identifier">f</span><span class="special">{</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">allocator_arg</span><span class="special">,</span><span class="identifier">preallocated</span><span class="special">(</span><span class="identifier">sp</span><span class="special">,</span><span class="identifier">size</span><span class="special">,</span><span class="identifier">sctx</span><span class="special">),</span><span class="identifier">salloc</span><span class="special">,</span><span class="identifier">entry_func</span><span class="special">}</span> <span class="special">{</span>
+    <span class="special">}</span>
+    <span class="special">...</span>
+<span class="special">};</span>
+</pre>
+<h4>
+<a name="context.ff.h7"></a>
+      <span class="phrase"><a name="context.ff.inverting_the_control_flow"></a></span><a class="link" href="ff.html#context.ff.inverting_the_control_flow">反转控制流</a>
+    </h4>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">ctx</span><span class="special">=</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">context</span><span class="special">;</span>
+<span class="comment">/*
+ * grammar:
+ *   P ---&gt; E '\0'
+ *   E ---&gt; T {('+'|'-') T}
+ *   T ---&gt; S {('*'|'/') S}
+ *   S ---&gt; digit | '(' E ')'
+ */</span>
+<span class="keyword">class</span> <span class="identifier">Parser</span><span class="special">{</span>
+   <span class="keyword">char</span> <span class="identifier">next</span><span class="special">;</span>
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">istream</span><span class="special">&amp;</span> <span class="identifier">is</span><span class="special">;</span>
+   <span class="identifier">std</span><span class="special">::</span><span class="identifier">function</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">(</span><span class="keyword">char</span><span class="special">)&gt;</span> <span class="identifier">cb</span><span class="special">;</span>
+
+   <span class="keyword">char</span> <span class="identifier">pull</span><span class="special">(){</span>
+        <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">char_traits</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">&gt;::</span><span class="identifier">to_char_type</span><span class="special">(</span><span class="identifier">is</span><span class="special">.</span><span class="identifier">get</span><span class="special">());</span>
+   <span class="special">}</span>
+
+   <span class="keyword">void</span> <span class="identifier">scan</span><span class="special">(){</span>
+       <span class="keyword">do</span><span class="special">{</span>
+           <span class="identifier">next</span><span class="special">=</span><span class="identifier">pull</span><span class="special">();</span>
+       <span class="special">}</span>
+       <span class="keyword">while</span><span class="special">(</span><span class="identifier">isspace</span><span class="special">(</span><span class="identifier">next</span><span class="special">));</span>
+   <span class="special">}</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+   <span class="identifier">Parser</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">istream</span><span class="special">&amp;</span> <span class="identifier">is_</span><span class="special">,</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">function</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">(</span><span class="keyword">char</span><span class="special">)&gt;</span> <span class="identifier">cb_</span><span class="special">)</span> <span class="special">:</span>
+      <span class="identifier">next</span><span class="special">(),</span> <span class="identifier">is</span><span class="special">(</span><span class="identifier">is_</span><span class="special">),</span> <span class="identifier">cb</span><span class="special">(</span><span class="identifier">cb_</span><span class="special">)</span>
+    <span class="special">{}</span>
+
+   <span class="keyword">void</span> <span class="identifier">run</span><span class="special">()</span> <span class="special">{</span>
+      <span class="identifier">scan</span><span class="special">();</span>
+      <span class="identifier">E</span><span class="special">();</span>
+   <span class="special">}</span>
+
+<span class="keyword">private</span><span class="special">:</span>
+   <span class="keyword">void</span> <span class="identifier">E</span><span class="special">(){</span>
+      <span class="identifier">T</span><span class="special">();</span>
+      <span class="keyword">while</span> <span class="special">(</span><span class="identifier">next</span><span class="special">==</span><span class="char">'+'</span><span class="special">||</span><span class="identifier">next</span><span class="special">==</span><span class="char">'-'</span><span class="special">){</span>
+         <span class="identifier">cb</span><span class="special">(</span><span class="identifier">next</span><span class="special">);</span>
+         <span class="identifier">scan</span><span class="special">();</span>
+         <span class="identifier">T</span><span class="special">();</span>
+      <span class="special">}</span>
+   <span class="special">}</span>
+
+   <span class="keyword">void</span> <span class="identifier">T</span><span class="special">(){</span>
+      <span class="identifier">S</span><span class="special">();</span>
+      <span class="keyword">while</span> <span class="special">(</span><span class="identifier">next</span><span class="special">==</span><span class="char">'*'</span><span class="special">||</span><span class="identifier">next</span><span class="special">==</span><span class="char">'/'</span><span class="special">){</span>
+         <span class="identifier">cb</span><span class="special">(</span><span class="identifier">next</span><span class="special">);</span>
+         <span class="identifier">scan</span><span class="special">();</span>
+         <span class="identifier">S</span><span class="special">();</span>
+      <span class="special">}</span>
+   <span class="special">}</span>
+
+   <span class="keyword">void</span> <span class="identifier">S</span><span class="special">(){</span>
+      <span class="keyword">if</span> <span class="special">(</span><span class="identifier">isdigit</span><span class="special">(</span><span class="identifier">next</span><span class="special">)){</span>
+         <span class="identifier">cb</span><span class="special">(</span><span class="identifier">next</span><span class="special">);</span>
+         <span class="identifier">scan</span><span class="special">();</span>
+      <span class="special">}</span>
+      <span class="keyword">else</span> <span class="keyword">if</span><span class="special">(</span><span class="identifier">next</span><span class="special">==</span><span class="char">'('</span><span class="special">){</span>
+         <span class="identifier">cb</span><span class="special">(</span><span class="identifier">next</span><span class="special">);</span>
+         <span class="identifier">scan</span><span class="special">();</span>
+         <span class="identifier">E</span><span class="special">();</span>
+         <span class="keyword">if</span> <span class="special">(</span><span class="identifier">next</span><span class="special">==</span><span class="char">')'</span><span class="special">){</span>
+             <span class="identifier">cb</span><span class="special">(</span><span class="identifier">next</span><span class="special">);</span>
+             <span class="identifier">scan</span><span class="special">();</span>
+         <span class="special">}</span><span class="keyword">else</span><span class="special">{</span>
+             <span class="keyword">throw</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">runtime_error</span><span class="special">(</span><span class="string">"parsing failed"</span><span class="special">);</span>
+         <span class="special">}</span>
+      <span class="special">}</span>
+      <span class="keyword">else</span><span class="special">{</span>
+         <span class="keyword">throw</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">runtime_error</span><span class="special">(</span><span class="string">"parsing failed"</span><span class="special">);</span>
+      <span class="special">}</span>
+   <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">istringstream</span> <span class="identifier">is</span><span class="special">(</span><span class="string">"1+1"</span><span class="special">);</span>
+<span class="comment">// user-code pulls parsed data from parser</span>
+<span class="comment">// invert control flow</span>
+<span class="keyword">char</span> <span class="identifier">c</span><span class="special">;</span>
+<span class="keyword">bool</span> <span class="identifier">done</span><span class="special">=</span><span class="keyword">false</span><span class="special">;</span>
+<span class="comment">// execute parser in new fiber</span>
+<span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span> <span class="identifier">source</span><span class="special">{[&amp;</span><span class="identifier">is</span><span class="special">,&amp;</span><span class="identifier">c</span><span class="special">,&amp;</span><span class="identifier">done</span><span class="special">](</span><span class="identifier">ctx</span><span class="special">::</span><span class="identifier">fiber</span><span class="special">&amp;&amp;</span> <span class="identifier">sink</span><span class="special">){</span>
+    <span class="comment">// create parser with callback function</span>
+    <span class="identifier">Parser</span> <span class="identifier">p</span><span class="special">(</span><span class="identifier">is</span><span class="special">,</span>
+             <span class="special">[&amp;</span><span class="identifier">sink</span><span class="special">,&amp;</span><span class="identifier">c</span><span class="special">](</span><span class="keyword">char</span> <span class="identifier">c_</span><span class="special">){</span>
+                <span class="comment">// resume main fiber</span>
+                <span class="identifier">c</span><span class="special">=</span><span class="identifier">c_</span><span class="special">;</span>
+                <span class="identifier">sink</span><span class="special">=</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">sink</span><span class="special">).</span><span class="identifier">resume</span><span class="special">();</span>
+             <span class="special">});</span>
+        <span class="comment">// start recursive parsing</span>
+        <span class="identifier">p</span><span class="special">.</span><span class="identifier">run</span><span class="special">();</span>
+        <span class="comment">// signal termination</span>
+        <span class="identifier">done</span><span class="special">=</span><span class="keyword">true</span><span class="special">;</span>
+        <span class="comment">// resume main fiber</span>
+        <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">sink</span><span class="special">);</span>
+<span class="special">}};</span>
+<span class="identifier">source</span><span class="special">=</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">source</span><span class="special">).</span><span class="identifier">resume</span><span class="special">();</span>
+<span class="keyword">while</span><span class="special">(!</span><span class="identifier">done</span><span class="special">){</span>
+    <span class="identifier">printf</span><span class="special">(</span><span class="string">"Parsed: %c\n"</span><span class="special">,</span><span class="identifier">c</span><span class="special">);</span>
+    <span class="identifier">source</span><span class="special">=</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">source</span><span class="special">).</span><span class="identifier">resume</span><span class="special">();</span>
+<span class="special">}</span>
+
+<span class="identifier">output</span><span class="special">:</span>
+    <span class="identifier">Parsed</span><span class="special">:</span> <span class="number">1</span>
+    <span class="identifier">Parsed</span><span class="special">:</span> <span class="special">+</span>
+    <span class="identifier">Parsed</span><span class="special">:</span> <span class="number">1</span>
+</pre>
+<p>在本示例中, 一个递归下降解析器使用回调来发出新传递的符号. 使用 <a class="link" href="ff.html#ff"><span class="emphasis"><em>fiber</em></span></a> 可以反转控制流, 即由用户代码从解析器拉取已解析的符号 - 而不是由解析器推送 (通过回调).</p>
+<p>数据 (字符) 在两个纤程之间传递.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2014 Oliver Kowalke<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="requirements.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="ff/implementations__fcontext_t__ucontext_t_and_winfiber.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

@@ -1,0 +1,574 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0.1 Transitional//EN">
+
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+<title>Boost.MultiIndex 文档 - 教程 - 索引类型</title>
+<link rel="stylesheet" href="../style.css" type="text/css">
+<link rel="start" href="../index.html">
+<link rel="prev" href="basics.html">
+<link rel="up" href="index.html">
+<link rel="next" href="key_extraction.html">
+</head>
+
+<body>
+<h1><img src="../../../../boost.png" alt="boost.png (6897 字节)" align=
+"middle" width="277" height="86">Boost.MultiIndex 教程: 索引类型</h1>
+
+<div class="prev_link"><a href="basics.html"><img src="../prev.gif" alt="基础" border="0"><br>基础</a></div>
+<div class="up_link"><a href="index.html"><img src="../up.gif" alt="Boost.MultiIndex 教程" border="0"><br>Boost.MultiIndex 教程</a></div>
+<div class="next_link"><a href="key_extraction.html"><img src="../next.gif" alt="键提取" border="0"><br>键提取</a></div><br clear="all" style="clear: all;">
+
+<hr>
+
+<h2>目录</h2>
+
+<ul>
+  <li><a href="#classification">分类</a>
+  <li><a href="#rnk_indices">排名索引</a>
+    <ul>
+      <li><a href="#rnk_spec">规定</a></li>
+      <li><a href="#rnk_ops">排名操作</a></li>
+    </ul>
+  </li>
+  <li><a href="#hashed_indices">哈希索引</a>
+    <ul>
+      <li><a href="#hash_unique_non_unique">唯一与非唯一变体</a></li>
+      <li><a href="#hash_spec">规定</a></li>
+      <li><a href="#hash_lookup">查找</a></li>
+      <li><a href="#hash_updating">更新</a></li>
+      <li><a href="#guarantees">迭代器有效性与异常安全性的保证</a></li>
+    </ul>
+  </li>
+  <li><a href="#rnd_indices">随机访问索引</a>
+    <ul>
+      <li><a href="#rnd_spec">规定</a></li>
+	  <li><a href="#rnd_interface">接口</a></li>
+      <li><a href="#rnd_vs_vector">与 <code>std::vector</code></a></li>
+	</ul>
+  </li>
+  <li><a href="#rearrange">索引重排</a></li>
+  <li><a href="#iterator_to"><code>iterator_to</code></a></li>
+  <li><a href="#node_handling">节点处理操作</a></li>
+  <li><a href="#ordered_node_compression">有序索引节点压缩</a></li>
+</ul>
+
+<h2><a name="classification">分类</a></h2>
+
+<p>Boost.MultiIndex 提供八种不同的索引类型, 可按下表所示进行分类. <a href="basics.html#ord_indices">有序</a> 与 <a href="basics.html#seq_indices">序列</a> 索引最为常用, 已在基础一节中说明; 其余索引类型可视为前者的变种, 在功能或性能方面提供一些额外的好处.</p>
+
+<p align="center">
+<table cellspacing="0">
+  <caption><b>Boost.MultiIndex 索引.</b></caption>
+<tr>
+  <th align="center"colspan="2">类型</th>
+  <th align="center">说明符</th>
+</tr>
+<tr>
+  <td align="center" rowspan="6">基于键</td>
+  <td align="center" rowspan="4">有序</td>
+  <td align="center">&nbsp;&nbsp;<code>ordered_unique</code>&nbsp;&nbsp;</td>
+</tr>
+<tr class="odd_tr">
+  <td align="center">&nbsp;&nbsp;<code>ordered_non_unique</code>&nbsp;&nbsp;</td>
+</tr>
+<tr>
+  <td align="center">&nbsp;&nbsp;<code>ranked_unique</code>&nbsp;&nbsp;</td>
+</tr>
+<tr class="odd_tr">
+  <td align="center">&nbsp;&nbsp;<code>ranked_non_unique</code>&nbsp;&nbsp;</td>
+</tr>
+<tr>
+  <td align="center" rowspan="2">哈希</td>
+  <td align="center">&nbsp;&nbsp;<code>hashed_unique</code>&nbsp;&nbsp;</td>
+</tr>
+<tr class="odd_tr">
+  <td align="center">&nbsp;&nbsp;<code>hashed_non_unique</code>&nbsp;&nbsp;</td>
+</tr>
+<tr>
+  <td align="center" rowspan="2" colspan="2">非基于键</td>
+  <td align="center"><code>&nbsp;&nbsp;sequenced&nbsp;&nbsp;</code></td>
+</tr>
+<tr class="odd_tr">
+  <td align="center"><code>&nbsp;&nbsp;random_access&nbsp;&nbsp;</code></td>
+</tr>
+</table>
+</p>
+
+<p>基于键的索引 (有序索引是常见例子) 提供基于某条称为 <i>元素键</i> 的信息的高效元素查找: 有一整套 <a href="key_extraction.html">键提取</a> 工具类用于规定这样的键. 快速查找在这些索引上强加了一种由内部管理的顺序, 用户不得修改; 而非基于键的索引可以自由重排, 代价是缺乏查找设施. 序列索引以 <code>std::list</code> 的接口为模型, 是非基于键索引的常见例子.</p>
+
+<h2><a name="rnk_indices">排名索引</a></h2>
+
+<p>假设我们有一个数字的 <code>std::multiset</code>, 想输出高于 75h <a href="http://en.wikipedia.org/wiki/Percentile">百分位数</a> 的值:</p>
+
+<blockquote><pre>
+<span class=keyword>typedef</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>multiset</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=identifier>int_multiset</span><span class=special>;</span>
+
+<span class=keyword>void</span> <span class=identifier>output_above_75th_percentile</span><span class=special>(</span><span class=keyword>const</span> <span class=identifier>int_multiset</span><span class=special>&amp;</span> <span class=identifier>s</span><span class=special>)</span>
+<span class=special>{</span>
+  <span class=identifier>int_multiset</span><span class=special>::</span><span class=identifier>const_iterator</span> <span class=identifier>it</span><span class=special>=</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>begin</span><span class=special>();</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>advance</span><span class=special>(</span><span class=identifier>it</span><span class=special>,</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>size</span><span class=special>()*</span><span class=number>3</span><span class=special>/</span><span class=number>4</span><span class=special>);</span> <span class=comment>// linear on s.size();</span>
+
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>copy</span><span class=special>(</span><span class=identifier>it</span><span class=special>,</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>end</span><span class=special>(),</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>ostream_iterator</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;(</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>cout</span><span class=special>,</span><span class=string>&quot;\n&quot;</span><span class=special>));</span>
+<span class=special>}</span>
+</pre></blockquote>
+
+<p>这段代码的问题在于, 到达目标子序列的开头涉及对容器的线性遍历. 排名索引提供了快得多的机制:</p>
+
+<blockquote><pre>
+<span class=keyword>typedef</span> <span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=keyword>int</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>ranked_non_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>int_multiset</span><span class=special>;</span>
+
+<span class=keyword>void</span> <span class=identifier>output_above_75th_percentile</span><span class=special>(</span><span class=keyword>const</span> <span class=identifier>int_multiset</span><span class=special>&amp;</span> <span class=identifier>s</span><span class=special>)</span>
+<span class=special>{</span>
+  <span class=identifier>int_multiset</span><span class=special>::</span><span class=identifier>const_iterator</span> <span class=identifier>it</span><span class=special>=</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>nth</span><span class=special>(</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>size</span><span class=special>()*</span><span class=number>3</span><span class=special>/</span><span class=number>4</span><span class=special>);</span> <span class=comment>// logarithmic</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>copy</span><span class=special>(</span><span class=identifier>it</span><span class=special>,</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>end</span><span class=special>(),</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>ostream_iterator</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;(</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>cout</span><span class=special>,</span><span class=string>&quot;\n&quot;</span><span class=special>));</span>
+<span class=special>}</span>
+</pre></blockquote>
+
+<p>
+<code>nth(n)</code> 返回指向 <i>排名</i> (即其到索引开头的距离) 为 <code>n</code> 的元素的迭代器, 并以对数时间高效完成. 反过来, <code>rank(it)</code> 以对数时间计算 <code>it</code> 所指向元素的排名, 或 <code>size()</code> (当 <code>it==end()</code> 时).</p>
+
+<blockquote><pre>
+<span class=identifier>int_multiset</span><span class=special>::</span><span class=identifier>iterator</span>  <span class=identifier>it</span><span class=special>=</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>insert</span><span class=special>(</span><span class=number>10</span><span class=special>).</span><span class=identifier>first</span><span class=special>;</span>
+<span class=identifier>int_multiset</span><span class=special>::</span><span class=identifier>size_type</span> <span class=identifier>r</span><span class=special>=</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>rank</span><span class=special>(</span><span class=identifier>it</span><span class=special>);</span> <span class=comment>// rank of 10;</span>
+</pre></blockquote>
+
+<p>排名索引提供与有序索引相同的接口, 外加若干与排名相关的操作. 这些额外功能的代价是更高的内存消耗 (每个元素一个机器字的内部附加数据) 以及插入与擦除略长的执行时间——特别是, 擦除一个元素所需的时间与 <code>log(n)</code> 成正比, 其中 <code>n</code> 是索引中的元素数目, 而对有序索引该时间是常量. <a href="../reference/rnk_indices.html">参考文档</a> 完整详述了这些索引.</p>
+
+<h3><a name="rnk_spec">规定</a></h3>
+
+<p>排名索引的规定与 <a href="basics.html#ord_spec">有序索引</a> 完全一样, 只是改用 <code>ranked_unique</code> 与 <code>ranked_non_unique</code>.</p>
+
+<blockquote><pre>
+<span class=special>(</span><span class=identifier>ranked_unique</span> <span class=special>|</span> <span class=identifier>ranked_non_unique</span><span class=special>)
+  </span><span class=special>&lt;[</span><i>(tag)</i><span class=special>[,</span><i>(key extractor)</i><span class=special>[,</span><i>(comparison predicate)</i><span class=special>]]]&gt;</span>
+
+<span class=special>(</span><span class=identifier>ranked_unique</span> <span class=special>|</span> <span class=identifier>ranked_non_unique</span><span class=special>)</span>
+  <span class=special>&lt;[</span><i>(key extractor)</i><span class=special>[,</span><i>(comparison predicate)</i><span class=special>]]&gt;</span>
+</pre></blockquote>
+
+<h3><a name="rnk_ops">排名操作</a></h3>
+
+<p>除 <code>nth</code> 与 <code>rank</code> 外, 排名索引还提供成员函数<ul>
+  <li><code>find_rank</code>,</li>
+  <li><code>lower_bound_rank</code>,</li>
+  <li><code>upper_bound_rank</code>,</li>
+  <li><code>equal_range_rank</code> 与</li>
+  <li><code>range_rank</code></li>
+</ul> 它们的行为与对应的正常 <a href="basics.html#special_lookup">查找</a> 与 <a href="basics.html#range">区间获取</a> 操作 (<code>find</code>、 <code>lower_bound</code> 等) 一致, 但返回排名而非迭代器. </p>
+
+<blockquote><pre>
+<span class=keyword>void</span> <span class=identifier>percentile</span><span class=special>(</span><span class=keyword>int</span> <span class=identifier>n</span><span class=special>,</span><span class=keyword>const</span> <span class=identifier>int_multiset</span><span class=special>&amp;</span> <span class=identifier>s</span><span class=special>)</span>
+<span class=special>{</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>cout</span><span class=special>&lt;&lt;</span><span class=identifier>n</span><span class=special>&lt;&lt;</span><span class=string>&quot; lies in the &quot;</span><span class=special>&lt;&lt;</span>
+    <span class=identifier>s</span><span class=special>.</span><span class=identifier>upper_bound_rank</span><span class=special>(</span><span class=identifier>n</span><span class=special>)*</span><span class=number>100.0</span><span class=special>/</span><span class=identifier>s</span><span class=special>.</span><span class=identifier>size</span><span class=special>()&lt;&lt;</span><span class=string>&quot; percentile\n&quot;</span><span class=special>;</span>
+<span class=special>}</span>
+</pre></blockquote>
+
+<p>你可能认为 <code>upper_bound_rank(n)</code> 只是 <code>rank(upper_bound(n))</code> 的简写: 但实际上, 你应当优先直接使用 <code>*_rank</code> 操作, 因为它们比替代写法运行得更快.</p>
+
+<h2><a name="hashed_indices">哈希索引</a></h2>
+
+<p>哈希索引相对于有序索引构成一种权衡: 若使用得当, 它们提供快得多的元素查找, 代价是失去排序信息. 让我们重新审视 <code>employee_set</code> 示例: 假设添加一个存储社会保险号的字段, 要求按此号码的查找尽可能快. 这时可以不用通常的有序索引, 而求助于哈希索引:</p>
+
+<blockquote><pre>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index_container</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index</span><span class=special>/</span><span class=identifier>hashed_index</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index</span><span class=special>/</span><span class=identifier>ordered_index</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index</span><span class=special>/</span><span class=identifier>identity</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index</span><span class=special>/</span><span class=identifier>member</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+
+<span class=keyword>struct</span> <span class=identifier>employee</span>
+<span class=special>{</span>
+  <span class=keyword>int</span>         <span class=identifier>id</span><span class=special>;</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span> <span class=identifier>name</span><span class=special>;</span>
+  <span class=keyword>int</span>         <span class=identifier>ssnumber</span><span class=special>;</span>
+
+  <span class=identifier>employee</span><span class=special>(</span><span class=keyword>int</span> <span class=identifier>id</span><span class=special>,</span><span class=keyword>const</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&amp;</span> <span class=identifier>name</span><span class=special>,</span><span class=keyword>int</span> <span class=identifier>ssnumber</span><span class=special>):</span>
+    <span class=identifier>id</span><span class=special>(</span><span class=identifier>id</span><span class=special>),</span><span class=identifier>name</span><span class=special>(</span><span class=identifier>name</span><span class=special>),</span><span class=identifier>ssnumber</span><span class=special>(</span><span class=identifier>ssnumber</span><span class=special>){}</span>
+
+  <span class=keyword>bool</span> <span class=keyword>operator</span><span class=special>&lt;(</span><span class=keyword>const</span> <span class=identifier>employee</span><span class=special>&amp;</span> <span class=identifier>e</span><span class=special>)</span><span class=keyword>const</span><span class=special>{</span><span class=keyword>return</span> <span class=identifier>id</span><span class=special>&lt;</span><span class=identifier>e</span><span class=special>.</span><span class=identifier>id</span><span class=special>;}</span>
+<span class=special>};</span>
+
+<span class=keyword>typedef</span> <span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=identifier>employee</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=comment>// sort by employee::operator&lt;</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>&gt;</span> <span class=special>&gt;,</span>
+    
+    <span class=comment>// sort by less&lt;string&gt; on name</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span><span class=identifier>member</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>,</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>,&amp;</span><span class=identifier>employee</span><span class=special>::</span><span class=identifier>name</span><span class=special>&gt;</span> <span class=special>&gt;,</span>
+    
+    <span class=comment>// hashed on ssnumber</span>
+    <span class=identifier>hashed_unique</span><span class=special>&lt;</span><span class=identifier>member</span><span class=special>&lt;</span><span class=identifier>employee</span><span class=special>,</span><span class=keyword>int</span><span class=special>,&amp;</span><span class=identifier>employee</span><span class=special>::</span><span class=identifier>ssnumber</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>employee_set</span>
+</pre></blockquote>
+
+<p>注意哈希索引不保证元素的任何特定顺序: 因此, 例如, 我们无法高效地查询 SSN 大于给定数值的员工. 通常, 在判断哈希索引是否优于有序索引时, 必须考虑这些限制.</p>
+
+<p>哈希索引复刻 <code>std::unordered_set</code> 与 <code>std::unordered_multiset</code> 的接口, 仅在 <code>multi_index_container</code> 的一般约束所要求之处有细微差别, 并提供额外的有用能力, 如元素的就地更新. 哈希索引接口的完整规范请查阅 <a href="../reference/hash_indices.html">参考文档</a>, 实际应用见 <a href="../examples.html#example8">示例 8</a> 与 <a href="../examples.html#example9">示例 9</a>.</p>
+
+</p>
+
+<h3><a name="hash_unique_non_unique">唯一与非唯一变体</a></h3>
+
+<p>与有序索引一样, 哈希索引有唯一与非唯一变体, 分别由说明符 <code>hashed_unique</code> 与 <code>hashed_non_unique</code> 选择. 在后一种情形下, 键等价的元素被保存在一起, 并可以通过 <code>equal_range</code> 成员函数一起取回.</p>
+
+<h3><a name="hash_spec">规定</a></h3>
+
+<p>哈希索引说明符有两种可选语法, 取决于是否提供 <a href="basics.html#tagging">标签</a>:</p>
+
+<blockquote><pre>
+<span class=special>(</span><span class=identifier>hashed_unique</span> <span class=special>|</span> <span class=identifier>hashed_non_unique</span><span class=special>)
+  </span><span class=special>&lt;[</span><i>(tag)</i><span class=special>[,</span><i>(key extractor)</i><span class=special>[,</span><i>(hash function)</i><span class=special>[,</span><i>(equality predicate)</i><span class=special>]]]]&gt;</span>
+
+<span class=special>(</span><span class=identifier>hashed_unique</span> <span class=special>|</span> <span class=identifier>hashed_non_unique</span><span class=special>)</span>
+  <span class=special>&lt;[</span><i>(key extractor)</i><span class=special>[,</span><i>(hash function)</i><span class=special>[,</span><i>(equality predicate)</i><span class=special>]]]&gt;</span>
+</pre></blockquote>
+
+<p>键提取器参数的工作方式与 <a href="basics.html#key_extraction">有序索引</a> 完全相同; 查找、插入等操作基于提取器返回的键, 而不是整个元素.</p>
+
+<p>哈希函数是这类索引快速查找能力的核心: 哈希器只是一个一元函数对象, 对任意给定的键返回一个 <code>std::size_t</code> 值. 一般而言, 不可能每个键都映射到不同的哈希值, 因为键的空间可能大于许可哈希码的数目: 优秀哈希器的标准是碰撞 (两个不同的键具有相同哈希值) 的概率尽可能接近零. 这是一个统计性质, 取决于给定应用中键的典型分布, 因此不可能有在 <i>每种</i> 可能场景中都表现卓越的通用哈希函数; 该参数的默认值使用 <a href="../../../functional/hash/index.html">Boost.Hash</a>, 它通常能提供足够好的结果.</p>
+
+<p>等价谓词用于判定两个键是否应视为相同. 默认值 <code>std::equal_to&lt;KeyFromValue::result_type&gt;</code> 在多数情况下正是所需的, 因此极少需要提供自己的谓词. 注意哈希索引要求两个等价的键具有相同的哈希值, 这实际上大大缩小了选择等价谓词的自由.</p>
+
+<h3><a name="hash_lookup">查找</a></h3>
+
+<p>哈希索引的查找接口由成员函数 <code>find</code>、<code>count</code>、<code>contains</code> 与 <code>equal_range</code> 组成. 注意不提供 <code>lower_bound</code> 与 <code>upper_bound</code>, 因为这类索引中键没有内在顺序.</p>
+
+<p>与有序索引一样, 这些成员函数以键而非整个对象作为搜索实参. 记住有序索引的查找操作还被增强为接受 <i>兼容键</i>——大致可视为“子键”. 对哈希索引, 也支持 <a href="../reference/hash_indices.html#lookup">兼容键</a> 概念, 但其用处有限得多: 基本上, 兼容键是一个与 <code>key_type</code> 值的原生对象完全等价的对象, 尽管内部表示可能不同:</p>
+
+<blockquote><pre>
+<span class=comment>// US SSN numbering scheme</span>
+<span class=keyword>struct</span> <span class=identifier>ssn</span>
+<span class=special>{</span>
+  <span class=identifier>ssn</span><span class=special>(</span><span class=keyword>int</span> <span class=identifier>area_no</span><span class=special>,</span><span class=keyword>int</span> <span class=identifier>group_no</span><span class=special>,</span><span class=keyword>int</span> <span class=identifier>serial_no</span><span class=special>):</span>
+    <span class=identifier>area_no</span><span class=special>(</span><span class=identifier>area_no</span><span class=special>),</span><span class=identifier>group_no</span><span class=special>(</span><span class=identifier>group_no</span><span class=special>),</span><span class=identifier>serial_no</span><span class=special>(</span><span class=identifier>serial_no</span><span class=special>)</span>
+  <span class=special>{}</span>
+
+  <span class=keyword>int</span> <span class=identifier>to_int</span><span class=special>()</span><span class=keyword>const</span>
+  <span class=special>{</span>
+    <span class=keyword>return</span> <span class=identifier>serial_no</span><span class=special>+</span><span class=number>10000</span><span class=special>*</span><span class=identifier>group_no</span><span class=special>+</span><span class=number>1000000</span><span class=special>*</span><span class=identifier>area_no</span><span class=special>;</span>
+  <span class=special>}</span>
+
+<span class=keyword>private</span><span class=special>:</span>
+  <span class=keyword>int</span> <span class=identifier>area_no</span><span class=special>;</span>
+  <span class=keyword>int</span> <span class=identifier>group_no</span><span class=special>;</span>
+  <span class=keyword>int</span> <span class=identifier>serial_no</span><span class=special>;</span>
+<span class=special>};</span>
+
+<span class=comment>// interoperability with SSNs in raw int form</span>
+
+<span class=keyword>struct</span> <span class=identifier>ssn_equal</span>
+<span class=special>{</span>
+  <span class=keyword>bool</span> <span class=keyword>operator</span><span class=special>()(</span><span class=keyword>const</span> <span class=identifier>ssn</span><span class=special>&amp;</span> <span class=identifier>x</span><span class=special>,</span><span class=keyword>int</span> <span class=identifier>y</span><span class=special>)</span><span class=keyword>const</span>
+  <span class=special>{</span>
+    <span class=keyword>return</span> <span class=identifier>x</span><span class=special>.</span><span class=identifier>to_int</span><span class=special>()==</span><span class=identifier>y</span><span class=special>;</span>
+  <span class=special>}</span>
+
+  <span class=keyword>bool</span> <span class=keyword>operator</span><span class=special>()(</span><span class=keyword>int</span> <span class=identifier>x</span><span class=special>,</span><span class=keyword>const</span> <span class=identifier>ssn</span><span class=special>&amp;</span> <span class=identifier>y</span><span class=special>)</span><span class=keyword>const</span>
+  <span class=special>{</span>
+    <span class=keyword>return</span> <span class=identifier>x</span><span class=special>==</span><span class=identifier>y</span><span class=special>.</span><span class=identifier>to_int</span><span class=special>();</span>
+  <span class=special>}</span>
+<span class=special>};</span>
+
+<span class=keyword>struct</span> <span class=identifier>ssn_hash</span>
+<span class=special>{</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>size_t</span> <span class=keyword>operator</span><span class=special>()(</span><span class=keyword>const</span> <span class=identifier>ssn</span><span class=special>&amp;</span> <span class=identifier>x</span><span class=special>)</span><span class=keyword>const</span>
+  <span class=special>{</span>
+    <span class=keyword>return</span> <span class=identifier>boost</span><span class=special>::</span><span class=identifier>hash</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;()(</span><span class=identifier>x</span><span class=special>.</span><span class=identifier>to_int</span><span class=special>());</span>
+  <span class=special>}</span>
+
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>size_t</span> <span class=keyword>operator</span><span class=special>()(</span><span class=keyword>int</span> <span class=identifier>x</span><span class=special>)</span><span class=keyword>const</span>
+  <span class=special>{</span>
+    <span class=keyword>return</span> <span class=identifier>boost</span><span class=special>::</span><span class=identifier>hash</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;()(</span><span class=identifier>x</span><span class=special>);</span>
+  <span class=special>}</span>
+<span class=special>};</span>
+
+<span class=keyword>typedef</span> <span class=identifier>employee_set</span><span class=special>::</span><span class=identifier>nth_index</span><span class=special>&lt;</span><span class=number>2</span><span class=special>&gt;::</span><span class=identifier>type</span> <span class=identifier>employee_set_by_ssn</span><span class=special>;</span>
+
+<span class=identifier>employee_set</span>         <span class=identifier>es</span><span class=special>;</span>
+<span class=identifier>employee_set_by_ssn</span><span class=special>&amp;</span> <span class=identifier>ssn_index</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=number>2</span><span class=special>&gt;();</span>
+<span class=special>...</span>
+<span class=comment>// find an employee by ssn</span>
+<span class=identifier>employee</span> <span class=identifier>e</span><span class=special>=*(</span><span class=identifier>ssn_index</span><span class=special>.</span><span class=identifier>find</span><span class=special>(</span><span class=identifier>ssn</span><span class=special>(</span><span class=number>12</span><span class=special>,</span><span class=number>1005</span><span class=special>,</span><span class=number>20678</span><span class=special>),</span><span class=identifier>ssn_hash</span><span class=special>(),</span><span class=identifier>ssn_equal</span><span class=special>()));</span>
+</pre></blockquote>
+
+<p>示例中, 我们提供了哈希仿函数 <code>ssn_hash</code> 与等价谓词 <code>ssn_equal</code>, 使 <code>ssn</code> 对象与原始 <code>int</code> (作为 <code>SSN</code> 存储于 <code>employee_set</code> 中) 之间可以互操作.</p>
+
+<p>到目前为止, 兼容键在哈希索引语境下最有用的应用在于: 它们允许无缝使用 <a href="key_extraction.html#composite_keys">组合键</a>.</p>
+
+<h3><a name="hash_updating">更新</a></h3>
+
+<p>哈希索引有 <a href="../reference/hash_indices.html#replace"><code>replace</code></a>、<a href="../reference/hash_indices.html#modify"><code>modify</code></a> 与 <a href="../reference/hash_indices.html#modify_key"><code>modify_key</code></a> 成员函数, 功能与有序索引中相同.</p>
+
+<h3><a name="guarantees">迭代器有效性与异常安全性的保证</a></h3>
+
+<p>由于 Boost.MultiIndex 框架施加的内部约束, 哈希索引就迭代器有效性与异常安全性所提供的保证, 实际上强于 C++ 标准对无序关联容器的要求:<ul>
+  <li>插入或重哈希期间, 迭代器有效性无论如何都得到保持: C++ 无序关联容器在执行 (隐式或显式) 重哈希时可能使迭代器失效.</li>
+  <li>经由迭代器擦除一个元素或一段元素从不抛出异常, 因为内部的哈希函数与等价谓词对象实际上并未被调用.</li>
+  <li><code>rehash</code> 无条件提供强异常安全性保证. 标准只在内部哈希函数与等价谓词对象不抛出异常时才为无序关联容器作此保证. 一个有些令人意外的推论是: 符合标准的 <code>std::unordered_set</code> 可能在重哈希期间抛出异常时擦除元素!</li>
+</ul> 总体而言, 这些更强的保证有利于用户的便利性, 尤其是涉及迭代器稳定性者. 不过, 作为这些好处的交换, 可能会带来 (希望是极小的) 性能下降. </p>
+
+<h2><a name="rnd_indices">随机访问索引</a></h2>
+
+<p>随机访问索引提供与 <a href="basics.html#seq_indices">序列索引</a> 相同类型的功能, 额外优点是其迭代器为随机访问, 并且提供 <code>operator[]</code> 与 <code>at()</code> 以按元素在索引中的位置访问元素. 让我们重写先前一个 <a href="basics.html#list_fast_lookup">示例</a> 中使用的容器, 用随机访问索引替代序列索引:</p>
+
+<blockquote><pre>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index_container</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index</span><span class=special>/</span><span class=identifier>random_access_index</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index</span><span class=special>/</span><span class=identifier>ordered_index</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>multi_index</span><span class=special>/</span><span class=identifier>identity</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+
+<span class=comment>// text container with fast lookup based on a random access index</span>
+<span class=keyword>typedef</span> <span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>random_access</span><span class=special>&lt;&gt;,</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>text_container</span><span class=special>;</span>
+
+<span class=comment>// global text container object</span>
+<span class=identifier>text_container</span> <span class=identifier>tc</span><span class=special>;</span>
+</pre></blockquote>
+
+<p>随机访问能力使我们能高效地写出如下代码:</p>
+
+<blockquote><pre>
+<span class=keyword>void</span> <span class=identifier>print_page</span><span class=special>(</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>size_t</span> <span class=identifier>page_num</span><span class=special>)</span>
+<span class=special>{</span>
+  <span class=keyword>static</span> <span class=keyword>const</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>size_t</span> <span class=identifier>words_per_page</span><span class=special>=</span><span class=number>50</span><span class=special>;</span>
+
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>size_t</span> <span class=identifier>pos0</span><span class=special>=</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>min</span><span class=special>(</span><span class=identifier>tc</span><span class=special>.</span><span class=identifier>size</span><span class=special>(),</span><span class=identifier>page_num</span><span class=special>*</span><span class=identifier>words_per_page</span><span class=special>);</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>size_t</span> <span class=identifier>pos1</span><span class=special>=</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>min</span><span class=special>(</span><span class=identifier>tc</span><span class=special>.</span><span class=identifier>size</span><span class=special>(),</span><span class=identifier>pos0</span><span class=special>+</span><span class=identifier>words_per_page</span><span class=special>);</span>
+
+  <span class=comment>// note random access iterators can be added offsets</span> 
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>copy</span><span class=special>(</span>
+    <span class=identifier>tc</span><span class=special>.</span><span class=identifier>begin</span><span class=special>()+</span><span class=identifier>pos0</span><span class=special>,</span><span class=identifier>tc</span><span class=special>.</span><span class=identifier>begin</span><span class=special>()+</span><span class=identifier>pos1</span><span class=special>,</span>
+    <span class=identifier>std</span><span class=special>::</span><span class=identifier>ostream_iterator</span><span class=special>&lt;</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>&gt;(</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>cout</span><span class=special>));</span>
+<span class=special>}</span>
+
+<span class=keyword>void</span> <span class=identifier>print_random_word</span><span class=special>()</span>
+<span class=special>{</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>cout</span><span class=special>&lt;&lt;</span><span class=identifier>tc</span><span class=special>[</span><span class=identifier>rand</span><span class=special>()%</span><span class=identifier>tc</span><span class=special>.</span><span class=identifier>size</span><span class=special>()];</span>
+<span class=special>}</span>
+</pre></blockquote>
+
+<p>这种附加的灵活性是有代价的: 在索引末端以外的位置插入与删除具有线性复杂度, 而这些操作对序列索引是常量时间. 这种情况令人想起 <code>std::list</code> 与 <code>std::vector</code> 之间复杂度行为的差异: 不过对随机访问索引而言, 插入与删除从不需要复制任何元素, 因此这些操作的实际性能可以接受, 尽管理论上相对于序列索引处于劣势.</p>
+
+<p>示例一节中的 <a href="../examples.html#example10">示例 10</a> 与 <a href="../examples.html#example11">示例 11</a> 实际运用了随机访问索引.</p>
+
+<h3><a name="rnd_spec">规定</a></h3>
+
+<p>随机访问索引用 <code>random_access</code> 构造来规定, 其中 <a href="basics.html#tagging">标签</a> 参数照常是可选的:</p>
+
+<blockquote><pre>
+<span class=identifier>random_access</span><span class=special>&lt;[</span><i>(tag)</i><span class=special>]&gt;</span>
+</pre></blockquote>
+
+<h3><a name="rnd_interface">接口</a></h3>
+
+<p>序列索引提供的所有公开函数也由随机访问索引提供, 因此后者可以直接替代前者 (除其复杂度界限如上所述有所不同之外). 此外, 随机访问索引有用于按位置访问元素的 <code>operator[]</code> 与 <code>at()</code>, 以及成员函数 <a href="../reference/rnd_indices.html#capacity_memfun"><code>capacity</code></a> 与 <a href="../reference/rnd_indices.html#reserve"><code>reserve</code></a>——它们以与 <code>std::vector</code> 中同名设施类似的方式控制内部重新分配. 详情请查阅 <a href="../reference/rnd_indices.html">参考文档</a>.</p>
+
+<h3><a name="rnd_vs_vector">与 <code>std::vector</code></a></h3>
+
+<p>人们很容易把随机访问索引看作 Boost.MultiIndex 中 <code>std::vector</code> 的对应物, 但这一比喻可能有误导性, 因为二者虽在许多方面相似, 却表现出重要的语义差异. 随机访问索引的一个优点是其迭代器以及指向元素的引用是 <i>稳定的</i>, 即在任何插入或删除之后仍然有效. 另一方面, 随机访问索引相对于 <code>std::vector</code> 有若干缺点:<ul>
+  <li>它们不提供 <i>内存连续性</i>——<code>std::vector</code> 的一项性质, 即元素彼此相邻地存储在单个内存块中.</li>
+  <li>照常, Boost.MultiIndex 中随机访问索引的元素不可变更, 只能通过成员函数 <a href="../reference/rnd_indices.html#replace"><code>replace</code></a> 与 <a href="../reference/rnd_indices.html#modify"><code>modify</code></a> 修改. 这妨碍了许多修改型算法的使用, 尽管它们本可适用于 <code>std::vector</code>.</li>
+</ul> 后一缺点可以通过这些索引提供的 <a href="#rearrange">重排接口</a> 部分弥补. </p>
+
+<p>一般而言, 更有启发性的看法是把随机访问索引视为提供随机访问语义的序列索引变种, 而不是执着于 <code>std::vector</code> 的类比.</p>
+
+<h2><a name="rearrange">索引重排</a></h2>
+
+<p>按设计, 索引元素不可变更, 即迭代器只授予对它们的 <code>const</code> 访问, 只有通过所提供的更新接口 (<code>replace</code>、<code>modify</code> 与 <code>modify_key</code>) 才能修改元素. 设置这一限制是为了不破坏基于键索引的内部不变量 (例如有序索引中的升序遍历), 但它给非基于键的索引带来重要限制:</p>
+
+<blockquote><pre>
+<span class=keyword>typedef</span> <span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=keyword>int</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>random_access</span><span class=special>&lt;&gt;,</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>container</span><span class=special>;</span>	
+
+<span class=identifier>container</span>    <span class=identifier>c</span><span class=special>;</span>
+<span class=identifier>std</span><span class=special>::</span><span class=identifier>mt19937</span> <span class=identifier>rng</span><span class=special>;</span>
+<span class=special>...</span>
+<span class=comment>// compiler error: assignment to read-only objects</span>
+<span class=identifier>std</span><span class=special>::</span><span class=identifier>shuffle</span><span class=special>(</span><span class=identifier>c</span><span class=special>.</span><span class=identifier>begin</span><span class=special>(),</span><span class=identifier>c</span><span class=special>.</span><span class=identifier>end</span><span class=special>(),</span><span class=identifier>rng</span><span class=special>);</span>
+</pre></blockquote>
+
+<p>前一示例的遗憾之处在于, <code>std::shuffle</code> 执行的操作本可能与 <code>multi_index_container</code> 的不变量兼容, 因为其结果可以描述为随机访问索引中元素的一个排列, 而对元素本身没有任何实际修改. C++ 标准库中还有许多此类兼容算法的例子, 例如所有的排序与划分函数.</p>
+
+<p>序列索引与随机访问索引提供了一种利用这类外部算法的手段. 为引入这一设施, 我们需要一个预备概念: 索引的 <i>视图</i> 定义为索引元素上的某个迭代器区间 [<code>first</code>, <code>last</code>), 其所有元素在区间中恰好各出现一次. 继续我们的例子, 我们可以对从容器获得的特设视图应用 <code>std::shuffle</code>:</p>
+
+<blockquote><pre>
+<span class=comment>// note that the elements of the view are not copies of the elements
+// in c, but references to them</span>
+<span class=identifier>std</span><span class=special>::</span><span class=identifier>vector</span><span class=special>&lt;</span><span class=identifier>boost</span><span class=special>::</span><span class=identifier>reference_wrapper</span><span class=special>&lt;</span><span class=keyword>const</span> <span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;</span> <span class=identifier>v</span><span class=special>;</span>
+<span class=identifier>BOOST_FOREACH</span><span class=special>(</span><span class=keyword>const</span> <span class=keyword>int</span><span class=special>&amp;</span> <span class=identifier>i</span><span class=special>,</span><span class=identifier>c</span><span class=special>)</span><span class=identifier>v</span><span class=special>.</span><span class=identifier>push_back</span><span class=special>(</span><span class=identifier>boost</span><span class=special>::</span><span class=identifier>cref</span><span class=special>(</span><span class=identifier>i</span><span class=special>));</span>
+
+<span class=comment>// this compiles OK, as reference_wrappers are swappable</span>
+<span class=identifier>std</span><span class=special>::</span><span class=identifier>shuffle</span><span class=special>(</span><span class=identifier>v</span><span class=special>.</span><span class=identifier>begin</span><span class=special>(),</span><span class=identifier>v</span><span class=special>.</span><span class=identifier>end</span><span class=special>(),</span><span class=identifier>rng</span><span class=special>);</span>
+</pre></blockquote>
+
+<p> <code>v</code> 的元素是 <code>reference_wrapper</code>——来自 <a href="../../../../doc/html/ref.html">Boost.Ref</a>——指向多索引容器 (multi_index_container) 中的实际元素. 这些对象仍不允许修改被引用的实体, 但它们可交换, 这正是 <code>std::shuffle</code> 施加的唯一要求. 一旦把所需的重排存入视图, 就可以用以下调用把它转移到容器:</p>
+
+<blockquote><pre>
+<span class=identifier>c</span><span class=special>.</span><span class=identifier>rearrange</span><span class=special>(</span><span class=identifier>v</span><span class=special>.</span><span class=identifier>begin</span><span class=special>());</span>
+</pre></blockquote>
+
+<p>
+<code>rearrange</code> 接受一个输入迭代器, 指示外部视图的开头 (无需末端迭代器, 因为视图长度与索引长度相同), 并在内部重定位索引的元素, 使其遍历顺序与视图匹配. 尽管需要一些变通, <code>rearrange</code> 允许把各种算法应用到非基于键的索引. 请注意, 视图概念非常通用, 绝不局限于上面展示的特定实现示例. 例如, <code>multi_index_container</code> 的各索引相对于其非基于键的索引而言确实是视图:</p>
+
+<blockquote><pre>
+<span class=comment>// rearrange as index #1 (ascending order)</span>
+<span class=identifier>c</span><span class=special>.</span><span class=identifier>rearrange</span><span class=special>(</span><span class=identifier>c</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;().</span><span class=identifier>begin</span><span class=special>());</span>
+
+<span class=comment>// rearrange in descending order</span>
+<span class=identifier>c</span><span class=special>.</span><span class=identifier>rearrange</span><span class=special>(</span><span class=identifier>c</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=number>1</span><span class=special>&gt;().</span><span class=identifier>rbegin</span><span class=special>());</span>
+</pre></blockquote>
+
+<p>对视图施加的唯一重要要求是它们必须是 <i>自由的</i>, 即不受基础索引上重定位的影响: 因此, <code>rearrange</code> 不接受以下做法:</p>
+
+<blockquote><pre>
+<span class=comment>// undefined behavior: [rbegin(),rend()) is not free with respect
+// to the base index</span>
+<span class=identifier>c</span><span class=special>.</span><span class=identifier>rearrange</span><span class=special>(</span><span class=identifier>c</span><span class=special>.</span><span class=identifier>rbegin</span><span class=special>());</span>
+</pre></blockquote>
+
+<p>视图概念在 <a href="../reference/indices.html#views">参考文档</a> 中有详细定义. 示例一节中的 <a href="../examples.html#example11">示例 11</a> 演示了 <code>rearrange</code> 的用法.</p>
+
+<h2><a name="iterator_to"><code>iterator_to</code></a></h2>
+
+<p>Boost.MultiIndex 的所有索引都提供一个名为 <code>iterator_to</code> 的成员函数, 它返回指向容器中给定元素的迭代器:</p>
+
+<blockquote><pre>
+<span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=keyword>int</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span><span class=identifier>sequenced</span><span class=special>&lt;&gt;</span> <span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>c</span><span class=special>;</span>
+<span class=special>...</span>
+<span class=comment>// convoluted way to do c.pop_back()</span>
+<span class=identifier>c</span><span class=special>.</span><span class=identifier>erase</span><span class=special>(</span><span class=identifier>c</span><span class=special>.</span><span class=identifier>iterator_to</span><span class=special>(</span><span class=identifier>c</span><span class=special>.</span><span class=identifier>back</span><span class=special>()));</span> 
+
+<span class=comment>// The following, though similar to the previous code,
+// does not work: iterator_to accepts a reference to
+// the element in the container, not a copy.</span>
+<span class=keyword>int</span> <span class=identifier>x</span><span class=special>=</span><span class=identifier>c</span><span class=special>.</span><span class=identifier>back</span><span class=special>();</span>
+<span class=identifier>c</span><span class=special>.</span><span class=identifier>erase</span><span class=special>(</span><span class=identifier>c</span><span class=special>.</span><span class=identifier>iterator_to</span><span class=special>(</span><span class=identifier>x</span><span class=special>));</span> <span class=comment>// run-time failure ensues</span>
+</pre></blockquote>
+
+<p>
+<code>iterator_to</code> 提供了一种从指向元素的指针取回指向该元素的迭代器的途径, 从而在许多情形下使迭代器与指针在元素指称上可以互换 (遍历则不然). 尽管如此, <code>iterator_to</code> 的目的并不是提倡用指针替代真正的迭代器: 后者专为处理容器的元素而设计, 不仅受益于容器接口的迭代器导向, 还能在编译期与运行期暴露比原始指针多得多的编程缺陷. 因此, <code>iterator_to</code> 旨在用于经由迭代器访问不合适或不理想的场景:<ul>
+  <li>与基于指针或引用的既有 API 互操作.</li>
+  <li>发布基于指针的接口 (例如设计兼容 C 的库时).</li>
+  <li>以指针替代迭代器暴露出去, 可以充当一道 <i>类型擦除</i> 屏障, 有效地把代码使用者与所使用的具体容器这一实现细节解耦. 类似的技术——如著名的 Pimpl 惯用法——在大型项目中用于减少依赖与构建时间.</li>
+  <li>自引用场景: 元素对其所属容器施加操作, 而又没有指向自身的迭代器可用.</li>
+</ul>
+</p>
+
+<h2><a name="node_handling">节点处理操作</a></h2>
+
+<p>借助直接的节点操作, 元素可以在 <code>multi_index_container</code> 之间传递而不实际复制:</p>
+
+<blockquote><pre>
+<span class=comment>// move an employee to the retiree archive</span>
+<span class=keyword>void</span> <span class=identifier>move_to_retirement</span><span class=special>(</span><span class=keyword>int</span> <span class=identifier>ssnumber</span><span class=special>,</span><span class=identifier>employee_set</span><span class=special>&amp;</span> <span class=identifier>es</span><span class=special>,</span><span class=identifier>employee_set</span><span class=special>&amp;</span> <span class=identifier>archive</span><span class=special>)</span>
+<span class=special>{</span>
+  <span class=comment>// assume employee_set has an index on SS number(not shown before)</span>
+  <span class=comment>// extract the employee with given SS number to a node handle</span>
+  <span class=identifier>employee_set_by_ssn</span><span class=special>::</span><span class=identifier>node_type</span> <span class=identifier>node</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=identifier>ssn</span><span class=special>&gt;().</span><span class=identifier>extract</span><span class=special>(</span><span class=identifier>ssnumber</span><span class=special>);</span>
+
+  <span class=keyword>if</span><span class=special>(!</span><span class=identifier>node</span><span class=special>.</span><span class=identifier>empty</span><span class=special>()){</span> <span class=comment>// employee found
+    // re-insert into archive (note the use of std::move)</span>
+    <span class=identifier>archive</span><span class=special>.</span><span class=identifier>insert</span><span class=special>(</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>move</span><span class=special>(</span><span class=identifier>node</span><span class=special>));</span>
+  <span class=special>}</span>
+<span class=special>}</span>
+</pre></blockquote>
+
+<p>示例中, 内部节点原样从 <code>es</code> 转移到 <code>archive</code>, 这比从源中擦除再在目标中重建更高效. <code>node_type</code> 是一个只可移动的类, 用于传递节点, 其接口遵循 C++ 关联容器 (set 容器版本) 的 <a href="https://en.cppreference.com/w/cpp/container/node_handle">同名类型</a>. Boost.MultiIndex 为所有索引类型提供节点提取与插入操作, 包括序列索引 (相比之下, <code>std::list</code> 没有此类特性):</p>
+
+<blockquote><pre>
+<span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=keyword>int</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>sequenced</span><span class=special>&lt;&gt;,</span>
+    <span class=identifier>ordered_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>src</span><span class=special>;</span>
+
+<span class=identifier>multi_index_container</span><span class=special>&lt;</span>
+  <span class=keyword>int</span><span class=special>,</span>
+  <span class=identifier>indexed_by</span><span class=special>&lt;</span>
+    <span class=identifier>sequenced</span><span class=special>&lt;&gt;,</span>
+    <span class=identifier>ordered_non_unique</span><span class=special>&lt;</span><span class=identifier>identity</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;,</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>greater</span><span class=special>&lt;</span><span class=keyword>int</span><span class=special>&gt;</span> <span class=special>&gt;</span>
+  <span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>dst</span><span class=special>;</span>
+
+<span class=special>...</span>
+
+<span class=comment>// transfer even numbers from src to dst</span>
+<span class=keyword>for</span><span class=special>(</span><span class=keyword>auto</span> <span class=identifier>first</span><span class=special>=</span><span class=identifier>src</span><span class=special>.</span><span class=identifier>begin</span><span class=special>(),</span><span class=identifier>last</span><span class=special>=</span><span class=identifier>src</span><span class=special>.</span><span class=identifier>end</span><span class=special>();</span><span class=identifier>first</span><span class=special>!=</span><span class=identifier>last</span><span class=special>;){</span>
+  <span class=keyword>if</span><span class=special>(*</span><span class=identifier>first</span><span class=special>%</span><span class=number>2</span><span class=special>==</span><span class=number>0</span><span class=special>)</span> <span class=identifier>dst</span><span class=special>.</span><span class=identifier>insert</span><span class=special>(</span><span class=identifier>dst</span><span class=special>.</span><span class=identifier>end</span><span class=special>(),</span><span class=identifier>src</span><span class=special>.</span><span class=identifier>extract</span><span class=special>(</span><span class=identifier>first</span><span class=special>++));</span>
+  <span class=keyword>else</span>            <span class=special>++</span><span class=identifier>first</span><span class=special>;</span>
+<span class=special>}</span>
+</pre></blockquote>
+
+<p>注意 <code>src</code> 与 <code>dst</code> 类型不同, 但转移是可能的. 两个 <code>multi_index_container</code> 节点兼容 (即使用相同的 <code>node_type</code>), 当且仅当它们具有相同的元素与分配器类型, 且各自的索引一一对应——不论其唯一与否或各自的配置参数: 二者都是有序的, 或都是序列的, 等等.</p>
+
+<p>或者, 无需保留中间的 <code>node_type</code>, 借助 <code>merge</code> (基于键的索引) 与 <code>splice</code> (非基于键的索引) 即可直接在两个容器之间转移节点.</p>
+
+<blockquote><pre>
+<span class=comment>// move older employees to retirement</span>
+<span class=keyword>void</span> <span class=identifier>move_to_retirement_by_age</span><span class=special>(
+  </span><span class=keyword>int</span> <span class=identifier>max_age</span><span class=special>,</span><span class=identifier>employee_set</span><span class=special>&amp;</span> <span class=identifier>es</span><span class=special>,</span><span class=identifier>employee_set</span><span class=special>&amp;</span> <span class=identifier>archive</span><span class=special>)</span>
+<span class=special>{</span>
+  <span class=comment>// assume employee_set has an index on age (not shown before)</span>
+  <span class=identifier>employee_set_by_age</span><span class=special>&amp;</span> <span class=identifier>ea</span><span class=special>=</span><span class=identifier>es</span><span class=special>.</span><span class=identifier>get</span><span class=special>&lt;</span><span class=identifier>age</span><span class=special>&gt;();</span>
+
+  <span class=comment>// archive employees with age&gt;max_age</span>
+  <span class=identifier>archive</span><span class=special>.</span><span class=identifier>merge</span><span class=special>(</span><span class=identifier>ea</span><span class=special>,</span><span class=identifier>ea</span><span class=special>.</span><span class=identifier>upper_bound</span><span class=special>(</span><span class=identifier>max_age</span><span class=special>),</span><span class=identifier>ea</span><span class=special>.</span><span class=identifier>end</span><span class=special>());</span>
+<span class=special>}</span>
+
+<span class=special>...</span>
+
+<span class=comment>// transfer even numbers from src to dst</span>
+<span class=keyword>for</span><span class=special>(</span><span class=keyword>auto</span> <span class=identifier>first</span><span class=special>=</span><span class=identifier>src</span><span class=special>.</span><span class=identifier>begin</span><span class=special>(),</span><span class=identifier>last</span><span class=special>=</span><span class=identifier>src</span><span class=special>.</span><span class=identifier>end</span><span class=special>();</span><span class=identifier>first</span><span class=special>!=</span><span class=identifier>last</span><span class=special>;){</span>
+  <span class=keyword>if</span><span class=special>(*</span><span class=identifier>first</span><span class=special>%</span><span class=number>2</span><span class=special>==</span><span class=number>0</span><span class=special>)</span> <span class=identifier>dst</span><span class=special>.</span><span class=identifier>splice</span><span class=special>(</span><span class=identifier>dst</span><span class=special>.</span><span class=identifier>end</span><span class=special>(),</span><span class=identifier>src</span><span class=special>,</span><span class=identifier>first</span><span class=special>++);</span>
+  <span class=keyword>else</span>            <span class=special>++</span><span class=identifier>first</span><span class=special>;</span>
+<span class=special>}</span>
+</pre></blockquote>
+
+<p> <code>merge</code>/<code>splice</code> 有用于转移单个元素、两个迭代器之间的区间以及整个容器的重载: 更多细节请查阅 <a href="../reference/ord_indices.html#merge">有序索引</a> 与 <a href="../reference/seq_indices.html#splice">序列索引</a> 的参考文档 (其余索引提供其中一种接口). 请注意, 序列索引与随机访问索引也有一个名为 <code>merge</code> 的操作, 但它遵循 <code>std::list::merge</code> 的规范, 行为有所不同 (要求源与目标按同一准则有序). 这是 Boost.MultiIndex 直接从 C++ 标准继承的一个相当令人困惑的命名问题.</p>
+    
+<h2><a name="ordered_node_compression">有序索引节点压缩</a></h2>
+
+<p>有序索引与排名索引借助一种称为 <i>红黑树</i> 的数据结构实现. 红黑树的节点包含指向父节点与两个子节点的指针, 外加一个 1 位字段——称为 <i>节点颜色</i> (该结构因此得名). 由于对齐问题, 在多数体系结构上, 颜色字段占据整整一个机器字, 即 32 位系统中的 4 字节、64 位环境中的 8 字节. 这一空间浪费可以避免, 办法是把颜色位嵌入节点指针之一——前提是指针表示的位并非全部含有有用信息: 许多体系结构正是如此, 其中这类节点对齐到偶数地址, 这意味着地址的最低有效位必须总为零.</p>
+
+<p>只要适用, Boost.MultiIndex 有序索引与排名索引就实现这种节点压缩. 与 STL 容器 <code>std::set</code> 的常见实现相比, 节点压缩可使头开销减少 25% (在典型 32 位体系结构上从 16 字节减到 12 字节, 在 64 位系统上从 32 字节减到 24 字节). 经检验, 这一优化对性能的影响在中等规模容器上可忽略不计, 而拥有大量元素 (数十万或更多) 的容器在该优化下运行更快, 极可能源于 L1 与 L2 缓存效应.</p>
+
+<p>节点压缩可以通过全局设置宏 <code>BOOST_MULTI_INDEX_DISABLE_COMPRESSED_ORDERED_INDEX_NODES</code> 来禁用.</p>
+
+<hr>
+
+<div class="prev_link"><a href="basics.html"><img src="../prev.gif" alt="基础" border="0"><br>基础</a></div>
+<div class="up_link"><a href="index.html"><img src="../up.gif" alt="Boost.MultiIndex 教程" border="0"><br>Boost.MultiIndex 教程</a></div>
+<div class="next_link"><a href="key_extraction.html"><img src="../next.gif" alt="键提取" border="0"><br>键提取</a></div><br clear="all" style="clear: all;">
+
+<br>
+
+<p>修订于 August 16th 2021</p>
+
+<p>版权所有 © 2003-2021 Joaquín M López Muñoz. 按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <a href="../../../../LICENSE_1_0.txt">LICENSE_1_0.txt</a> 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+
+</body>
+</html>

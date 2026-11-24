@@ -1,0 +1,243 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>文本查询与客户端侧 SQL 格式化</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="up" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="prev" href="connection_establishment.html" title="建立与终止连接">
+<link rel="next" href="prepared_statements.html" title="预处理语句">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="connection_establishment.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="prepared_statements.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="mysql.text_queries"></a><a class="link" href="text_queries.html" title="文本查询与客户端 SQL 格式化">文本查询与客户端侧 SQL 格式化</a>
+</h2></div></div></div>
+<p>
+      <span class="emphasis"><em>文本查询</em></span> 是使用 MySQL 文本协议执行的查询. 普通字符串和 <a class="link" href="ref/boost__mysql__with_params.html" title="with_params"><code class="literal">with_params</code></a> 使用此协议. 这与 <a class="link" href="prepared_statements.html" title="预处理语句">预处理语句</a> 不同, 后者先准备再单独执行, 并使用二进制协议.</p>
+<div class="warning"><table border="0" summary="Warning">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[警告]" src="../../../../../doc/src/images/warning.png"></td>
+<th align="left">警告</th>
+</tr>
+<tr><td align="left" valign="top"><p>
+        <span class="bold"><strong>切勿使用原始字符串拼接来组合 SQL 查询</strong></span>. 这不安全, 会导致 <span class="bold"><strong>SQL 注入漏洞</strong></span>. 请使用本节介绍的客户端侧 SQL 格式化设施来避免漏洞.</p></td></tr>
+</table></div>
+<p>使用文本查询可以执行 <a class="link" href="multi_resultset.html#mysql.multi_resultset.multi_queries">多条以分号分隔的查询</a> , 从而提高效率.</p>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mysql.text_queries.using_with_params_for_simple_que"></a><a class="link" href="text_queries.html#mysql.text_queries.using_with_params_for_simple_que" title="将 with_params 用于简单查询">将 with_params 用于简单查询</a>
+</h3></div></div></div>
+<p>
+        <a class="link" href="ref/boost__mysql__with_params.html" title="with_params"><code class="literal">with_params</code></a> 是使用客户端侧 SQL 格式化最简单的方式. 它可作为预处理语句更简单、更灵活的替代品. 预处理语句在服务器侧展开查询, 而 SQL 格式化在客户端侧进行. 更多信息请阅读 <a class="link" href="text_queries.html#mysql.text_queries.comparison" title="预处理语句与客户端 SQL 格式化的对比">与预处理语句的对比</a> 和 <a class="link" href="text_queries.html#mysql.text_queries.comparison.security">安全注意事项</a> 章节.</p>
+<p>
+        <a class="link" href="ref/boost__mysql__with_params.html" title="with_params"><code class="literal">with_params</code></a> 接受一个带占位符的 SQL 查询字符串和一组参数. 传递给 <a class="link" href="ref/boost__mysql__any_connection/execute.html" title="any_connection::execute"><code class="literal">execute</code></a> 或 <a class="link" href="ref/boost__mysql__any_connection/async_execute.html" title="any_connection::async_execute"><code class="literal">async_execute</code></a> 时, 查询会在客户端用提供的参数展开并发送到服务器执行:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">employee_name</span> <span class="special">=</span> <span class="identifier">get_name</span><span class="special">();</span>  <span class="comment">// employee_name is an untrusted string</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+
+<span class="comment">// Expand the query and execute it. The expansion happens client-side.</span>
+<span class="comment">// If employee_name is "John", the executed query would be:</span>
+<span class="comment">// "SELECT id, salary FROM employee WHERE last_name = 'John'"</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"SELECT id, salary FROM employee WHERE last_name = {}"</span><span class="special">,</span> <span class="identifier">employee_name</span><span class="special">),</span>
+    <span class="identifier">result</span>
+<span class="special">);</span>
+</pre>
+<p>花括号 (<code class="computeroutput"><span class="special">{}</span></code>) 表示占位符 (技术上称为 <span class="emphasis"><em>替换字段</em></span>). 记法和语义与 <a href="https://en.cppreference.com/w/cpp/utility/format/format" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">format</span></code></a> 类似.</p>
+<p>所有基本类型都可用作查询参数. 包括整数、浮点类型、字符串、blob、日期和时间:</p>
+<pre class="programlisting"><span class="comment">// Will execute "SELECT id FROM employee WHERE salary &gt; 42000"</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"SELECT id FROM employee WHERE salary &gt; {}"</span><span class="special">,</span> <span class="number">42000</span><span class="special">),</span>
+    <span class="identifier">result</span>
+<span class="special">);</span>
+</pre>
+<p>
+        <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code> 与 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code> 也可使用:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">int64_t</span><span class="special">&gt;</span> <span class="identifier">salary</span><span class="special">;</span>  <span class="comment">// get salary from a possibly untrusted source</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+
+<span class="comment">// Depending on whether salary has a value or not, executes:</span>
+<span class="comment">// "UPDATE employee SET salary = 42000 WHERE id = 1"</span>
+<span class="comment">// "UPDATE employee SET salary = NULL WHERE id = 1"</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"UPDATE employee SET salary = {} WHERE id = {}"</span><span class="special">,</span> <span class="identifier">salary</span><span class="special">,</span> <span class="number">1</span><span class="special">),</span>
+    <span class="identifier">result</span>
+<span class="special">);</span>
+</pre>
+<p>支持集合和范围, 只要其元素可格式化:</p>
+<pre class="programlisting"><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">long</span><span class="special">&gt;</span> <span class="identifier">ids</span><span class="special">{</span><span class="number">1</span><span class="special">,</span> <span class="number">5</span><span class="special">,</span> <span class="number">20</span><span class="special">};</span>
+
+<span class="comment">// Executes "SELECT * FROM employee WHERE id IN (1, 5, 20)"</span>
+<span class="comment">// std::ref saves a copy</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"SELECT * FROM employee WHERE id IN ({})"</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">ids</span><span class="special">)),</span>
+    <span class="identifier">result</span>
+<span class="special">);</span>
+</pre>
+<p>关于格式化范围的更多内容参见 <a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.ranges" title="用 sequence 格式化范围"> 本节</a> , 内置支持 SQL 格式化的类型参考参见 <a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.reference" title="内置 SQL 格式化支持的类型"> 此表</a>.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>与 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">format</span></code> 一样, 传给 <code class="computeroutput"><span class="identifier">with_params</span></code> 的查询字符串必须在编译期已知. 可以使用 <a class="link" href="ref/boost__mysql__runtime.html" title="运行期"><code class="literal">runtime</code></a> 函数跳过此检查.</p></td></tr>
+</table></div>
+<p>与 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">format</span></code> 一样, 可以使用带显式索引的实参:</p>
+<pre class="programlisting"><span class="comment">// Recall that you need to set connect_params::multi_queries to true when connecting</span>
+<span class="comment">// before running semicolon-separated queries. Executes:</span>
+<span class="comment">// "UPDATE employee SET first_name = 'John' WHERE id = 42; SELECT * FROM employee WHERE id = 42"</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span>
+        <span class="string">"UPDATE employee SET first_name = {1} WHERE id = {0}; SELECT * FROM employee WHERE id = {0}"</span><span class="special">,</span>
+        <span class="number">42</span><span class="special">,</span>
+        <span class="string">"John"</span>
+    <span class="special">),</span>
+    <span class="identifier">result</span>
+<span class="special">);</span>
+</pre>
+<p>格式字符串语法的参考参见 <a class="link" href="sql_formatting_advanced.html#mysql.sql_formatting_advanced.format_string_syntax"> 本节</a>.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mysql.text_queries.errors"></a><a class="link" href="text_queries.html#mysql.text_queries.errors" title="常见错误及修复方法">常见错误及修复方法</a>
+</h3></div></div></div>
+<p>并非所有值都能被格式化. 若库发现格式化某个值可能导致安全问题的歧义, 会报错且查询不会发送到服务器. 以下是最常见的错误:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">client_errc</span><span class="special">::</span><span class="identifier">invalid_encoding</span></code>
+            <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; ">
+<li class="listitem">原因: 你的某个字符串参数包含无效码位. 使用默认字符集时, 这意味着它包含 <span class="bold"><strong>无效的 UTF-8</strong></span>.</li>
+<li class="listitem">解决方法: 所有字符串值必须按连接的字符集 (通常为 UTF-8) 编码. 请净化或拒绝此类值. 对不表示字符串而是任意二进制值的值, 请使用 <a class="link" href="ref/boost__mysql__blob.html" title="blob"><code class="literal">blob</code></a> 和 <a class="link" href="ref/boost__mysql__blob_view.html" title="blob_view"><code class="literal">blob_view</code></a> 类型.</li>
+</ul></div>
+          </li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">client_errc</span><span class="special">::</span><span class="identifier">unformattable_value</span></code>
+            <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; ">
+<li class="listitem">原因: 你的某个参数包含无效值. 例如 <code class="computeroutput"><span class="keyword">double</span></code> 包含 MySQL 不支持的 <code class="computeroutput"><span class="identifier">NaN</span></code> 或 <code class="computeroutput"><span class="identifier">Inf</span></code>.</li>
+<li class="listitem">解决方法: 拒绝此类值, 或在传给客户端侧 SQL 格式化之前将其替换为 <code class="computeroutput"><span class="identifier">NULL</span></code>.</li>
+</ul></div>
+          </li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">client_errc</span><span class="special">::</span><span class="identifier">unknown_character_set</span></code>
+            <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; ">
+<li class="listitem">原因: 你的连接不知道你正在使用的字符集. 安全地生成查询需要知道所用字符集. 调用 <a class="link" href="ref/boost__mysql__any_connection/reset_connection.html" title="any_connection::reset_connection"><code class="literal">reset_connection</code></a> 之后, 或在连接时使用了自定义 <a class="link" href="ref/boost__mysql__connect_params/connection_collation.html" title="connect_params::connection_collation"><code class="literal">connect_params::connection_collation</code></a> 时, 可能出现这种情况.</li>
+<li class="listitem">解决方法: 使用 <a class="link" href="ref/boost__mysql__connection_pool.html" title="connection_pool"><code class="literal">connection_pool</code></a> 而非手动重置连接. 若无法做到, 连接时请使用默认的 <a class="link" href="ref/boost__mysql__connect_params/connection_collation.html" title="connect_params::connection_collation"><code class="literal">connection_collation</code></a> , 并在重置连接后使用 <a class="link" href="ref/boost__mysql__any_connection/set_character_set.html" title="any_connection::set_character_set"><code class="literal">set_character_set</code></a> 或 <a class="link" href="ref/boost__mysql__any_connection/async_set_character_set.html" title="any_connection::async_set_character_set"><code class="literal">async_set_character_set</code></a>.</li>
+<li class="listitem">
+                  <a class="link" href="charsets.html#mysql.charsets.tracking">了解更多</a> 关于字符集跟踪的工作原理.</li>
+</ul></div>
+          </li>
+</ul></div>
+<p>例如:</p>
+<pre class="programlisting"><span class="keyword">try</span>
+<span class="special">{</span>
+    <span class="comment">// If the connection is using UTF-8 (the default), this will throw an error,</span>
+    <span class="comment">// because the string to be formatted is not valid UTF-8.</span>
+    <span class="comment">// The query never reaches the server.</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">result</span><span class="special">;</span>
+    <span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"SELECT {}"</span><span class="special">,</span> <span class="string">"bad\xff UTF-8"</span><span class="special">),</span> <span class="identifier">result</span><span class="special">);</span>
+<span class="special">}</span>
+<span class="keyword">catch</span> <span class="special">(</span><span class="keyword">const</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">system_error</span><span class="special">&amp;</span> <span class="identifier">err</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">BOOST_TEST</span><span class="special">(</span><span class="identifier">err</span><span class="special">.</span><span class="identifier">code</span><span class="special">()</span> <span class="special">==</span> <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">client_errc</span><span class="special">::</span><span class="identifier">invalid_encoding</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="mysql.text_queries.comparison"></a><a class="link" href="text_queries.html#mysql.text_queries.comparison" title="预处理语句与客户端 SQL 格式化的对比">预处理语句与客户端侧 SQL 格式化的对比</a>
+</h3></div></div></div>
+<p>虽然二者用途相似, 但它们有根本区别. 预处理语句由服务器解析和展开. 客户端侧 SQL 在客户端展开查询, 并将其作为字符串发送到服务器.</p>
+<p>这意味着 <span class="bold"><strong>客户端侧 SQL 并不理解你的查询</strong></span>. 它只知道如何将 MySQL 类型格式化为字符串而不产生漏洞, 其他情况下将你的查询视为不透明的字符串. 客户端侧 SQL 带来 <span class="bold"><strong>更大的灵活性</strong></span> (你可以动态组合任何查询), 而语句则有更多限制. 这也意味着 <span class="bold"><strong>你需要更加注意组合有效的查询</strong></span> , 尤其是处理复杂条件逻辑时. 逻辑错误可能导致漏洞利用. 更多信息请阅读 <a class="link" href="text_queries.html#mysql.text_queries.comparison.security">安全注意事项章节</a>.</p>
+<p>相比语句, 客户端侧 SQL 有 <span class="bold"><strong>更少的服务器往返</strong></span> , 对轻量级查询通常更高效. 然而, 它使用较不紧凑的文本协议, 对检索大量数据的查询可能更慢. 更多信息参见 <a class="link" href="text_queries.html#mysql.text_queries.comparison.efficiency">效率注意事项章节</a>.</p>
+<p>总体而言, 以下情况 <span class="bold"><strong>使用客户端侧 SQL</strong></span> 格式化:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">不检索大量数据的简单查询. 默认使用 <code class="computeroutput"><span class="identifier">with_params</span></code> , 只有当性能测量表明有必要时才切换到语句.</li>
+<li class="listitem">涉及语句无法实现的动态 SQL 的查询. 典型情况包括: <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; ">
+<li class="listitem">动态过滤 (<a class="link" href="examples/dynamic_filters.html" title="带动态过滤条件的查询">示例</a>).</li>
+<li class="listitem">批量插入. 逐行插入可能导致效率低下. 可以使用客户端侧 SQL 格式化组合一条 <code class="computeroutput"><span class="identifier">INSERT</span></code> , 一次插入多行 (见 <a class="link" href="examples/batch_inserts.html" title="使用客户端查询格式化的批量插入">示例 1</a> 和 <a class="link" href="examples/batch_inserts_generic.html" title="使用 Boost.Describe 的通用批量插入">示例 2</a>).</li>
+<li class="listitem">类似 PATCH 的更新, 其中 <code class="computeroutput"><span class="identifier">UPDATE</span></code> 的字段列表必须是动态的 (<a class="link" href="examples/patch_updates.html" title="具有类 PATCH 语义的动态 UPDATE 查询">示例</a>).</li>
+<li class="listitem">涉及动态标识符的查询, 如表名和字段名.</li>
+<li class="listitem">条件排序.</li>
+<li class="listitem">由多条带动态字段的分号分隔查询组成的管道.</li>
+</ul></div>
+          </li>
+</ul></div>
+<p>另一方面, 若出现以下情况, <span class="bold"><strong>优先使用预处理语句</strong></span>:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">你在反复执行同一查询. 可以一次准备语句, 多次执行.</li>
+<li class="listitem">你的查询检索大量数据, 且你已经完成相关的性能测量.</li>
+</ul></div>
+<h5>
+<a name="mysql.text_queries.comparison.h0"></a>
+        <span class="phrase"><a name="mysql.text_queries.comparison.efficiency"></a></span><a class="link" href="text_queries.html#mysql.text_queries.comparison.efficiency"> </a>效率注意事项</h5>
+<p>客户端侧 SQL 格式化和预处理语句在效率上各有优劣:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">客户端格式化的 SQL 有 <span class="bold"><strong>更少的服务器往返</strong></span>. 对于预处理语句, 通常需要一次准备语句的调用、一次执行调用, 可能还需要最后一次关闭调用. 客户端格式化的 SQL 只需执行往返. 随着网络延迟增大以及使用 TLS, 此性能收益会更加明显.</li>
+<li class="listitem">预处理语句总是涉及 <span class="bold"><strong>会话状态的变更</strong></span> , 而客户端格式化的 SQL 则未必. 若你将 <a class="link" href="ref/boost__mysql__connection_pool.html" title="connection_pool"><code class="literal">connection_pool</code></a> 与预处理语句配合使用, 则不能使用 <a class="link" href="ref/boost__mysql__pooled_connection/return_without_reset.html" title="pooled_connection::return_without_reset"><code class="literal">pooled_connection::return_without_reset</code></a> , 因为这会泄漏语句. 对于客户端格式化的查询, 若你的 SQL 不变更会话状态, 则可能无需重置.</li>
+<li class="listitem">客户端格式化的 SQL 查询使用通常 <span class="bold"><strong>效率较低的文本协议</strong></span> , 而预处理语句使用更紧凑的二进制协议. 当你检索大量难以与文本互相转换的数据 (如 double) 时, 这一点很重要.</li>
+<li class="listitem">
+            <span class="bold"><strong>预处理语句可以复用</strong></span>. 若需要多次执行同一查询, 预处理语句只需解析一次.</li>
+<li class="listitem">相比预处理语句, 客户端格式化的 SQL 支持 <span class="bold"><strong>更高效的模式</strong></span> , 如批量插入和分号分隔查询.</li>
+</ul></div>
+<h5>
+<a name="mysql.text_queries.comparison.h1"></a>
+        <span class="phrase"><a name="mysql.text_queries.comparison.security"></a></span><a class="link" href="text_queries.html#mysql.text_queries.comparison.security"> </a>安全注意事项</h5>
+<p>客户端侧 SQL 格式化和预处理语句都能 <span class="bold"><strong>防御 SQL 注入</strong></span>. 语句通过在执行参数替换之前由服务器解析带占位符的查询来做到这一点. 客户端侧 SQL 通过给值加引号和转义来避免注入, 但 <span class="bold"><strong>并不理解你的查询</strong></span>.</p>
+<p>这意味着你需要 <span class="bold"><strong>确保你的查询始终展开为有效的 SQL</strong></span>. 对简单查询来说这很容易, 但对涉及范围或动态标识符的更复杂查询可能是问题. 例如, 若提供的范围为空, 以下查询可能展开为无效 SQL:</p>
+<pre class="programlisting"><span class="comment">// If ids.empty(), generates "SELECT * FROM employee WHERE id IN ()", which is a syntax error.</span>
+<span class="comment">// This is not a security issue for this query, but may be exploitable in more involved scenarios.</span>
+<span class="comment">// Queries involving only scalar values (as opposed to ranges) are not affected by this.</span>
+<span class="comment">// It is your responsibility to check for conditions like ids.empty(), as client-side SQL</span>
+<span class="comment">// formatting does not understand your queries.</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">ids</span><span class="special">;</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">results</span> <span class="identifier">r</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span>
+    <span class="identifier">mysql</span><span class="special">::</span><span class="identifier">with_params</span><span class="special">(</span><span class="string">"SELECT * FROM employee WHERE id IN ({})"</span><span class="special">,</span> <span class="identifier">ids</span><span class="special">),</span>
+    <span class="identifier">r</span>
+<span class="special">);</span>
+</pre>
+<p>若你使用 <a class="link" href="ref/boost__mysql__format_sql_to.html" title="format_sql_to"><code class="literal">format_sql_to</code></a> 分段构建查询, 风险会更高.</p>
+<p>总结:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">客户端侧 SQL 可防御 SQL 注入.</li>
+<li class="listitem">客户端侧 SQL 不能防御逻辑错误. 该风险仅存在于复杂查询中. 我们建议遵循以下建议: <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; ">
+<li class="listitem">尽量避免复杂的查询生成逻辑. 使用单个格式字符串而非 <code class="computeroutput"><span class="identifier">format_sql_to</span></code> , 除非别无选择.</li>
+<li class="listitem">使用范围时, 考虑空范围是否会导致有效的 SQL.</li>
+<li class="listitem">对复杂的查询生成逻辑进行充分测试.</li>
+</ul></div>
+          </li>
+<li class="listitem">客户端侧 SQL 需要知道连接的当前字符集. 这通常开箱即用, 否则会导致 <a class="link" href="text_queries.html#mysql.text_queries.errors" title="常见错误及修复方法">受控错误</a>. 一些推荐做法: <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; ">
+<li class="listitem">若有疑问, 始终使用默认字符集 (<code class="computeroutput"><span class="identifier">utf8mb4</span></code>).</li>
+<li class="listitem">绝不要直接发出 <code class="computeroutput"><span class="identifier">SET</span> <span class="identifier">NAMES</span></code> 或 <code class="computeroutput"><span class="identifier">SET</span>
+                  <span class="identifier">CHARACTER</span> <span class="identifier">SET</span></code> 语句 — 请改用 <a class="link" href="ref/boost__mysql__any_connection/set_character_set.html" title="any_connection::set_character_set"><code class="literal">any_connection::set_character_set</code></a> 或 <a class="link" href="ref/boost__mysql__any_connection/async_set_character_set.html" title="any_connection::async_set_character_set"><code class="literal">async_set_character_set</code></a>.</li>
+<li class="listitem">若你使用 <a class="link" href="ref/boost__mysql__format_sql.html" title="format_sql"><code class="literal">format_sql</code></a> 或 <a class="link" href="ref/boost__mysql__format_sql_to.html" title="format_sql_to"><code class="literal">format_sql_to</code></a> , 绝不要手工构造 <a class="link" href="ref/boost__mysql__format_options.html" title="format_options"><code class="literal">format_options</code></a> 值. 请改用 <a class="link" href="ref/boost__mysql__any_connection/format_opts.html" title="any_connection::format_opts"><code class="literal">any_connection::format_opts</code></a>.</li>
+</ul></div>
+          </li>
+</ul></div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2019-2024 Ruben Perez<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="connection_establishment.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="prepared_statements.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

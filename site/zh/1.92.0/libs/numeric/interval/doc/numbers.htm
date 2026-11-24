@@ -1,0 +1,98 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+"http://www.w3.org/TR/html4/loose.dtd">
+
+<html>
+<head>
+  <meta http-equiv="Content-Language" content="en-us">
+  <meta http-equiv="Content-Type" content="text/html; charset=us-ascii">
+  <link rel="stylesheet" type="text/css" href="../../../../boost.css">
+
+  <title>数值类型要求</title>
+</head>
+
+<body lang="en">
+  <h1>数值类型要求</h1>
+
+  <p>这里所说的 "数 (number)" 是指 <code>interval</code> 类的基础类型. 为了遵守包含性质, 区间库对这个基础类型有许多性质要求. 所有这些性质已在本文档的其他章节详细说明; 这里我们将试着对它们做个总结.</p>
+
+  <h3>序关系</h3>
+
+  <p>数值类型必须提供一种序. 这种序通过运算符 <code>&lt; &lt;= =&gt; &gt; == !=</code> 表达. 它必须是全序 (自反性、反对称性、传递性, 且每一对数都可比较). 因此 <code>complex&lt;T&gt;</code> 不适合作为基础类型; 若你需要区间的包含性质, 应当用 <code>complex&lt; interval&lt;T&gt;
+  &gt;</code> 代替 <code>interval&lt; complex&lt;T&gt; &gt;</code> (但遗憾的是, <code>complex</code> 只提供特化).</p>
+
+  <p>请注意: 无效数不受序关系的约束; 若与这些无效数的比较总是返回 <code>false</code> (<code>!=</code> 除外), 甚至在概念上更好. 若你的检查策略使用 <code>interval_lib::checking_base</code> 且你的基础类型包含无效数, 则需要这一性质: <code>nan!=nan</code> (此处 <code>nan</code> 是一个无效数). 若该性质不成立, 则不应直接使用 <code>checking_base</code>.</p>
+
+  <p>区间算术涉及大量与零的比较. 默认情况下, 这些比较通过把数与 <code>static_cast&lt;T&gt;(0)</code> 比较来完成. 然而, 若数值类型的格式在处理零时允许更快的比较, 可以特化 <code>interval_lib::user</code> 命名空间中的模板函数:</p>
+  <pre>
+namespace user {
+template&lt;class T&gt; inline bool is_zero(T const &amp;v) { return v == static_cast&lt;T&gt;(0); }
+template&lt;class T&gt; inline bool is_neg (T const &amp;v) { return v &lt;  static_cast&lt;T&gt;(0); }
+template&lt;class T&gt; inline bool is_pos (T const &amp;v) { return v &gt;  static_cast&lt;T&gt;(0); }
+}
+</pre>
+
+  <h3>数值极限</h3>
+
+  <p>关于检查策略的另一条说明. 它通常足以处理基础类型可能引发的异常行为; 特别是无穷数和无效数 (得益于四个函数 <code>pos_inf</code>, <code>neg_inf</code>, <code>nan</code> 和 <code>is_nan</code>). 然而, 若你使用 <code>interval_lib::checking_base</code> (默认检查策略正是如此), 你的基础类型应有一个正确特化的 <code>std::numeric_limits&lt;T&gt;</code>. 特别地, 值 <code>has_infinity</code> 和 <code>has_quiet_NaN</code>, 以及函数 <code>infinity</code> 和 <code>quiet_NaN</code> 应相应地定义.</p>
+
+  <p>概括地说, 若你不依赖默认策略且不使用 <code>interval_lib::checking_base</code>, 则基础类型没有必要有数值极限特化.</p>
+
+  <h3>数学性质</h3>
+
+  <p>确保数被正确排序还不够. 基本运算符还应遵守一些依赖于序的性质. 如下所示:</p>
+
+  <ul>
+    <li>0 &le; <i>x</i> &rArr; -<i>x</i> &le; 0</li>
+
+    <li><i>x</i> &le; <i>y</i> &rArr; -<i>y</i> &le; -<i>x</i></li>
+
+    <li><i>x</i> &le; <i>y</i> &rArr; <i>x</i>+<i>z</i> &le;
+    <i>y</i>+<i>z</i></li>
+
+    <li><i>x</i> ≤ <i>y</i> 且 <i>z</i> ≥ 0 ⇒ <i>x</i>×<i>z</i> ≤ <i>y</i>×<i>z</i></li>
+
+    <li>0 &lt; <i>x</i> &le; <i>y</i> &rArr; 0 &lt; 1/<i>y</i> &le;
+    1/<i>x</i></li>
+  </ul>
+
+  <p>前述性质也用于 (并且足以用于) <code>abs</code>, <code>square</code> 和 <code>pow</code>. 对于所有超越函数 (包括 <code>sqrt</code>), 还需要其他性质. 这些函数应当具有与对应实函数相同的性质. 例如, <code>cos</code> 的期望性质为:</p>
+
+  <ul>
+    <li><code>cos</code> 对所有有效数都有定义;</li>
+
+    <li>它是 2π 周期的;</li>
+
+    <li><code>cos</code>(2π-<i>x</i>) 等于 <code>cos</code>(<i>x</i>);</li>
+
+    <li><code>cos</code> 是 [0,2π] 上的减函数.</li>
+  </ul>
+
+  <h3>舍入</h3>
+
+  <p>若你使用的基础类型从不计算出不精确的结果, 可以跳过本段其余内容. 若你对包含性质不感兴趣 (近似结果已足够), 也可以跳过. 若你仍在阅读, 多半是因为你想了解舍入策略应满足的基本性质.</p>
+
+  <p>无论考虑哪种运算或函数, 都应遵守如下性质: <code>f_down(x,y) &lt;= f(x,y) &lt;= f_up(x,y)</code>. 其中 <code>f</code> 表示所计算的无限精确函数, <code>f_down</code> 和 <code>f_up</code> 是返回可能不精确但类型正确 (即基础类型) 的值的函数. 若可能, 它们应尽量返回最近的可表示值, 但这并不总是容易做到.</p>
+
+  <h3>常量</h3>
+
+  <p>为了让三角函数正确工作, 库需要知道 π 常量的值 (还有 π/2 和 2π). 由于这些常量在基础类型中可能不可表示, 库不必知道其精确值: 一个下界和一个上界就足够了. 若用户未提供这些值, 将使用默认值: 它们是整数值 (因此 π 被限制在 3 和 4 之间).</p>
+
+  <h3>运算符与转换</h3>
+
+  <p>如开头所述, 比较运算符应为基础类型定义. 舍入策略定义了区间库使用的大量函数. 因此算术运算符不需要为基础类型定义 (除非某个预定义类有此要求). 然而有一个例外: 一元负号需要定义. 而且, 该运算符只应提供精确结果; 这正是舍入策略不提供取负函数的原因.</p>
+
+  <p>从 <code>int</code> 到基础类型的转换需要定义 (只需要少数几个值可用: -1, 0, 1, 2). 反方向的转换由舍入策略提供 (<code>int_down</code> 和 <code>int_up</code> 成员); 除此之外没有其他严格必需的转换. 不过, 在舍入策略中尽可能多地提供转换 (<code>conv_down</code> 和 <code>conv_up</code> 成员) 可能是有价值的, 以便利用区间转换.</p>
+  <hr>
+
+  <p><a href="http://validator.w3.org/check?uri=referer"><img border="0" src=
+  "../../../../doc/images/valid-html401.png" alt="Valid HTML 4.01 Transitional"
+  height="31" width="88"></a></p>
+
+  <p>最后修订于 <!--webbot bot="Timestamp" s-type="EDITED" s-format="%Y-%m-%d" startspan -->2006-12-24<!--webbot bot="Timestamp" endspan i-checksum="12172" --></p>
+
+  <p><i>版权所有 © 2002 Guillaume Melquiond, Sylvain Pion, Hervé Brönnimann, Polytechnic University<br> 版权所有 © 2004 Guillaume Melquiond</i></p>
+
+  <p><i>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <a href="../../../../LICENSE_1_0.txt">LICENSE_1_0.txt</a> 或复制于 <a href=
+  "http://www.boost.org/LICENSE_1_0.txt">http://www.boost.org/LICENSE_1_0.txt</a>)</i></p>
+</body>
+</html>

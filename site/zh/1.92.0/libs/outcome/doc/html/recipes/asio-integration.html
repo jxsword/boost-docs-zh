@@ -1,0 +1,244 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>ASIO/Networking TS : Boost &lt; 1.70 - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="../css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="../images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="../recipes.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../recipes.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../recipes/asio-integration-1-70.html"><img src="../images/next.png" alt="下一页"></a></div><div id="content">
+  <div class="titlepage"><div><div><h1 style="clear: both">ASIO/Networking TS : Boost &lt; 1.70</h1></div></div></div>
+  <div class="toc"><dl class="toc">
+<dt>
+<dd><dl>
+<dt>
+<dd><dl>
+<dt><a href="#compatibility-note">兼容性说明</a></dt>
+<dt><a href="#use-case">使用场景</a></dt>
+<dt><a href="#implementation">实现</a></dt>
+</dl></dd></dt>
+</dl></dd></dt>
+</dl>
+  </div>
+  
+
+<p><em>感谢 <a href="https://github.com/cstratopoulos">Christos Stratopoulos</a> 贡献这条 Outcome 配方. </em></p>
+
+<hr />
+
+<h3 id="compatibility-note">兼容性说明</h3>
+
+<p>本配方针对 1.70 之前的 Boost 版本, 其协程支持围绕 <code>asio::experimental::this_coro::token</code> 完成标记构建. 要与 1.70 及之后的 Boost 版本集成, 参见 <a href="asio-integration-1-70">该配方</a>.</p>
+
+<hr />
+
+<h3 id="use-case">用例</h3>
+
+<p><a href="https://www.boost.org/doc/libs/develop/doc/html/boost_asio.html">Boost.ASIO</a> 与 <a href="https://think-async.com/Asio/">standalone ASIO</a> 提供 <a href="https://www.boost.org/doc/libs/develop/doc/html/boost_asio/reference/async_result.html"><code>async_result</code></a> 定制点, 用于把 Outcome 等任意第三方库适配进 ASIO.</p>
+
+<p>在 ASIO 中, 历史上你需要把完成处理器实例传给 ASIO 异步 I/O 发起函数. 它们在 I/O 完成时被执行.</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++">  <span class="c1">// Dynamically allocate a buffer to read into. This must be move-only
+</span><span class="c1"></span>  <span class="c1">// so it can be attached to the completion handler, hence the unique_ptr.
+</span><span class="c1"></span>  <span class="k">auto</span> <span class="n">buffer</span> <span class="o">=</span> <span class="n">std</span><span class="o">::</span><span class="n">make_unique</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">byte</span><span class="o">&gt;&gt;</span><span class="p">(</span><span class="mi">1024</span><span class="p">);</span>
+
+  <span class="c1">// Begin an asynchronous socket read, upon completion invoke
+</span><span class="c1"></span>  <span class="c1">// the lambda function specified
+</span><span class="c1"></span>  <span class="n">skt</span><span class="p">.</span><span class="n">async_read_some</span><span class="p">(</span><span class="n">asio</span><span class="o">::</span><span class="n">buffer</span><span class="p">(</span><span class="n">buffer</span><span class="o">-&gt;</span><span class="n">data</span><span class="p">(),</span> <span class="n">buffer</span><span class="o">-&gt;</span><span class="n">size</span><span class="p">()),</span>
+
+                      <span class="c1">// Retain lifetime of the i/o buffer until completion
+</span><span class="c1"></span>                      <span class="p">[</span><span class="n">buffer</span> <span class="o">=</span> <span class="n">std</span><span class="o">::</span><span class="n">move</span><span class="p">(</span><span class="n">buffer</span><span class="p">)](</span><span class="k">const</span> <span class="n">error_code</span> <span class="o">&amp;</span><span class="n">ec</span><span class="p">,</span> <span class="n">size_t</span> <span class="n">bytes</span><span class="p">)</span> <span class="p">{</span>
+                        <span class="c1">// Handle the buffer read
+</span><span class="c1"></span>                        <span class="k">if</span><span class="p">(</span><span class="n">ec</span><span class="p">)</span>
+                        <span class="p">{</span>
+                          <span class="n">std</span><span class="o">::</span><span class="n">cerr</span> <span class="o">&lt;&lt;</span> <span class="s">&#34;Buffer read failed with &#34;</span> <span class="o">&lt;&lt;</span> <span class="n">ec</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+                          <span class="k">return</span><span class="p">;</span>
+                        <span class="p">}</span>
+                        <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="s">&#34;Read &#34;</span> <span class="o">&lt;&lt;</span> <span class="n">bytes</span> <span class="o">&lt;&lt;</span> <span class="s">&#34; bytes into buffer&#34;</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+
+                        <span class="c1">// buffer will be dynamically freed now
+</span><span class="c1"></span>                      <span class="p">});</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/boost-only/asio_integration.cpp#L47" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<p>Coroutines TS 的一大增值之处是: 如果你有一个支持协程的编译器, 就不必写那么多样板代码:</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++">  <span class="c1">// As coroutines suspend the calling thread whilst an asynchronous
+</span><span class="c1"></span>  <span class="c1">// operation executes, we can use stack allocation instead of dynamic
+</span><span class="c1"></span>  <span class="c1">// allocation
+</span><span class="c1"></span>  <span class="kt">char</span> <span class="n">buffer</span><span class="p">[</span><span class="mi">1024</span><span class="p">];</span>
+
+  <span class="c1">// Get an ASIO completion token for the current coroutine (requires
+</span><span class="c1"></span>  <span class="c1">// Coroutines TS)
+</span><span class="c1"></span>  <span class="n">asio</span><span class="o">::</span><span class="n">experimental</span><span class="o">::</span><span class="n">await_token</span> <span class="n">token</span> <span class="o">=</span>  <span class="c1">//
+</span><span class="c1"></span>  <span class="n">co_await</span> <span class="n">asio</span><span class="o">::</span><span class="n">experimental</span><span class="o">::</span><span class="n">this_coro</span><span class="o">::</span><span class="n">token</span><span class="p">();</span>
+
+  <span class="c1">// Asynchronously read data, suspending this coroutine until completion,
+</span><span class="c1"></span>  <span class="c1">// returning the bytes of the data read into the result.
+</span><span class="c1"></span>  <span class="k">try</span>
+  <span class="p">{</span>
+    <span class="n">size_t</span> <span class="n">bytesread</span> <span class="o">=</span>  <span class="c1">//
+</span><span class="c1"></span>    <span class="n">co_await</span> <span class="n">skt</span><span class="p">.</span><span class="n">async_read_some</span><span class="p">(</span><span class="n">asio</span><span class="o">::</span><span class="n">buffer</span><span class="p">(</span><span class="n">buffer</span><span class="p">),</span> <span class="n">token</span><span class="p">);</span>
+    <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="s">&#34;Read &#34;</span> <span class="o">&lt;&lt;</span> <span class="n">bytesread</span> <span class="o">&lt;&lt;</span> <span class="s">&#34; bytes into buffer&#34;</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+  <span class="p">}</span>
+  <span class="k">catch</span><span class="p">(</span><span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">system_error</span> <span class="o">&amp;</span><span class="n">e</span><span class="p">)</span>
+  <span class="p">{</span>
+    <span class="n">std</span><span class="o">::</span><span class="n">cerr</span> <span class="o">&lt;&lt;</span> <span class="s">&#34;Buffer read failed with &#34;</span> <span class="o">&lt;&lt;</span> <span class="n">e</span><span class="p">.</span><span class="n">what</span><span class="p">()</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+  <span class="p">}</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/boost-only/asio_integration.cpp#L73" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<p>默认 ASIO 实现通过其协程标记转换在失败时总是抛出异常. <a href="https://www.boost.org/doc/libs/develop/doc/html/boost_asio/reference/experimental__redirect_error.html"><code>redirect_error</code></a> 标记转换恢复了使用 <code>error_code</code> 接口的选项, 但它存在<a href="../motivation/error_codes.html">同样的缺点</a>——正是这些缺点使纯错误码在同步场景下不具吸引力.</p>
+
+<p>本配方通过让 ASIO 中协程化的 I/O 能够返回 <code>result&lt;T&gt;</code> 来解决该问题:</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++">  <span class="c1">// Asynchronously read data, suspending this coroutine until completion,
+</span><span class="c1"></span>  <span class="c1">// returning the bytes of the data read into the result, or any failure.
+</span><span class="c1"></span>  <span class="n">outcome</span><span class="o">::</span><span class="n">result</span><span class="o">&lt;</span><span class="n">size_t</span><span class="p">,</span> <span class="n">error_code</span><span class="o">&gt;</span> <span class="n">bytesread</span> <span class="o">=</span>  <span class="c1">//
+</span><span class="c1"></span>  <span class="n">co_await</span> <span class="n">skt</span><span class="p">.</span><span class="n">async_read_some</span><span class="p">(</span><span class="n">asio</span><span class="o">::</span><span class="n">buffer</span><span class="p">(</span><span class="n">buffer</span><span class="p">),</span> <span class="n">as_result</span><span class="p">(</span><span class="n">token</span><span class="p">));</span>
+
+  <span class="c1">// Usage is exactly like ordinary Outcome. Note the lack of exception throw!
+</span><span class="c1"></span>  <span class="k">if</span><span class="p">(</span><span class="n">bytesread</span><span class="p">.</span><span class="n">has_error</span><span class="p">())</span>
+  <span class="p">{</span>
+    <span class="n">std</span><span class="o">::</span><span class="n">cerr</span> <span class="o">&lt;&lt;</span> <span class="s">&#34;Buffer read failed with &#34;</span> <span class="o">&lt;&lt;</span> <span class="n">bytesread</span><span class="p">.</span><span class="n">error</span><span class="p">()</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+    <span class="k">return</span><span class="p">;</span>
+  <span class="p">}</span>
+  <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="s">&#34;Read &#34;</span> <span class="o">&lt;&lt;</span> <span class="n">bytesread</span><span class="p">.</span><span class="n">value</span><span class="p">()</span> <span class="o">&lt;&lt;</span> <span class="s">&#34; bytes into buffer&#34;</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/boost-only/asio_integration.cpp#L200" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<hr />
+
+<h3 id="implementation">实现</h3>
+
+<div class="notices warning" style="background: url('../images/warning.png') top left no-repeat padding-box padding-box;">
+<div class="notices heading">警告</div>
+<div class="notices message"><p>下面涉及大量 ASIO 巫术. <strong>此处不会为下述 ASIO 代码提供任何支持</strong>. 如果你对如何在 ASIO 中实现这类东西有疑问或问题, 请到 <a href="https://stackoverflow.com/questions/tagged/boost-asio">Stackoverflow #boost-asio</a> 提出.</p>
+</div>
+</div>
+
+
+<p>现实世界生产级的配方可在本页底部找到. 任何真实世界使用场景都应当使用它.</p>
+
+<p>不过, 值得为现实世界配方的简化版提供一次讲解, 因为其中涉及大量几乎没有文档的 ASIO 巫术. 你不应在自己代码中使用接下来展示的代码, 它过于简化. 但它应当能帮助你理解真实实现如何工作.</p>
+
+<p>首先, 我们需要定义一些辅助类型糖和一个工厂函数, 用于用该类型糖包装任意的第三方完成标记:</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="k">namespace</span> <span class="n">detail</span>
+<span class="p">{</span>
+  <span class="c1">// Type sugar for wrapping an external completion token
+</span><span class="c1"></span>  <span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">CompletionToken</span><span class="o">&gt;</span> <span class="k">struct</span> <span class="n">as_result_t</span>
+  <span class="p">{</span>
+    <span class="n">CompletionToken</span> <span class="n">token</span><span class="p">;</span>
+  <span class="p">};</span>
+<span class="p">}</span>  <span class="c1">// namespace detail
+</span><span class="c1"></span>
+<span class="c1">// Factory function for wrapping a third party completion token with
+</span><span class="c1">// our type sugar
+</span><span class="c1"></span><span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">CompletionToken</span><span class="o">&gt;</span>  <span class="c1">//
+</span><span class="c1"></span><span class="kr">inline</span> <span class="k">auto</span> <span class="n">as_result</span><span class="p">(</span><span class="n">CompletionToken</span> <span class="o">&amp;&amp;</span><span class="n">token</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="k">return</span> <span class="n">detail</span><span class="o">::</span><span class="n">as_result_t</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">decay_t</span><span class="o">&lt;</span><span class="n">CompletionToken</span><span class="o">&gt;&gt;</span><span class="p">{</span><span class="n">std</span><span class="o">::</span><span class="n">forward</span><span class="o">&lt;</span><span class="n">CompletionToken</span><span class="o">&gt;</span><span class="p">(</span><span class="n">token</span><span class="p">)};</span>
+<span class="p">};</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/boost-only/asio_integration.cpp#L99" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<p>接下来, 我们通过特化 <a href="https://www.boost.org/doc/libs/develop/doc/html/boost_asio/reference/async_result.html"><code>async_result</code></a> 告知 ASIO 一个它应当识别的新完成标记:</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="c1">// Tell ASIO about a new kind of completion token, the kind returned
+</span><span class="c1">// from our as_result() factory function. This implementation is
+</span><span class="c1">// for functions with handlers void(error_code, T) only.
+</span><span class="c1"></span><span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">CompletionToken</span><span class="p">,</span> <span class="k">class</span><span class="err"> </span><span class="nc">T</span><span class="o">&gt;</span>                        <span class="c1">//
+</span><span class="c1"></span><span class="k">struct</span> <span class="n">asio</span><span class="o">::</span><span class="n">async_result</span><span class="o">&lt;</span><span class="n">detail</span><span class="o">::</span><span class="n">as_result_t</span><span class="o">&lt;</span><span class="n">CompletionToken</span><span class="o">&gt;</span><span class="p">,</span>  <span class="c1">//
+</span><span class="c1"></span>                          <span class="kt">void</span><span class="p">(</span><span class="n">error_code</span><span class="p">,</span> <span class="n">T</span><span class="p">)</span><span class="o">&gt;</span>                   <span class="c1">//
+</span><span class="c1"></span>
+    <span class="c1">// NOTE we subclass for an async result taking an outcome::result
+</span><span class="c1"></span>    <span class="c1">// as its completion handler. We will mangle the void(error_code, T)
+</span><span class="c1"></span>    <span class="c1">// completion handler into this completion handler below.
+</span><span class="c1"></span>    <span class="o">:</span> <span class="k">public</span> <span class="n">asio</span><span class="o">::</span><span class="n">async_result</span><span class="o">&lt;</span><span class="n">CompletionToken</span><span class="p">,</span> <span class="kt">void</span><span class="p">(</span><span class="n">outcome</span><span class="o">::</span><span class="n">result</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="n">error_code</span><span class="o">&gt;</span><span class="p">)</span><span class="o">&gt;</span>
+<span class="p">{</span>
+  <span class="c1">// The result type we shall return
+</span><span class="c1"></span>  <span class="k">using</span> <span class="n">result_type</span> <span class="o">=</span> <span class="n">outcome</span><span class="o">::</span><span class="n">result</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="n">error_code</span><span class="o">&gt;</span><span class="p">;</span>
+  <span class="k">using</span> <span class="n">_base</span> <span class="o">=</span> <span class="n">asio</span><span class="o">::</span><span class="n">async_result</span><span class="o">&lt;</span><span class="n">CompletionToken</span><span class="p">,</span> <span class="kt">void</span><span class="p">(</span><span class="n">result_type</span><span class="p">)</span><span class="o">&gt;</span><span class="p">;</span>
+  <span class="c1">// The awaitable type to be returned by the initiating function,
+</span><span class="c1"></span>  <span class="c1">// the co_await of which will yield a result_type
+</span><span class="c1"></span>  <span class="k">using</span> <span class="n">return_type</span> <span class="o">=</span> <span class="k">typename</span> <span class="n">_base</span><span class="o">::</span><span class="n">return_type</span><span class="p">;</span>
+
+  <span class="c1">// Get what would be the completion handler for the async_result
+</span><span class="c1"></span>  <span class="c1">// whose completion handler is void(result_type)
+</span><span class="c1"></span>  <span class="k">using</span> <span class="n">result_type_completion_handler_type</span> <span class="o">=</span>  <span class="c1">//
+</span><span class="c1"></span>  <span class="k">typename</span> <span class="n">_base</span><span class="o">::</span><span class="n">completion_handler_type</span><span class="p">;</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/boost-only/asio_integration.cpp#L118" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<p>需要理解的棘手之处是: 我们的 <code>async_result</code> 特化继承自针对所提供完成标记类型的一个 <code>async_result</code>, 并带有一个消费 <code>result&lt;T&gt;</code> 的完成处理器. 因此我们的 <code>async_result</code> 实际上就是底层 <code>async_result</code>, 但我们在其上叠加一个 <code>completion_handler_type</code>——具有 <code>void(error_code, size_t)</code> 签名——由它据此构造一个 <code>result</code>:</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++">  <span class="c1">// Wrap that completion handler with void(error_code, T) converting
+</span><span class="c1"></span>  <span class="c1">// handler
+</span><span class="c1"></span>  <span class="k">struct</span> <span class="n">completion_handler_type</span>
+  <span class="p">{</span>
+    <span class="c1">// Pass through unwrapped completion token
+</span><span class="c1"></span>    <span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">U</span><span class="o">&gt;</span>
+    <span class="n">completion_handler_type</span><span class="p">(</span><span class="o">::</span><span class="n">detail</span><span class="o">::</span><span class="n">as_result_t</span><span class="o">&lt;</span><span class="n">U</span><span class="o">&gt;</span> <span class="o">&amp;&amp;</span><span class="n">ch</span><span class="p">)</span>
+        <span class="o">:</span> <span class="n">_handler</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">forward</span><span class="o">&lt;</span><span class="n">U</span><span class="o">&gt;</span><span class="p">(</span><span class="n">ch</span><span class="p">.</span><span class="n">token</span><span class="p">))</span>
+    <span class="p">{</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Our completion handler spec
+</span><span class="c1"></span>    <span class="kt">void</span> <span class="k">operator</span><span class="p">()(</span><span class="n">error_code</span> <span class="n">ec</span><span class="p">,</span> <span class="n">T</span> <span class="n">v</span><span class="p">)</span>
+    <span class="p">{</span>
+      <span class="c1">// Call the underlying completion handler, whose
+</span><span class="c1"></span>      <span class="c1">// completion function is void(result_type)
+</span><span class="c1"></span>      <span class="k">if</span><span class="p">(</span><span class="n">ec</span><span class="p">)</span>
+      <span class="p">{</span>
+        <span class="c1">// Complete with a failed result
+</span><span class="c1"></span>        <span class="n">_handler</span><span class="p">(</span><span class="n">result_type</span><span class="p">(</span><span class="n">outcome</span><span class="o">::</span><span class="n">failure</span><span class="p">(</span><span class="n">ec</span><span class="p">)));</span>
+        <span class="k">return</span><span class="p">;</span>
+      <span class="p">}</span>
+      <span class="c1">// Complete with a successful result
+</span><span class="c1"></span>      <span class="n">_handler</span><span class="p">(</span><span class="n">result_type</span><span class="p">(</span><span class="n">outcome</span><span class="o">::</span><span class="n">success</span><span class="p">(</span><span class="n">v</span><span class="p">)));</span>
+    <span class="p">}</span>
+
+    <span class="n">result_type_completion_handler_type</span> <span class="n">_handler</span><span class="p">;</span>
+  <span class="p">};</span>
+
+  <span class="c1">// Initialise base with the underlying completion handler
+</span><span class="c1"></span>  <span class="n">async_result</span><span class="p">(</span><span class="n">completion_handler_type</span> <span class="o">&amp;</span><span class="n">h</span><span class="p">)</span>
+      <span class="o">:</span> <span class="n">_base</span><span class="p">(</span><span class="n">h</span><span class="p">.</span><span class="n">_handler</span><span class="p">)</span>
+  <span class="p">{</span>
+  <span class="p">}</span>
+
+  <span class="k">using</span> <span class="n">_base</span><span class="o">::</span><span class="n">get</span><span class="p">;</span>
+<span class="p">};</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/boost-only/asio_integration.cpp#L143" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<p>使用时, 只需用 <code>as_result</code> 包装第三方完成标记, 即可使 ASIO 从 <code>co_await</code> 返回 <code>result</code>, 而非在失败时抛出异常:</p>
+<div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="kt">char</span> <span class="n">buffer</span><span class="p">[</span><span class="mi">1024</span><span class="p">];</span>
+<span class="n">asio</span><span class="o">::</span><span class="n">experimental</span><span class="o">::</span><span class="n">await_token</span> <span class="n">token</span> <span class="o">=</span>
+  <span class="n">co_await</span> <span class="n">asio</span><span class="o">::</span><span class="n">experimental</span><span class="o">::</span><span class="n">this_coro</span><span class="o">::</span><span class="n">token</span><span class="p">();</span>
+
+<span class="n">outcome</span><span class="o">::</span><span class="n">result</span><span class="o">&lt;</span><span class="n">size_t</span><span class="p">,</span> <span class="n">error_code</span><span class="o">&gt;</span> <span class="n">bytesread</span> <span class="o">=</span>
+  <span class="n">co_await</span> <span class="n">skt</span><span class="p">.</span><span class="n">async_read_some</span><span class="p">(</span><span class="n">asio</span><span class="o">::</span><span class="n">buffer</span><span class="p">(</span><span class="n">buffer</span><span class="p">),</span> <span class="n">as_result</span><span class="p">(</span><span class="n">token</span><span class="p">));</span>
+</code></pre></div>
+<p>下方的现实世界生产级实现比上方复杂得多, 上方为便于讲解而刻意简化. 上方内容最终应能帮助你顺利上手下方内容.</p>
+
+<p>再次提醒, Outcome 并不是寻求 ASIO 巫术帮助的合适场所. 请到 <a href="https://stackoverflow.com/questions/tagged/boost-asio">Stackoverflow #boost-asio</a> 提问.</p>
+
+<hr />
+
+<p>下面是由 <a href="https://github.com/cstratopoulos">Christos Stratopoulos</a> 编写并维护的把 Outcome 适配进 ASIO 的现实世界生产级版本. 如果因禁用 Javascript 而无法加载下文, 你可以访问 gist: <a href="https://gist.github.com/cstratopoulos/901b5cdd41d07c6ce6d83798b09ecf9b/da584844f58353915dc2600fba959813f793b456">https://gist.github.com/cstratopoulos/901b5cdd41d07c6ce6d83798b09ecf9b/da584844f58353915dc2600fba959813f793b456</a>.</p>
+
+<script type="application/javascript" src="//gist.github.com/cstratopoulos/901b5cdd41d07c6ce6d83798b09ecf9b/da584844f58353915dc2600fba959813f793b456.js"></script>
+
+
+        </div><p><small>最后修订: August 06, 2019 at 10:42:06 +0100</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../recipes.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../recipes.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../recipes/asio-integration-1-70.html"><img src="../images/next.png" alt="下一页"></a></div></body>
+</html>

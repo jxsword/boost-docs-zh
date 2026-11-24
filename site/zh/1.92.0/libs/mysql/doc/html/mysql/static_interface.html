@@ -1,0 +1,638 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>静态接口</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="up" href="../index.html" title="第 1 章 Boost.MySQL">
+<link rel="prev" href="dynamic_interface.html" title="动态接口">
+<link rel="next" href="multi_resultset.html" title="多结果集: 存储过程与多查询">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="dynamic_interface.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="multi_resultset.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="mysql.static_interface"></a><a class="link" href="static_interface.html" title="静态接口">静态接口</a>
+</h2></div></div></div>
+<p>我们已在 <a class="link" href="tutorial_static_interface.html" title="教程 4: 静态接口"> 教程</a> 中介绍了静态接口的基础知识. 本节将深入展开这一主题.</p>
+<p>要使用静态接口, 必须先定义一个描述行结构的数据结构. 我们有几种选择:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">使用 <a href="../../../../../libs/describe/index.html" target="_top">Boost.Describe</a> 以 <code class="computeroutput"><span class="keyword">struct</span></code> 标注普通的 <code class="computeroutput"><span class="identifier">BOOST_DESCRIBE_STRUCT</span></code> , 从而对其启用反射.</li>
+<li class="listitem">使用 <a href="../../../../../libs/pfr/index.html" target="_top">Boost.Pfr</a> 和 <a class="link" href="ref/boost__mysql__pfr_by_name.html" title="pfr_by_name"><code class="literal">pfr_by_name</code></a> 或 <a class="link" href="ref/boost__mysql__pfr_by_position.html" title="pfr_by_position"><code class="literal">pfr_by_position</code></a> 来使用 PFR 的自动反射能力.</li>
+<li class="listitem">使用 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">tuple</span></code>.</li>
+</ul></div>
+<p>我们将使用以下表:</p>
+<pre class="programlisting">CREATE TABLE employee(
+    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    salary INT UNSIGNED,
+    company_id CHAR(10) NOT NULL,
+    FOREIGN KEY (company_id) REFERENCES company(id)
+);
+</pre>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>为简单起见, 代码片段使用 C++20 协程. 通过使用同步函数、回调或 <code class="computeroutput"><span class="identifier">asio</span><span class="special">::</span><span class="identifier">yield_context</span></code> , 也可以在更低的 C++ 标准下使用这里描述的技术. <a class="link" href="static_interface.html#mysql.static_interface.comparison"> 对比表</a> 展示了此处每种技术所需的 C++ 标准.</p></td></tr>
+</table></div>
+<p>让我们从 Boost.Describe 开始. 若想查询前三个字段, 可以这样定义行类型:</p>
+<pre class="programlisting"><span class="comment">// We can use a plain struct with ints and strings to describe our rows.</span>
+<span class="keyword">struct</span> <span class="identifier">employee_v1</span>
+<span class="special">{</span>
+    <span class="keyword">int</span> <span class="identifier">id</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">first_name</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">last_name</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="comment">// This must be placed at the namespace level. It adds reflection capabilities to our struct</span>
+<span class="identifier">BOOST_DESCRIBE_STRUCT</span><span class="special">(</span><span class="identifier">employee_v1</span><span class="special">,</span> <span class="special">(),</span> <span class="special">(</span><span class="identifier">id</span><span class="special">,</span> <span class="identifier">first_name</span><span class="special">,</span> <span class="identifier">last_name</span><span class="special">))</span>
+</pre>
+<p>然后编写以下代码来查询表:</p>
+<pre class="programlisting"><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">static_results</span><span class="special">&lt;</span><span class="identifier">employee_v1</span><span class="special">&gt;</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="string">"SELECT id, first_name, last_name FROM employee LIMIT 10"</span><span class="special">,</span> <span class="identifier">result</span><span class="special">);</span>
+
+<span class="keyword">for</span> <span class="special">(</span><span class="keyword">const</span> <span class="identifier">employee_v1</span><span class="special">&amp;</span> <span class="identifier">emp</span> <span class="special">:</span> <span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="comment">// Process the employee as required</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"ID: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">id</span> <span class="special">&lt;&lt;</span> <span class="string">": "</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">first_name</span> <span class="special">&lt;&lt;</span> <span class="char">' '</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">last_name</span> <span class="special">&lt;&lt;</span> <span class="string">"\n"</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>注意 <a class="link" href="ref/boost__mysql__static_results/rows.html" title="static_results::rows"><code class="literal">static_results::rows</code></a> 返回一个 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">span</span></code> 对象, 它是 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">span</span></code> 的 C++11 向后移植版本. 该 span 指向 <code class="computeroutput"><span class="identifier">static_results</span></code> 对象拥有的内存. 必须小心, 不要在 <code class="computeroutput"><span class="identifier">static_results</span></code> 离开作用域后使用此视图对象.</p>
+<h4>
+<a name="mysql.static_interface.h0"></a>
+      <span class="phrase"><a name="mysql.static_interface.field_matching"></a></span><a class="link" href="static_interface.html#mysql.static_interface.field_matching"> </a>字段匹配</h4>
+<p>查询中的列按名称与结构体中的字段匹配. 若某个结构体字段无法与任何查询列匹配, 会报错. 查询中多余的列会被忽略.</p>
+<p>若查询包含名称不符合 C++ 标识符规则的列, 可以使用 SQL 别名. 例如, 给定以下结构体:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">statistics</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">company</span><span class="special">;</span>
+    <span class="keyword">double</span> <span class="identifier">average</span><span class="special">;</span>
+    <span class="keyword">double</span> <span class="identifier">max_value</span><span class="special">;</span>
+<span class="special">};</span>
+<span class="identifier">BOOST_DESCRIBE_STRUCT</span><span class="special">(</span><span class="identifier">statistics</span><span class="special">,</span> <span class="special">(),</span> <span class="special">(</span><span class="identifier">company</span><span class="special">,</span> <span class="identifier">average</span><span class="special">,</span> <span class="identifier">max_value</span><span class="special">))</span>
+</pre>
+<p>可以这样编写查询:</p>
+<pre class="programlisting"><span class="comment">// Summing 0e0 is MySQL way to cast a DECIMAL field to DOUBLE</span>
+<span class="keyword">constexpr</span> <span class="keyword">const</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">sql</span> <span class="special">=</span> <span class="identifier">R</span><span class="string">"%(
+    SELECT
+        IFNULL(AVG(salary), 0.0) + 0e0 AS average,
+        IFNULL(MAX(salary), 0.0) + 0e0 AS max_value,
+        company_id AS company
+    FROM employee
+    GROUP BY company_id
+)%"</span><span class="special">;</span>
+
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">static_results</span><span class="special">&lt;</span><span class="identifier">statistics</span><span class="special">&gt;</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="identifier">sql</span><span class="special">,</span> <span class="identifier">result</span><span class="special">);</span>
+</pre>
+<h4>
+<a name="mysql.static_interface.h1"></a>
+      <span class="phrase"><a name="mysql.static_interface.meta_checks"></a></span><a class="link" href="static_interface.html#mysql.static_interface.meta_checks"> </a>元数据检查</h4>
+<p>静态接口会尽快尝试验证提供的行类型与服务器返回的 schema 兼容. 此过程称为 <span class="bold"><strong>元数据检查</strong></span> , 在读取任何数据之前执行. 会执行以下检查:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+          <span class="bold"><strong>类型兼容性</strong></span>: C++ 类型必须能够表示 MySQL 类型所能表示的任何值. 例如, <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">int32_t</span></code> 与 <code class="computeroutput"><span class="identifier">TINYINT</span></code> (1 字节整数) 兼容, 但与 <code class="computeroutput"><span class="identifier">BIGINT</span></code> (8 字节整数) 不兼容. 允许的字段类型完整列表请 <a class="link" href="static_interface.html#mysql.static_interface.readable_field_reference">参见此表</a>.</li>
+<li class="listitem">
+          <span class="bold"><strong>可空性</strong></span>: 若 MySQL 报告某列可以为 <code class="computeroutput"><span class="identifier">NULL</span></code> , 你的类型必须考虑到这一点. 对这些列可以使用 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code> 或 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code>.</li>
+</ul></div>
+<p>让我们在员工查询中加入 <code class="computeroutput"><span class="identifier">salary</span></code> 字段. 我们可能会尝试如下写法:</p>
+<pre class="programlisting"><span class="comment">// If we try to query the employee table with this struct definition,</span>
+<span class="comment">// an error will be issued because salary can be NULL in the database,</span>
+<span class="comment">// but not in the C++ type</span>
+<span class="keyword">struct</span> <span class="identifier">employee_v2</span>
+<span class="special">{</span>
+    <span class="keyword">int</span> <span class="identifier">id</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">first_name</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">last_name</span><span class="special">;</span>
+    <span class="keyword">unsigned</span> <span class="identifier">salary</span><span class="special">;</span>
+<span class="special">};</span>
+<span class="identifier">BOOST_DESCRIBE_STRUCT</span><span class="special">(</span><span class="identifier">employee_v2</span><span class="special">,</span> <span class="special">(),</span> <span class="special">(</span><span class="identifier">id</span><span class="special">,</span> <span class="identifier">first_name</span><span class="special">,</span> <span class="identifier">last_name</span><span class="special">,</span> <span class="identifier">salary</span><span class="special">))</span>
+</pre>
+<p>然而, 由于可空性检查, 这样行不通. 此时正确的定义应为:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">employee_v3</span>
+<span class="special">{</span>
+    <span class="keyword">int</span> <span class="identifier">id</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">first_name</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">last_name</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="keyword">unsigned</span><span class="special">&gt;</span> <span class="identifier">salary</span><span class="special">;</span>  <span class="comment">// salary might be NULL in the database</span>
+<span class="special">};</span>
+<span class="identifier">BOOST_DESCRIBE_STRUCT</span><span class="special">(</span><span class="identifier">employee_v3</span><span class="special">,</span> <span class="special">(),</span> <span class="special">(</span><span class="identifier">id</span><span class="special">,</span> <span class="identifier">first_name</span><span class="special">,</span> <span class="identifier">last_name</span><span class="special">,</span> <span class="identifier">salary</span><span class="special">))</span>
+</pre>
+<h4>
+<a name="mysql.static_interface.h2"></a>
+      <span class="phrase"><a name="mysql.static_interface.using_boost_pfr"></a></span><a class="link" href="static_interface.html#mysql.static_interface.using_boost_pfr"> </a>使用 Boost.PFR</h4>
+<p>若你使用 C++20 或更高版本, 可以使用 Boost.PFR 无需 <code class="computeroutput"><span class="identifier">BOOST_DESCRIBE_STRUCT</span></code> 宏即可反射类型:</p>
+<pre class="programlisting"><span class="comment">// employee_v4 doesn't contain any metadata - we're not using BOOST_DESCRIBE_STRUCT here</span>
+<span class="keyword">struct</span> <span class="identifier">employee_v4</span>
+<span class="special">{</span>
+    <span class="keyword">int</span> <span class="identifier">id</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">first_name</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">last_name</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="keyword">unsigned</span><span class="special">&gt;</span> <span class="identifier">salary</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>在 Boost.MySQL 中可通过使用 <a class="link" href="ref/boost__mysql__pfr_by_name.html" title="pfr_by_name"><code class="literal">pfr_by_name</code></a> 启用 PFR 反射:</p>
+<pre class="programlisting"><span class="comment">// pfr_by_name is a marker type. It tells static_results to use</span>
+<span class="comment">// Boost.PFR for reflection, instead of Boost.Describe.</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">static_results</span><span class="special">&lt;</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pfr_by_name</span><span class="special">&lt;</span><span class="identifier">employee_v4</span><span class="special">&gt;&gt;</span> <span class="identifier">result</span><span class="special">;</span>
+
+<span class="comment">// As with Boost.Describe, query fields are matched to struct</span>
+<span class="comment">// members by name. This means that the fields in the query</span>
+<span class="comment">// may appear in any order.</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="string">"SELECT * FROM employee LIMIT 10"</span><span class="special">,</span> <span class="identifier">result</span><span class="special">);</span>
+
+<span class="comment">// Note that result.rows() is a span of employee_v4 objects,</span>
+<span class="comment">// rather than pfr_by_name&lt;employee_v4&gt; objects. employee_v4</span>
+<span class="comment">// is the underlying row type for pfr_by_name&lt;employee_v4&gt;</span>
+<span class="keyword">for</span> <span class="special">(</span><span class="keyword">const</span> <span class="identifier">employee_v4</span><span class="special">&amp;</span> <span class="identifier">emp</span> <span class="special">:</span> <span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="comment">// Process the employee as required</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"ID: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">id</span> <span class="special">&lt;&lt;</span> <span class="string">": "</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">first_name</span> <span class="special">&lt;&lt;</span> <span class="char">' '</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">last_name</span> <span class="special">&lt;&lt;</span> <span class="string">"\n"</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>注意 <a class="link" href="ref/boost__mysql__pfr_by_name.html" title="pfr_by_name"><code class="literal">pfr_by_name</code></a> 是我们所说的 <span class="emphasis"><em>标记类型</em></span> — 一个空类型, 用于告知像 <a class="link" href="ref/boost__mysql__static_results.html" title="static_results"><code class="literal">static_results</code></a> 这样的类如何反射一个类型. 若不使用标记类型, 则使用 Boost.Describe 获取结构体类型的反射数据.</p>
+<p>
+      <a class="link" href="ref/boost__mysql__pfr_by_position.html" title="pfr_by_position"><code class="literal">pfr_by_position</code></a> 与 <code class="computeroutput"><span class="identifier">pfr_by_name</span></code> 类似, 但按位置而非名称将查询列与结构体字段匹配. 它只需要 C++17 即可工作. 例如:</p>
+<pre class="programlisting"><span class="comment">// pfr_by_position is another marker type.</span>
+<span class="comment">// Fields in employee_v4 must appear in the same order as in the query,</span>
+<span class="comment">// as matching will be done by position.</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">static_results</span><span class="special">&lt;</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pfr_by_position</span><span class="special">&lt;</span><span class="identifier">employee_v4</span><span class="special">&gt;&gt;</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="string">"SELECT id, first_name, last_name, salary FROM employee"</span><span class="special">,</span> <span class="identifier">result</span><span class="special">);</span>
+
+<span class="comment">// The underlying row type is employee_v4</span>
+<span class="keyword">for</span> <span class="special">(</span><span class="keyword">const</span> <span class="identifier">employee_v4</span><span class="special">&amp;</span> <span class="identifier">emp</span> <span class="special">:</span> <span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">())</span>
+<span class="special">{</span>
+    <span class="comment">// Process the employee as required</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"ID: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">id</span> <span class="special">&lt;&lt;</span> <span class="string">": "</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">first_name</span> <span class="special">&lt;&lt;</span> <span class="char">' '</span> <span class="special">&lt;&lt;</span> <span class="identifier">emp</span><span class="special">.</span><span class="identifier">last_name</span> <span class="special">&lt;&lt;</span> <span class="string">"\n"</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>与 Boost.Describe 的对比请参见 <a class="link" href="static_interface.html#mysql.static_interface.comparison"> 此表</a>.</p>
+<h4>
+<a name="mysql.static_interface.h3"></a>
+      <span class="phrase"><a name="mysql.static_interface.using_tuples"></a></span><a class="link" href="static_interface.html#mysql.static_interface.using_tuples"> </a>使用 tuple</h4>
+<p>也可以使用 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">tuple</span></code> 作为行类型. 对简单查询来说这很方便:</p>
+<pre class="programlisting"><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">static_results</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">tuple</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">int64_t</span><span class="special">&gt;&gt;</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">co_await</span> <span class="identifier">conn</span><span class="special">.</span><span class="identifier">async_execute</span><span class="special">(</span><span class="string">"SELECT COUNT(*) FROM employee"</span><span class="special">,</span> <span class="identifier">result</span><span class="special">);</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Number of employees: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span><span class="number">0</span><span class="special">&gt;(</span><span class="identifier">result</span><span class="special">.</span><span class="identifier">rows</span><span class="special">()[</span><span class="number">0</span><span class="special">])</span> <span class="special">&lt;&lt;</span> <span class="string">"\n"</span><span class="special">;</span>
+</pre>
+<p>tuple 中的字段按顺序与查询列匹配. 查询至少必须返回与 tuple 字段数相同的列数. 查询中任何多余的尾随列都会被忽略.</p>
+<h4>
+<a name="mysql.static_interface.h4"></a>
+      <span class="phrase"><a name="mysql.static_interface.multi_resultset_and_multi_functi"></a></span><a class="link" href="static_interface.html#mysql.static_interface.multi_resultset_and_multi_functi">多结果集与多函数操作</a>
+    </h4>
+<p>两者都可以与动态接口一起使用. 更多信息请参见关于 <a class="link" href="multi_resultset.html" title="多结果集: 存储过程与多查询">多结果集操作</a>和 <a class="link" href="multi_function.html" title="多函数操作">多函数操作</a>的章节.</p>
+<h4>
+<a name="mysql.static_interface.h5"></a>
+      <span class="phrase"><a name="mysql.static_interface.reflection_techniques_comparison"></a></span><a class="link" href="static_interface.html#mysql.static_interface.reflection_techniques_comparison"> </a>反射技术对比</h4>
+<p>应该使用 Boost.Describe、Boost.PFR 还是 tuple? 各有优缺点. 此表可帮助你决定:</p>
+<div class="informaltable">
+<a name="mysql.static_interface.comparison"></a><table class="table">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+              <p>技术</p>
+            </th>
+<th>
+              <p>示例代码</p>
+            </th>
+<th>
+              <p>最低 C++ 标准</p>
+            </th>
+<th>
+              <p>备注</p>
+            </th>
+<th>
+              <p>特性测试宏</p>
+            </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+              <p>
+                Boost.Describe
+              </p>
+            </td>
+<td>
+<pre class="table-programlisting"><span class="comment">// Definition should be at namespace scope</span>
+<span class="keyword">struct</span> <span class="identifier">employee</span>
+<span class="special">{</span>
+    <span class="keyword">int</span> <span class="identifier">id</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">first_name</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">last_name</span><span class="special">;</span>
+<span class="special">};</span>
+<span class="identifier">BOOST_DESCRIBE_STRUCT</span><span class="special">(</span><span class="identifier">employee</span><span class="special">,</span> <span class="special">(),</span> <span class="special">(</span><span class="identifier">id</span><span class="special">,</span> <span class="identifier">first_name</span><span class="special">,</span> <span class="identifier">last_name</span><span class="special">))</span>
+</pre>
+              <p>
+                <br>
+              </p>
+<pre class="table-programlisting"><span class="comment">// Usage</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">static_results</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">conn</span><span class="special">.</span><span class="identifier">execute</span><span class="special">(</span><span class="string">"SELECT first_name, last_name, id FROM employee"</span><span class="special">,</span> <span class="identifier">result</span><span class="special">);</span>
+</pre>
+            </td>
+<td>
+              <p>
+                C++14
+              </p>
+            </td>
+<td>
+              <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">需要用 <code class="computeroutput"><span class="identifier">BOOST_DESCRIBE_STRUCT</span></code> 添加元数据.<br>
+                  </li>
+<li class="listitem">按名称匹配字段.<br>
+                  </li>
+<li class="listitem">对行类型没有限制 (例如适用于使用继承的结构体).</li>
+</ul></div>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">BOOST_MYSQL_CXX14</span></code> 已定义</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>按名称使用 Boost.PFR</p>
+            </td>
+<td>
+<pre class="table-programlisting"><span class="comment">// Definition should be at namespace scope</span>
+<span class="keyword">struct</span> <span class="identifier">employee</span>
+<span class="special">{</span>
+    <span class="keyword">int</span> <span class="identifier">id</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">first_name</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">last_name</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+              <p>
+                <br>
+              </p>
+<pre class="table-programlisting"><span class="comment">// Usage</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">static_results</span><span class="special">&lt;</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pfr_by_name</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;&gt;</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">conn</span><span class="special">.</span><span class="identifier">execute</span><span class="special">(</span><span class="string">"SELECT first_name, last_name, id FROM employee"</span><span class="special">,</span> <span class="identifier">result</span><span class="special">);</span>
+</pre>
+            </td>
+<td>
+              <p>
+                C++20
+              </p>
+            </td>
+<td>
+              <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">无需为结构体添加元数据.<br>
+                  </li>
+<li class="listitem">按名称匹配字段.<br>
+                  </li>
+<li class="listitem">适用于满足 <a href="../../../../../doc/html/boost_pfr/limitations_and_configuration.html" target="_top"><code class="computeroutput"><span class="identifier">SimpleAggregate</span></code></a> 的行类型.</li>
+</ul></div>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">BOOST_PFR_CORE_NAME_ENABLED</span></code> 已定义且设置为 <code class="computeroutput"><span class="number">1</span></code>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>按字段位置使用 Boost.PFR</p>
+            </td>
+<td>
+<pre class="table-programlisting"><span class="comment">// Definition should be at namespace scope</span>
+<span class="keyword">struct</span> <span class="identifier">employee</span>
+<span class="special">{</span>
+    <span class="keyword">int</span> <span class="identifier">id</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">first_name</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">last_name</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+              <p>
+                <br>
+              </p>
+<pre class="table-programlisting"><span class="comment">// Usage</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">static_results</span><span class="special">&lt;</span><span class="identifier">mysql</span><span class="special">::</span><span class="identifier">pfr_by_position</span><span class="special">&lt;</span><span class="identifier">employee</span><span class="special">&gt;&gt;</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">conn</span><span class="special">.</span><span class="identifier">execute</span><span class="special">(</span><span class="string">"SELECT id, first_name, last_name FROM employee"</span><span class="special">,</span> <span class="identifier">result</span><span class="special">);</span>
+</pre>
+            </td>
+<td>
+              <p>C++17<br> C++14 带限制</p>
+            </td>
+<td>
+              <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">无需为结构体添加元数据.<br>
+                  </li>
+<li class="listitem">按位置匹配字段.<br>
+                  </li>
+<li class="listitem">在 C++17 模式下, 适用于满足 <a href="../../../../../doc/html/boost_pfr/limitations_and_configuration.html" target="_top"><code class="computeroutput"><span class="identifier">SimpleAggregate</span></code></a> 的行类型.</li>
+<li class="listitem">在 C++14 模式下, 对包含某些字段类型 (如字符串) 的行可能不适用. 关于 C++14 的限制请参见 <a href="../../../../../doc/html/boost_pfr/limitations_and_configuration.html" target="_top">Boost.PFR 文档</a>.</li>
+</ul></div>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">BOOST_PFR_ENABLED</span></code> 已定义且设置为 <code class="computeroutput"><span class="number">1</span></code>. 在 C++17 模式下, <code class="computeroutput"><span class="identifier">BOOST_PFR_USE_CPP17</span></code> 已定义且设置为 <code class="computeroutput"><span class="number">1</span></code>.</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>标准 tuple</p>
+            </td>
+<td>
+<pre class="table-programlisting"><span class="keyword">using</span> <span class="identifier">tuple_t</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">tuple</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;;</span>
+<span class="identifier">mysql</span><span class="special">::</span><span class="identifier">static_results</span><span class="special">&lt;</span><span class="identifier">tuple_t</span><span class="special">&gt;</span> <span class="identifier">result</span><span class="special">;</span>
+<span class="identifier">conn</span><span class="special">.</span><span class="identifier">execute</span><span class="special">(</span><span class="string">"SELECT id, first_name, last_name FROM employee"</span><span class="special">,</span> <span class="identifier">result</span><span class="special">);</span>
+</pre>
+            </td>
+<td>
+              <p>
+                C++14
+              </p>
+            </td>
+<td>
+              <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">只应用于非常简单的查询.<br>
+                  </li>
+<li class="listitem">按位置匹配字段.<br>
+                  </li>
+</ul></div>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">BOOST_MYSQL_CXX14</span></code> 已定义</p>
+            </td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>注意, 使用静态接口至少始终需要 C++14. <code class="computeroutput"><span class="identifier">BOOST_MYSQL_CXX14</span></code> 测试宏仅在支持静态接口时才有定义. 在不支持的编译器上包含静态接口头文件不会导致任何错误, 但像 <a class="link" href="ref/boost__mysql__static_results.html" title="static_results"><code class="literal">static_results</code></a> 和 <a class="link" href="ref/boost__mysql__static_execution_state.html" title="static_execution_state"><code class="literal">static_execution_state</code></a> 这样的类不会被定义. 该测试宏由任一静态接口头文件带入作用域.</p>
+<h4>
+<a name="mysql.static_interface.h6"></a>
+      <span class="phrase"><a name="mysql.static_interface.allowed_field_types"></a></span><a class="link" href="static_interface.html#mysql.static_interface.allowed_field_types"> </a>允许的字段类型</h4>
+<p>Describe 结构体或 tuple 中使用的所有类型都必须在下表之内. 由有效字段类型组成的 Describe 结构体或 tuple 满足 <a class="link" href="ref/boost__mysql__StaticRow.html" title="StaticRow 概念"><code class="literal">StaticRow</code></a> 概念.</p>
+<p>下表是 <code class="computeroutput"><span class="identifier">StaticRow</span></code> 中可用的 C++ 类型及其与 MySQL 数据库类型兼容性的参考:</p>
+<div class="informaltable">
+<a name="mysql.static_interface.readable_field_reference"></a><table class="table">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+              <p>C++ 类型</p>
+            </th>
+<th>
+              <p>兼容于...</p>
+            </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">int8_t</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">TINYINT</span></code></a>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">uint8_t</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">TINYINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">int16_t</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">TINYINT</span></code></a><br> <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">TINYINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">SMALLINT</span></code></a> <br> <a href="https://dev.mysql.com/doc/refman/8.0/en/year.html" target="_top"><code class="computeroutput"><span class="identifier">YEAR</span></code></a>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">uint16_t</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">TINYINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">SMALLINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code> <br> <a href="https://dev.mysql.com/doc/refman/8.0/en/year.html" target="_top"><code class="computeroutput"><span class="identifier">YEAR</span></code></a>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">int32_t</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">TINYINT</span></code></a>, <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">TINYINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">SMALLINT</span></code></a>, <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">SMALLINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br> <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">MEDIUMINT</span></code></a>, <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">MEDIUMINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br> <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">INT</span></code></a><br> <a href="https://dev.mysql.com/doc/refman/8.0/en/year.html" target="_top"><code class="computeroutput"><span class="identifier">YEAR</span></code></a>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">uint32_t</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">TINYINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">SMALLINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br> <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">MEDIUMINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br> <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">INT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/year.html" target="_top"><code class="computeroutput"><span class="identifier">YEAR</span></code></a>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">int64_t</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">TINYINT</span></code></a>, <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">TINYINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">SMALLINT</span></code></a>, <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">SMALLINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br> <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">MEDIUMINT</span></code></a>, <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">MEDIUMINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br> <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">INT</span></code></a>, <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">INT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">BIGINT</span></code></a><br> <a href="https://dev.mysql.com/doc/refman/8.0/en/year.html" target="_top"><code class="computeroutput"><span class="identifier">YEAR</span></code></a>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">uint64_t</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">TINYINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">SMALLINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br> <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">MEDIUMINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br> <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">INT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">BIGINT</span></code></a> <code class="computeroutput"><span class="identifier">UNSIGNED</span></code><br>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/year.html" target="_top"><code class="computeroutput"><span class="identifier">YEAR</span></code></a><br> <a href="https://dev.mysql.com/doc/refman/8.0/en/bit-type.html" target="_top"><code class="computeroutput"><span class="identifier">BIT</span></code></a>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="keyword">bool</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">BOOL</span></code> 或 <code class="computeroutput"><span class="identifier">BOOLEAN</span></code> (<a href="https://dev.mysql.com/doc/refman/8.0/en/integer-types.html" target="_top"><code class="computeroutput"><span class="identifier">TINYINT</span></code></a> 的别名).</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="keyword">float</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/floating-point-types.html" target="_top"><code class="computeroutput"><span class="identifier">FLOAT</span></code></a>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="keyword">double</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/floating-point-types.html" target="_top"><code class="computeroutput"><span class="identifier">FLOAT</span></code></a>, <a href="https://dev.mysql.com/doc/refman/8.0/en/floating-point-types.html" target="_top"><code class="computeroutput"><span class="identifier">DOUBLE</span></code></a><br>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">date</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/datetime.html" target="_top"><code class="computeroutput"><span class="identifier">DATE</span></code></a>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">datetime</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/datetime.html" target="_top"><code class="computeroutput"><span class="identifier">DATETIME</span></code></a>, <a href="https://dev.mysql.com/doc/refman/8.0/en/datetime.html" target="_top"><code class="computeroutput"><span class="identifier">TIMESTAMP</span></code></a>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">time</span></code>
+              </p>
+            </td>
+<td>
+              <p>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/time.html" target="_top"><code class="computeroutput"><span class="identifier">TIME</span></code></a>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">basic_string</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">char_traits</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">&gt;,</span>
+                <span class="identifier">Allocator</span><span class="special">&gt;</span></code><br>
+                <br> 对象必须可默认构造.</p>
+            </td>
+<td>
+              <p>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/char.html" target="_top"><code class="computeroutput"><span class="identifier">CHAR</span></code></a>, <a href="https://dev.mysql.com/doc/refman/8.0/en/char.html" target="_top"><code class="computeroutput"><span class="identifier">VARCHAR</span></code></a>, <a href="https://dev.mysql.com/doc/refman/8.0/en/blob.html" target="_top"><code class="computeroutput"><span class="identifier">TEXT</span></code></a><br> <a href="https://dev.mysql.com/doc/refman/8.0/en/enum.html" target="_top"><code class="computeroutput"><span class="identifier">ENUM</span></code></a>, <a href="https://dev.mysql.com/doc/refman/8.0/en/set.html" target="_top"><code class="computeroutput"><span class="identifier">SET</span></code></a><br> <a href="https://dev.mysql.com/doc/refman/8.0/en/json.html" target="_top"><code class="computeroutput"><span class="identifier">JSON</span></code></a><br> <a href="https://dev.mysql.com/doc/refman/8.0/en/fixed-point-types.html" target="_top"><code class="computeroutput"><span class="identifier">DECIMAL</span></code></a>/<a href="https://dev.mysql.com/doc/refman/8.0/en/fixed-point-types.html" target="_top"><code class="computeroutput"><span class="identifier">NUMERIC</span></code></a>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">basic_vector</span><span class="special">&lt;</span><span class="keyword">unsigned</span> <span class="keyword">char</span><span class="special">,</span> <span class="identifier">Allocator</span><span class="special">&gt;</span></code><br> <br> 对象必须可默认构造.</p>
+            </td>
+<td>
+              <p>
+                <a href="https://dev.mysql.com/doc/refman/8.0/en/binary-varbinary.html" target="_top"><code class="computeroutput"><span class="identifier">BINARY</span></code></a>, <a href="https://dev.mysql.com/doc/refman/8.0/en/binary-varbinary.html" target="_top"><code class="computeroutput"><span class="identifier">VARBINARY</span></code></a>, <a href="https://dev.mysql.com/doc/refman/8.0/en/blob.html" target="_top"><code class="computeroutput"><span class="identifier">BLOB</span></code></a><br> <a href="https://dev.mysql.com/doc/refman/8.0/en/spatial-type-overview.html" target="_top"><code class="computeroutput"><span class="identifier">GEOMETRY</span></code></a>
+              </p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code><br>
+                <br> <code class="computeroutput"><span class="identifier">T</span></code> 必须是此表所列类型中的任意一种.</p>
+            </td>
+<td>
+              <p>与 <code class="computeroutput"><span class="identifier">T</span></code> 兼容的任何类型</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code><br>
+                <br> <code class="computeroutput"><span class="identifier">T</span></code> 必须是此表所列类型中的任意一种.</p>
+            </td>
+<td>
+              <p>与 <code class="computeroutput"><span class="identifier">T</span></code> 兼容的任何类型</p>
+            </td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2019-2024 Ruben Perez<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="dynamic_interface.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="multi_resultset.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

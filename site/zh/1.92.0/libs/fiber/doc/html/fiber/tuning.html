@@ -1,0 +1,363 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>调优</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Fiber">
+<link rel="up" href="../index.html" title="第 1 章 Fiber">
+<link rel="prev" href="performance.html" title="性能">
+<link rel="next" href="custom.html" title="定制">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="performance.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="custom.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="fiber.tuning"></a><a name="tuning"></a><a class="link" href="tuning.html" title="调优">调优</a>
+</h2></div></div></div>
+<h4>
+<a name="fiber.tuning.h0"></a>
+      <span class="phrase"><a name="fiber.tuning.disable_synchronization"></a></span><a class="link" href="tuning.html#fiber.tuning.disable_synchronization">禁用同步</a>
+    </h4>
+<p>若在编译器命令行上定义了 <a class="link" href="overview.html#cross_thread_sync"><code class="computeroutput"><span class="identifier">BOOST_FIBERS_NO_ATOMICS</span></code></a>, 则纤程之间 (在不同线程中) 的同步将被禁用. 若应用程序是单线程的, 和/或纤程不跨线程同步, 这是可以接受的.</p>
+<h4>
+<a name="fiber.tuning.h1"></a>
+      <span class="phrase"><a name="fiber.tuning.memory_allocation"></a></span><a class="link" href="tuning.html#fiber.tuning.memory_allocation">内存分配</a>
+    </h4>
+<p>内存分配算法对多线程环境下的性能影响重大, 对 <span class="bold"><strong>Boost.Fiber</strong></span> 尤其如此, 因为纤程栈是在堆上分配的. glibc 的默认用户级内存分配器 (UMA) 是 ptmalloc2, 但可以将其替换为更适合具体工作负载的其他 UMA. 例如, Google 的 <a href="http://goog-perftools.sourceforge.net/doc/tcmalloc.html" target="_top">TCmalloc</a> 在 <span class="emphasis"><em>skynet</em></span> 微基准测试中就比 glibc 的默认内存分配器表现更好.</p>
+<h4>
+<a name="fiber.tuning.h2"></a>
+      <span class="phrase"><a name="fiber.tuning.scheduling_strategies"></a></span><a class="link" href="tuning.html#fiber.tuning.scheduling_strategies">调度策略</a>
+    </h4>
+<p>一个线程中的纤程由纤程管理器协调. 纤程以协作方式而非抢占方式交换控制权. 根据工作负载, 可采用多种纤程调度策略 <a href="#ftn.fiber.tuning.f0" class="footnote" name="fiber.tuning.f0"><sup class="footnote">[10]</sup></a>, 它们可以基于 <a class="link" href="scheduling.html#class_algorithm"><code class="computeroutput">algorithm</code></a> 实现.</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">工作窃取 (work-stealing): 就绪纤程保存在本地队列中; 当纤程调度器的本地队列中就绪纤程耗尽时, 它随机选择另一个纤程调度器, 并尝试从受害者那里窃取一个就绪纤程 (实现于 <a class="link" href="scheduling.html#class_work_stealing"><code class="computeroutput">work_stealing</code></a> 和 <a class="link" href="numa.html#class_numa_work_stealing"><code class="computeroutput">numa::work_stealing</code></a>)</li>
+<li class="listitem">工作请求 (work-requesting): 就绪纤程保存在本地队列中; 当纤程调度器的本地队列中就绪纤程耗尽时, 它随机选择另一个纤程调度器并请求就绪纤程, 受害者纤程调度器回送一个就绪纤程</li>
+<li class="listitem">工作共享 (work-sharing): 就绪纤程保存在全局队列中, 纤程调度器并发地向全局队列推入和弹出就绪纤程 (实现于 <a class="link" href="scheduling.html#class_shared_work"><code class="computeroutput">shared_work</code></a>)</li>
+<li class="listitem">工作分发 (work-distribution): 变为就绪的纤程会被主动分发到空闲的纤程调度器或负载较低的纤程调度器</li>
+<li class="listitem">工作均衡 (work-balancing): 一个专用的 (辅助) 纤程调度器周期性地收集其他线程中运行的所有纤程调度器的信息, 并在它们之间重新分发就绪纤程</li>
+</ul></div>
+<h4>
+<a name="fiber.tuning.h3"></a>
+      <span class="phrase"><a name="fiber.tuning.ttas_locks"></a></span><a class="link" href="tuning.html#fiber.tuning.ttas_locks">TTAS 锁</a>
+    </h4>
+<p>当不同线程上运行的纤程交互时, Boost.Fiber 在内部使用自旋锁保护临界区. 自旋锁实现为 TTAS (test-test-and-set) 锁, 即自旋锁在调用原子交换之前先测试锁. 这一策略有助于减少获取/释放锁所触发的缓存行失效.</p>
+<h4>
+<a name="fiber.tuning.h4"></a>
+      <span class="phrase"><a name="fiber.tuning.spin_wait_loop"></a></span><a class="link" href="tuning.html#fiber.tuning.spin_wait_loop">自旋等待循环</a>
+    </h4>
+<p>如果一个线程由于其他线程抢先而反复未能获得锁, 则认为该锁处于争用状态. 短暂等待片刻, 让其他线程先完成, 再尝试重新进入临界区. 在忙等锁时, 放松 CPU (通过 pause/yield 助记符) 会给 CPU 一个提示, 表明代码正处于自旋等待循环中.</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">避免昂贵的流水线冲刷 (推测执行的加载和比较指令不会被推入流水线)</li>
+<li class="listitem">另一个硬件线程 (同步多线程) 可以获得时间片</li>
+<li class="listitem">它确实会延迟几个 CPU 周期, 但这是防止饥饿所必需的</li>
+</ul></div>
+<p>显然, 这一策略在单核系统上毫无用处, 因为只有当线程放弃其时间片以让其他线程运行时, 锁才能被释放. 宏 BOOST_FIBERS_SPIN_SINGLE_CORE 会把 CPU 提示 (pause/yield 助记符) 替换为通知操作系统 (通过 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">this_thread_yield</span><span class="special">()</span></code>), 表明线程放弃其时间片, 操作系统随即切换到另一个线程.</p>
+<h4>
+<a name="fiber.tuning.h5"></a>
+      <span class="phrase"><a name="fiber.tuning.exponential_back_off"></a></span><a class="link" href="tuning.html#fiber.tuning.exponential_back_off">指数退避</a>
+    </h4>
+<p>宏 BOOST_FIBERS_RETRY_THRESHOLD 决定 CPU 在让出线程或阻塞于 futex 等待之前, 在自旋等待循环中迭代的次数. 自旋锁会记录线程未能获取锁的次数. 争用越激烈, 线程就应当退避得越久. 为此采用了 <span class="quote">“<span class="quote">二进制指数退避</span>”</span> 算法, 并辅以随机化的争用窗口. BOOST_FIBERS_CONTENTION_WINDOW_THRESHOLD 决定争用窗口的上限 (以 2 为底的指数表示).</p>
+<h4>
+<a name="fiber.tuning.h6"></a>
+      <span class="phrase"><a name="fiber.tuning.speculative_execution__hardware_transactional_memory_"></a></span><a class="link" href="tuning.html#fiber.tuning.speculative_execution__hardware_transactional_memory_">推测执行 (硬件事务内存)</a>
+    </h4>
+<p>Boost.Fiber 使用自旋锁保护临界区, 这些自旋锁可与事务内存配合使用 (参见 <a class="link" href="speculation.html#speculation">推测执行</a> 一节).</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>如果在 b2 命令行指定了特性 <code class="computeroutput"><span class="identifier">htm</span><span class="special">=</span><span class="identifier">tsx</span></code> 并且对编译器应用了 <code class="computeroutput"><span class="identifier">BOOST_USE_TSX</span></code>, 则启用 TXS.</p></td></tr>
+</table></div>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>如果在临界区内修改了浮点状态, TSX 事务将被中止. 因此, 浮点操作——例如在纤程 (上下文) 切换期间对浮点相关寄存器的存储/加载——被禁用.</p></td></tr>
+</table></div>
+<h4>
+<a name="fiber.tuning.h7"></a>
+      <span class="phrase"><a name="fiber.tuning.numa_systems"></a></span><a class="link" href="tuning.html#fiber.tuning.numa_systems">NUMA 系统</a>
+    </h4>
+<p>现代多插槽系统通常被设计为 <a class="link" href="numa.html#numa">NUMA 系统</a>. 诸如 <a class="link" href="numa.html#class_numa_work_stealing"><code class="computeroutput">numa::work_stealing</code></a> 这样的合适纤程调度器可以减少远程内存访问 (延迟).</p>
+<h4>
+<a name="fiber.tuning.h8"></a>
+      <span class="phrase"><a name="fiber.tuning.parameters"></a></span><a class="link" href="tuning.html#fiber.tuning.parameters">参数</a>
+    </h4>
+<div class="table">
+<a name="fiber.tuning.parameters_that_might_be_defined_at_compiler_s_command_line"></a><p class="title"><b>表 1.5. 可能在编译器命令行上定义的参数</b></p>
+<div class="table-contents"><table class="table" summary="Parameters that might be defined at compiler's command line">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+              <p>参数</p>
+            </th>
+<th>
+              <p>默认值</p>
+            </th>
+<th>
+              <p>对 Boost.Fiber 的影响</p>
+            </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+              <p>
+                BOOST_FIBERS_NO_ATOMICS
+              </p>
+            </td>
+<td>
+              <p>
+                -
+              </p>
+            </td>
+<td>
+              <p>无多线程支持, 移除全部原子操作, 运行在不同线程中的纤程之间不同步</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                BOOST_FIBERS_SPINLOCK_STD_MUTEX
+              </p>
+            </td>
+<td>
+              <p>
+                -
+              </p>
+            </td>
+<td>
+              <p>
+                <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">mutex</span></code> 用于自旋锁内部</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                BOOST_FIBERS_SPINLOCK_TTAS
+              </p>
+            </td>
+<td>
+              <p>
+                +
+              </p>
+            </td>
+<td>
+              <p>在共享变量上进行 test-test-and-swap 的自旋锁</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                BOOST_FIBERS_SPINLOCK_TTAS_ADAPTIVE
+              </p>
+            </td>
+<td>
+              <p>
+                -
+              </p>
+            </td>
+<td>
+              <p>在共享变量上进行 test-test-and-swap 的自旋锁, 忙等时进行自适应重试</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                BOOST_FIBERS_SPINLOCK_TTAS_FUTEX
+              </p>
+            </td>
+<td>
+              <p>
+                -
+              </p>
+            </td>
+<td>
+              <p>在共享变量上进行 test-test-and-swap 的自旋锁, 在一定次数的重试后挂起于 futex</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                BOOST_FIBERS_SPINLOCK_TTAS_ADAPTIVE_FUTEX
+              </p>
+            </td>
+<td>
+              <p>
+                -
+              </p>
+            </td>
+<td>
+              <p>在共享变量上进行 test-test-and-swap 的自旋锁, 忙等时进行自适应重试, 并在若干次重试后挂起于 futex</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                BOOST_FIBERS_SPINLOCK_TTAS + BOOST_USE_TSX
+              </p>
+            </td>
+<td>
+              <p>
+                -
+              </p>
+            </td>
+<td>
+              <p>进行 test-test-and-swap 和推测执行的自旋锁 (需要 Intel TSX)</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                BOOST_FIBERS_SPINLOCK_TTAS_ADAPTIVE + BOOST_USE_TSX
+              </p>
+            </td>
+<td>
+              <p>
+                -
+              </p>
+            </td>
+<td>
+              <p>在共享变量上进行 test-test-and-swap 的自旋锁, 忙等时进行自适应重试, 并支持推测执行 (需要 Intel TSX)</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                BOOST_FIBERS_SPINLOCK_TTAS_FUTEX + BOOST_USE_TSX
+              </p>
+            </td>
+<td>
+              <p>
+                -
+              </p>
+            </td>
+<td>
+              <p>在共享变量上进行 test-test-and-swap 的自旋锁, 在一定次数的重试后挂起于 futex, 并支持推测执行 (需要 Intel TSX)</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                BOOST_FIBERS_SPINLOCK_TTAS_ADAPTIVE_FUTEX + BOOST_USE_TSX
+              </p>
+            </td>
+<td>
+              <p>
+                -
+              </p>
+            </td>
+<td>
+              <p>在共享变量上进行 test-test-and-swap 的自旋锁, 忙等时进行自适应重试, 在若干次重试后挂起于 futex, 并支持推测执行 (需要 Intel TSX)</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                BOOST_FIBERS_SPIN_SINGLE_CORE
+              </p>
+            </td>
+<td>
+              <p>
+                -
+              </p>
+            </td>
+<td>
+              <p>在具有多线程的单核机器上, 碰撞后让出线程 (<code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">this_thread</span><span class="special">::</span><span class="identifier">yield</span><span class="special">()</span></code>)</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                BOOST_FIBERS_RETRY_THRESHOLD
+              </p>
+            </td>
+<td>
+              <p>
+                64
+              </p>
+            </td>
+<td>
+              <p>忙自旋期间的最大重试次数, 之后回退到后备机制</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                BOOST_FIBERS_CONTENTION_WINDOW_THRESHOLD
+              </p>
+            </td>
+<td>
+              <p>
+                16
+              </p>
+            </td>
+<td>
+              <p>碰撞窗口的最大尺寸, 以 2 为底的指数表示</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                BOOST_FIBERS_SPIN_BEFORE_SLEEP0
+              </p>
+            </td>
+<td>
+              <p>
+                32
+              </p>
+            </td>
+<td>
+              <p>线程休眠 0 秒之前放松处理器的最大重试次数</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>
+                BOOST_FIBERS_SPIN_BEFORE_YIELD
+              </p>
+            </td>
+<td>
+              <p>
+                64
+              </p>
+            </td>
+<td>
+              <p>线程休眠 0 秒的最大重试次数, 之后让出线程 (<code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">this_thread</span><span class="special">::</span><span class="identifier">yield</span><span class="special">()</span></code>)</p>
+            </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><div class="footnotes">
+<br><hr style="width:100; text-align:left;margin-left: 0">
+<div id="ftn.fiber.tuning.f0" class="footnote"><p><a href="#fiber.tuning.f0" class="para"><sup class="para">[10] </sup></a> 1024cores.net: <a href="http://www.1024cores.net/home/scalable-architecture/task-scheduling-strategies" target="_top">任务调度策略</a>
+      </p></div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2013 Oliver Kowalke<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="performance.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="custom.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

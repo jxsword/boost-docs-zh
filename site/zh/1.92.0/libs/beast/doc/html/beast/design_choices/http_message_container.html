@@ -1,0 +1,261 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>HTTP 报文容器 🎦</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Boost.Beast">
+<link rel="up" href="../design_choices.html" title="设计选择">
+<link rel="prev" href="../design_choices.html" title="设计选择">
+<link rel="next" href="http_comparison_to_other_librari.html" title="与其他库的 HTTP 比较">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../design_choices.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../design_choices.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="http_comparison_to_other_librari.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="beast.design_choices.http_message_container"></a><a class="link" href="http_message_container.html" title="HTTP 报文容器 🎦">HTTP Message Container 🎦</a>HTTP 报文容器 🎦</h3></div></div></div>
+<p>以下视频演讲于 2017 年在 <a href="https://cppcon.org/" target="_top">CppCon</a> 上发表. 该演讲简化地解释了 Beast 中所用 HTTP 报文容器的设计过程. 所用的幻灯片与代码可在 <a href="https://github.com/vinniefalco/CppCon2017" target="_top">GitHub repository</a> 获取.</p>
+<div class="mediaobject"><embed src="https://www.youtube.com/embed/WsUnnYEKPnI?rel=0" align="middle" width="560" height="315"></embed></div>
+<p>在本节中, 我们描述建模 HTTP 报文的问题, 并解释本库如何得出其解决方案, 同时讨论设计选择的优缺点. 创建报文模型的目标是创建一个具有值语义、可移动和/或可复制的容器, 它包含序列化所需的全部信息, 或解析期间捕获的全部信息. 更正式地说, 给定:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">m</span></code> 是一个 HTTP 报文容器的实例</li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">x</span></code> 是描述 <a href="https://tools.ietf.org/html/rfc7230" target="_top">rfc7230</a> 中序列化格式下有效 HTTP 报文的一系列八位组.</li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">S</span><span class="special">(</span><span class="identifier">m</span><span class="special">)</span></code> 是一个序列化函数, 它从报文容器产出一系列八位组.</li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">P</span><span class="special">(</span><span class="identifier">x</span><span class="special">)</span></code> 是一个解析函数, 它从一系列八位组产出报文容器.</li>
+</ul></div>
+<p>以下关系成立:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">S</span><span class="special">(</span><span class="identifier">m</span><span class="special">)</span> <span class="special">==</span> <span class="identifier">x</span></code>
+          </li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">P</span><span class="special">(</span><span class="identifier">S</span><span class="special">(</span><span class="identifier">m</span><span class="special">))</span> <span class="special">==</span> <span class="identifier">m</span></code>
+          </li>
+</ul></div>
+<p>我们还希望报文容器具有允许以下功能的定制点: 分配器感知、表示头字段的用户自定义容器, 以及表示正文的用户自定义类型和算法. 最后, 由于请求与响应在 <span class="emphasis"><em>start-line</em></span> 中的字段不同, 我们希望请求与响应的容器由不同类型表示, 以便函数重载.</p>
+<p>以下是我们声明一些报文容器的第一次尝试:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<tbody><tr>
+<td>
+<pre class="table-programlisting"><span class="comment">/// An HTTP request</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Fields</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Body</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">request</span>
+<span class="special">{</span>
+    <span class="keyword">int</span>         <span class="identifier">version</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">method</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">target</span><span class="special">;</span>
+    <span class="identifier">Fields</span>      <span class="identifier">fields</span><span class="special">;</span>
+
+    <span class="keyword">typename</span> <span class="identifier">Body</span><span class="special">::</span><span class="identifier">value_type</span> <span class="identifier">body</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+              </td>
+<td>
+<pre class="table-programlisting"><span class="comment">/// An HTTP response</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Fields</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Body</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">response</span>
+<span class="special">{</span>
+    <span class="keyword">int</span>         <span class="identifier">version</span><span class="special">;</span>
+    <span class="keyword">int</span>         <span class="identifier">status</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">reason</span><span class="special">;</span>
+    <span class="identifier">Fields</span>      <span class="identifier">fields</span><span class="special">;</span>
+
+    <span class="keyword">typename</span> <span class="identifier">Body</span><span class="special">::</span><span class="identifier">value_type</span> <span class="identifier">body</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+              </td>
+</tr></tbody>
+</table></div>
+<p>这些容器能够表示 <a href="https://tools.ietf.org/html/rfc7230" target="_top">rfc7230</a> 所描述的 HTTP 请求与响应模型中的一切. 请求与响应对象是不同的类型. 用户可以选择表示字段的容器. 用户还可以选择 <span class="bold"><strong>Body</strong></span> 类型, 它是一个概念, 不仅定义 <code class="computeroutput"><span class="identifier">body</span></code> 成员的类型, 还定义在执行序列化和解析时在该成员中传入传出信息所用的算法.</p>
+<p>然而, 问题出现了. 我们如何编写一个既能接受请求又能接受响应对象的函数? 按现有写法, 唯一显而易见的解决方案是把报文做成模板类型. 随后还需要额外的特征类来确保传入的对象具有满足要求的有效类型. 把每个容器做成偏特化即可绕过这些不必要的复杂化:</p>
+<pre class="programlisting"><span class="comment">/// An HTTP message</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">bool</span> <span class="identifier">isRequest</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Fields</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Body</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">message</span><span class="special">;</span>
+
+<span class="comment">/// An HTTP request</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Fields</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Body</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">message</span><span class="special">&lt;</span><span class="keyword">true</span><span class="special">,</span> <span class="identifier">Fields</span><span class="special">,</span> <span class="identifier">Body</span><span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">int</span>         <span class="identifier">version</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">method</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">target</span><span class="special">;</span>
+    <span class="identifier">Fields</span>      <span class="identifier">fields</span><span class="special">;</span>
+
+    <span class="keyword">typename</span> <span class="identifier">Body</span><span class="special">::</span><span class="identifier">value_type</span> <span class="identifier">body</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="comment">/// An HTTP response</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">bool</span> <span class="identifier">isRequest</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Fields</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Body</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">message</span><span class="special">&lt;</span><span class="keyword">false</span><span class="special">,</span> <span class="identifier">Fields</span><span class="special">,</span> <span class="identifier">Body</span><span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">int</span>         <span class="identifier">version</span><span class="special">;</span>
+    <span class="keyword">int</span>         <span class="identifier">status</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">reason</span><span class="special">;</span>
+    <span class="identifier">Fields</span>      <span class="identifier">fields</span><span class="special">;</span>
+
+    <span class="keyword">typename</span> <span class="identifier">Body</span><span class="special">::</span><span class="identifier">value_type</span> <span class="identifier">body</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>现在我们可以声明一个以任意报文为参数的函数:</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">bool</span> <span class="identifier">isRequest</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Fields</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Body</span><span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">f</span><span class="special">(</span><span class="identifier">message</span><span class="special">&lt;</span><span class="identifier">isRequest</span><span class="special">,</span> <span class="identifier">Fields</span><span class="special">,</span> <span class="identifier">Body</span><span class="special">&gt;&amp;</span> <span class="identifier">msg</span><span class="special">);</span>
+</pre>
+<p>该函数可以操作请求与响应共有的字段. 如果它需要访问其他字段, 可以使用带偏特化的重载, 或在 C++17 中使用 <code class="computeroutput"><span class="keyword">constexpr</span></code> 表达式:</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">bool</span> <span class="identifier">isRequest</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Fields</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Body</span><span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">f</span><span class="special">(</span><span class="identifier">message</span><span class="special">&lt;</span><span class="identifier">isRequest</span><span class="special">,</span> <span class="identifier">Fields</span><span class="special">,</span> <span class="identifier">Body</span><span class="special">&gt;&amp;</span> <span class="identifier">msg</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">if</span> <span class="keyword">constexpr</span><span class="special">(</span><span class="identifier">isRequest</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="comment">// call msg.method(), msg.target()</span>
+    <span class="special">}</span>
+    <span class="keyword">else</span>
+    <span class="special">{</span>
+        <span class="comment">// call msg.result(), msg.reason()</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+</pre>
+<p>在非平凡的 HTTP 应用中, 我们常常希望先读取 HTTP 头并检查其内容, 然后再为 <span class="bold"><strong>Body</strong></span> 选择类型. 为此, 需要一种方法建模报文的头部分. 而且我们希望以一种允许接受头作为参数的函数同时接受表示整个报文的类型的方式来实现 (函数只会看到头部分) . 这暗示使用继承, 从报文中拆分出一个新的基类:</p>
+<pre class="programlisting"><span class="comment">/// An HTTP message header</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">bool</span> <span class="identifier">isRequest</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Fields</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">header</span><span class="special">;</span>
+</pre>
+<p>访问字段的代码必须费力地写出 <code class="computeroutput"><span class="identifier">fields</span></code> 成员, 所以我们不仅让 <code class="computeroutput"><span class="identifier">header</span></code> 成为一个基类, 还做一个易用性改进: 为记法方便让头从字段派生. 为了正确支持 <span class="bold"><strong>Fields</strong></span> 的所有构造形式, 需要一组合适的构造函数重载 (未显示) :</p>
+<pre class="programlisting"><span class="comment">/// An HTTP request header</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Fields</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">header</span><span class="special">&lt;</span><span class="keyword">true</span><span class="special">,</span> <span class="identifier">Fields</span><span class="special">&gt;</span> <span class="special">:</span> <span class="identifier">Fields</span>
+<span class="special">{</span>
+    <span class="keyword">int</span>         <span class="identifier">version</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">method</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">target</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="comment">/// An HTTP response header</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Fields</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">header</span><span class="special">&lt;</span><span class="keyword">false</span><span class="special">,</span> <span class="identifier">Fields</span><span class="special">&gt;</span> <span class="special">:</span> <span class="identifier">Fields</span>
+<span class="special">{</span>
+    <span class="keyword">int</span>         <span class="identifier">version</span><span class="special">;</span>
+    <span class="keyword">int</span>         <span class="identifier">status</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">reason</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="comment">/// An HTTP message</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">bool</span> <span class="identifier">isRequest</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Fields</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Body</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">message</span> <span class="special">:</span> <span class="identifier">header</span><span class="special">&lt;</span><span class="identifier">isRequest</span><span class="special">,</span> <span class="identifier">Fields</span><span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">typename</span> <span class="identifier">Body</span><span class="special">::</span><span class="identifier">value_type</span> <span class="identifier">body</span><span class="special">;</span>
+
+    <span class="comment">/// Construct from a `header`</span>
+    <span class="identifier">message</span><span class="special">(</span><span class="identifier">header</span><span class="special">&lt;</span><span class="identifier">isRequest</span><span class="special">,</span> <span class="identifier">Fields</span><span class="special">&gt;&amp;&amp;</span> <span class="identifier">h</span><span class="special">);</span>
+<span class="special">};</span>
+</pre>
+<p>注意 <code class="computeroutput"><span class="identifier">message</span></code> 类现在有一个构造函数, 允许从类似类型的 <code class="computeroutput"><span class="identifier">header</span></code> 构造报文. 这处理了用户已拥有头并想为 <span class="bold"><strong>Body</strong></span> 作出类型承诺的情况. 可以声明一个接受任意头的函数:</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">bool</span> <span class="identifier">isRequest</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Fields</span><span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">f</span><span class="special">(</span><span class="identifier">header</span><span class="special">&lt;</span><span class="identifier">isRequest</span><span class="special">,</span> <span class="identifier">Fields</span><span class="special">&gt;&amp;</span> <span class="identifier">msg</span><span class="special">);</span>
+</pre>
+<p>到目前为止, 我们还没有认真考虑 <code class="computeroutput"><span class="identifier">message</span></code> 类的构造函数. 但要实现全部目标, 我们需要确保有足够的构造函数重载, 不仅为实例化类型支持时的特殊复制与移动成员提供支持, 还允许字段容器与正文容器用任意可变参数列表构造. 这使容器能够完整支持分配器.</p>
+<p>库中使用的方案是, 在构造时把报文当作 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span></code> 对待, 只是把 <code class="computeroutput"><span class="identifier">first</span></code> 与 <code class="computeroutput"><span class="identifier">second</span></code> 换成 <code class="computeroutput"><span class="identifier">Fields</span></code> 基类和 <code class="computeroutput"><span class="identifier">message</span><span class="special">::</span><span class="identifier">body</span></code> 成员. 这意味着这些字段的单参数构造函数应当像 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span></code> 一样可访问, 并且应当提供与 pair 对 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">piecewise_construct</span></code> 的使用完全相同的机制. 这些构造函数太复杂, 此处不再重复, 有兴趣的读者可以查看对应头文件中的声明.</p>
+<p>我们的报文容器现在已有重大进展, 但仍有一个绊脚石. 无法控制 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span></code> 成员的分配器. 我们可以把分配器加入头与报文类的模板参数列表, 将其用于那些字符串. 这并不令人满意, 因为支持该方案所需的构造函数变体会出现组合爆炸. 这也意味着请求报文可能拥有 <span class="bold"><strong> 种</strong></span>不同的分配器: 两个字段与正文各一, 方法与目标字符串各一. 需要更好的方案.</p>
+<p>为绕过这一点, 我们做了一处接口修改, 然后给 <span class="bold"><strong>Fields</strong></span> 类型增加一项要求. 首先, 接口变更:</p>
+<pre class="programlisting"><span class="comment">/// An HTTP request header</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Fields</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">header</span><span class="special">&lt;</span><span class="keyword">true</span><span class="special">,</span> <span class="identifier">Fields</span><span class="special">&gt;</span> <span class="special">:</span> <span class="identifier">Fields</span>
+<span class="special">{</span>
+    <span class="keyword">int</span>         <span class="identifier">version</span><span class="special">;</span>
+
+    <span class="identifier">verb</span>        <span class="identifier">method</span><span class="special">()</span> <span class="keyword">const</span><span class="special">;</span>
+    <span class="identifier">string_view</span> <span class="identifier">method_string</span><span class="special">()</span> <span class="keyword">const</span><span class="special">;</span>
+    <span class="keyword">void</span>        <span class="identifier">method</span><span class="special">(</span><span class="identifier">verb</span><span class="special">);</span>
+    <span class="keyword">void</span>        <span class="identifier">method</span><span class="special">(</span><span class="identifier">string_view</span><span class="special">);</span>
+
+    <span class="identifier">string_view</span> <span class="identifier">target</span><span class="special">();</span> <span class="keyword">const</span><span class="special">;</span>
+    <span class="keyword">void</span>        <span class="identifier">target</span><span class="special">(</span><span class="identifier">string_view</span><span class="special">);</span>
+
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="identifier">verb</span> <span class="identifier">method_</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="comment">/// An HTTP response header</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Fields</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">header</span><span class="special">&lt;</span><span class="keyword">false</span><span class="special">,</span> <span class="identifier">Fields</span><span class="special">&gt;</span> <span class="special">:</span> <span class="identifier">Fields</span>
+<span class="special">{</span>
+    <span class="keyword">int</span>         <span class="identifier">version</span><span class="special">;</span>
+    <span class="keyword">int</span>         <span class="identifier">result</span><span class="special">;</span>
+    <span class="identifier">string_view</span> <span class="identifier">reason</span><span class="special">()</span> <span class="keyword">const</span><span class="special">;</span>
+    <span class="keyword">void</span>        <span class="identifier">reason</span><span class="special">(</span><span class="identifier">string_view</span><span class="special">);</span>
+<span class="special">};</span>
+</pre>
+<p>起始行数据成员被传统的访问器取代, 它们使用对字符串缓冲区的非所有权引用. 当方法可以从已知动词字符串集合中识别时, 方法用一个简单的整数存储, 而不是整个字符串.</p>
+<p>现在我们给字段类型增加一项要求: 对应字符串的管理被委托给 <span class="bold"><strong>Fields</strong></span> 容器, 它已经可以分配器感知, 并通过为 <code class="computeroutput"><span class="identifier">message</span></code> 提供的构造函数重载用必要的分配器参数构造. 委托实现如下 (只显示响应头特化) :</p>
+<pre class="programlisting"><span class="comment">/// An HTTP response header</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Fields</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">header</span><span class="special">&lt;</span><span class="keyword">false</span><span class="special">,</span> <span class="identifier">Fields</span><span class="special">&gt;</span> <span class="special">:</span> <span class="identifier">Fields</span>
+<span class="special">{</span>
+    <span class="keyword">int</span>     <span class="identifier">version</span><span class="special">;</span>
+    <span class="keyword">int</span>     <span class="identifier">status</span><span class="special">;</span>
+
+    <span class="identifier">string_view</span>
+    <span class="identifier">reason</span><span class="special">()</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">return</span> <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">reason_impl</span><span class="special">();</span> <span class="comment">// protected member of Fields</span>
+    <span class="special">}</span>
+
+    <span class="keyword">void</span>
+    <span class="identifier">reason</span><span class="special">(</span><span class="identifier">string_view</span> <span class="identifier">s</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">reason_impl</span><span class="special">(</span><span class="identifier">s</span><span class="special">);</span>       <span class="comment">// protected member of Fields</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>既然我们已经实现了初始目标并且更多, 还有几处易用性改进要做. 用户为 <code class="computeroutput"><span class="identifier">Body</span></code> 选择不同类型的频率远高于为 <code class="computeroutput"><span class="identifier">Fields</span></code> 选择. 因此, 我们交换这些类型的顺序并提供默认值. 然后, 我们为请求与响应提供类型别名, 以减轻使用 <code class="computeroutput"><span class="keyword">bool</span></code> 选择特化的影响:</p>
+<pre class="programlisting"><span class="comment">/// An HTTP header</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">bool</span> <span class="identifier">isRequest</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Body</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Fields</span> <span class="special">=</span> <span class="identifier">fields</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">header</span><span class="special">;</span>
+
+<span class="comment">/// An HTTP message</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">bool</span> <span class="identifier">isRequest</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Body</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Fields</span> <span class="special">=</span> <span class="identifier">fields</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">message</span><span class="special">;</span>
+
+<span class="comment">/// An HTTP request</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Body</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Fields</span> <span class="special">=</span> <span class="identifier">fields</span><span class="special">&gt;</span>
+<span class="keyword">using</span> <span class="identifier">request</span> <span class="special">=</span> <span class="identifier">message</span><span class="special">&lt;</span><span class="keyword">true</span><span class="special">,</span> <span class="identifier">Body</span><span class="special">,</span> <span class="identifier">Fields</span><span class="special">&gt;;</span>
+
+<span class="comment">/// An HTTP response</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Body</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Fields</span> <span class="special">=</span> <span class="identifier">fields</span><span class="special">&gt;</span>
+<span class="keyword">using</span> <span class="identifier">response</span> <span class="special">=</span> <span class="identifier">message</span><span class="special">&lt;</span><span class="keyword">false</span><span class="special">,</span> <span class="identifier">Body</span><span class="special">,</span> <span class="identifier">Fields</span><span class="special">&gt;;</span>
+</pre>
+<p>这为常见情形提供了简洁的指定方式, 同时允许对边角情形的最大定制:</p>
+<pre class="programlisting"><span class="identifier">request</span><span class="special">&lt;</span><span class="identifier">string_body</span><span class="special">&gt;</span> <span class="identifier">req</span><span class="special">;</span>
+
+<span class="identifier">response</span><span class="special">&lt;</span><span class="identifier">file_body</span><span class="special">&gt;</span> <span class="identifier">res</span><span class="special">;</span>
+</pre>
+<p>该容器还能表示完整的 HTTP/2 报文. 这并非因为它被显式设计为如此, 而是因为 IETF 希望保持与 HTTP/1 的报文兼容性. 除 Connection 等版本特定字段外, HTTP/1 与 HTTP/2 报文的内容相同, 尽管它们的序列化表示差别很大. 本库提出的报文模型已为 HTTP/2 做好准备.</p>
+<p>总之, 这种报文容器的表示经过深思熟虑, 提供了全面的灵活性, 避免了定义额外特征类的必要. 用户编写接受头或报文为参数的函数声明时, 可以以多种方式轻松实现不同结果, 而不必到处强加繁琐的 SFINAE 声明.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2016-2019 Vinnie Falco<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../design_choices.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../design_choices.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="http_comparison_to_other_librari.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

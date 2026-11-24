@@ -1,0 +1,157 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>附录: 实现</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.LocalFunction 1.0.0">
+<link rel="up" href="../index.html" title="第 1 章 Boost.LocalFunction 1.0.0">
+<link rel="prev" href="no_variadic_macros.html" title="附录: 无变参宏">
+<link rel="next" href="../reference.html" title="参考">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="no_variadic_macros.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="../reference.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="boost_localfunction.implementation"></a><a class="link" href="implementation.html" title="附录: 实现">附录: 实现</a>
+</h2></div></div></div>
+<p>本节概述实现本库所用的关键编程技术.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>此处列出的代码可作为好奇的读者和库维护者理解库源码的参考. 但绝不保证库实现使用的正是此处列出的代码.</p></td></tr>
+</table></div>
+<h4>
+<a name="boost_localfunction.implementation.h0"></a>
+      <span class="phrase"><a name="boost_localfunction.implementation.local_classes_as_template_parameters"></a></span><a class="link" href="implementation.html#boost_localfunction.implementation.local_classes_as_template_parameters">局部类作为模板参数</a>
+    </h4>
+<p>本库使用局部类实现局部函数对象. 但是, 在 <a href="http://www.open-std.org/JTC1/SC22/WG21/docs/standards" target="_top">C++03</a> 中, 局部类 (以及它们实现的局部函数对象) 不能作为模板参数传递 (例如传给 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">for_each</span></code> 算法), 这在 <a href="http://www.open-std.org/JTC1/SC22/WG21/" target="_top">C++11</a>、MSVC 及其他一些编译器中是可能的 (见 <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2008/n2657.htm" target="_top">[N2657]</a> 和 <a href="http://www.boost.org/libs/chrono" target="_top">Boost.Config</a> 的 <code class="computeroutput"><span class="identifier">BOOST_NO_CXX11_LOCAL_CLASS_TEMPLATE_PARAMETERS</span></code>). 为绕过此限制, 本库研究了以下两个"技巧" (两种技巧都可扩展以支持函数默认参数):</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem"> <span class="emphasis"><em>转型仿函数技巧</em></span> 使用一个非局部仿函数, 它通过函数指针调用局部类的静态成员函数. 该静态成员函数在把对象从 <code class="computeroutput"><span class="keyword">void</span><span class="special">*</span></code> 指针进行类型转换后, 再调用正确的局部函数体 (局部类总是可以通过 <code class="computeroutput"><span class="keyword">static_cast</span></code> 或类似方式进行类型转换).</li>
+<li class="listitem"> <span class="emphasis"><em>虚仿函数技巧</em></span> 让局部仿函数类继承自一个非局部基类. 随后通过动态绑定调用被正确覆盖的虚 <code class="computeroutput"><span class="keyword">operator</span><span class="special">()</span></code> 实现.</li>
+</ol></div>
+<p>例如 (另见 <a href="../../../example/impl_tparam_tricks.cpp" target="_top"><code class="literal">impl_tparam_tricks.cpp</code></a>):</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">detail</span><span class="special">/</span><span class="identifier">lightweight_test</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">vector</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">algorithm</span><span class="special">&gt;</span>
+
+<span class="comment">// Casting functor trick.</span>
+<span class="keyword">struct</span> <span class="identifier">casting_func</span> <span class="special">{</span>
+    <span class="keyword">explicit</span> <span class="identifier">casting_func</span><span class="special">(</span><span class="keyword">void</span><span class="special">*</span> <span class="identifier">obj</span><span class="special">,</span> <span class="keyword">void</span> <span class="special">(*</span><span class="identifier">call</span><span class="special">)(</span><span class="keyword">void</span><span class="special">*,</span> <span class="keyword">const</span> <span class="keyword">int</span><span class="special">&amp;))</span>
+            <span class="special">:</span> <span class="identifier">obj_</span><span class="special">(</span><span class="identifier">obj</span><span class="special">),</span> <span class="identifier">call_</span><span class="special">(</span><span class="identifier">call</span><span class="special">)</span> <span class="special">{}</span>
+    <span class="comment">// Unfortunately, function pointer call is not inlined.</span>
+    <span class="keyword">inline</span> <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span><span class="keyword">const</span> <span class="keyword">int</span><span class="special">&amp;</span> <span class="identifier">num</span><span class="special">)</span> <span class="special">{</span> <span class="identifier">call_</span><span class="special">(</span><span class="identifier">obj_</span><span class="special">,</span> <span class="identifier">num</span><span class="special">);</span> <span class="special">}</span>
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="keyword">void</span><span class="special">*</span> <span class="identifier">obj_</span><span class="special">;</span>
+    <span class="keyword">void</span> <span class="special">(*</span><span class="identifier">call_</span><span class="special">)(</span><span class="keyword">void</span><span class="special">*,</span> <span class="keyword">const</span> <span class="keyword">int</span><span class="special">&amp;);</span>
+<span class="special">};</span>
+
+<span class="comment">// Virtual functor trick.</span>
+<span class="keyword">struct</span> <span class="identifier">virtual_func</span> <span class="special">{</span>
+    <span class="keyword">struct</span> <span class="identifier">interface</span> <span class="special">{</span>
+        <span class="comment">// Unfortunately, virtual function call is not inlined.</span>
+        <span class="keyword">inline</span> <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span><span class="keyword">const</span> <span class="keyword">int</span><span class="special">&amp;)</span> <span class="special">{}</span>
+    <span class="special">};</span>
+    <span class="keyword">explicit</span> <span class="identifier">virtual_func</span><span class="special">(</span><span class="identifier">interface</span><span class="special">&amp;</span> <span class="identifier">func</span><span class="special">):</span> <span class="identifier">func_</span><span class="special">(&amp;</span><span class="identifier">func</span><span class="special">)</span> <span class="special">{}</span>
+    <span class="keyword">inline</span> <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span><span class="keyword">const</span> <span class="keyword">int</span><span class="special">&amp;</span> <span class="identifier">num</span><span class="special">)</span> <span class="special">{</span> <span class="special">(*</span><span class="identifier">func_</span><span class="special">)(</span><span class="identifier">num</span><span class="special">);</span> <span class="special">}</span>
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="identifier">interface</span><span class="special">*</span> <span class="identifier">func_</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">void</span><span class="special">)</span> <span class="special">{</span>
+    <span class="keyword">int</span> <span class="identifier">sum</span> <span class="special">=</span> <span class="number">0</span><span class="special">,</span> <span class="identifier">factor</span> <span class="special">=</span> <span class="number">10</span><span class="special">;</span>
+
+    <span class="comment">// Local class for local function.</span>
+    <span class="keyword">struct</span> <span class="identifier">local_add</span> <span class="special">:</span> <span class="identifier">virtual_func</span><span class="special">::</span><span class="identifier">interface</span> <span class="special">{</span>
+        <span class="keyword">explicit</span> <span class="identifier">local_add</span><span class="special">(</span><span class="keyword">int</span><span class="special">&amp;</span> <span class="identifier">_sum</span><span class="special">,</span> <span class="keyword">const</span> <span class="keyword">int</span><span class="special">&amp;</span> <span class="identifier">_factor</span><span class="special">)</span>
+                <span class="special">:</span> <span class="identifier">sum_</span><span class="special">(</span><span class="identifier">_sum</span><span class="special">),</span> <span class="identifier">factor_</span><span class="special">(</span><span class="identifier">_factor</span><span class="special">)</span> <span class="special">{}</span>
+        <span class="keyword">inline</span> <span class="keyword">void</span> <span class="keyword">operator</span><span class="special">()(</span><span class="keyword">const</span> <span class="keyword">int</span><span class="special">&amp;</span> <span class="identifier">num</span><span class="special">)</span> <span class="special">{</span>
+            <span class="identifier">body</span><span class="special">(</span><span class="identifier">sum_</span><span class="special">,</span> <span class="identifier">factor_</span><span class="special">,</span> <span class="identifier">num</span><span class="special">);</span>
+        <span class="special">}</span>
+        <span class="keyword">inline</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="identifier">call</span><span class="special">(</span><span class="keyword">void</span><span class="special">*</span> <span class="identifier">obj</span><span class="special">,</span> <span class="keyword">const</span> <span class="keyword">int</span><span class="special">&amp;</span> <span class="identifier">num</span><span class="special">)</span> <span class="special">{</span>
+            <span class="identifier">local_add</span><span class="special">*</span> <span class="identifier">self</span> <span class="special">=</span> <span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">local_add</span><span class="special">*&gt;(</span><span class="identifier">obj</span><span class="special">);</span>
+            <span class="identifier">self</span><span class="special">-&gt;</span><span class="identifier">body</span><span class="special">(</span><span class="identifier">self</span><span class="special">-&gt;</span><span class="identifier">sum_</span><span class="special">,</span> <span class="identifier">self</span><span class="special">-&gt;</span><span class="identifier">factor_</span><span class="special">,</span> <span class="identifier">num</span><span class="special">);</span>
+        <span class="special">}</span>
+    <span class="keyword">private</span><span class="special">:</span>
+        <span class="keyword">int</span><span class="special">&amp;</span> <span class="identifier">sum_</span><span class="special">;</span>
+        <span class="keyword">const</span> <span class="keyword">int</span><span class="special">&amp;</span> <span class="identifier">factor_</span><span class="special">;</span>
+        <span class="keyword">inline</span> <span class="keyword">void</span> <span class="identifier">body</span><span class="special">(</span><span class="keyword">int</span><span class="special">&amp;</span> <span class="identifier">sum</span><span class="special">,</span> <span class="keyword">const</span> <span class="keyword">int</span><span class="special">&amp;</span> <span class="identifier">factor</span><span class="special">,</span> <span class="keyword">const</span> <span class="keyword">int</span><span class="special">&amp;</span> <span class="identifier">num</span><span class="special">)</span> <span class="special">{</span>
+            <span class="identifier">sum</span> <span class="special">+=</span> <span class="identifier">factor</span> <span class="special">*</span> <span class="identifier">num</span><span class="special">;</span>
+        <span class="special">}</span>
+    <span class="special">}</span> <span class="identifier">add_local</span><span class="special">(</span><span class="identifier">sum</span><span class="special">,</span> <span class="identifier">factor</span><span class="special">);</span>
+    <span class="identifier">casting_func</span> <span class="identifier">add_casting</span><span class="special">(&amp;</span><span class="identifier">add_local</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">local_add</span><span class="special">::</span><span class="identifier">call</span><span class="special">);</span>
+    <span class="identifier">virtual_func</span> <span class="identifier">add_virtual</span><span class="special">(</span><span class="identifier">add_local</span><span class="special">);</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">v</span><span class="special">(</span><span class="number">10</span><span class="special">);</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">fill</span><span class="special">(</span><span class="identifier">v</span><span class="special">.</span><span class="identifier">begin</span><span class="special">(),</span> <span class="identifier">v</span><span class="special">.</span><span class="identifier">end</span><span class="special">(),</span> <span class="number">1</span><span class="special">);</span>
+
+    <span class="comment">// std::for_each(v.begin(), v.end(), add_local); // Error but OK on C++11.</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">for_each</span><span class="special">(</span><span class="identifier">v</span><span class="special">.</span><span class="identifier">begin</span><span class="special">(),</span> <span class="identifier">v</span><span class="special">.</span><span class="identifier">end</span><span class="special">(),</span> <span class="identifier">add_casting</span><span class="special">);</span> <span class="comment">// OK.</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">for_each</span><span class="special">(</span><span class="identifier">v</span><span class="special">.</span><span class="identifier">begin</span><span class="special">(),</span> <span class="identifier">v</span><span class="special">.</span><span class="identifier">end</span><span class="special">(),</span> <span class="identifier">add_virtual</span><span class="special">);</span> <span class="comment">// OK.</span>
+
+    <span class="identifier">BOOST_TEST</span><span class="special">(</span><span class="identifier">sum</span> <span class="special">==</span> <span class="number">200</span><span class="special">);</span>
+    <span class="keyword">return</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">report_errors</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<p>
+    </p>
+<p>转型仿函数技巧的运行期性能略优于虚仿函数技巧, 因此本库当前实现采用转型仿函数技巧 (可能是因为除了间接函数调用之外, 虚仿函数技巧还需要访问<a href="http://en.wikipedia.org/wiki/Virtual_method_table" target="_top">虚函数表</a>). 但是, 观察表明两种技巧都不能让编译器优化内联局部函数调用 (因为它们分别依赖一次经由函数指针或虚函数的间接函数调用). 因此, 在接受局部类作为模板参数的编译器上 (MSVC、<a href="http://www.open-std.org/JTC1/SC22/WG21/" target="_top">C++11</a> 等, 见 <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2008/n2657.htm" target="_top">[N2657]</a> 和 <a href="http://www.boost.org/libs/chrono" target="_top">Boost.Config</a> 的 <code class="computeroutput"><span class="identifier">BOOST_NO_CXX11_LOCAL_CLASS_TEMPLATE_PARAMETERS</span></code>), 本库会自动生成直接把局部类类型作为模板参数传递的代码, 而不使用这两种技巧中的任何一种, 以充分利用编译器内联局部函数调用的优化.</p>
+<h4>
+<a name="boost_localfunction.implementation.h1"></a>
+      <span class="phrase"><a name="boost_localfunction.implementation.parsing_macros"></a></span><a class="link" href="implementation.html#boost_localfunction.implementation.parsing_macros">解析宏</a>
+    </h4>
+<p>本库的宏可以解析指定的参数列表, 并检测是否有被绑定变量名匹配记号 <code class="computeroutput"><span class="identifier">this_</span></code> (以生成绑定作用域内对象的特殊代码), 或者变量是否按 <code class="computeroutput"><span class="keyword">const</span></code> 绑定 (以生成按常量绑定的特殊代码) 等. 参数记号使用预处理器元编程检查, 具体使用 <code class="literal">boost/local_function/detail/preprocessor/keyword/</code> 目录中各文件定义的宏. <a href="#ftn.boost_localfunction.implementation.f0" class="footnote" name="boost_localfunction.implementation.f0"><sup class="footnote">[31]</sup></a>
+    </p>
+<p>例如, 以下代码定义了一个宏, 使预处理器能够检测一组以空格分隔的记号是否以 <code class="computeroutput"><span class="identifier">this_</span></code> 结尾 (另见 <a href="../../../example/impl_pp_keyword.cpp" target="_top"><code class="literal">impl_pp_keyword.cpp</code></a>):</p>
+<p>
+</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">local_function</span><span class="special">/</span><span class="identifier">detail</span><span class="special">/</span><span class="identifier">preprocessor</span><span class="special">/</span><span class="identifier">keyword</span><span class="special">/</span><span class="identifier">thisunderscore</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">local_function</span><span class="special">/</span><span class="identifier">detail</span><span class="special">/</span><span class="identifier">preprocessor</span><span class="special">/</span><span class="identifier">keyword</span><span class="special">/</span><span class="keyword">const</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">local_function</span><span class="special">/</span><span class="identifier">detail</span><span class="special">/</span><span class="identifier">preprocessor</span><span class="special">/</span><span class="identifier">keyword</span><span class="special">/</span><span class="identifier">bind</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">detail</span><span class="special">/</span><span class="identifier">lightweight_test</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="comment">// Expand to 1 if space-separated tokens end with `this_`, 0 otherwise.</span>
+<span class="preprocessor">#define</span> <span class="identifier">IS_THIS_BACK</span><span class="special">(</span><span class="identifier">tokens</span><span class="special">)</span> <span class="special">\</span>
+    <span class="identifier">BOOST_LOCAL_FUNCTION_DETAIL_PP_KEYWORD_IS_THISUNDERSCORE_BACK</span><span class="special">(</span> <span class="special">\</span>
+    <span class="identifier">BOOST_LOCAL_FUNCTION_DETAIL_PP_KEYWORD_BIND_REMOVE_FRONT</span><span class="special">(</span> <span class="special">\</span>
+    <span class="identifier">BOOST_LOCAL_FUNCTION_DETAIL_PP_KEYWORD_CONST_REMOVE_FRONT</span><span class="special">(</span> <span class="special">\</span>
+        <span class="identifier">tokens</span> <span class="special">\</span>
+    <span class="special">)))</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">void</span><span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">BOOST_TEST</span><span class="special">(</span><span class="identifier">IS_THIS_BACK</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">bind</span> <span class="identifier">this_</span><span class="special">)</span> <span class="special">==</span> <span class="number">1</span><span class="special">);</span>
+    <span class="identifier">BOOST_TEST</span><span class="special">(</span><span class="identifier">IS_THIS_BACK</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">bind</span><span class="special">&amp;</span> <span class="identifier">x</span><span class="special">)</span> <span class="special">==</span> <span class="number">0</span><span class="special">);</span>
+    <span class="keyword">return</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">report_errors</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<p>
+    </p>
+<div class="footnotes">
+<br><hr style="width:100; text-align:left;margin-left: 0">
+<div id="ftn.boost_localfunction.implementation.f0" class="footnote"><p><a href="#boost_localfunction.implementation.f0" class="para"><sup class="para">[31] </sup></a> 这一技术甚至是更复杂的预处理器解析宏的核心, 例如解析 <a href="http://sourceforge.net/projects/contractpp" target="_top">Contract++</a> 语法的宏.</p></div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2009-2012 Lorenzo Caminiti<p>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发 (随附文件 LICENSE_1_0.txt 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="no_variadic_macros.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="../reference.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

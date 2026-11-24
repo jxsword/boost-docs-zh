@@ -1,0 +1,138 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>使用工作线程运行</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Fiber">
+<link rel="up" href="../index.html" title="第 1 章 Fiber">
+<link rel="prev" href="gpu_computing/hip.html" title="ROCm/HIP">
+<link rel="next" href="performance.html" title="性能">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="gpu_computing/hip.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="performance.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="fiber.worker"></a><a name="worker"></a><a class="link" href="worker.html" title="与工作者线程一同运行">使用工作线程运行</a>
+</h2></div></div></div>
+<h4>
+<a name="fiber.worker.h0"></a>
+      <span class="phrase"><a name="fiber.worker.keep_workers_running"></a></span><a class="link" href="worker.html#fiber.worker.keep_workers_running">保持工作线程运行</a>
+    </h4>
+<p>如果使用了工作线程, 但没有创建纤程, 也没有触及框架的某些部分 (例如 <a class="link" href="fiber_mgmt/this_fiber.html#this_fiber_yield"><code class="computeroutput">this_fiber::yield()</code></a>), 则不会实例化纤程调度器.</p>
+<pre class="programlisting"><span class="keyword">auto</span> <span class="identifier">worker</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">thread</span><span class="special">(</span>
+        <span class="special">[]{</span>
+            <span class="comment">// fiber scheduler not instantiated</span>
+        <span class="special">});</span>
+<span class="identifier">worker</span><span class="special">.</span><span class="identifier">join</span><span class="special">();</span>
+</pre>
+<p>如果 <span class="emphasis"><em>use_scheduling_algorithm&lt;&gt;()</em></span> 被调用, 则会创建纤程调度器. 若工作线程直接返回, 则销毁调度器并终止.</p>
+<pre class="programlisting"><span class="keyword">auto</span> <span class="identifier">worker</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">thread</span><span class="special">(</span>
+        <span class="special">[]{</span>
+            <span class="comment">// fiber scheduler created</span>
+            <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">use_scheduling_algorithm</span><span class="special">&lt;</span><span class="identifier">my_fiber_scheduler</span><span class="special">&gt;();</span>
+        <span class="special">});</span>
+<span class="identifier">worker</span><span class="special">.</span><span class="identifier">join</span><span class="special">();</span>
+</pre>
+<p>为了保持工作线程持续运行, 与线程栈相关联的纤程 (称为 <span class="quote">“<span class="quote">main</span>”</span> 纤程) 会被阻塞. 例如 <span class="quote">“<span class="quote">main</span>”</span> 纤程可能在一个 <a class="link" href="synchronization/conditions.html#class_condition_variable"><code class="computeroutput">condition_variable</code></a> 上等待. 为了优雅关闭, <a class="link" href="synchronization/conditions.html#class_condition_variable"><code class="computeroutput">condition_variable</code></a> 被置位, 随后 <span class="quote">“<span class="quote">main</span>”</span> 纤程返回. 如果工作线程的所有纤程都已终止, 调度器即被销毁.</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">mutex</span> <span class="identifier">mtx</span><span class="special">;</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">condition_variable_any</span> <span class="identifier">cv</span><span class="special">;</span>
+<span class="keyword">auto</span> <span class="identifier">worker</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">thread</span><span class="special">(</span>
+        <span class="special">[&amp;</span><span class="identifier">mtx</span><span class="special">,&amp;</span><span class="identifier">cv</span><span class="special">]{</span>
+            <span class="identifier">mtx</span><span class="special">.</span><span class="identifier">lock</span><span class="special">();</span>
+            <span class="comment">// suspend till signalled</span>
+            <span class="identifier">cv</span><span class="special">.</span><span class="identifier">wait</span><span class="special">(</span><span class="identifier">mtx</span><span class="special">);</span>
+            <span class="identifier">mtx</span><span class="special">.</span><span class="identifier">unlock</span><span class="special">();</span>
+        <span class="special">});</span>
+<span class="comment">// signal termination</span>
+<span class="identifier">cv</span><span class="special">.</span><span class="identifier">notify_all</span><span class="special">();</span>
+<span class="identifier">worker</span><span class="special">.</span><span class="identifier">join</span><span class="special">();</span>
+</pre>
+<h4>
+<a name="fiber.worker.h1"></a>
+      <span class="phrase"><a name="fiber.worker.processing_tasks"></a></span><a class="link" href="worker.html#fiber.worker.processing_tasks">处理任务</a>
+    </h4>
+<p>任务可以通过通道传递. 工作线程运行一个纤程池, 从通道中取出并执行任务. 通过关闭通道来发出终止信号.</p>
+<pre class="programlisting"><span class="keyword">using</span> <span class="identifier">task</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">function</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">()&gt;;</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">buffered_channel</span><span class="special">&lt;</span><span class="identifier">task</span><span class="special">&gt;</span> <span class="identifier">ch</span><span class="special">{</span><span class="number">1024</span><span class="special">};</span>
+<span class="keyword">auto</span> <span class="identifier">worker</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">thread</span><span class="special">(</span>
+        <span class="special">[&amp;</span><span class="identifier">ch</span><span class="special">]{</span>
+            <span class="comment">// create pool of fibers</span>
+            <span class="keyword">for</span> <span class="special">(</span><span class="keyword">int</span> <span class="identifier">i</span><span class="special">=</span><span class="number">0</span><span class="special">;</span> <span class="identifier">i</span><span class="special">&lt;</span><span class="number">10</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span> <span class="special">{</span>
+                <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">fiber</span><span class="special">{</span>
+                    <span class="special">[&amp;</span><span class="identifier">ch</span><span class="special">]{</span>
+                        <span class="identifier">task</span> <span class="identifier">tsk</span><span class="special">;</span>
+                        <span class="comment">// dequeue and process tasks</span>
+                        <span class="keyword">while</span> <span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">channel_op_status</span><span class="special">::</span><span class="identifier">closed</span><span class="special">!=</span><span class="identifier">ch</span><span class="special">.</span><span class="identifier">pop</span><span class="special">(</span><span class="identifier">tsk</span><span class="special">)){</span>
+                            <span class="identifier">tsk</span><span class="special">();</span>
+                        <span class="special">}</span>
+                    <span class="special">}}.</span><span class="identifier">detach</span><span class="special">();</span>
+            <span class="special">}</span>
+            <span class="identifier">task</span> <span class="identifier">tsk</span><span class="special">;</span>
+            <span class="comment">// dequeue and process tasks</span>
+            <span class="keyword">while</span> <span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">channel_op_status</span><span class="special">::</span><span class="identifier">closed</span><span class="special">!=</span><span class="identifier">ch</span><span class="special">.</span><span class="identifier">pop</span><span class="special">(</span><span class="identifier">tsk</span><span class="special">)){</span>
+                <span class="identifier">tsk</span><span class="special">();</span>
+            <span class="special">}</span>
+        <span class="special">});</span>
+<span class="comment">// feed channel with tasks</span>
+<span class="identifier">ch</span><span class="special">.</span><span class="identifier">push</span><span class="special">([]{</span> <span class="special">...</span> <span class="special">});</span>
+<span class="special">...</span>
+<span class="comment">// signal termination</span>
+<span class="identifier">ch</span><span class="special">.</span><span class="identifier">close</span><span class="special">();</span>
+<span class="identifier">worker</span><span class="special">.</span><span class="identifier">join</span><span class="special">();</span>
+</pre>
+<p>另一种选择是使用工作窃取调度器. 在这种调度算法下, 当工作线程自己的就绪队列为空时, 它会从其他工作线程的就绪队列中窃取纤程.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>等待所有工作线程都注册了工作窃取调度算法.</p></td></tr>
+</table></div>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">mutex</span> <span class="identifier">mtx</span><span class="special">;</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">condition_variable_any</span> <span class="identifier">cv</span><span class="special">;</span>
+<span class="comment">// start wotrker-thread first</span>
+<span class="keyword">auto</span> <span class="identifier">worker</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">thread</span><span class="special">(</span>
+        <span class="special">[&amp;</span><span class="identifier">mtx</span><span class="special">,&amp;</span><span class="identifier">cv</span><span class="special">]{</span>
+            <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">use_scheduling_algorithm</span><span class="special">&lt;</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">algo</span><span class="special">::</span><span class="identifier">work_stealing</span><span class="special">&gt;(</span><span class="number">2</span><span class="special">);</span>
+            <span class="identifier">mtx</span><span class="special">.</span><span class="identifier">lock</span><span class="special">();</span>
+            <span class="comment">// suspend main-fiber from the worker thread</span>
+            <span class="identifier">cv</span><span class="special">.</span><span class="identifier">wait</span><span class="special">(</span><span class="identifier">mtx</span><span class="special">);</span>
+            <span class="identifier">mtx</span><span class="special">.</span><span class="identifier">unlock</span><span class="special">();</span>
+        <span class="special">});</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">use_scheduling_algorithm</span><span class="special">&lt;</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">algo</span><span class="special">::</span><span class="identifier">work_stealing</span><span class="special">&gt;(</span><span class="number">2</span><span class="special">);</span>
+<span class="comment">// create fibers with tasks</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">fiber</span> <span class="identifier">f</span><span class="special">{[]{</span> <span class="special">...</span> <span class="special">}};</span>
+<span class="special">...</span>
+<span class="comment">// signal termination</span>
+<span class="identifier">cv</span><span class="special">.</span><span class="identifier">notify_all</span><span class="special">();</span>
+<span class="identifier">worker</span><span class="special">.</span><span class="identifier">join</span><span class="special">();</span>
+</pre>
+<div class="important"><table border="0" summary="Important">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[重要]" src="../../../../../doc/src/images/important.png"></td>
+<th align="left">重要</th>
+</tr>
+<tr><td align="left" valign="top"><p>由于 TIB (Windows 上的线程信息块) 在 MSDN 中没有得到完整描述, 可能并非所有必需的 TIB 部分都会被交换. 使用 WinFiber 实现或许是一种替代方案 (参见关于 <a href="http://www.boost.org/doc/libs/1_65_1/libs/context/doc/html/context/cc/implementations__fcontext_t__ucontext_t_and_winfiber.html" target="_top"><span class="emphasis"><em>boost.context 的 fcontext_t、ucontext_t 与 WinFiber 实现</em></span></a> 的文档).</p></td></tr>
+</table></div>
+</div>
+<div class="copyright-footer">版权所有 © 2013 Oliver Kowalke<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="gpu_computing/hip.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="performance.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

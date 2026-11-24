@@ -1,0 +1,123 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<title>跟踪设施</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<link href="theme/style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body>
+<table width="100%" border="0" cellspacing="2" background="theme/bkd2.gif">
+  <tr> 
+    <td width="21"> <h1></h1></td>
+    <td width="885"> <font face="Verdana, Arial, Helvetica, sans-serif"><b><font size="6">跟踪设施</font></b></font></td>
+    <td width="96"><a href="http://www.boost.org"><img src="theme/wave.gif" width="93" height="68" align="right" border="0"></a></td>
+  </tr>
+</table>
+<br>
+<table border="0">
+  <tr> 
+    <td width="10"></td>
+    <td width="30"><a href="../index.html"><img src="theme/u_arr.gif" border="0"></a></td>
+    <td width="30"><a href="wave_driver.html"><img src="theme/l_arr.gif" border="0"></a></td>
+    <td width="30"><a href="acknowledgements.html"><img src="theme/r_arr.gif" border="0"></a></td>
+  </tr>
+</table>
+<p>如果你曾经需要调试宏展开, 你就会发现你的工具对这项任务几乎不提供任何支持. 为此, <i>Wave</i> 库提供了一项跟踪设施, 可以有选择地获取关于某个或某些宏展开的信息.</p>
+<p>宏展开的跟踪可能会生成数量极其庞大的信息, 因此建议只针对相关宏显式启用/禁用跟踪. 这可以借助一条 <tt>Wave</tt> 特有的特殊 #pragma 来完成:</p>
+<pre><span class="preprocessor">    #pragma</span> wave trace(enable)    <span class="comment">// enable the tracing</span>
+    <span class="comment">// the macro expansions here will be traced</span>
+    <span class="comment">// ...</span>
+<span class="preprocessor">    #pragma</span> wave trace(disable)   <span class="comment">// disable the tracing</span></pre>
+<p>在 C99 模式下或指定 <tt>--variadics</tt> 命令行选项时, 你还可以使用 <tt>operator _Pragma()</tt> 变体来启用/禁用跟踪输出:</p>
+<pre><span class="preprocessor">    #define</span> CONCAT(x, y) \
+        <span class="preprocessor">_Pragma</span>(<span class="string">&quot;wave trace(enable)&quot;</span>) \
+        x \
+        <span class="preprocessor">_Pragma</span>(<span class="string">&quot;wave trace(disable)&quot;</span>) \
+        <span class="keyword">##</span> y</pre>
+<p>这样, 就可以只在宏的一部分展开期间启用跟踪. 在所示示例中, 只跟踪宏实参 <tt>'x'</tt> 的展开. 注意, <tt>operator _Pragma()</tt> 指令在宏展开结果内部展开为空.</p>
+<p>要看 <tt>Wave</tt> 驱动程序在展开一个简单宏时生成什么, 让我们看看以下示例的跟踪输出:</p>
+<pre ><span class="comment">    // test.cpp</span>
+<span class="preprocessor">    #define</span> X(x)          x<br><span class="preprocessor">    #define</span> Y()           2<br><span class="preprocessor">    #define</span> CONCAT_(x, y) x <span class="keyword">##</span> y
+<span class="preprocessor">    #define</span> CONCAT(x, y)  CONCAT_(x, y)
+<span class="preprocessor">    #pragma</span> wave trace(enable)
+<span class="comment">    // this macro expansion is to be traced</span>
+    CONCAT(X(1), Y())     <span class="comment">// should expand to 12</span>
+<span class="preprocessor">    #pragma</span> wave trace(disable)</pre>
+<p>用 <tt>'wave -t test.trace test.cpp'</tt> 进行预处理时, <tt>Wave</tt> 驱动程序会生成一个文件 <tt>test.trace</tt>, 其内容如下 (不含行首的行号):</p>
+<pre>  1: test.cpp:8:1: CONCAT(X(1), Y())
+  2:   test.cpp:5:9: see macro definition: CONCAT(x, y)
+  3:   invoked with
+  4:   [
+  5:     x = X(1)
+  6:     y = Y()
+  7:   ]
+  8:   [
+  9:     test.cpp:2:9: see macro definition: X(x)
+ 10:     invoked with
+ 11:     [
+ 12:       x = 1
+ 13:     ]
+ 14:     [
+ 15:       1
+ 16:       rescanning
+ 17:       [
+ 18:         1
+ 19:       ]
+ 20:     ]
+ 21:     test.cpp:3:9: see macro definition: Y()
+ 22:     [
+ 23:       2
+ 24:       rescanning
+ 25:       [
+ 26:         2
+ 27:       ]
+ 28:     ]
+ 29:     CONCAT_(1, 2)
+ 30:     rescanning
+ 31:     [
+ 32:       test.cpp:4:9: see macro definition: CONCAT_(x, y)
+ 33:       invoked with
+ 34:       [
+ 35:         x = 1
+ 36:         y = 2
+ 37:       ]
+ 38:       [
+ 39:         12
+ 40:         rescanning
+ 41:         [
+ 42:           12
+ 43:         ]
+ 44:       ]
+ 45:       12
+ 46:     ]
+ 47:   ]
+</pre>
+<p>生成的跟踪输出非常详尽, 但可以据此逐步跟进实际的宏展开过程. 此跟踪示例的第一行包含宏展开起始位置的引用. 此外, 每一次宏展开都包含以下信息:</p>
+<ul>
+  <li>对要展开的宏首次定义位置 (行号和列号) 的引用 (见第 2、9、21 和 32 行).</li>
+  <li>为此次宏展开提供的实际参数 (见第 3、10 和 33 行), 该信息在 <tt>invoked with</tt> 块内跟踪记录, 其中列出了相应的形式参数和实际参数.</li>
+  <li>所给定实参的展开 (若有, 且这些实参被定义为宏). 这部分会重复实参宏展开的完整跟踪信息, 只是缩进一级. 但请注意, 无论该实参在其展开后是否真的会被插入替换列表, 还是按其初始提供的形式插入, 实参的宏展开都会被跟踪 (参见 C++ 标准 [16.3.1.1]: "替换列表中的参数, 除非前面有 <tt>#</tt> 或 <tt>##</tt> 预处理记号, 或后面跟有 <tt>##</tt> 预处理记号, 否则将在其中所包含的所有宏都被展开之后由对应实参替换" <a href="references.html#iso_cpp">[1]</a>).</li>
+  <li>实参替换的结果 (见第 15、23、29 和 39 行), 即替换后的替换列表.</li>
+  <li>重扫描过程, 它再次包含对所有发现的宏的完整后续宏展开过程 (参见 C++ 标准 [16.3.4.1]: "在替换列表中的所有参数都被替换之后, 所得的预处理记号序列将与源文件的所有后续预处理记号一起被重新扫描, 以查找更多要替换的宏名." <a href="references.html#iso_cpp">[1]</a>).</li>
+  <li>实际宏展开的结果 (这是相应重扫描块内的最后一行 - 见第 18、26、42 和 45 行).</li>
+</ul>
+<p>每发现一个待展开的宏, 都会在跟踪输出内增加一级额外的缩进.</p>
+<table border="0">
+  <tr> 
+    <td width="10"></td>
+    <td width="30"><a href="../index.html"><img src="theme/u_arr.gif" border="0"></a></td>
+    <td width="30"><a href="wave_driver.html"><img src="theme/l_arr.gif" border="0"></a></td>
+    <td width="30"><a href="acknowledgements.html"><img src="theme/r_arr.gif" border="0"></a></td>
+  </tr>
+</table>
+<hr size="1">
+<p class="copyright">版权所有 © 2003-2011 Hartmut Kaiser<br>
+  <br>
+<font size="2">按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt) </font> </p>
+<p class="copyright"><span class="updated">最后更新: <!-- #BeginDate format:fcAm1m -->Tuesday, March 21, 2006 9:25<!-- #EndDate -->
+  </span>
+</p>
+</body>
+</html>
+

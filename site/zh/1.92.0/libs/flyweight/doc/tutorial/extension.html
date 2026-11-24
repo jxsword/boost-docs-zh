@@ -1,0 +1,359 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0.1 Transitional//EN">
+
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+<title>Boost.Flyweight 文档 - 教程 - 扩展 Boost.Flyweight</title>
+<link rel="stylesheet" href="../style.css" type="text/css">
+<link rel="start" href="../index.html">
+<link rel="prev" href="configuration.html">
+<link rel="up" href="index.html">
+<link rel="next" href="technical.html">
+</head>
+
+<body>
+<h1><img src="../../../../boost.png" alt="Boost logo" align=
+"middle" width="277" height="86">Boost.Flyweight 教程: 扩展 Boost.Flyweight</h1>
+
+<div class="prev_link"><a href="configuration.html"><img src="../prev.gif" alt="配置 Boost.Flyweight" border="0"><br> 配置 Boost.Flyweight </a></div>
+<div class="up_link"><a href="index.html"><img src="../up.gif" alt="Boost.Flyweight 教程" border="0"><br> Boost.Flyweight 教程 </a></div>
+<div class="next_link"><a href="technical.html"><img src="../next.gif" alt="技术问题" border="0"><br> 技术问题 </a></div><br clear="all" style="clear: all;">
+
+<hr>
+
+<h2>目录</h2>
+
+<ul>
+  <li><a href="#intro">引言</a></li>
+  <li><a href="#factories">自定义工厂</a></li>
+  <li><a href="#holders">自定义持有器</a></li>
+  <li><a href="#locking">自定义锁定策略</a></li>
+  <li><a href="#tracking">自定义跟踪策略</a></li>
+</ul>
+
+<h2><a name="intro">引言</a></h2>
+
+<p>Boost.Flyweight 为其<a href="configuration.html">可配置方面</a>提供公开接口规约, 使用户能够通过实现自己的组件并把它们提供给 <code>flyweight</code> 类模板的实例化来扩展本库.</p>
+
+<p>在大多数情况下, 扩展 Boost.Flyweight 的给定方面涉及两类实体:<ul>
+  <li>组件本身 (例如, 一个工厂类模板).</li>
+  <li>关联的<i>组件指定器</i>, 即作为 <code>flyweight</code> 实例化的模板实参提供的类型.</li>
+</ul> 例如, 类型 <a href="configuration.html#static_holder"><code>static_holder</code></a> 是一个持有器指定器, 由 <code>flyweight</code> 用来生成实际的持有器类, 此处即类模板 <a href="../reference/holders.html#static_holder_class"><code>static_holder_class</code></a> 的实例化. 注意, <code>static_holder</code> 是具体类型, 而 <code>static_holder_class</code> 是类模板, 因此指定器可以看作一种便捷手段, 用于提供对一族相关具体组件 (该类模板的各种可能实例化) 的访问: <code>flyweight</code> 在内部选择符合其内部需要的特定组件. </p>
+
+<h2><a name="factories">自定义工厂</a></h2>
+
+<p>在某种程度上, 工厂类似于 <code>std::set</code> 这样的唯一键关联容器, 不过它们期望的接口要简洁得多:</p>
+
+<blockquote><pre>
+<span class=comment>// example of a possible factory class template</span>
+
+<span class=keyword>template</span><span class=special>&lt;</span><span class=keyword>typename</span> <span class=identifier>Entry</span><span class=special>,</span><span class=keyword>typename</span> <span class=identifier>Key</span><span class=special>&gt;</span>
+<span class=keyword>class</span> <span class=identifier>custom_factory_class</span>
+<span class=special>{</span>
+  <span class=keyword>public</span><span class=special>:</span>
+  <span class=keyword>typedef</span> <span class=special>...</span> <span class=identifier>handle_type</span><span class=special>;</span>
+  
+  <span class=identifier>handle_type</span>  <span class=identifier>insert</span><span class=special>(</span><span class=identifier>Entry</span><span class=special>&amp;&amp;</span> <span class=identifier>x</span><span class=special>);</span>
+  <span class=keyword>void</span>         <span class=identifier>erase</span><span class=special>(</span><span class=identifier>handle_type</span> <span class=identifier>h</span><span class=special>);</span>
+  <span class=keyword>const</span> <span class=identifier>Entry</span><span class=special>&amp;</span> <span class=identifier>entry</span><span class=special>(</span><span class=identifier>handle_type</span> <span class=identifier>h</span><span class=special>);</span>
+<span class=special>};</span>
+</pre></blockquote>
+
+<p>工厂由 <code>Entry</code> 和 <code>Key</code> 参数化: 第一个是所存对象的类型, 第二个是 <code>flyweight</code> 所操作的公开键类型 (例如 <code>std::string</code> 之于 <code>flyweight&lt;std::string&gt;</code>, 或 <code>flyweight&lt;key_value&lt;std::string,texture&gt; &gt;</code>). 条目持有一个共享值, 享元对象与之关联, 同时还有内部簿记信息; 但从工厂的视角来看, 关于 <code>Entry</code> 唯一已知的事实是它可隐式转换为 <code>const Key&amp;</code>, 并且条目是否等价要依据其关联的 <code>Key</code> 来判定. 工厂的 <code>insert()</code> 成员函数定位先前存储的条目 — 其关联 <code>Key</code> 与所传入 <code>Entry</code> 对象的等价 (就与该工厂密切相关的 <code>Key</code> 上的某种等价关系而言) — 若未找到等价条目则存储新条目. 返回指向等价或新插入条目的一个 <code>handle_type</code>; 该 <code>handle_type</code> 是经由 <code>erase()</code> 和 <code>entry()</code> 进一步访问条目的凭据. <a href="../reference/factories.html#factory">参考</a>中给出了 <code>Factory</code> 概念的正式定义.</p>
+
+<p>让我们看一个自定义工厂类实现的实际例子. 假设我们想跟踪 Boost.Flyweight 对 <code>insert()</code> 和 <code>erase()</code> 成员函数的不同调用: 这可以通过使用一个自定义工厂来完成, 其成员方法向程序控制台输出跟踪消息. 我们把仓库功能的实现基于一个常规的 <code>std::set</code>:<blockquote><pre>
+<span class=keyword>template</span><span class=special>&lt;</span><span class=keyword>typename</span> <span class=identifier>Entry</span><span class=special>,</span><span class=keyword>typename</span> <span class=identifier>Key</span><span class=special>&gt;</span>
+<span class=keyword>class</span> <span class=identifier>verbose_factory_class</span>
+<span class=special>{</span> 
+  <span class=keyword>typedef</span> <span class=identifier>std</span><span class=special>::</span><span class=identifier>set</span><span class=special>&lt;</span><span class=identifier>Entry</span><span class=special>,</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>less</span><span class=special>&lt;</span><span class=identifier>Key</span><span class=special>&gt;</span> <span class=special>&gt;</span> <span class=identifier>store_type</span><span class=special>;</span>
+
+  <span class=identifier>store_type</span> <span class=identifier>store</span><span class=special>;</span>
+
+<span class=keyword>public</span><span class=special>:</span>
+  <span class=keyword>typedef</span> <span class=keyword>typename</span> <span class=identifier>store_type</span><span class=special>::</span><span class=identifier>iterator</span> <span class=identifier>handle_type</span><span class=special>;</span>
+
+  <span class=identifier>handle_type</span> <span class=identifier>insert</span><span class=special>(</span><span class=identifier>Entry</span><span class=special>&amp;&amp;</span> <span class=identifier>x</span><span class=special>)</span>
+  <span class=special>{</span>
+    <span class=identifier>std</span><span class=special>::</span><span class=identifier>pair</span><span class=special>&lt;</span><span class=identifier>handle_type</span><span class=special>,</span> <span class=keyword>bool</span><span class=special>&gt;</span> <span class=identifier>p</span><span class=special>=</span><span class=identifier>store</span><span class=special>.</span><span class=identifier>insert</span><span class=special>(</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>move</span><span class=special>(</span><span class=identifier>x</span><span class=special>));</span>
+    <span class=keyword>if</span><span class=special>(</span><span class=identifier>p</span><span class=special>.</span><span class=identifier>second</span><span class=special>){</span> <span class=comment>/* new entry */</span>
+      <span class=identifier>std</span><span class=special>::</span><span class=identifier>cout</span><span class=special>&lt;&lt;</span><span class=string>&quot;new: &quot;</span><span class=special>&lt;&lt;(</span><span class=keyword>const</span> <span class=identifier>Key</span><span class=special>&amp;)</span><span class=identifier>x</span><span class=special>&lt;&lt;</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>endl</span><span class=special>;</span>
+    <span class=special>}</span>
+    <span class=keyword>else</span><span class=special>{</span>         <span class=comment>/* existing entry */</span>
+      <span class=identifier>std</span><span class=special>::</span><span class=identifier>cout</span><span class=special>&lt;&lt;</span><span class=string>&quot;hit: &quot;</span><span class=special>&lt;&lt;(</span><span class=keyword>const</span> <span class=identifier>Key</span><span class=special>&amp;)</span><span class=identifier>x</span><span class=special>&lt;&lt;</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>endl</span><span class=special>;</span>
+    <span class=special>}</span>
+    <span class=keyword>return</span> <span class=identifier>p</span><span class=special>.</span><span class=identifier>first</span><span class=special>;</span>
+  <span class=special>}</span>
+
+  <span class=keyword>void</span> <span class=identifier>erase</span><span class=special>(</span><span class=identifier>handle_type</span> <span class=identifier>h</span><span class=special>)</span>
+  <span class=special>{</span>
+    <span class=identifier>std</span><span class=special>::</span><span class=identifier>cout</span><span class=special>&lt;&lt;</span><span class=string>&quot;del: &quot;</span><span class=special>&lt;&lt;(</span><span class=keyword>const</span> <span class=identifier>Key</span><span class=special>&amp;)*</span><span class=identifier>h</span><span class=special>&lt;&lt;</span><span class=identifier>std</span><span class=special>::</span><span class=identifier>endl</span><span class=special>;</span>
+    <span class=identifier>store</span><span class=special>.</span><span class=identifier>erase</span><span class=special>(</span><span class=identifier>h</span><span class=special>);</span>
+  <span class=special>}</span>
+
+  <span class=keyword>const</span> <span class=identifier>Entry</span><span class=special>&amp;</span> <span class=identifier>entry</span><span class=special>(</span><span class=identifier>handle_type</span> <span class=identifier>h</span><span class=special>)</span>
+  <span class=special>{</span>
+    <span class=keyword>return</span> <span class=special>*</span><span class=identifier>h</span><span class=special>;</span>
+  <span class=special>}</span>
+<span class=special>};</span>
+</pre></blockquote>
+
+<p>这段代码值得一些解说:<ul>
+  <li>注意, 工厂由 <code>Entry</code> 和 <code>Key</code> 参数化, 因为当工厂作为 <code>flyeight</code> 机制的一部分被实例化时, 这些类型由 Boost.Flyweight 在内部提供; 但没有任何东西阻止我们增加更多模板参数以对工厂类型做更精细的配置: 例如, 我们可以扩展 <code>verbose_factory_class</code> 使其接受某个比较谓词而非默认的 <code>std::less&lt;Key&gt;</code>, 或指定内部 <code>std::set</code> 所使用的分配器.</li>
+  <li> <code>Entry</code> 可转换为 <code>const Key&amp;</code> (这几乎是我们对 <code>Entry</code> 唯一已知的性质) 这一事实, 被用于把 <code>std::less&lt;Key&gt;</code> 指定为比较谓词, 用于 <code>std::set</code> — 即用作内部仓库的 <code>Entry</code> 之条目类型.</li>
+  <li>作为公开的 <code>handle_type</code>, 我们只是使用指向内部 <code>std::set</code> 的迭代器.</li>
+</ul>
+</p>
+
+<p>为了把自定义工厂接入 <code>flyweight</code> 类型的指定, 我们需要一个关联的构造, 称为<i>工厂指定器</i>. 工厂指定器是一个<a href="lambda_expressions.html"><code>Lambda
+Expression</code></a>, 接受两个实参类型 <code>Entry</code> 和 <code>Key</code> 并返回对应的工厂类:</p>
+
+<blockquote><pre>
+<span class=comment>// Factory specifier (metafunction class version)</span>
+
+<span class=keyword>struct</span> <span class=identifier>custom_factory_specifier</span>
+<span class=special>{</span>
+  <span class=keyword>template</span><span class=special>&lt;</span><span class=keyword>typename</span> <span class=identifier>Entry</span><span class=special>,</span><span class=identifier>Key</span><span class=special>&gt;</span>
+  <span class=keyword>struct</span> <span class=identifier>apply</span>
+  <span class=special>{</span>
+    <span class=keyword>typedef</span> <span class=identifier>custom_factory_class</span><span class=special>&lt;</span><span class=identifier>Entry</span><span class=special>,</span><span class=identifier>Key</span><span class=special>&gt;</span> <span class=identifier>type</span><span class=special>;</span>
+  <span class=special>}</span> 
+<span class=special>};</span>
+
+<span class=comment>// Factory specifier (placeholder version)</span>
+
+<span class=keyword>typedef</span> <span class=identifier>custom_factory_class</span><span class=special>&lt;</span>
+  <span class=identifier>boost</span><span class=special>::</span><span class=identifier>mpl</span><span class=special>::</span><span class=identifier>_1</span><span class=special>,</span>
+  <span class=identifier>boost</span><span class=special>::</span><span class=identifier>mpl</span><span class=special>::</span><span class=identifier>_2</span>
+<span class=special>&gt;</span> <span class=identifier>custom_factory_specifier</span><span class=special>;</span>
+</pre></blockquote>
+
+<p>还有最后一个细节: 为了实现 <code>flyweight</code> 的 <a href="configuration.html#free_order_template">自由顺序模板参数接口</a>, 必须显式地把工厂指定器标记为工厂指定器, 以便与其他类型的指定器区分. Boost.Flyweight 提供三种不同的机制来做这种标记:<ol>
+  <li>让指定器派生自哑类型 <code>factory_marker</code>. 注意, 该机制不能用于占位符表达式. <blockquote><pre>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>flyweight</span><span class=special>/</span><span class=identifier>factory_tag</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+
+<span class=keyword>struct</span> <span class=identifier>custom_factory_specifier</span><span class=special>:</span> <span class=identifier><b>factory_marker</b></span>
+<span class=special>{</span>
+  <span class=keyword>template</span><span class=special>&lt;</span><span class=keyword>typename</span> <span class=identifier>Entry</span><span class=special>,</span><span class=identifier>Key</span><span class=special>&gt;</span>
+  <span class=keyword>struct</span> <span class=identifier>apply</span>
+  <span class=special>{</span>
+    <span class=keyword>typedef</span> <span class=identifier>custom_factory_class</span><span class=special>&lt;</span><span class=identifier>Entry</span><span class=special>,</span><span class=identifier>Key</span><span class=special>&gt;</span> <span class=identifier>type</span><span class=special>;</span>
+  <span class=special>}</span> 
+<span class=special>};</span>
+</pre></blockquote>
+  </li>
+  <li>特化一个名为 <a href="../reference/factories.html#is_factory"><code>is_factory</code></a> 的特殊类模板: <blockquote><pre>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>flyweight</span><span class=special>/</span><span class=identifier>factory_tag</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+
+<span class=keyword>struct</span> <span class=identifier>custom_factory_specifier</span><span class=special>{};</span>
+
+<span class=keyword>namespace</span> <span class=identifier>boost</span><span class=special>{</span>
+<span class=keyword>namespace</span> <span class=identifier>flyweights</span><span class=special>{</span>
+
+<span class=keyword>template</span><span class=special>&lt;&gt;</span> <span class=keyword>struct</span> <span class=identifier>is_factory</span><span class=special>&lt;</span><span class=identifier>custom_factory_specifier</span><span class=special>&gt;:</span> <span class=identifier>boost</span><span class=special>::</span><span class=identifier>mpl</span><span class=special>::</span><span class=identifier>true_</span><span class=special>{};</span>
+
+<span class=special>}</span>
+<span class=special>}</span>
+</pre></blockquote>
+  </li>
+  <li>第三种机制侵入性最小, 它把指定器包装在 <a href="../reference/factories.html#factory_construct"><code>factory</code></a> 构造中: <blockquote><pre>
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>flyweight</span><span class=special>/</span><span class=identifier>factory_tag</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+
+<span class=keyword>typedef</span> <span class=identifier>flyweight</span><span class=special>&lt;</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>,</span>
+  <span class=identifier><b>factory</b></span><span class=special>&lt;</span><span class=identifier>custom_factory_specifier</span><span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>flyweight_string</span><span class=special>;</span>
+</pre></blockquote>
+  </li>
+</ol>
+</p>
+
+<p>示例一节中的 <a href="../examples.html#example8">示例 8</a> 完整展开了上面概述的 <code>verbose_factory_class</code> 案例.</p>
+
+<h2><a name="holders">自定义持有器</a></h2>
+
+<p>持有器是一个类, 它带有静态成员函数 <code>get()</code>, 提供对给定类型 <code>C</code> 的唯一实例的访问:</p>
+
+<blockquote><pre>
+<span class=comment>// example of a possible holder class template</span>
+
+<span class=keyword>template</span><span class=special>&lt;</span><span class=keyword>typename</span> <span class=identifier>C</span><span class=special>&gt;</span>
+<span class=keyword>class</span> <span class=identifier>custom_holder_class</span>
+<span class=special>{</span>
+<span class=keyword>public</span><span class=special>:</span>
+  <span class=keyword>static</span> <span class=identifier>C</span><span class=special>&amp;</span> <span class=identifier>get</span><span class=special>();</span>
+<span class=special>};</span>
+</pre></blockquote>
+
+<p>
+<code>flyweight</code> 在内部使用一个持有器来创建其关联的工厂以及一些其他全局数据. 持有器指定器是一个<a href="lambda_expressions.html"><code>Lambda
+Expression</code></a>, 接受关联持有器类所操作的类型 <code>C</code>:</p>
+
+<blockquote><pre>
+<span class=comment>// Holder specifier (metafunction class version)</span>
+
+<span class=keyword>struct</span> <span class=identifier>custom_holder_specifier</span>
+<span class=special>{</span>
+  <span class=keyword>template</span><span class=special>&lt;</span><span class=keyword>typename</span> <span class=identifier>C</span><span class=special>&gt;</span>
+  <span class=keyword>struct</span> <span class=identifier>apply</span>
+  <span class=special>{</span>
+    <span class=keyword>typedef</span> <span class=identifier>custom_holder_class</span><span class=special>&lt;</span><span class=identifier>C</span><span class=special>&gt;</span> <span class=identifier>type</span><span class=special>;</span>
+  <span class=special>}</span> 
+<span class=special>};</span>
+
+<span class=comment>// Holder specifier (placeholder version)</span>
+
+<span class=keyword>typedef</span> <span class=identifier>custom_holder_class</span><span class=special>&lt;</span><span class=identifier>boost</span><span class=special>::</span><span class=identifier>mpl</span><span class=special>::</span><span class=identifier>_1</span><span class=special>&gt;</span> <span class=identifier>custom_factory_specifier</span><span class=special>;</span>
+</pre></blockquote>
+
+<p>与<a href="#factories">工厂指定器</a>一样, 持有器指定器必须被标记, 以便在提供给 <code>flyweight</code> 时被正确识别. 有三种可用机制:</p>
+
+<blockquote><pre>
+<span class=comment>// Alternatives for tagging a holder specifier</span>
+
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>flyweight</span><span class=special>/</span><span class=identifier>holder_tag</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+
+<span class=comment>// 1: Have the specifier derive from holder_marker</span>
+
+<span class=keyword>struct</span> <span class=identifier>custom_holder_specifier</span><span class=special>:</span> <span class=identifier><b>holder_marker</b></span>
+<span class=special>{</span>
+  <span class=special>...</span>
+<span class=special>};</span>
+
+<span class=comment>// 2: Specialize the is_holder class template</span>
+
+<span class=keyword>namespace</span> <span class=identifier>boost</span><span class=special>{</span>
+<span class=keyword>namespace</span> <span class=identifier>flyweights</span><span class=special>{</span>
+
+<span class=keyword>template</span><span class=special>&lt;&gt;</span> <span class=keyword>struct</span> <span class=identifier>is_holder</span><span class=special>&lt;</span><span class=identifier>custom_holder_specifier</span><span class=special>&gt;:</span> <span class=identifier>boost</span><span class=special>::</span><span class=identifier>mpl</span><span class=special>::</span><span class=identifier>true_</span><span class=special>{};</span>
+
+<span class=special>}}</span>
+
+<span class=comment>// 3: use the holder&lt;&gt; wrapper when passing the specifier
+// to flyweight</span>
+
+<span class=keyword>typedef</span> <span class=identifier>flyweight</span><span class=special>&lt;</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>,</span>
+  <span class=identifier><b>holder</b></span><span class=special>&lt;</span><span class=identifier>custom_holder_specifier</span><span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>flyweight_string</span><span class=special>;</span>
+</pre></blockquote>
+
+<h2><a name="locking">自定义锁定策略</a></h2>
+
+<p>自定义锁定策略呈现如下简单接口:</p>
+
+<blockquote><pre>
+<span class=comment>// example of a custom policy</span>
+
+<span class=keyword>class</span> <span class=identifier>custom_locking</span>
+<span class=special>{</span>
+  <span class=keyword>typedef</span> <span class=special>...</span> <span class=identifier>mutex_type</span><span class=special>;</span>
+  <span class=keyword>typedef</span> <span class=special>...</span> <span class=identifier>lock_type</span><span class=special>;</span>
+<span class=special>};</span>
+</pre></blockquote>
+
+<p>其中 <code>lock_type</code> 依照<i>作用域锁</i>惯用法用于获取/释放互斥量:</p>
+
+<blockquote><pre>
+<span class=identifier>mutex_type</span> <span class=identifier>m</span><span class=special>;</span>
+<span class=special>...</span>
+<span class=special>{</span>
+  <span class=identifier>lock_type</span> <span class=identifier>lk</span><span class=special>(</span><span class=identifier>m</span><span class=special>);</span> <span class=comment>// acquire the mutex
+  // zone of mutual exclusion, no other thread can acquire the mutex</span>
+  <span class=special>...</span>
+<span class=special>}</span> <span class=comment>// m released at lk destruction</span>
+</pre></blockquote>
+
+<p>概念 <a href="../reference/locking.html#preliminary"><code>Mutex</code></a> 和 <a href="../reference/locking.html#preliminary"><code>Scoped Lock</code></a> 的正式定义见参考部分. 要把锁定策略作为 <code>flyweight</code> 的模板实参传入, 该类必须被恰当地标记:</p>
+
+<blockquote><pre>
+<span class=comment>// Alternatives for tagging a locking policy</span>
+
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>flyweight</span><span class=special>/</span><span class=identifier>locking_tag</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+
+<span class=comment>// 1: Have the policy derive from locking_marker</span>
+
+<span class=keyword>struct</span> <span class=identifier>custom_locking</span><span class=special>:</span> <span class=identifier>locking_marker</span>
+<span class=special>{</span>
+  <span class=special>...</span>
+<span class=special>};</span>
+
+<span class=comment>// 2: Specialize the is_locking class template</span>
+
+<span class=keyword>namespace</span> <span class=identifier>boost</span><span class=special>{</span>
+<span class=keyword>namespace</span> <span class=identifier>flyweights</span><span class=special>{</span>
+
+<span class=keyword>template</span><span class=special>&lt;&gt;</span> <span class=keyword>struct</span> <span class=identifier>is_locking</span><span class=special>&lt;</span><span class=identifier>custom_locking</span><span class=special>&gt;:</span> <span class=identifier>boost</span><span class=special>::</span><span class=identifier>mpl</span><span class=special>::</span><span class=identifier>true_</span><span class=special>{};</span>
+
+<span class=special>}}</span>
+
+<span class=comment>// 3: use the locking&lt;&gt; wrapper when passing the policy
+// to flyweight</span>
+
+<span class=keyword>typedef</span> <span class=identifier>flyweight</span><span class=special>&lt;</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>,</span>
+  <span class=identifier>locking</span><span class=special>&lt;</span><span class=identifier>custom_locking</span><span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>flyweight_string</span><span class=special>;</span>
+</pre></blockquote>
+
+<p>注意, 锁定策略就是它自己的指定器, 也就是说, 不像工厂和持有器那样需要额外的类来作为真实组件的代理.</p>
+
+<h2><a name="tracking">自定义跟踪策略</a></h2>
+
+<p>跟踪策略为内部享元工厂的定义过程贡献一些类型信息, 并被授予对该工厂的访问权, 以便实现跟踪代码. 跟踪策略 <code>Tracking</code> 定义为具有以下嵌套元素的类:<ul>
+  <li>一个类型 <code>Tracking::entry_type</code>.</li>
+  <li>一个类型 <code>Tracking::handle_type</code>.</li>
+</ul> 这些元素逐级递进: Boost.Flyweight 的内部机制把一个元素产生的结果汇入下一个元素: <ul>
+  <li><code>Tracking::entry_type</code> 是一个<a href="lambda_expressions.html"><code>Lambda
+    Expression</code></a>, 接受两个名为 <code>Value</code> 和 <code>Key</code> 的不同类型, 且 <code>Value</code> 可隐式转换为 <code>const Key&amp;</code>. 该表达式预期返回一个可隐式转换为 <code>const Value&amp;</code> 和 <code>const Key&amp;</code> 两者的类型. <code>Tracking::entry_type</code> 对应于<a href="configuration.html#factory_types">享元工厂</a>中所存条目的实际类型: 允许跟踪策略参与该类型的定义, 使得策略可以在需要时向条目数据添加内部跟踪信息. 如果不需要附加信息, 跟踪策略可以简单地返回 <code>Value</code> 作为其 <code>Tracking::entry_type</code> 类型.</li>
+  <li>二元 <a href="lambda_expressions.html"><code>Lambda
+    Expression</code></a> <code>Tracking::handle_type</code> 以 <code>InternalHandle</code> 和 <code>TrackingHandler</code> 类型调用, 产生一个类型 <code>Handle</code>, 它将用作享元工厂的句柄类型. <a href="../reference/tracking.html#preliminary"><code>TrackingHandler</code></a> 作为模板实参传给 <code>Tracking::handle_type</code>, 以提供支持跟踪代码实现的功能.</li>
+</ul> 于是, 为了定义某个 <code>fw_t</code> 实例化 (属于 <code>flyweight</code>) 的工厂, <code>Tracking::entry_type</code> 会以内部类型 <code>Value</code> 被调用 — 该类型可隐式转换为 <code>const fw_t::key_type&amp;</code> — 以获得工厂的条目类型, 该类型必须可转换为 <code>const Value&amp;</code> 和 <code>const fw_t::key_type&amp;</code> 两者. 然后, 向 <code>Tracking::handle_type</code> 传入一个内部句柄类型和一个跟踪策略辅助器, 以产生工厂句柄类型. 观察敏锐的读者可能已经发现了一个明显的循环: <code>Tracking::handle_type</code> 产生享元工厂的句柄类型, 同时却又被传入一个授予对正在定义中的工厂之访问权的跟踪辅助器! 这个谜题的答案来自如下认识: <code>TrackingHandler</code> 是一个<i>不完整类型</i> — 在它被传给 <code>Tracking::handle_type</code> 的时刻; 只有在稍后阶段 <code>Handle</code> 被实例化时, 该类型才是完整的. </p>
+
+<p>为了把跟踪策略传给 <code>flyweight</code>, 必须像其他指定器一样对它打标签.</p>
+
+<blockquote><pre>
+<span class=comment>// Alternatives for tagging a tracking policy</span>
+
+<span class=preprocessor>#include</span> <span class=special>&lt;</span><span class=identifier>boost</span><span class=special>/</span><span class=identifier>flyweight</span><span class=special>/</span><span class=identifier>tracking_tag</span><span class=special>.</span><span class=identifier>hpp</span><span class=special>&gt;</span>
+
+<span class=comment>// 1: Have the policy derive from tracking_marker</span>
+
+<span class=keyword>struct</span> <span class=identifier>custom_tracking</span><span class=special>:</span> <span class=identifier><b>tracking_marker</b></span>
+<span class=special>{</span>
+  <span class=special>...</span>
+<span class=special>};</span>
+
+<span class=comment>// 2: Specialize the is_tracking class template</span>
+
+<span class=keyword>namespace</span> <span class=identifier>boost</span><span class=special>{</span>
+<span class=keyword>namespace</span> <span class=identifier>flyweights</span><span class=special>{</span>
+
+<span class=keyword>template</span><span class=special>&lt;&gt;</span> <span class=keyword>struct</span> <span class=identifier>is_tracking</span><span class=special>&lt;</span><span class=identifier>custom_tracking</span><span class=special>&gt;:</span> <span class=identifier>boost</span><span class=special>::</span><span class=identifier>mpl</span><span class=special>::</span><span class=identifier>true_</span><span class=special>{};</span>
+
+<span class=special>}}</span>
+
+<span class=comment>// 3: use the tracking&lt;&gt; wrapper when passing the policy
+// to flyweight</span>
+
+<span class=keyword>typedef</span> <span class=identifier>flyweight</span><span class=special>&lt;</span>
+  <span class=identifier>std</span><span class=special>::</span><span class=identifier>string</span><span class=special>,</span>
+  <span class=identifier><b>tracking</b></span><span class=special>&lt;</span><span class=identifier>custom_tracking</span><span class=special>&gt;</span>
+<span class=special>&gt;</span> <span class=identifier>flyweight_string</span><span class=special>;</span>
+</pre></blockquote>
+
+<p>跟踪策略就是它们自己的指定器, 也就是说, 它们直接作为模板实参提供给 <code>flyweight</code> 类模板.</p>
+
+<hr>
+
+<div class="prev_link"><a href="configuration.html"><img src="../prev.gif" alt="配置 Boost.Flyweight" border="0"><br> 配置 Boost.Flyweight </a></div>
+<div class="up_link"><a href="index.html"><img src="../up.gif" alt="Boost.Flyweight 教程" border="0"><br> Boost.Flyweight 教程 </a></div>
+<div class="next_link"><a href="technical.html"><img src="../next.gif" alt="技术问题" border="0"><br> 技术问题 </a></div><br clear="all" style="clear: all;">
+
+<br>
+
+<p>最后修订于 2024 年 9 月 27 日</p>
+
+<p>版权所有 © 2006-2024 Joaquín M López Muñoz. 按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 <a href="../../../../LICENSE_1_0.txt"> LICENSE_1_0.txt</a> 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt"> http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+
+</body>
+</html>

@@ -1,0 +1,326 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>处理器跟踪</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../../boost_asio.html" title="Boost.Asio">
+<link rel="up" href="../core.html" title="核心概念与功能">
+<link rel="prev" href="cancellation.html" title="按操作取消">
+<link rel="next" href="configuration.html" title="运行时配置与并发提示">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="cancellation.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../core.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="configuration.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_asio.overview.core.handler_tracking"></a><a class="link" href="handler_tracking.html" title="处理器跟踪">处理器跟踪</a>
+</h4></div></div></div>
+<p>为帮助调试异步程序, Boost.Asio 提供了对处理器跟踪 (handler tracking) 的支持. 通过定义 <code class="computeroutput"><span class="identifier">BOOST_ASIO_ENABLE_HANDLER_TRACKING</span></code> 启用后, Boost.Asio 会把调试输出写入标准错误流. 输出会记录异步操作及其处理器之间的关系.</p>
+<p>当你在调试时需要了解异步操作是如何链接在一起的, 或者当前有哪些待处理的异步操作, 这一特性非常有用. 举个例子, 下面是运行 HTTP Server 示例、处理单个请求然后通过 Ctrl+C 关闭时的输出:</p>
+<pre class="programlisting">@asio|1589424178.741850|0*1|signal_set@0x7ffee977d878.async_wait
+@asio|1589424178.742593|0*2|socket@0x7ffee977d8a8.async_accept
+@asio|1589424178.742619|.2|non_blocking_accept,ec=asio.system:11
+@asio|1589424178.742625|0|resolver@0x7ffee977d760.cancel
+@asio|1589424195.830382|.2|non_blocking_accept,ec=system:0
+@asio|1589424195.830413|&gt;2|ec=system:0
+@asio|1589424195.830473|2*3|socket@0x7fa71d808230.async_receive
+@asio|1589424195.830496|.3|non_blocking_recv,ec=system:0,bytes_transferred=151
+@asio|1589424195.830503|2*4|socket@0x7ffee977d8a8.async_accept
+@asio|1589424195.830507|.4|non_blocking_accept,ec=asio.system:11
+@asio|1589424195.830510|&lt;2|
+@asio|1589424195.830529|&gt;3|ec=system:0,bytes_transferred=151
+@asio|1589424195.831143|3^5|in 'async_write' (./../../../boost/asio/impl/write.hpp:330)
+@asio|1589424195.831143|3*5|socket@0x7fa71d808230.async_send
+@asio|1589424195.831186|.5|non_blocking_send,ec=system:0,bytes_transferred=1090
+@asio|1589424195.831194|&lt;3|
+@asio|1589424195.831218|&gt;5|ec=system:0,bytes_transferred=1090
+@asio|1589424195.831263|5|socket@0x7fa71d808230.close
+@asio|1589424195.831298|&lt;5|
+@asio|1589424199.793770|&gt;1|ec=system:0,signal_number=2
+@asio|1589424199.793781|1|socket@0x7ffee977d8a8.close
+@asio|1589424199.793809|&lt;1|
+@asio|1589424199.793840|&gt;4|ec=asio.system:125
+@asio|1589424199.793854|&lt;4|
+@asio|1589424199.793883|0|signal_set@0x7ffee977d878.cancel
+</pre>
+<p>每一行的形式如下:</p>
+<pre class="programlisting">&lt;tag&gt;|&lt;timestamp&gt;|&lt;action&gt;|&lt;description&gt;
+</pre>
+<p> <code class="computeroutput">&lt;tag&gt;</code> 总是 <code class="computeroutput">@asio</code>, 用于从程序输出中识别并提取处理器跟踪消息.</p>
+<p> <code class="computeroutput">&lt;timestamp&gt;</code> 是自 1970 年 1 月 1 日 UTC 以来的秒数和微秒数.</p>
+<p> <code class="computeroutput">&lt;action&gt;</code> 取以下形式之一:</p>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">&gt;n</span></dt>
+<dd><p>程序进入编号为 <code class="computeroutput">n</code> 的处理器. <code class="computeroutput">&lt;description&gt;</code> 显示传给该处理器的实参.</p></dd>
+<dt><span class="term">&lt;n</span></dt>
+<dd><p>程序离开编号为 <code class="computeroutput">n</code> 的处理器.</p></dd>
+<dt><span class="term">!n</span></dt>
+<dd><p>程序因异常离开编号为 n 的处理器.</p></dd>
+<dt><span class="term">~n</span></dt>
+<dd><p>编号为 <code class="computeroutput">n</code> 的处理器未被调用即被销毁. 当 <code class="computeroutput">io_context</code> 被销毁时, 所有未完成的异步操作通常都属于这种情况.</p></dd>
+<dt><span class="term">n^m</span></dt>
+<dd><p>编号为 <code class="computeroutput">n</code> 的处理器即将创建一个新的异步操作, 其完成处理器编号为 <code class="computeroutput">m</code>. <code class="computeroutput">&lt;description&gt;</code> 包含源代码位置信息, 帮助确定异步操作在程序中的启动位置.</p></dd>
+<dt><span class="term">n*m</span></dt>
+<dd><p>编号为 <code class="computeroutput">n</code> 的处理器创建了一个新的异步操作, 其完成处理器编号为 <code class="computeroutput">m</code>. <code class="computeroutput">&lt;description&gt;</code> 显示启动的是哪个异步操作.</p></dd>
+<dt><span class="term">n</span></dt>
+<dd><p>编号为 <code class="computeroutput">n</code> 的处理器执行了其他操作. <code class="computeroutput">&lt;description&gt;</code> 显示被调用的函数. 目前只记录 <code class="computeroutput">close()</code> 和 <code class="computeroutput">cancel()</code> 操作, 因为它们可能影响待处理异步操作的状态.</p></dd>
+<dt><span class="term">.n</span></dt>
+<dd><p>实现在异步操作的过程中执行了一次系统调用, 该操作以编号为 <code class="computeroutput">n</code> 的处理器作为完成处理器. <code class="computeroutput">&lt;description&gt;</code> 显示被调用的函数及其结果. 这些跟踪事件只在基于 Reactor 的实现中发出.</p></dd>
+</dl>
+</div>
+<p>当 <code class="computeroutput">&lt;description&gt;</code> 显示同步或异步操作时, 格式为 <code class="computeroutput">&lt;object-type&gt;@&lt;pointer&gt;.&lt;operation&gt;</code>. 对于处理器进入 (handler entry) , 它显示实参及其值的逗号分隔列表.</p>
+<p>如上所示, 每个处理器都会被分配一个数字标识符. 当处理器跟踪输出显示处理器编号为 0 时, 表示该动作是在任何处理器之外执行的.</p>
+<h6>
+<a name="boost_asio.overview.core.handler_tracking.h0"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.handler_tracking.adding_location_information"></a></span><a class="link" href="handler_tracking.html#boost_asio.overview.core.handler_tracking.adding_location_information">添加位置信息</a>
+        </h6>
+<p>程序可以在源代码中使用宏 <code class="computeroutput"><span class="identifier">BOOST_ASIO_HANDLER_LOCATION</span></code> 来扩充处理器跟踪输出的位置信息. 例如:</p>
+<pre class="programlisting"><span class="preprocessor">#define</span> <span class="identifier">HANDLER_LOCATION</span> <span class="special">\</span>
+  <span class="identifier">BOOST_ASIO_HANDLER_LOCATION</span><span class="special">((</span><span class="identifier">__FILE__</span><span class="special">,</span> <span class="identifier">__LINE__</span><span class="special">,</span> <span class="identifier">__func__</span><span class="special">))</span>
+
+<span class="comment">// ...</span>
+
+<span class="keyword">void</span> <span class="identifier">do_read</span><span class="special">()</span>
+<span class="special">{</span>
+  <span class="identifier">HANDLER_LOCATION</span><span class="special">;</span>
+
+  <span class="keyword">auto</span> <span class="identifier">self</span><span class="special">(</span><span class="identifier">shared_from_this</span><span class="special">());</span>
+  <span class="identifier">socket_</span><span class="special">.</span><span class="identifier">async_read_some</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">buffer</span><span class="special">(</span><span class="identifier">data_</span><span class="special">,</span> <span class="identifier">max_length</span><span class="special">),</span>
+      <span class="special">[</span><span class="keyword">this</span><span class="special">,</span> <span class="identifier">self</span><span class="special">](</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span> <span class="identifier">ec</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">length</span><span class="special">)</span>
+      <span class="special">{</span>
+        <span class="identifier">HANDLER_LOCATION</span><span class="special">;</span>
+
+        <span class="keyword">if</span> <span class="special">(!</span><span class="identifier">ec</span><span class="special">)</span>
+        <span class="special">{</span>
+          <span class="identifier">do_write</span><span class="special">(</span><span class="identifier">length</span><span class="special">);</span>
+        <span class="special">}</span>
+      <span class="special">});</span>
+<span class="special">}</span>
+</pre>
+<p>有了这些额外的位置信息之后, 处理器跟踪输出可能包含一个由源代码位置组成的调用栈:</p>
+<pre class="programlisting">@asio|1589423304.861944|&gt;7|ec=system:0,bytes_transferred=5
+@asio|1589423304.861952|7^8|in 'async_write' (./../../../boost/asio/impl/write.hpp:330)
+@asio|1589423304.861952|7^8|called from 'do_write' (handler_tracking/async_tcp_echo_server.cpp:62)
+@asio|1589423304.861952|7^8|called from 'operator()' (handler_tracking/async_tcp_echo_server.cpp:51)
+@asio|1589423304.861952|7*8|socket@0x7ff61c008230.async_send
+@asio|1589423304.861975|.8|non_blocking_send,ec=system:0,bytes_transferred=5
+@asio|1589423304.861980|&lt;7|
+</pre>
+<p>此外, 如果 <code class="computeroutput">std::source_location</code> 或 <code class="computeroutput">std::experimental::source_location</code> 可用, <a class="link" href="../../reference/use_awaitable_t.html" title="use_awaitable_t"><code class="computeroutput">use_awaitable_t</code></a> 标记 (在默认构造或用作默认完成标记时) 还会使处理器跟踪为每个新创建的异步操作输出源代码位置. <code class="computeroutput">use_awaitable_t</code> 对象也可以用位置信息显式构造.</p>
+<h6>
+<a name="boost_asio.overview.core.handler_tracking.h1"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.handler_tracking.visual_representations"></a></span><a class="link" href="handler_tracking.html#boost_asio.overview.core.handler_tracking.visual_representations">可视化表示</a>
+        </h6>
+<p>可以使用附带的 <code class="literal">handlerviz.pl</code> 工具对处理器跟踪输出进行后处理, 以创建处理器的可视化表示 (需要 GraphViz 工具 <code class="literal">dot</code>) .</p>
+<h6>
+<a name="boost_asio.overview.core.handler_tracking.h2"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.handler_tracking.custom_tracking"></a></span><a class="link" href="handler_tracking.html#boost_asio.overview.core.handler_tracking.custom_tracking">自定义跟踪</a>
+        </h6>
+<p>可以通过把 <code class="computeroutput"><span class="identifier">BOOST_ASIO_CUSTOM_HANDLER_TRACKING</span></code> 宏定义为某个头文件的名字 (用 <code class="computeroutput"><span class="string">""</span></code> 或 <code class="computeroutput"><span class="special">&lt;&gt;</span></code> 括起来) 来定制处理器跟踪. 这个头文件必须实现以下预处理器宏:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>宏</p>
+                </th>
+<th>
+                  <p>说明</p>
+                </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">BOOST_ASIO_INHERIT_TRACKED_HANDLER</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>为实现异步操作的类指定一个基类. 使用时, 该宏紧跟在类名之后, 因此必须具有 <code class="computeroutput"><span class="special">:</span>
+                    <span class="keyword">public</span> <span class="identifier">my_class</span></code> 的形式.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">BOOST_ASIO_ALSO_INHERIT_TRACKED_HANDLER</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>为实现异步操作的类指定一个基类. 使用时, 该宏位于其他基类之后, 因此必须具有 <code class="computeroutput"><span class="special">,</span>
+                    <span class="keyword">public</span> <span class="identifier">my_class</span></code> 的形式.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">BOOST_ASIO_HANDLER_TRACKING_INIT</span><span class="special">(</span><span class="identifier">args</span><span class="special">)</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>用于初始化跟踪机制的表达式.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">BOOST_ASIO_HANDLER_LOCATION</span><span class="special">(</span><span class="identifier">args</span><span class="special">)</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>用于定义源代码位置的变量声明. <code class="computeroutput"><span class="identifier">args</span></code> 是一个带括号的函数实参列表, 包含文件名、行号和函数名.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">BOOST_ASIO_HANDLER_CREATION</span><span class="special">(</span><span class="identifier">args</span><span class="special">)</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>在创建异步操作时调用的表达式. <code class="computeroutput"><span class="identifier">args</span></code> 是一个带括号的函数实参列表, 包含属主的执行上下文、被跟踪的处理器、对象类型的名称、指向对象的指针、对象的原生句柄以及操作名称.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">BOOST_ASIO_HANDLER_COMPLETION</span><span class="special">(</span><span class="identifier">args</span><span class="special">)</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>在异步操作完成时调用的表达式. <code class="computeroutput"><span class="identifier">args</span></code> 是一个带括号的函数实参列表, 包含被跟踪的处理器.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">BOOST_ASIO_HANDLER_INVOCATION_BEGIN</span><span class="special">(</span><span class="identifier">args</span><span class="special">)</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>在完成处理器被调用之前立即调用的表达式. <code class="computeroutput"><span class="identifier">args</span></code> 是一个带括号的函数实参列表, 包含传给完成处理器的各个实参.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">BOOST_ASIO_HANDLER_INVOCATION_END</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>在完成处理器被调用之后立即调用的表达式.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">BOOST_ASIO_HANDLER_OPERATION</span><span class="special">(</span><span class="identifier">args</span><span class="special">)</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>当调用某个同步对象操作 (例如 <code class="computeroutput"><span class="identifier">close</span><span class="special">()</span></code> 或 <code class="computeroutput"><span class="identifier">cancel</span><span class="special">()</span></code>) 时调用的表达式. <code class="computeroutput"><span class="identifier">args</span></code> 是一个带括号的函数实参列表, 包含属主的执行上下文、对象类型的名称、指向对象的指针、对象的原生句柄以及操作名称.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">BOOST_ASIO_HANDLER_REACTOR_REGISTRATION</span><span class="special">(</span><span class="identifier">args</span><span class="special">)</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>当对象在 reactor 中注册时调用的表达式. <code class="computeroutput"><span class="identifier">args</span></code> 是一个带括号的函数实参列表, 包含属主的执行上下文、对象的原生句柄以及一个唯一的注册键.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">BOOST_ASIO_HANDLER_REACTOR_DEREGISTRATION</span><span class="special">(</span><span class="identifier">args</span><span class="special">)</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>当对象从 reactor 注销时调用的表达式. <code class="computeroutput"><span class="identifier">args</span></code> 是一个带括号的函数实参列表, 包含属主的执行上下文、对象的原生句柄以及一个唯一的注册键.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">BOOST_ASIO_HANDLER_REACTOR_READ_EVENT</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>用于标识 reactor 读就绪事件的位掩码常量.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">BOOST_ASIO_HANDLER_REACTOR_WRITE_EVENT</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>用于标识 reactor 写就绪事件的位掩码常量.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">BOOST_ASIO_HANDLER_REACTOR_ERROR_EVENT</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>用于标识 reactor 错误就绪事件的位掩码常量.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">BOOST_ASIO_HANDLER_REACTOR_EVENTS</span><span class="special">(</span><span class="identifier">args</span><span class="special">)</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>当在 reactor 中注册的对象变为就绪时调用的表达式. <code class="computeroutput"><span class="identifier">args</span></code> 是一个带括号的函数实参列表, 包含属主的执行上下文、唯一注册键以及就绪事件的位掩码.</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">BOOST_ASIO_HANDLER_REACTOR_OPERATION</span><span class="special">(</span><span class="identifier">args</span><span class="special">)</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>当实现作为基于 Reactor 的异步操作的一部分而执行系统调用时调用的表达式. <code class="computeroutput"><span class="identifier">args</span></code> 是一个带括号的函数实参列表, 包含被跟踪的处理器、操作名称、操作产生的错误码, 以及 (可选的) 已传输字节数.</p>
+                </td>
+</tr>
+</tbody>
+</table></div>
+<h6>
+<a name="boost_asio.overview.core.handler_tracking.h3"></a>
+          <span class="phrase"><a name="boost_asio.overview.core.handler_tracking.see_also"></a></span><a class="link" href="handler_tracking.html#boost_asio.overview.core.handler_tracking.see_also">参见</a>
+        </h6>
+<p>
+          <a class="link" href="../../examples/cpp11_examples.html#boost_asio.examples.cpp11_examples.handler_tracking">处理器跟踪示例</a>.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2003-2026 Christopher M. Kohlhoff<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="cancellation.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../core.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="configuration.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

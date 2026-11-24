@@ -1,0 +1,61 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>挂钩 outcome - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="../../../css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="../../../images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="../../../tutorial/advanced/hooks/poke_exception.html"><img src="../../../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../../../tutorial/advanced/hooks.html"><img src="../../../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../../../index.html"><img src="../../../images/home.png" alt="首页"></a><a accesskey="n" href="../../../tutorial/advanced/interop.html"><img src="../../../images/next.png" alt="下一页"></a></div><div id="content">
+  <div class="titlepage"><div><div><h1 style="clear: both">挂钩 outcome</h1></div></div></div>
+  <p>最后一步是针对非常特定的情况添加事件钩子: 当我们的本地化 <code>outcome</code> 从本地化 <code>result</code> 拷贝或移动构造时.</p>
+
+<p>你必须非常小心, 使这些 <code>noexcept</code> 性与 <code>noexcept</code>——即 <code>outcome</code> 中类型的 性相匹配. 你可能注意到 <code>poke_exception()</code> 会创建一个 <code>std::string</code> 并向其追加. 这可能抛出异常. 如果 <code>T</code>、<code>EC</code> 与 <code>EP</code> 的拷贝和/或移动构造函数是 <code>noexcept</code>, 那么 <code>outcome</code> 的拷贝和/或移动构造函数也将如此. 因此如果 <code>poke_exception()</code> 抛出异常, 程序会立即终止, 这很糟.</p>
+
+<p>我们在本例中通过把 <code>poke_exception()</code> 包进一个 <code>try...catch</code> 来避免该问题——后者会丢弃任何被抛出的异常. 对 v2.2 之前的 Outcome, 这些特别命名的自由函数必须放入一个被 ADL 搜索的命名空间:</p>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="k">namespace</span> <span class="n">error_code_extended</span>
+<span class="p">{</span>
+  <span class="c1">// Specialise the outcome copy and move conversion hook for when our localised result
+</span><span class="c1"></span>  <span class="c1">// is used as the source for copy construction our localised outcome
+</span><span class="c1"></span>  <span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">T</span><span class="p">,</span> <span class="k">class</span><span class="err"> </span><span class="nc">U</span><span class="o">&gt;</span> <span class="kr">inline</span> <span class="kt">void</span> <span class="n">hook_outcome_copy_construction</span><span class="p">(</span><span class="n">outcome</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="o">*</span><span class="n">res</span><span class="p">,</span> <span class="k">const</span> <span class="n">result</span><span class="o">&lt;</span><span class="n">U</span><span class="o">&gt;</span> <span class="o">&amp;</span> <span class="cm">/*unused*/</span><span class="p">)</span> <span class="k">noexcept</span>
+  <span class="p">{</span>
+    <span class="k">try</span>
+    <span class="p">{</span>
+      <span class="c1">// when copy constructing from a result&lt;T&gt;, poke in an exception
+</span><span class="c1"></span>      <span class="n">poke_exception</span><span class="p">(</span><span class="n">res</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">catch</span><span class="p">(...)</span>
+    <span class="p">{</span>
+      <span class="c1">// Do nothing
+</span><span class="c1"></span>    <span class="p">}</span>
+  <span class="p">}</span>
+  <span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="err"> </span><span class="nc">T</span><span class="p">,</span> <span class="k">class</span><span class="err"> </span><span class="nc">U</span><span class="o">&gt;</span> <span class="kr">inline</span> <span class="kt">void</span> <span class="n">hook_outcome_move_construction</span><span class="p">(</span><span class="n">outcome</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="o">*</span><span class="n">res</span><span class="p">,</span> <span class="n">result</span><span class="o">&lt;</span><span class="n">U</span><span class="o">&gt;</span> <span class="o">&amp;&amp;</span> <span class="cm">/*unused*/</span><span class="p">)</span> <span class="k">noexcept</span>
+  <span class="p">{</span>
+    <span class="k">try</span>
+    <span class="p">{</span>
+      <span class="c1">// when move constructing from a result&lt;T&gt;, poke in an exception
+</span><span class="c1"></span>      <span class="n">poke_exception</span><span class="p">(</span><span class="n">res</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">catch</span><span class="p">(...)</span>
+    <span class="p">{</span>
+      <span class="c1">// Do nothing
+</span><span class="c1"></span>    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/error_code_extended.cpp#L182" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<p>对 Outcome v2.2 及以后, 这些函数必须放入一个自定义无值策略, 名称分别为 <code>on_outcome_copy_construction()</code> 与 <code>on_outcome_move_construction()</code>. 与之前一样, 函数的实现完全相同, 只是名称与位置变了.</p>
+
+
+        </div><p><small>最后修订: December 15, 2020 at 12:22:39 UTC</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../../../tutorial/advanced/hooks/poke_exception.html"><img src="../../../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../../../tutorial/advanced/hooks.html"><img src="../../../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../../../index.html"><img src="../../../images/home.png" alt="首页"></a><a accesskey="n" href="../../../tutorial/advanced/interop.html"><img src="../../../images/next.png" alt="下一页"></a></div></body>
+</html>

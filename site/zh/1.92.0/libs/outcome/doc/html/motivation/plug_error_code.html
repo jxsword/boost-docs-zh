@@ -1,0 +1,164 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>把一个库接入 std::error_code - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="../css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="../images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="../motivation/std_error_code.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../motivation.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../motivation/plug_error_code2.html"><img src="../images/next.png" alt="下一页"></a></div><div id="content">
+  <div class="titlepage"><div><div><h1 style="clear: both">把一个库接入 <code>std::error_code</code></h1></div></div></div>
+  <p><a href="../motivation/plug_error_code2.html">该指南见此, 不过针对的是 <code>boost::system::error_code</code></a>.</p>
+
+<p>本节说明如何从标准库挂接 <code>std::error_code</code> 系统, 以便使用你自己的错误码集合. 与 C++ 中通常的情况一样, 这样做很直接, 但需要键入样板代码来把你的自定义错误类型告知 C++ STL. 这不是 Outcome 库的一部分, 但我们仍在此提供这个简短指南, 因为相关做法的文档并不完善 [1].</p>
+
+<p>假设你想报告把 <code>std::string</code> 转换为非负 <code>int</code> 时所有可能的失败原因. 清单如下:</p>
+
+<ul>
+<li><code>EmptyString</code>——输入字符串为空,</li>
+<li><code>IllegalChar</code>——输入包含非数字字符,</li>
+<li><code>TooLong</code>——输入表示一个数字, 但该数字装不进 <code>int</code> 类型的变量.</li>
+</ul>
+
+<div class="code-snippet"><div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="cp">#include</span> <span class="cpf">&lt;iostream&gt;</span><span class="cp">
+</span><span class="cp">#include</span> <span class="cpf">&lt;string&gt;        // for string printing</span><span class="cp">
+</span><span class="cp">#include</span> <span class="cpf">&lt;system_error&gt;  // bring in std::error_code et al</span><span class="cp">
+</span><span class="cp"></span>
+<span class="c1">// This is the custom error code enum
+</span><span class="c1"></span><span class="k">enum</span> <span class="k">class</span><span class="err"> </span><span class="nc">ConversionErrc</span>
+<span class="p">{</span>
+  <span class="n">Success</span>     <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="c1">// 0 should not represent an error
+</span><span class="c1"></span>  <span class="n">EmptyString</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+  <span class="n">IllegalChar</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+  <span class="n">TooLong</span>     <span class="o">=</span> <span class="mi">3</span><span class="p">,</span>
+<span class="p">};</span>
+
+<span class="k">namespace</span> <span class="n">std</span>
+<span class="p">{</span>
+  <span class="c1">// Tell the C++ 11 STL metaprogramming that enum ConversionErrc
+</span><span class="c1"></span>  <span class="c1">// is registered with the standard error code system
+</span><span class="c1"></span>  <span class="k">template</span> <span class="o">&lt;&gt;</span> <span class="k">struct</span> <span class="n">is_error_code_enum</span><span class="o">&lt;</span><span class="n">ConversionErrc</span><span class="o">&gt;</span> <span class="o">:</span> <span class="n">true_type</span>
+  <span class="p">{</span>
+  <span class="p">};</span>
+<span class="p">}</span>
+
+<span class="k">namespace</span> <span class="n">detail</span>
+<span class="p">{</span>
+  <span class="c1">// Define a custom error code category derived from std::error_category
+</span><span class="c1"></span>  <span class="k">class</span><span class="err"> </span><span class="nc">ConversionErrc_category</span> <span class="o">:</span> <span class="k">public</span> <span class="n">std</span><span class="o">::</span><span class="n">error_category</span>
+  <span class="p">{</span>
+  <span class="k">public</span><span class="o">:</span>
+    <span class="c1">// Return a short descriptive name for the category
+</span><span class="c1"></span>    <span class="k">virtual</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">name</span><span class="p">()</span> <span class="k">const</span> <span class="k">noexcept</span> <span class="k">override</span> <span class="k">final</span> <span class="p">{</span> <span class="k">return</span> <span class="s">&#34;ConversionError&#34;</span><span class="p">;</span> <span class="p">}</span>
+    <span class="c1">// Return what each enum means in text
+</span><span class="c1"></span>    <span class="k">virtual</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="n">message</span><span class="p">(</span><span class="kt">int</span> <span class="n">c</span><span class="p">)</span> <span class="k">const</span> <span class="k">override</span> <span class="k">final</span>
+    <span class="p">{</span>
+      <span class="k">switch</span> <span class="p">(</span><span class="k">static_cast</span><span class="o">&lt;</span><span class="n">ConversionErrc</span><span class="o">&gt;</span><span class="p">(</span><span class="n">c</span><span class="p">))</span>
+      <span class="p">{</span>
+      <span class="k">case</span> <span class="n">ConversionErrc</span><span class="o">::</span><span class="nl">Success</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&#34;conversion successful&#34;</span><span class="p">;</span>
+      <span class="k">case</span> <span class="n">ConversionErrc</span><span class="o">::</span><span class="nl">EmptyString</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&#34;converting empty string&#34;</span><span class="p">;</span>
+      <span class="k">case</span> <span class="n">ConversionErrc</span><span class="o">::</span><span class="nl">IllegalChar</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&#34;got non-digit char when converting to a number&#34;</span><span class="p">;</span>
+      <span class="k">case</span> <span class="n">ConversionErrc</span><span class="o">::</span><span class="nl">TooLong</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&#34;the number would not fit into memory&#34;</span><span class="p">;</span>
+      <span class="k">default</span><span class="o">:</span>
+        <span class="k">return</span> <span class="s">&#34;unknown&#34;</span><span class="p">;</span>
+      <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="c1">// OPTIONAL: Allow generic error conditions to be compared to me
+</span><span class="c1"></span>    <span class="k">virtual</span> <span class="n">std</span><span class="o">::</span><span class="n">error_condition</span> <span class="n">default_error_condition</span><span class="p">(</span><span class="kt">int</span> <span class="n">c</span><span class="p">)</span> <span class="k">const</span> <span class="k">noexcept</span> <span class="k">override</span> <span class="k">final</span>
+    <span class="p">{</span>
+      <span class="k">switch</span> <span class="p">(</span><span class="k">static_cast</span><span class="o">&lt;</span><span class="n">ConversionErrc</span><span class="o">&gt;</span><span class="p">(</span><span class="n">c</span><span class="p">))</span>
+      <span class="p">{</span>
+      <span class="k">case</span> <span class="n">ConversionErrc</span><span class="o">::</span><span class="nl">EmptyString</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">make_error_condition</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">errc</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">);</span>
+      <span class="k">case</span> <span class="n">ConversionErrc</span><span class="o">::</span><span class="nl">IllegalChar</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">make_error_condition</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">errc</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">);</span>
+      <span class="k">case</span> <span class="n">ConversionErrc</span><span class="o">::</span><span class="nl">TooLong</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">make_error_condition</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">errc</span><span class="o">::</span><span class="n">result_out_of_range</span><span class="p">);</span>
+      <span class="k">default</span><span class="o">:</span>
+        <span class="c1">// I have no mapping for this code
+</span><span class="c1"></span>        <span class="k">return</span> <span class="n">std</span><span class="o">::</span><span class="n">error_condition</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="o">*</span><span class="k">this</span><span class="p">);</span>
+      <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">};</span>
+<span class="p">}</span>
+
+<span class="c1">// Define the linkage for this function to be used by external code.
+</span><span class="c1">// This would be the usual __declspec(dllexport) or __declspec(dllimport)
+</span><span class="c1">// if we were in a Windows DLL etc. But for this example use a global
+</span><span class="c1">// instance but with inline linkage so multiple definitions do not collide.
+</span><span class="c1"></span><span class="cp">#define THIS_MODULE_API_DECL extern inline
+</span><span class="cp"></span>
+<span class="c1">// Declare a global function returning a static instance of the custom category
+</span><span class="c1"></span><span class="n">THIS_MODULE_API_DECL</span> <span class="k">const</span> <span class="n">detail</span><span class="o">::</span><span class="n">ConversionErrc_category</span> <span class="o">&amp;</span><span class="n">ConversionErrc_category</span><span class="p">()</span>
+<span class="p">{</span>
+  <span class="k">static</span> <span class="n">detail</span><span class="o">::</span><span class="n">ConversionErrc_category</span> <span class="n">c</span><span class="p">;</span>
+  <span class="k">return</span> <span class="n">c</span><span class="p">;</span>
+<span class="p">}</span>
+
+
+<span class="c1">// Overload the global make_error_code() free function with our
+</span><span class="c1">// custom enum. It will be found via ADL by the compiler if needed.
+</span><span class="c1"></span><span class="kr">inline</span> <span class="n">std</span><span class="o">::</span><span class="n">error_code</span> <span class="n">make_error_code</span><span class="p">(</span><span class="n">ConversionErrc</span> <span class="n">e</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="k">return</span> <span class="p">{</span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">(</span><span class="n">e</span><span class="p">),</span> <span class="n">ConversionErrc_category</span><span class="p">()};</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="n">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="c1">// Note that we can now supply ConversionErrc directly to error_code
+</span><span class="c1"></span>  <span class="n">std</span><span class="o">::</span><span class="n">error_code</span> <span class="n">ec</span> <span class="o">=</span> <span class="n">ConversionErrc</span><span class="o">::</span><span class="n">IllegalChar</span><span class="p">;</span>
+
+  <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="s">&#34;ConversionErrc::IllegalChar is printed by std::error_code as &#34;</span>
+    <span class="o">&lt;&lt;</span> <span class="n">ec</span> <span class="o">&lt;&lt;</span> <span class="s">&#34; with explanatory message &#34;</span> <span class="o">&lt;&lt;</span> <span class="n">ec</span><span class="p">.</span><span class="n">message</span><span class="p">()</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+
+  <span class="c1">// We can compare ConversionErrc containing error codes to generic conditions
+</span><span class="c1"></span>  <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="s">&#34;ec is equivalent to std::errc::invalid_argument = &#34;</span>
+    <span class="o">&lt;&lt;</span> <span class="p">(</span><span class="n">ec</span> <span class="o">==</span> <span class="n">std</span><span class="o">::</span><span class="n">errc</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+  <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="s">&#34;ec is equivalent to std::errc::result_out_of_range = &#34;</span>
+    <span class="o">&lt;&lt;</span> <span class="p">(</span><span class="n">ec</span> <span class="o">==</span> <span class="n">std</span><span class="o">::</span><span class="n">errc</span><span class="o">::</span><span class="n">result_out_of_range</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+  <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div><a href="https://github.com/boostorg/outcome/tree/master/doc/src/snippets/error_code_registration.cpp#L32" class="code-snippet-url" target="_blank">在 Github 上查看此代码</a></div>
+
+
+<p>与直接使用你的自定义错误码枚举相比, 这可能看起来多了一大堆样板代码, 但看看这些优点:</p>
+
+<ol>
+<li>任何能讲 <code>std::error_code</code> 的代码现在都能处理你的代码产生的错误, 而且无需重新编译.</li>
+<li><code>std::system_error</code> 现在能无缝包装你的自定义错误码, 使你的自定义错误码能被转换为 C++ 异常<em>并再转换回来</em>而不丢失信息.</li>
+<li><code>std::error_code</code> 知道如何打印自己, 无需你做额外工作就会打印你的自定义错误码. 反正你为任何自定义错误码通常也要定义打印例程, 因此这里的额外样板代码其实非常少.</li>
+<li>如果你实现 <code>default_error_condition()</code> 覆写, 你就能让那些只为理解 <code>std::errc</code> 而写的代码检查你的自定义错误码域是否与标准错误条件等价, 而且无需重新编译.</li>
+</ol>
+
+<div class="notices note" style="background: url('../images/note.png') top left no-repeat padding-box padding-box;">
+<div class="notices heading">注释</div>
+<div class="notices message"><p>本文档建议: 当你定义自定义的 <code>enum</code> 来表示 <code>error_code</code> 时, 应始终确保值 0 从不表示真实的错误: 它要么表示成功, 要么根本不提供. 如果你只打算把你的 <code>enum</code> 用在 <code>result&lt;&gt;</code> 或 <code>outcome&lt;&gt;</code> 内, 你的枚举可以直接从 1 开始. 如果你还打算从函数直接返回 <code>std::error_code</code>, 你或许应当把值 0 定义为成功, 以便能够通过返回 <code>MyEnum::Success</code> 来告知函数成功. 这是因为 <code>error_code</code> 到 <code>bool</code> 的语境转换 (有些人用它检查是否发生错误) 只检查错误码的数值 (而不看错误域 (类别)).</p>
+</div>
+</div>
+
+
+<p>[1]: 我所知道的唯一文档是 ASIO 与 Networking TS 创始人 Chris Kohlhoff 相当古老的指南:</p>
+
+<ul>
+<li><a href="http://blog.think-async.com/2010/04/system-error-support-in-c0x-part-1.html">http://blog.think-async.com/2010/04/system-error-support-in-c0x-part-1.html</a></li>
+<li><a href="http://blog.think-async.com/2010/04/system-error-support-in-c0x-part-2.html">http://blog.think-async.com/2010/04/system-error-support-in-c0x-part-2.html</a></li>
+<li><a href="http://blog.think-async.com/2010/04/system-error-support-in-c0x-part-3.html">http://blog.think-async.com/2010/04/system-error-support-in-c0x-part-3.html</a></li>
+<li><a href="http://blog.think-async.com/2010/04/system-error-support-in-c0x-part-4.html">http://blog.think-async.com/2010/04/system-error-support-in-c0x-part-4.html</a></li>
+<li><a href="http://blog.think-async.com/2010/04/system-error-support-in-c0x-part-5.html">http://blog.think-async.com/2010/04/system-error-support-in-c0x-part-5.html</a></li>
+</ul>
+
+
+        </div><p><small>最后修订: September 10, 2021 at 11:56:40 +0100</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../motivation/std_error_code.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../motivation.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../motivation/plug_error_code2.html"><img src="../images/next.png" alt="下一页"></a></div></body>
+</html>

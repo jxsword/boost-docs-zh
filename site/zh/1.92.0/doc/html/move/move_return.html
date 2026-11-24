@@ -1,0 +1,184 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>返回局部对象时的隐式移动</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../move.html" title="第 22 章 Boost.Move">
+<link rel="prev" href="construct_forwarding.html" title="构造函数转发">
+<link rel="next" href="move_iterator.html" title="移动迭代器">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="construct_forwarding.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../move.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="move_iterator.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="move.move_return"></a><a class="link" href="move_return.html" title="返回局部对象时的隐式移动">返回局部对象时的隐式移动</a>
+</h2></div></div></div>
+<p>C++ 标准规定了隐式移动操作安全的情形; 在 (具名) 返回值优化无法使用的情况下, 编译器可以使用它. 典型用例是函数按值返回一个具名 (非临时) 对象, 下面的代码在 C++11 中可以完美编译:</p>
+<pre class="programlisting"><span class="comment">//Even if movable can't be copied</span>
+<span class="comment">//the compiler will call the move-constructor</span>
+<span class="comment">//to generate the return value</span>
+<span class="comment">//</span>
+<span class="comment">//The compiler can also optimize out the move</span>
+<span class="comment">//and directly construct the object 'm'</span>
+<span class="identifier">movable</span> <span class="identifier">factory</span><span class="special">()</span>
+<span class="special">{</span>
+   <span class="identifier">movable</span> <span class="identifier">tmp</span><span class="special">;</span>
+   <span class="identifier">m</span> <span class="special">=</span> <span class="special">...</span>
+   <span class="comment">//(1) moved instead of copied</span>
+   <span class="keyword">return</span> <span class="identifier">tmp</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="comment">//Initialize object</span>
+<span class="identifier">movable</span> <span class="identifier">m</span><span class="special">(</span><span class="identifier">factory</span><span class="special">());</span>
+</pre>
+<p>在不支持右值引用的编译器以及一些不符合标准的编译器 (如 Visual C++ 2010/2012) 中, 标记为 <code class="computeroutput"><span class="special">(</span><span class="number">1</span><span class="special">)</span></code> 的行会触发编译错误, 因为 <code class="computeroutput"><span class="identifier">movable</span></code> 无法被复制. 使用显式的 <code class="computeroutput"><span class="special">::</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">tmp</span><span class="special">)</span></code> 可以变通解决这一限制, 但在 C++11 编译器中代码将是次优的 (因为编译器无法使用 (N)RVO 来消除复制/移动).</p>
+<p>
+      <span class="bold"><strong>Boost.Move</strong></span> 提供了一个名为 <code class="computeroutput"><a class="link" href="../doxygen/core_8hpp_1ab582644b3621ae7776dfb96e9f1d9748.html" title="宏 BOOST_MOVE_RET">BOOST_MOVE_RET</a></code> 的附加宏, 可用来缓解这一问题, 获得可移植的返回时移动语义. 让我们把前面介绍过的仅可移动的 <code class="computeroutput"><span class="identifier">movable</span></code> 类与 <code class="computeroutput"><span class="identifier">copyable</span></code> 类 (仅可复制类型), <code class="computeroutput"><span class="identifier">copy_movable</span></code> 类 (可复制可移动) 以及 <code class="computeroutput"><span class="identifier">non_copy_movable</span></code> 类 (不可复制且不可移动) 一起使用:</p>
+<pre class="programlisting"><span class="comment">//header file "copymovable.hpp"</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">move</span><span class="special">/</span><span class="identifier">core</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="comment">//A copy_movable class</span>
+<span class="keyword">class</span> <span class="identifier">copy_movable</span>
+<span class="special">{</span>
+   <span class="identifier">BOOST_COPYABLE_AND_MOVABLE</span><span class="special">(</span><span class="identifier">copy_movable</span><span class="special">)</span>
+   <span class="keyword">int</span> <span class="identifier">value_</span><span class="special">;</span>
+
+   <span class="keyword">public</span><span class="special">:</span>
+   <span class="identifier">copy_movable</span><span class="special">()</span> <span class="special">:</span> <span class="identifier">value_</span><span class="special">(</span><span class="number">1</span><span class="special">){}</span>
+
+   <span class="comment">//Move constructor and assignment</span>
+   <span class="identifier">copy_movable</span><span class="special">(</span><span class="identifier">BOOST_RV_REF</span><span class="special">(</span><span class="identifier">copy_movable</span><span class="special">)</span> <span class="identifier">m</span><span class="special">)</span>
+   <span class="special">{</span>  <span class="identifier">value_</span> <span class="special">=</span> <span class="identifier">m</span><span class="special">.</span><span class="identifier">value_</span><span class="special">;</span>   <span class="identifier">m</span><span class="special">.</span><span class="identifier">value_</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>  <span class="special">}</span>
+
+   <span class="identifier">copy_movable</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">copy_movable</span> <span class="special">&amp;</span><span class="identifier">m</span><span class="special">)</span>
+   <span class="special">{</span>  <span class="identifier">value_</span> <span class="special">=</span> <span class="identifier">m</span><span class="special">.</span><span class="identifier">value_</span><span class="special">;</span>   <span class="special">}</span>
+
+   <span class="identifier">copy_movable</span> <span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">=(</span><span class="identifier">BOOST_RV_REF</span><span class="special">(</span><span class="identifier">copy_movable</span><span class="special">)</span> <span class="identifier">m</span><span class="special">)</span>
+   <span class="special">{</span>  <span class="identifier">value_</span> <span class="special">=</span> <span class="identifier">m</span><span class="special">.</span><span class="identifier">value_</span><span class="special">;</span>   <span class="identifier">m</span><span class="special">.</span><span class="identifier">value_</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>  <span class="keyword">return</span> <span class="special">*</span><span class="keyword">this</span><span class="special">;</span>  <span class="special">}</span>
+
+   <span class="identifier">copy_movable</span> <span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">=(</span><span class="identifier">BOOST_COPY_ASSIGN_REF</span><span class="special">(</span><span class="identifier">copy_movable</span><span class="special">)</span> <span class="identifier">m</span><span class="special">)</span>
+   <span class="special">{</span>  <span class="identifier">value_</span> <span class="special">=</span> <span class="identifier">m</span><span class="special">.</span><span class="identifier">value_</span><span class="special">;</span>   <span class="keyword">return</span> <span class="special">*</span><span class="keyword">this</span><span class="special">;</span>  <span class="special">}</span>
+
+   <span class="keyword">bool</span> <span class="identifier">moved</span><span class="special">()</span> <span class="keyword">const</span> <span class="comment">//Observer</span>
+   <span class="special">{</span>  <span class="keyword">return</span> <span class="identifier">value_</span> <span class="special">==</span> <span class="number">0</span><span class="special">;</span> <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="comment">//A copyable-only class</span>
+<span class="keyword">class</span> <span class="identifier">copyable</span>
+<span class="special">{};</span>
+
+<span class="comment">//A copyable-only class</span>
+<span class="keyword">class</span> <span class="identifier">non_copy_movable</span>
+<span class="special">{</span>
+   <span class="keyword">public</span><span class="special">:</span>
+   <span class="identifier">non_copy_movable</span><span class="special">(){}</span>
+   <span class="keyword">private</span><span class="special">:</span>
+   <span class="identifier">non_copy_movable</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">non_copy_movable</span><span class="special">&amp;);</span>
+   <span class="identifier">non_copy_movable</span><span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">=(</span><span class="keyword">const</span> <span class="identifier">non_copy_movable</span><span class="special">&amp;);</span>
+<span class="special">};</span>
+</pre>
+<p>并构建一个泛型工厂函数, 它返回一个新构造的值或对已构造对象的引用.</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="string">"movable.hpp"</span>
+<span class="preprocessor">#include</span> <span class="string">"copymovable.hpp"</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">move</span><span class="special">/</span><span class="identifier">core</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Type</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">factory_functor</span>
+<span class="special">{</span>
+   <span class="keyword">typedef</span> <span class="identifier">Type</span> <span class="identifier">return_type</span><span class="special">;</span>
+
+   <span class="identifier">Type</span> <span class="keyword">operator</span><span class="special">()()</span> <span class="keyword">const</span>
+   <span class="special">{</span>  <span class="identifier">Type</span> <span class="identifier">t</span><span class="special">;</span>  <span class="keyword">return</span> <span class="identifier">BOOST_MOVE_RET</span><span class="special">(</span><span class="identifier">Type</span><span class="special">,</span> <span class="identifier">t</span><span class="special">);</span>  <span class="special">}</span>
+<span class="special">};</span>
+
+<span class="keyword">struct</span> <span class="identifier">return_reference</span>
+<span class="special">{</span>
+   <span class="keyword">typedef</span> <span class="identifier">non_copy_movable</span> <span class="special">&amp;</span><span class="identifier">return_type</span><span class="special">;</span>
+
+   <span class="identifier">non_copy_movable</span> <span class="special">&amp;</span><span class="keyword">operator</span><span class="special">()()</span> <span class="keyword">const</span>
+   <span class="special">{</span>  <span class="keyword">return</span> <span class="identifier">ncm</span><span class="special">;</span> <span class="special">}</span>
+
+   <span class="keyword">static</span> <span class="identifier">non_copy_movable</span> <span class="identifier">ncm</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="identifier">non_copy_movable</span> <span class="identifier">return_reference</span><span class="special">::</span><span class="identifier">ncm</span><span class="special">;</span>
+
+<span class="comment">//A wrapper that locks a mutex while the</span>
+<span class="comment">//factory creates a new value.</span>
+<span class="comment">//It must generically move the return value</span>
+<span class="comment">//if possible both in C++03 and C++11</span>
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Factory</span><span class="special">&gt;</span>
+<span class="keyword">typename</span> <span class="identifier">Factory</span><span class="special">::</span><span class="identifier">return_type</span> <span class="identifier">lock_wrapper</span><span class="special">(</span><span class="identifier">Factory</span> <span class="identifier">f</span><span class="special">)</span>
+<span class="special">{</span>
+   <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">Factory</span><span class="special">::</span><span class="identifier">return_type</span> <span class="identifier">return_type</span><span class="special">;</span>
+   <span class="comment">//LOCK();</span>
+   <span class="identifier">return_type</span> <span class="identifier">r</span> <span class="special">=</span> <span class="identifier">f</span><span class="special">();</span>
+   <span class="comment">//UNLOCK();</span>
+
+   <span class="comment">//In C++03: boost::move() if R is not a reference and</span>
+   <span class="comment">//has move emulation enabled. In C++11: just return r.</span>
+   <span class="keyword">return</span> <span class="identifier">BOOST_MOVE_RET</span><span class="special">(</span><span class="identifier">return_type</span><span class="special">,</span> <span class="identifier">r</span><span class="special">);</span>
+<span class="special">}</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">()</span>
+<span class="special">{</span>
+   <span class="identifier">movable</span> <span class="identifier">m</span>            <span class="special">=</span> <span class="identifier">lock_wrapper</span><span class="special">(</span><span class="identifier">factory_functor</span><span class="special">&lt;</span><span class="identifier">movable</span><span class="special">&gt;</span>     <span class="special">());</span>
+   <span class="identifier">copy_movable</span> <span class="identifier">cm</span>      <span class="special">=</span> <span class="identifier">lock_wrapper</span><span class="special">(</span><span class="identifier">factory_functor</span><span class="special">&lt;</span><span class="identifier">copy_movable</span><span class="special">&gt;());</span>
+   <span class="identifier">copyable</span> <span class="identifier">c</span>           <span class="special">=</span> <span class="identifier">lock_wrapper</span><span class="special">(</span><span class="identifier">factory_functor</span><span class="special">&lt;</span><span class="identifier">copyable</span><span class="special">&gt;</span>    <span class="special">());</span>
+   <span class="identifier">non_copy_movable</span> <span class="special">&amp;</span><span class="identifier">mr</span> <span class="special">=</span> <span class="identifier">lock_wrapper</span><span class="special">(</span><span class="identifier">return_reference</span>             <span class="special">());</span>
+   <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>
+      <span class="bold"><strong>注意</strong></span>: 在不符合标准或 C++03 的编译器中使用此宏时, 即使 C++11 标准不允许, 也会执行移动 (例如返回一个静态变量). 用户有责任只在返回符合 C++11 标准的局部对象时使用此宏. 例如:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">foo</span>
+<span class="special">{</span>
+   <span class="identifier">copy_movable</span> <span class="keyword">operator</span><span class="special">()()</span> <span class="keyword">const</span>
+   <span class="special">{</span>
+      <span class="comment">//ERROR! The Standard does not allow implicit move returns when the object to be returned </span>
+      <span class="comment">//does not met the criteria for elision of a copy operation (such as returning a static member data)</span>
+      <span class="comment">//In C++03 compilers this will MOVE resources from cm</span>
+      <span class="comment">//In C++11 compilers this will COPY resources from cm</span>
+      <span class="comment">//so DON'T use use BOOST_MOVE_RET without care.</span>
+      <span class="keyword">return</span> <span class="identifier">BOOST_MOVE_RET</span><span class="special">(</span><span class="identifier">copy_movable</span><span class="special">,</span> <span class="identifier">cm</span><span class="special">);</span>
+   <span class="special">}</span>
+
+   <span class="keyword">static</span> <span class="identifier">copy_movable</span> <span class="identifier">cm</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>
+      <span class="bold"><strong>注释</strong></span>: 返回临时对象时不需要 <code class="computeroutput"><span class="identifier">BOOST_MOVE_REF</span></code>, 因为复制消除规则在 C++03 和 C++11 编译器上都有效.</p>
+<pre class="programlisting"><span class="comment">//Note: no BOOST_MOVE_RET</span>
+<span class="identifier">movable</span> <span class="identifier">get_movable</span><span class="special">()</span>
+<span class="special">{</span>  <span class="keyword">return</span> <span class="identifier">movable</span><span class="special">();</span>  <span class="special">}</span>
+
+<span class="identifier">copy_movable</span> <span class="identifier">get_copy_movable</span><span class="special">()</span>
+<span class="special">{</span>  <span class="keyword">return</span> <span class="identifier">copy_movable</span><span class="special">();</span>  <span class="special">}</span>
+
+<span class="identifier">copyable</span> <span class="identifier">get_copyable</span><span class="special">()</span>
+<span class="special">{</span>  <span class="keyword">return</span> <span class="identifier">copyable</span><span class="special">();</span>  <span class="special">}</span>
+</pre>
+</div>
+<div class="copyright-footer">版权所有 © 2008-2024 Ion Gaztanaga<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="construct_forwarding.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../move.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="move_iterator.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

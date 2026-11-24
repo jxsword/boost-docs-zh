@@ -1,0 +1,669 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>条件变量</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Fiber">
+<link rel="up" href="../synchronization.html" title="同步">
+<link rel="prev" href="mutex_types.html" title="互斥量类型">
+<link rel="next" href="barriers.html" title="屏障">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="mutex_types.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../synchronization.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="barriers.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="fiber.synchronization.conditions"></a><a class="link" href="conditions.html" title="条件变量">条件变量</a>
+</h3></div></div></div>
+<h5>
+<a name="fiber.synchronization.conditions.h0"></a>
+        <span class="phrase"><a name="fiber.synchronization.conditions.synopsis"></a></span><a class="link" href="conditions.html#fiber.synchronization.conditions.synopsis">概要</a>
+      </h5>
+<pre class="programlisting"><span class="keyword">enum</span> <span class="keyword">class</span> <span class="identifier">cv_status</span><span class="special">;</span> <span class="special">{</span>
+    <span class="identifier">no_timeout</span><span class="special">,</span>
+    <span class="identifier">timeout</span>
+<span class="special">};</span>
+
+<span class="keyword">class</span> <span class="identifier">condition_variable</span><span class="special">;</span>
+<span class="keyword">class</span> <span class="identifier">condition_variable_any</span><span class="special">;</span>
+</pre>
+<p>类 <a class="link" href="conditions.html#class_condition_variable"><code class="computeroutput">condition_variable</code></a> 为纤程提供了一种等待来自另一纤程通知的机制. 当纤程从等待中醒来时, 它会检查相应条件现在是否为真, 若为真则继续执行. 若条件不为真, 则纤程再次调用 <code class="computeroutput"><span class="identifier">wait</span></code> 以继续等待. 最简单的情况下, 该条件只是一个布尔变量:</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">condition_variable</span> <span class="identifier">cond</span><span class="special">;</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">mutex</span> <span class="identifier">mtx</span><span class="special">;</span>
+<span class="keyword">bool</span> <span class="identifier">data_ready</span> <span class="special">=</span> <span class="keyword">false</span><span class="special">;</span>
+
+<span class="keyword">void</span> <span class="identifier">process_data</span><span class="special">();</span>
+
+<span class="keyword">void</span> <span class="identifier">wait_for_data_to_process</span><span class="special">()</span> <span class="special">{</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_lock</span><span class="special">&lt;</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">mutex</span> <span class="special">&gt;</span> <span class="identifier">lk</span><span class="special">(</span> <span class="identifier">mtx</span><span class="special">);</span>
+        <span class="keyword">while</span> <span class="special">(</span> <span class="special">!</span> <span class="identifier">data_ready</span><span class="special">)</span> <span class="special">{</span>
+            <span class="identifier">cond</span><span class="special">.</span><span class="identifier">wait</span><span class="special">(</span> <span class="identifier">lk</span><span class="special">);</span>
+        <span class="special">}</span>
+    <span class="special">}</span>   <span class="comment">// release lk</span>
+    <span class="identifier">process_data</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<p>注意 <code class="computeroutput"><span class="identifier">lk</span></code> 被传递给 <a class="link" href="conditions.html#condition_variable_wait"><code class="computeroutput">condition_variable::wait()</code></a>: <code class="computeroutput"><span class="identifier">wait</span><span class="special">()</span></code> 会原子性地把该纤程加入等待该条件变量的纤程集合, 并解锁 <a class="link" href="mutex_types.html#class_mutex"><code class="computeroutput">mutex</code></a>. 当该纤程被唤醒时, <code class="computeroutput"><span class="identifier">mutex</span></code> 会在 <code class="computeroutput"><span class="identifier">wait</span><span class="special">()</span></code> 调用返回前再次被锁定. 这允许其他纤程获取 <code class="computeroutput"><span class="identifier">mutex</span></code> 以更新共享数据, 并确保与条件相关的数据被正确同步.</p>
+<p>
+        <code class="computeroutput"><span class="identifier">wait_for_data_to_process</span><span class="special">()</span></code> 也可以等价地写作:</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">wait_for_data_to_process</span><span class="special">()</span> <span class="special">{</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_lock</span><span class="special">&lt;</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">mutex</span> <span class="special">&gt;</span> <span class="identifier">lk</span><span class="special">(</span> <span class="identifier">mtx</span><span class="special">);</span>
+        <span class="comment">// make condition_variable::wait() perform the loop</span>
+        <span class="identifier">cond</span><span class="special">.</span><span class="identifier">wait</span><span class="special">(</span> <span class="identifier">lk</span><span class="special">,</span> <span class="special">[](){</span> <span class="keyword">return</span> <span class="identifier">data_ready</span><span class="special">;</span> <span class="special">});</span>
+    <span class="special">}</span>   <span class="comment">// release lk</span>
+    <span class="identifier">process_data</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<p>与此同时, 另一个纤程把 <code class="computeroutput"><span class="identifier">data_ready</span></code> 设为 <code class="computeroutput"><span class="keyword">true</span></code>, 然后调用 <a class="link" href="conditions.html#condition_variable_notify_one"><code class="computeroutput">condition_variable::notify_one()</code></a> 或 <a class="link" href="conditions.html#condition_variable_notify_all"><code class="computeroutput">condition_variable::notify_all()</code></a> (作用于 <a class="link" href="conditions.html#class_condition_variable"><code class="computeroutput">condition_variable</code></a> <code class="computeroutput"><span class="identifier">cond</span></code> ), 分别唤醒一个等待的纤程或所有等待的纤程.</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">retrieve_data</span><span class="special">();</span>
+<span class="keyword">void</span> <span class="identifier">prepare_data</span><span class="special">();</span>
+
+<span class="keyword">void</span> <span class="identifier">prepare_data_for_processing</span><span class="special">()</span> <span class="special">{</span>
+    <span class="identifier">retrieve_data</span><span class="special">();</span>
+    <span class="identifier">prepare_data</span><span class="special">();</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_lock</span><span class="special">&lt;</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">mutex</span> <span class="special">&gt;</span> <span class="identifier">lk</span><span class="special">(</span> <span class="identifier">mtx</span><span class="special">);</span>
+        <span class="identifier">data_ready</span> <span class="special">=</span> <span class="keyword">true</span><span class="special">;</span>
+    <span class="special">}</span>
+    <span class="identifier">cond</span><span class="special">.</span><span class="identifier">notify_one</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<p>注意 <a class="link" href="mutex_types.html#class_mutex"><code class="computeroutput">mutex</code></a> 在更新共享数据之前已被锁定, 但 <code class="computeroutput"><span class="identifier">mutex</span></code> 不必在 <a class="link" href="conditions.html#condition_variable_notify_one"><code class="computeroutput">condition_variable::notify_one()</code></a> 调用期间一直保持锁定.</p>
+<p>加锁很重要, 因为 <span class="bold"><strong>Boost.Fiber</strong></span> 提供的同步对象可用于同步运行在不同线程上的纤程.</p>
+<p>
+        <span class="bold"><strong>Boost.Fiber</strong></span> 同时提供了 <a class="link" href="conditions.html#class_condition_variable"><code class="computeroutput">condition_variable</code></a> 和 <a class="link" href="conditions.html#class_condition_variable_any"><code class="computeroutput">condition_variable_any</code></a>. <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">condition_variable</span></code> 只能等待 <a href="http://en.cppreference.com/w/cpp/thread/unique_lock" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_lock</span></code></a><code class="computeroutput"><span class="special">&lt;</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span></code><a class="link" href="mutex_types.html#class_mutex"><code class="computeroutput">mutex</code></a><code class="computeroutput"> <span class="special">&gt;</span></code>, 而 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fibers</span><span class="special">::</span><span class="identifier">condition_variable_any</span></code> 则可等待用户定义的锁类型.</p>
+<a name="condition_variable_spurious_wakeups"></a><h5>
+<a name="fiber.synchronization.conditions.h1"></a>
+        <span class="phrase"><a name="fiber.synchronization.conditions.no_spurious_wakeups"></a></span><a class="link" href="conditions.html#fiber.synchronization.conditions.no_spurious_wakeups">无虚假唤醒</a>
+      </h5>
+<p> <a class="link" href="conditions.html#class_condition_variable"><code class="computeroutput">condition_variable</code></a> 和 <a class="link" href="conditions.html#class_condition_variable_any"><code class="computeroutput">condition_variable_any</code></a> 都不会发生虚假唤醒: <a class="link" href="conditions.html#condition_variable_wait"><code class="computeroutput">condition_variable::wait()</code></a> 只能在调用 <a class="link" href="conditions.html#condition_variable_notify_one"><code class="computeroutput">condition_variable::notify_one()</code></a> 或 <a class="link" href="conditions.html#condition_variable_notify_all"><code class="computeroutput">condition_variable::notify_all()</code></a> 时被唤醒. 即便如此, 谨慎起见仍应使用 <code class="computeroutput"><span class="identifier">wait</span><span class="special">(</span> <span class="identifier">lock</span><span class="special">,</span> <span class="identifier">predicate</span> <span class="special">)</span></code> 的某个重载.</p>
+<p>考虑一组消费者纤程, 从 <a href="http://en.cppreference.com/w/cpp/container/queue" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">queue</span></code></a> 中取条目进行处理. 该队列由一组生产者纤程持续填充.</p>
+<p>消费者纤程在一个 <code class="computeroutput"><span class="identifier">condition_variable</span></code> 上等待是合理的, 只要队列保持 <a href="http://en.cppreference.com/w/cpp/container/queue/empty" target="_top"><code class="computeroutput"><span class="identifier">empty</span><span class="special">()</span></code></a> 状态.</p>
+<p>由于生产者纤程可能以突发方式向队列 <a href="http://en.cppreference.com/w/cpp/container/queue/push" target="_top"><code class="computeroutput"><span class="identifier">push</span><span class="special">()</span></code></a> 条目, 它们调用 <a class="link" href="conditions.html#condition_variable_notify_all"><code class="computeroutput">condition_variable::notify_all()</code></a> 而不是 <a class="link" href="conditions.html#condition_variable_notify_one"><code class="computeroutput">condition_variable::notify_one()</code></a>.</p>
+<p>但某个消费者纤程完全可能从 <a class="link" href="conditions.html#condition_variable_wait"><code class="computeroutput">condition_variable::wait()</code></a> 中醒来, 却发现队列 <code class="computeroutput"><span class="identifier">empty</span><span class="special">()</span></code>, 因为其他消费者纤程可能已经处理完所有待处理条目.</p>
+<p>(另见 <a class="link" href="../rationale.html#spurious_wakeup">虚假唤醒</a>.)</p>
+<a name="class_cv_status"></a><h5>
+<a name="fiber.synchronization.conditions.h2"></a>
+        <span class="phrase"><a name="fiber.synchronization.conditions.enumeration__code__phrase_role__identifier__cv_status__phrase___code_"></a></span><a class="link" href="conditions.html#fiber.synchronization.conditions.enumeration__code__phrase_role__identifier__cv_status__phrase___code_">枚举 <code class="computeroutput"><span class="identifier">cv_status</span></code></a>
+      </h5>
+<p>限时等待操作可能因超时而返回, 也可能不是.</p>
+<pre class="programlisting"><span class="keyword">enum</span> <span class="keyword">class</span> <span class="identifier">cv_status</span> <span class="special">{</span>
+    <span class="identifier">no_timeout</span><span class="special">,</span>
+    <span class="identifier">timeout</span>
+<span class="special">};</span>
+</pre>
+<h5>
+<a name="fiber.synchronization.conditions.h3"></a>
+        <span class="phrase"><a name="fiber.synchronization.conditions._code__phrase_role__identifier__no_timeout__phrase___code_"></a></span><a class="link" href="conditions.html#fiber.synchronization.conditions._code__phrase_role__identifier__no_timeout__phrase___code_"><code class="computeroutput"><span class="identifier">no_timeout</span></code></a>
+      </h5>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>条件变量是通过 <code class="computeroutput"><span class="identifier">notify_one</span></code> 或 <code class="computeroutput"><span class="identifier">notify_all</span></code> 被唤醒的.</p></dd>
+</dl>
+</div>
+<h5>
+<a name="fiber.synchronization.conditions.h4"></a>
+        <span class="phrase"><a name="fiber.synchronization.conditions._code__phrase_role__identifier__timeout__phrase___code_"></a></span><a class="link" href="conditions.html#fiber.synchronization.conditions._code__phrase_role__identifier__timeout__phrase___code_"><code class="computeroutput"><span class="identifier">timeout</span></code></a>
+      </h5>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>条件变量因超时而被唤醒.</p></dd>
+</dl>
+</div>
+<p>
+        </p>
+<h5>
+<a name="class_condition_variable_any_bridgehead"></a>
+  <span class="phrase"><a name="class_condition_variable_any"></a></span>
+  <a class="link" href="conditions.html#class_condition_variable_any"> <code class="computeroutput">condition_variable_any</code></a> 类</h5>
+<p>
+      </p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">fiber</span><span class="special">/</span><span class="identifier">condition_variable</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">fibers</span> <span class="special">{</span>
+
+<span class="keyword">class</span> condition_variable_any <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    condition_variable_any<span class="special">();</span>
+    <span class="special">~</span>condition_variable_any<span class="special">();</span>
+
+    condition_variable_any<span class="special">(</span> condition_variable_any <span class="keyword">const</span><span class="special">&amp;)</span> <span class="special">=</span> <span class="keyword">delete</span><span class="special">;</span>
+    condition_variable_any <span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">=(</span> condition_variable_any <span class="keyword">const</span><span class="special">&amp;)</span> <span class="special">=</span> <span class="keyword">delete</span><span class="special">;</span>
+
+    <span class="keyword">void</span> <span class="identifier">notify_one</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+    <span class="keyword">void</span> <span class="identifier">notify_all</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    template&lt; typename LockType &gt;
+    void <span class="identifier">wait</span><span class="special">(</span> LockType <span class="special">&amp;);</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span> typename LockType, typename <span class="identifier">Pred</span> <span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="identifier">wait</span><span class="special">(</span> LockType <span class="special">&amp;,</span> <span class="identifier">Pred</span><span class="special">);</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span> typename LockType, typename <span class="identifier">Clock</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Duration</span> <span class="special">&gt;</span>
+    <span class="identifier">cv_status</span> <span class="identifier">wait_until</span><span class="special">(</span> LockType <span class="special">&amp;,</span>
+                          <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">time_point</span><span class="special">&lt;</span> <span class="identifier">Clock</span><span class="special">,</span> <span class="identifier">Duration</span> <span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;);</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span> typename LockType, typename <span class="identifier">Clock</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Duration</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Pred</span> <span class="special">&gt;</span>
+    <span class="keyword">bool</span> <span class="identifier">wait_until</span><span class="special">(</span> LockType <span class="special">&amp;,</span>
+                     <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">time_point</span><span class="special">&lt;</span> <span class="identifier">Clock</span><span class="special">,</span> <span class="identifier">Duration</span> <span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;,</span>
+                     <span class="identifier">Pred</span><span class="special">);</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span> typename LockType, typename <span class="identifier">Rep</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Period</span> <span class="special">&gt;</span>
+    <span class="identifier">cv_status</span> <span class="identifier">wait_for</span><span class="special">(</span> LockType <span class="special">&amp;,</span>
+                        <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">duration</span><span class="special">&lt;</span> <span class="identifier">Rep</span><span class="special">,</span> <span class="identifier">Period</span> <span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;);</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span> typename LockType, typename <span class="identifier">Rep</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Period</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Pred</span> <span class="special">&gt;</span>
+    <span class="keyword">bool</span> <span class="identifier">wait_for</span><span class="special">(</span> LockType <span class="special">&amp;,</span>
+                   <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">duration</span><span class="special">&lt;</span> <span class="identifier">Rep</span><span class="special">,</span> <span class="identifier">Period</span> <span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;,</span>
+                   <span class="identifier">Pred</span><span class="special">);</span>
+<span class="special">};</span>
+
+<span class="special">}}</span>
+</pre>
+<h5>
+<a name="fiber.synchronization.conditions.h5"></a>
+        <span class="phrase"><a name="fiber.synchronization.conditions.constructor"></a></span><a class="link" href="conditions.html#fiber.synchronization.conditions.constructor">构造函数</a>
+      </h5>
+<pre class="programlisting">condition_variable_any<span class="special">()</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>创建对象.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+</dl>
+</div>
+<h5>
+<a name="fiber.synchronization.conditions.h6"></a>
+        <span class="phrase"><a name="fiber.synchronization.conditions.destructor"></a></span><a class="link" href="conditions.html#fiber.synchronization.conditions.destructor">析构函数</a>
+      </h5>
+<pre class="programlisting"><span class="special">~</span>condition_variable_any<span class="special">()</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>在 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 上等待的所有纤程都已通过对 <code class="computeroutput"><span class="identifier">notify_one</span></code> 或 <code class="computeroutput"><span class="identifier">notify_all</span></code> 的调用收到通知 (不过对 <code class="computeroutput"><span class="identifier">wait</span></code>、<code class="computeroutput"><span class="identifier">wait_for</span></code> 或 <code class="computeroutput"><span class="identifier">wait_until</span></code> 的相应调用未必已经返回).</p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd><p>销毁该对象.</p></dd>
+</dl>
+</div>
+<p>
+        </p>
+<h5>
+<a name="condition_variable_any_notify_one_bridgehead"></a>
+  <span class="phrase"><a name="condition_variable_any_notify_one"></a></span>
+  <a class="link" href="conditions.html#condition_variable_any_notify_one">Member
+        function <code class="computeroutput">notify_one</code>()</a>
+</h5>
+<p>
+      </p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">notify_one</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>若有纤程当前正 <a class="link" href="../overview.html#blocking"><span class="emphasis"><em>阻塞</em></span></a> 等待于 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> (在调用 <code class="computeroutput"><span class="identifier">wait</span></code>、<code class="computeroutput"><span class="identifier">wait_for</span></code> 或 <code class="computeroutput"><span class="identifier">wait_until</span></code> 时), 则解除这些纤程之一的阻塞.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>恢复哪个等待的纤程是任意的.</p></dd>
+</dl>
+</div>
+<p>
+        </p>
+<h5>
+<a name="condition_variable_any_notify_all_bridgehead"></a>
+  <span class="phrase"><a name="condition_variable_any_notify_all"></a></span>
+  <a class="link" href="conditions.html#condition_variable_any_notify_all">Member
+        function <code class="computeroutput">notify_all</code>()</a>
+</h5>
+<p>
+      </p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">notify_all</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>若有纤程当前正 <a class="link" href="../overview.html#blocking"><span class="emphasis"><em>阻塞</em></span></a> 等待于 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> (在调用 <code class="computeroutput"><span class="identifier">wait</span></code>、<code class="computeroutput"><span class="identifier">wait_for</span></code> 或 <code class="computeroutput"><span class="identifier">wait_until</span></code> 时), 则解除所有这些纤程的阻塞.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>这就是为什么等待的纤程还必须 <span class="emphasis"><em>另外</em></span> 使用 <code class="computeroutput">condition_variable_any</code> 以外的某种机制检查所期望的程序状态, 并重试等待直到达到该状态. 在达到期望状态之前, 等待 <code class="computeroutput">condition_variable_any</code> 的纤程很可能会醒来多次.</p></dd>
+</dl>
+</div>
+<p>
+        </p>
+<h5>
+<a name="condition_variable_any_wait_bridgehead"></a>
+  <span class="phrase"><a name="condition_variable_any_wait"></a></span>
+  <a class="link" href="conditions.html#condition_variable_any_wait">模板成员函数 <code class="computeroutput">wait</code>()</a>
+</h5>
+<p>
+      </p>
+<pre class="programlisting">template&lt; typename LockType &gt;
+    void <span class="identifier">wait</span><span class="special">(</span> LockType <span class="special">&amp;</span> <span class="identifier">lk</span><span class="special">);</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span> typename LockType, typename <span class="identifier">Pred</span> <span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">wait</span><span class="special">(</span> LockType <span class="special">&amp;</span> <span class="identifier">lk</span><span class="special">,</span> <span class="identifier">Pred</span> <span class="identifier">pred</span><span class="special">);</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+              <code class="computeroutput"><span class="identifier">lk</span></code> 已被当前纤程锁定, 并且: 要么当前没有其他纤程在 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 上等待, 要么执行 <a href="http://en.cppreference.com/w/cpp/thread/unique_lock/mutex" target="_top"><code class="computeroutput"><span class="identifier">mutex</span><span class="special">()</span></code></a> 成员函数, 作用对象为 <code class="computeroutput"><span class="identifier">lk</span></code> 对象 (由调用 <code class="computeroutput"><span class="identifier">wait</span></code> 时, 当前所有等待 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 的纤程所提供), 所得值须与 <code class="computeroutput"><span class="identifier">lk</span><span class="special">-&gt;</span><span class="identifier">mutex</span><span class="special">()</span></code> 在本次对 <code class="computeroutput"><span class="identifier">wait</span></code> 的调用中返回的值相同.</p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd>
+<p>原子性地调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">unlock</span><span class="special">()</span></code> 并阻塞当前纤程. 当通过对 <code class="computeroutput"><span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">notify_one</span><span class="special">()</span></code> 或 <code class="computeroutput"><span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">notify_all</span><span class="special">()</span></code> 的调用收到通知时, 该纤程将解除阻塞. 当纤程被解除阻塞时 (无论原因如何), 锁会先通过调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">lock</span><span class="special">()</span></code> 重新获取, 之后 <code class="computeroutput"><span class="identifier">wait</span></code> 调用才返回. 若函数因异常退出, 锁同样会通过调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">lock</span><span class="special">()</span></code> 重新获取. 接受 <code class="computeroutput"><span class="identifier">pred</span></code> 的成员函数是以下写法的简写:</p>
+<pre class="programlisting"><span class="keyword">while</span> <span class="special">(</span> <span class="special">!</span> <span class="identifier">pred</span><span class="special">()</span> <span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">wait</span><span class="special">(</span> <span class="identifier">lk</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>
+            </p>
+</dd>
+<dt><span class="term">后置条件:</span></dt>
+<dd><p>
+              <code class="computeroutput"><span class="identifier">lk</span></code> 已被当前纤程锁定.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>如果发生错误则为 <code class="computeroutput"><span class="identifier">fiber_error</span></code>.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>这条前置条件有些难读. 它只是说, 所有并发调用 <code class="computeroutput"><span class="identifier">wait</span></code> 于 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 的纤程, 都必须在 <code class="computeroutput"><span class="identifier">lk</span></code> 对象上等待, 这些对象管理着<span class="emphasis"><em>同一</em></span> <a class="link" href="mutex_types.html#class_mutex"><code class="computeroutput">mutex</code></a>. 任何 <code class="computeroutput">condition_variable_any::wait()</code> 调用都涉及三个不同的对象: <code class="computeroutput">condition_variable_any</code> 本身、在纤程之间协调访问的 <code class="computeroutput"><span class="identifier">mutex</span></code>, 以及一个局部锁对象 (例如 <a href="http://en.cppreference.com/w/cpp/thread/unique_lock" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_lock</span></code></a>). 一般而言, 可以把给定 <code class="computeroutput">condition_variable_any</code> 实例的生命周期划分为有一个或多个纤程在其上等待的时段, 各时段之间由没有纤程等待的时段分隔. 当有多个纤程在该 <code class="computeroutput">condition_variable_any</code> 上等待时, 它们都必须传入引用<span class="emphasis"><em>同一</em></span> <code class="computeroutput"><span class="identifier">mutex</span></code> 实例的锁对象.</p></dd>
+</dl>
+</div>
+<p>
+        </p>
+<h5>
+<a name="condition_variable_any_wait_until_bridgehead"></a>
+  <span class="phrase"><a name="condition_variable_any_wait_until"></a></span>
+  <a class="link" href="conditions.html#condition_variable_any_wait_until">模板成员函数 <code class="computeroutput">wait_until</code>()</a>
+</h5>
+<p>
+      </p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> typename LockType, typename <span class="identifier">Clock</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Duration</span> <span class="special">&gt;</span>
+<span class="identifier">cv_status</span> <span class="identifier">wait_until</span><span class="special">(</span> LockType <span class="special">&amp;</span> <span class="identifier">lk</span><span class="special">,</span>
+                      <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">time_point</span><span class="special">&lt;</span> <span class="identifier">Clock</span><span class="special">,</span> <span class="identifier">Duration</span> <span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">abs_time</span><span class="special">);</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span> typename LockType, typename <span class="identifier">Clock</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Duration</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Pred</span> <span class="special">&gt;</span>
+<span class="keyword">bool</span> <span class="identifier">wait_until</span><span class="special">(</span> LockType <span class="special">&amp;</span> <span class="identifier">lk</span><span class="special">,</span>
+                 <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">time_point</span><span class="special">&lt;</span> <span class="identifier">Clock</span><span class="special">,</span> <span class="identifier">Duration</span> <span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">abs_time</span><span class="special">,</span>
+                 <span class="identifier">Pred</span> <span class="identifier">pred</span><span class="special">);</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+              <code class="computeroutput"><span class="identifier">lk</span></code> 已被当前纤程锁定, 并且: 要么当前没有其他纤程在 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 上等待, 要么执行 <code class="computeroutput"><span class="identifier">mutex</span><span class="special">()</span></code> 成员函数, 作用对象为 <code class="computeroutput"><span class="identifier">lk</span></code> 对象 (由调用 <code class="computeroutput"><span class="identifier">wait</span></code>、<code class="computeroutput"><span class="identifier">wait_for</span></code> 或 <code class="computeroutput"><span class="identifier">wait_until</span></code> 时, 当前所有等待 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 的纤程所提供), 所得值须与 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">mutex</span><span class="special">()</span></code> 在本次对 <code class="computeroutput"><span class="identifier">wait_until</span></code> 的调用中返回的值相同.</p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd>
+<p>原子性地调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">unlock</span><span class="special">()</span></code> 并阻塞当前纤程. 当通过对 <code class="computeroutput"><span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">notify_one</span><span class="special">()</span></code> 或 <code class="computeroutput"><span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">notify_all</span><span class="special">()</span></code> 的调用收到通知, 或系统时间将等于或晚于指定的 <code class="computeroutput"><span class="identifier">abs_time</span></code> 时, 该纤程将解除阻塞. 当纤程被解除阻塞时 (无论原因如何), 锁会先通过调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">lock</span><span class="special">()</span></code> 重新获取, 之后 <code class="computeroutput"><span class="identifier">wait_until</span></code> 调用才返回. 若函数因异常退出, 锁同样会通过调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">lock</span><span class="special">()</span></code> 重新获取. 接受 <code class="computeroutput"><span class="identifier">pred</span></code> 的成员函数是以下写法的简写:</p>
+<pre class="programlisting"><span class="keyword">while</span> <span class="special">(</span> <span class="special">!</span> <span class="identifier">pred</span><span class="special">()</span> <span class="special">)</span> <span class="special">{</span>
+    <span class="keyword">if</span> <span class="special">(</span> <span class="identifier">cv_status</span><span class="special">::</span><span class="identifier">timeout</span> <span class="special">==</span> <span class="identifier">wait_until</span><span class="special">(</span> <span class="identifier">lk</span><span class="special">,</span> <span class="identifier">abs_time</span><span class="special">)</span> <span class="special">)</span>
+        <span class="keyword">return</span> <span class="identifier">pred</span><span class="special">();</span>
+<span class="special">}</span>
+<span class="keyword">return</span> <span class="keyword">true</span><span class="special">;</span>
+</pre>
+<p>也就是说, 即使 <code class="computeroutput"><span class="identifier">wait_until</span><span class="special">()</span></code> 超时, 它仍可能返回 <code class="computeroutput"><span class="keyword">true</span></code>——若此时 <code class="computeroutput"><span class="identifier">pred</span><span class="special">()</span></code> 返回 <code class="computeroutput"><span class="keyword">true</span></code>.</p>
+</dd>
+<dt><span class="term">后置条件:</span></dt>
+<dd><p>
+              <code class="computeroutput"><span class="identifier">lk</span></code> 已被当前纤程锁定.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>
+              <code class="computeroutput"><span class="identifier">fiber_error</span></code> (若发生错误), 或超时相关异常.</p></dd>
+<dt><span class="term">返回:</span></dt>
+<dd><p>不带 <code class="computeroutput"><span class="identifier">pred</span></code> 的重载返回 <code class="computeroutput"><span class="identifier">cv_status</span><span class="special">::</span><span class="identifier">no_timeout</span></code>——若它由 <code class="computeroutput"><span class="identifier">notify_one</span><span class="special">()</span></code> 或 <code class="computeroutput"><span class="identifier">notify_all</span><span class="special">()</span></code> 唤醒; 或返回 <code class="computeroutput"><span class="identifier">cv_status</span><span class="special">::</span><span class="identifier">timeout</span></code>——若因系统时间已过 <code class="computeroutput"><span class="identifier">abs_time</span></code> 而唤醒.</p></dd>
+<dt><span class="term">返回:</span></dt>
+<dd><p>接受 <code class="computeroutput"><span class="identifier">pred</span></code> 的重载返回 <code class="computeroutput"><span class="keyword">false</span></code>——若调用返回是因为已到达 <code class="computeroutput"><span class="identifier">abs_time</span></code> 所指定的时间, 且谓词返回 <code class="computeroutput"><span class="keyword">false</span></code>, <code class="computeroutput"><span class="keyword">true</span></code> 否则.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>参见 <span class="bold"><strong>注释</strong></span> (关于 <a class="link" href="conditions.html#condition_variable_any_wait"><code class="computeroutput">condition_variable_any::wait()</code></a>).</p></dd>
+</dl>
+</div>
+<p>
+        </p>
+<h5>
+<a name="condition_variable_any_wait_for_bridgehead"></a>
+  <span class="phrase"><a name="condition_variable_any_wait_for"></a></span>
+  <a class="link" href="conditions.html#condition_variable_any_wait_for">模板成员函数 <code class="computeroutput">wait_for</code>()</a>
+</h5>
+<p>
+      </p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> typename LockType, typename <span class="identifier">Rep</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Period</span> <span class="special">&gt;</span>
+<span class="identifier">cv_status</span> <span class="identifier">wait_for</span><span class="special">(</span> LockType <span class="special">&amp;</span> <span class="identifier">lk</span><span class="special">,</span>
+                    <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">duration</span><span class="special">&lt;</span> <span class="identifier">Rep</span><span class="special">,</span> <span class="identifier">Period</span> <span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rel_time</span><span class="special">);</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span> typename LockType, typename <span class="identifier">Rep</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Period</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Pred</span> <span class="special">&gt;</span>
+<span class="keyword">bool</span> <span class="identifier">wait_for</span><span class="special">(</span> LockType <span class="special">&amp;</span> <span class="identifier">lk</span><span class="special">,</span>
+               <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">duration</span><span class="special">&lt;</span> <span class="identifier">Rep</span><span class="special">,</span> <span class="identifier">Period</span> <span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rel_time</span><span class="special">,</span>
+               <span class="identifier">Pred</span> <span class="identifier">pred</span><span class="special">);</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+              <code class="computeroutput"><span class="identifier">lk</span></code> 已被当前纤程锁定, 并且: 要么当前没有其他纤程在 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 上等待, 要么执行 <code class="computeroutput"><span class="identifier">mutex</span><span class="special">()</span></code> 成员函数, 作用对象为 <code class="computeroutput"><span class="identifier">lk</span></code> 对象 (由调用 <code class="computeroutput"><span class="identifier">wait</span></code>、<code class="computeroutput"><span class="identifier">wait_for</span></code> 或 <code class="computeroutput"><span class="identifier">wait_until</span></code> 时, 当前所有等待 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 的纤程所提供), 所得值须与 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">mutex</span><span class="special">()</span></code> 在本次对 <code class="computeroutput"><span class="identifier">wait_for</span></code> 的调用中返回的值相同.</p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd>
+<p>原子性地调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">unlock</span><span class="special">()</span></code> 并阻塞当前纤程. 当通过对 <code class="computeroutput"><span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">notify_one</span><span class="special">()</span></code> 或 <code class="computeroutput"><span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">notify_all</span><span class="special">()</span></code> 的调用收到通知, 或所经过的时间大于等于指定的 <code class="computeroutput"><span class="identifier">rel_time</span></code> 时, 该纤程将解除阻塞. 当纤程被解除阻塞时 (无论原因如何), 锁会先通过调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">lock</span><span class="special">()</span></code> 重新获取, 之后 <code class="computeroutput"><span class="identifier">wait</span></code> 调用才返回. 若函数因异常退出, 锁同样会通过调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">lock</span><span class="special">()</span></code> 重新获取. 该 <code class="computeroutput"><span class="identifier">wait_for</span><span class="special">()</span></code> 成员函数中接受 <code class="computeroutput"><span class="identifier">pred</span></code> 的版本是以下写法的简写:</p>
+<pre class="programlisting"><span class="keyword">while</span> <span class="special">(</span> <span class="special">!</span> <span class="identifier">pred</span><span class="special">()</span> <span class="special">)</span> <span class="special">{</span>
+    <span class="keyword">if</span> <span class="special">(</span> <span class="identifier">cv_status</span><span class="special">::</span><span class="identifier">timeout</span> <span class="special">==</span> <span class="identifier">wait_for</span><span class="special">(</span> <span class="identifier">lk</span><span class="special">,</span> <span class="identifier">rel_time</span><span class="special">)</span> <span class="special">)</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">pred</span><span class="special">();</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+<span class="keyword">return</span> <span class="keyword">true</span><span class="special">;</span>
+</pre>
+<p>(当然, <code class="computeroutput"><span class="identifier">rel_time</span></code> 会在每次迭代中被调整). 关键在于, 即使 <code class="computeroutput"><span class="identifier">wait_for</span><span class="special">()</span></code> 超时, 它仍可能返回 <code class="computeroutput"><span class="keyword">true</span></code>——若此时 <code class="computeroutput"><span class="identifier">pred</span><span class="special">()</span></code> 返回 <code class="computeroutput"><span class="keyword">true</span></code>.</p>
+</dd>
+<dt><span class="term">后置条件:</span></dt>
+<dd><p>
+              <code class="computeroutput"><span class="identifier">lk</span></code> 已被当前纤程锁定.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>
+              <code class="computeroutput"><span class="identifier">fiber_error</span></code> (若发生错误), 或超时相关异常.</p></dd>
+<dt><span class="term">返回:</span></dt>
+<dd><p>不带 <code class="computeroutput"><span class="identifier">pred</span></code> 的重载返回 <code class="computeroutput"><span class="identifier">cv_status</span><span class="special">::</span><span class="identifier">no_timeout</span></code>——若它由 <code class="computeroutput"><span class="identifier">notify_one</span><span class="special">()</span></code> 或 <code class="computeroutput"><span class="identifier">notify_all</span><span class="special">()</span></code> 唤醒; 或返回 <code class="computeroutput"><span class="identifier">cv_status</span><span class="special">::</span><span class="identifier">timeout</span></code>——若因至少已经过 <code class="computeroutput"><span class="identifier">rel_time</span></code> 而唤醒.</p></dd>
+<dt><span class="term">返回:</span></dt>
+<dd><p>接受 <code class="computeroutput"><span class="identifier">pred</span></code> 的重载返回 <code class="computeroutput"><span class="keyword">false</span></code>——若调用返回是因为至少已经过 <code class="computeroutput"><span class="identifier">rel_time</span></code>, 且谓词返回 <code class="computeroutput"><span class="keyword">false</span></code>, <code class="computeroutput"><span class="keyword">true</span></code> 否则.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>参见 <span class="bold"><strong>注释</strong></span> (关于 <a class="link" href="conditions.html#condition_variable_any_wait"><code class="computeroutput">condition_variable_any::wait()</code></a>).</p></dd>
+</dl>
+</div>
+<p>
+        </p>
+<h5>
+<a name="class_condition_variable_bridgehead"></a>
+  <span class="phrase"><a name="class_condition_variable"></a></span>
+  <a class="link" href="conditions.html#class_condition_variable"> <code class="computeroutput">condition_variable</code></a> 类</h5>
+<p>
+      </p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">fiber</span><span class="special">/</span><span class="identifier">condition_variable</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">fibers</span> <span class="special">{</span>
+
+<span class="keyword">class</span> condition_variable <span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+    condition_variable<span class="special">();</span>
+    <span class="special">~</span>condition_variable<span class="special">();</span>
+
+    condition_variable<span class="special">(</span> condition_variable <span class="keyword">const</span><span class="special">&amp;)</span> <span class="special">=</span> <span class="keyword">delete</span><span class="special">;</span>
+    condition_variable <span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">=(</span> condition_variable <span class="keyword">const</span><span class="special">&amp;)</span> <span class="special">=</span> <span class="keyword">delete</span><span class="special">;</span>
+
+    <span class="keyword">void</span> <span class="identifier">notify_one</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+    <span class="keyword">void</span> <span class="identifier">notify_all</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+
+    void <span class="identifier">wait</span><span class="special">(</span> std::unique_lock&lt; mutex &gt; <span class="special">&amp;);</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span> typename <span class="identifier">Pred</span> <span class="special">&gt;</span>
+    <span class="keyword">void</span> <span class="identifier">wait</span><span class="special">(</span> std::unique_lock&lt; mutex &gt; <span class="special">&amp;,</span> <span class="identifier">Pred</span><span class="special">);</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span> typename <span class="identifier">Clock</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Duration</span> <span class="special">&gt;</span>
+    <span class="identifier">cv_status</span> <span class="identifier">wait_until</span><span class="special">(</span> std::unique_lock&lt; mutex &gt; <span class="special">&amp;,</span>
+                          <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">time_point</span><span class="special">&lt;</span> <span class="identifier">Clock</span><span class="special">,</span> <span class="identifier">Duration</span> <span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;);</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span> typename <span class="identifier">Clock</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Duration</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Pred</span> <span class="special">&gt;</span>
+    <span class="keyword">bool</span> <span class="identifier">wait_until</span><span class="special">(</span> std::unique_lock&lt; mutex &gt; <span class="special">&amp;,</span>
+                     <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">time_point</span><span class="special">&lt;</span> <span class="identifier">Clock</span><span class="special">,</span> <span class="identifier">Duration</span> <span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;,</span>
+                     <span class="identifier">Pred</span><span class="special">);</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span> typename <span class="identifier">Rep</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Period</span> <span class="special">&gt;</span>
+    <span class="identifier">cv_status</span> <span class="identifier">wait_for</span><span class="special">(</span> std::unique_lock&lt; mutex &gt; <span class="special">&amp;,</span>
+                        <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">duration</span><span class="special">&lt;</span> <span class="identifier">Rep</span><span class="special">,</span> <span class="identifier">Period</span> <span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;);</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span> typename <span class="identifier">Rep</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Period</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Pred</span> <span class="special">&gt;</span>
+    <span class="keyword">bool</span> <span class="identifier">wait_for</span><span class="special">(</span> std::unique_lock&lt; mutex &gt; <span class="special">&amp;,</span>
+                   <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">duration</span><span class="special">&lt;</span> <span class="identifier">Rep</span><span class="special">,</span> <span class="identifier">Period</span> <span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;,</span>
+                   <span class="identifier">Pred</span><span class="special">);</span>
+<span class="special">};</span>
+
+<span class="special">}}</span>
+</pre>
+<h5>
+<a name="fiber.synchronization.conditions.h7"></a>
+        <span class="phrase"><a name="fiber.synchronization.conditions.constructor0"></a></span><a class="link" href="conditions.html#fiber.synchronization.conditions.constructor0">构造函数</a>
+      </h5>
+<pre class="programlisting">condition_variable<span class="special">()</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>创建对象.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+</dl>
+</div>
+<h5>
+<a name="fiber.synchronization.conditions.h8"></a>
+        <span class="phrase"><a name="fiber.synchronization.conditions.destructor0"></a></span><a class="link" href="conditions.html#fiber.synchronization.conditions.destructor0">析构函数</a>
+      </h5>
+<pre class="programlisting"><span class="special">~</span>condition_variable<span class="special">()</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>在 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 上等待的所有纤程都已通过对 <code class="computeroutput"><span class="identifier">notify_one</span></code> 或 <code class="computeroutput"><span class="identifier">notify_all</span></code> 的调用收到通知 (不过对 <code class="computeroutput"><span class="identifier">wait</span></code>、<code class="computeroutput"><span class="identifier">wait_for</span></code> 或 <code class="computeroutput"><span class="identifier">wait_until</span></code> 的相应调用未必已经返回).</p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd><p>销毁该对象.</p></dd>
+</dl>
+</div>
+<p>
+        </p>
+<h5>
+<a name="condition_variable_notify_one_bridgehead"></a>
+  <span class="phrase"><a name="condition_variable_notify_one"></a></span>
+  <a class="link" href="conditions.html#condition_variable_notify_one">Member
+        function <code class="computeroutput">notify_one</code>()</a>
+</h5>
+<p>
+      </p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">notify_one</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>若有纤程当前正 <a class="link" href="../overview.html#blocking"><span class="emphasis"><em>阻塞</em></span></a> 等待于 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> (在调用 <code class="computeroutput"><span class="identifier">wait</span></code>、<code class="computeroutput"><span class="identifier">wait_for</span></code> 或 <code class="computeroutput"><span class="identifier">wait_until</span></code> 时), 则解除这些纤程之一的阻塞.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>恢复哪个等待的纤程是任意的.</p></dd>
+</dl>
+</div>
+<p>
+        </p>
+<h5>
+<a name="condition_variable_notify_all_bridgehead"></a>
+  <span class="phrase"><a name="condition_variable_notify_all"></a></span>
+  <a class="link" href="conditions.html#condition_variable_notify_all">Member
+        function <code class="computeroutput">notify_all</code>()</a>
+</h5>
+<p>
+      </p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">notify_all</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">;</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">效果:</span></dt>
+<dd><p>若有纤程当前正 <a class="link" href="../overview.html#blocking"><span class="emphasis"><em>阻塞</em></span></a> 等待于 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> (在调用 <code class="computeroutput"><span class="identifier">wait</span></code>、<code class="computeroutput"><span class="identifier">wait_for</span></code> 或 <code class="computeroutput"><span class="identifier">wait_until</span></code> 时), 则解除所有这些纤程的阻塞.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>无.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>这就是为什么等待的纤程还必须 <span class="emphasis"><em>另外</em></span> 使用 <code class="computeroutput">condition_variable</code> 以外的某种机制检查所期望的程序状态, 并重试等待直到达到该状态. 在达到期望状态之前, 等待 <code class="computeroutput">condition_variable</code> 的纤程很可能会醒来多次.</p></dd>
+</dl>
+</div>
+<p>
+        </p>
+<h5>
+<a name="condition_variable_wait_bridgehead"></a>
+  <span class="phrase"><a name="condition_variable_wait"></a></span>
+  <a class="link" href="conditions.html#condition_variable_wait">模板成员函数 <code class="computeroutput">wait</code>()</a>
+</h5>
+<p>
+      </p>
+<pre class="programlisting">void <span class="identifier">wait</span><span class="special">(</span> std::unique_lock&lt; mutex &gt; <span class="special">&amp;</span> <span class="identifier">lk</span><span class="special">);</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span> typename <span class="identifier">Pred</span> <span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">wait</span><span class="special">(</span> std::unique_lock&lt; mutex &gt; <span class="special">&amp;</span> <span class="identifier">lk</span><span class="special">,</span> <span class="identifier">Pred</span> <span class="identifier">pred</span><span class="special">);</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+              <code class="computeroutput"><span class="identifier">lk</span></code> 已被当前纤程锁定, 并且: 要么当前没有其他纤程在 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 上等待, 要么执行 <a href="http://en.cppreference.com/w/cpp/thread/unique_lock/mutex" target="_top"><code class="computeroutput"><span class="identifier">mutex</span><span class="special">()</span></code></a> 成员函数, 作用对象为 <code class="computeroutput"><span class="identifier">lk</span></code> 对象 (由调用 <code class="computeroutput"><span class="identifier">wait</span></code> 时, 当前所有等待 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 的纤程所提供), 所得值须与 <code class="computeroutput"><span class="identifier">lk</span><span class="special">-&gt;</span><span class="identifier">mutex</span><span class="special">()</span></code> 在本次对 <code class="computeroutput"><span class="identifier">wait</span></code> 的调用中返回的值相同.</p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd>
+<p>原子性地调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">unlock</span><span class="special">()</span></code> 并阻塞当前纤程. 当通过对 <code class="computeroutput"><span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">notify_one</span><span class="special">()</span></code> 或 <code class="computeroutput"><span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">notify_all</span><span class="special">()</span></code> 的调用收到通知时, 该纤程将解除阻塞. 当纤程被解除阻塞时 (无论原因如何), 锁会先通过调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">lock</span><span class="special">()</span></code> 重新获取, 之后 <code class="computeroutput"><span class="identifier">wait</span></code> 调用才返回. 若函数因异常退出, 锁同样会通过调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">lock</span><span class="special">()</span></code> 重新获取. 接受 <code class="computeroutput"><span class="identifier">pred</span></code> 的成员函数是以下写法的简写:</p>
+<pre class="programlisting"><span class="keyword">while</span> <span class="special">(</span> <span class="special">!</span> <span class="identifier">pred</span><span class="special">()</span> <span class="special">)</span> <span class="special">{</span>
+    <span class="identifier">wait</span><span class="special">(</span> <span class="identifier">lk</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>
+            </p>
+</dd>
+<dt><span class="term">后置条件:</span></dt>
+<dd><p>
+              <code class="computeroutput"><span class="identifier">lk</span></code> 已被当前纤程锁定.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>如果发生错误则为 <code class="computeroutput"><span class="identifier">fiber_error</span></code>.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>这条前置条件有些难读. 它只是说, 所有并发调用 <code class="computeroutput"><span class="identifier">wait</span></code> 于 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 的纤程, 都必须在 <code class="computeroutput"><span class="identifier">lk</span></code> 对象上等待, 这些对象管理着<span class="emphasis"><em>同一</em></span> <a class="link" href="mutex_types.html#class_mutex"><code class="computeroutput">mutex</code></a>. 任何 <code class="computeroutput">condition_variable::wait()</code> 调用都涉及三个不同的对象: <code class="computeroutput">condition_variable</code> 本身、在纤程之间协调访问的 <code class="computeroutput"><span class="identifier">mutex</span></code>, 以及一个局部锁对象 (例如 <a href="http://en.cppreference.com/w/cpp/thread/unique_lock" target="_top"><code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_lock</span></code></a>). 一般而言, 可以把给定 <code class="computeroutput">condition_variable</code> 实例的生命周期划分为有一个或多个纤程在其上等待的时段, 各时段之间由没有纤程等待的时段分隔. 当有多个纤程在该 <code class="computeroutput">condition_variable</code> 上等待时, 它们都必须传入引用<span class="emphasis"><em>同一</em></span> <code class="computeroutput"><span class="identifier">mutex</span></code> 实例的锁对象.</p></dd>
+</dl>
+</div>
+<p>
+        </p>
+<h5>
+<a name="condition_variable_wait_until_bridgehead"></a>
+  <span class="phrase"><a name="condition_variable_wait_until"></a></span>
+  <a class="link" href="conditions.html#condition_variable_wait_until">模板成员函数 <code class="computeroutput">wait_until</code>()</a>
+</h5>
+<p>
+      </p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> typename <span class="identifier">Clock</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Duration</span> <span class="special">&gt;</span>
+<span class="identifier">cv_status</span> <span class="identifier">wait_until</span><span class="special">(</span> std::unique_lock&lt; mutex &gt; <span class="special">&amp;</span> <span class="identifier">lk</span><span class="special">,</span>
+                      <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">time_point</span><span class="special">&lt;</span> <span class="identifier">Clock</span><span class="special">,</span> <span class="identifier">Duration</span> <span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">abs_time</span><span class="special">);</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span> typename <span class="identifier">Clock</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Duration</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Pred</span> <span class="special">&gt;</span>
+<span class="keyword">bool</span> <span class="identifier">wait_until</span><span class="special">(</span> std::unique_lock&lt; mutex &gt; <span class="special">&amp;</span> <span class="identifier">lk</span><span class="special">,</span>
+                 <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">time_point</span><span class="special">&lt;</span> <span class="identifier">Clock</span><span class="special">,</span> <span class="identifier">Duration</span> <span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">abs_time</span><span class="special">,</span>
+                 <span class="identifier">Pred</span> <span class="identifier">pred</span><span class="special">);</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+              <code class="computeroutput"><span class="identifier">lk</span></code> 已被当前纤程锁定, 并且: 要么当前没有其他纤程在 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 上等待, 要么执行 <code class="computeroutput"><span class="identifier">mutex</span><span class="special">()</span></code> 成员函数, 作用对象为 <code class="computeroutput"><span class="identifier">lk</span></code> 对象 (由调用 <code class="computeroutput"><span class="identifier">wait</span></code>、<code class="computeroutput"><span class="identifier">wait_for</span></code> 或 <code class="computeroutput"><span class="identifier">wait_until</span></code> 时, 当前所有等待 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 的纤程所提供), 所得值须与 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">mutex</span><span class="special">()</span></code> 在本次对 <code class="computeroutput"><span class="identifier">wait_until</span></code> 的调用中返回的值相同.</p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd>
+<p>原子性地调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">unlock</span><span class="special">()</span></code> 并阻塞当前纤程. 当通过对 <code class="computeroutput"><span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">notify_one</span><span class="special">()</span></code> 或 <code class="computeroutput"><span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">notify_all</span><span class="special">()</span></code> 的调用收到通知, 或系统时间将等于或晚于指定的 <code class="computeroutput"><span class="identifier">abs_time</span></code> 时, 该纤程将解除阻塞. 当纤程被解除阻塞时 (无论原因如何), 锁会先通过调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">lock</span><span class="special">()</span></code> 重新获取, 之后 <code class="computeroutput"><span class="identifier">wait_until</span></code> 调用才返回. 若函数因异常退出, 锁同样会通过调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">lock</span><span class="special">()</span></code> 重新获取. 接受 <code class="computeroutput"><span class="identifier">pred</span></code> 的成员函数是以下写法的简写:</p>
+<pre class="programlisting"><span class="keyword">while</span> <span class="special">(</span> <span class="special">!</span> <span class="identifier">pred</span><span class="special">()</span> <span class="special">)</span> <span class="special">{</span>
+    <span class="keyword">if</span> <span class="special">(</span> <span class="identifier">cv_status</span><span class="special">::</span><span class="identifier">timeout</span> <span class="special">==</span> <span class="identifier">wait_until</span><span class="special">(</span> <span class="identifier">lk</span><span class="special">,</span> <span class="identifier">abs_time</span><span class="special">)</span> <span class="special">)</span>
+        <span class="keyword">return</span> <span class="identifier">pred</span><span class="special">();</span>
+<span class="special">}</span>
+<span class="keyword">return</span> <span class="keyword">true</span><span class="special">;</span>
+</pre>
+<p>也就是说, 即使 <code class="computeroutput"><span class="identifier">wait_until</span><span class="special">()</span></code> 超时, 它仍可能返回 <code class="computeroutput"><span class="keyword">true</span></code>——若此时 <code class="computeroutput"><span class="identifier">pred</span><span class="special">()</span></code> 返回 <code class="computeroutput"><span class="keyword">true</span></code>.</p>
+</dd>
+<dt><span class="term">后置条件:</span></dt>
+<dd><p>
+              <code class="computeroutput"><span class="identifier">lk</span></code> 已被当前纤程锁定.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>
+              <code class="computeroutput"><span class="identifier">fiber_error</span></code> (若发生错误), 或超时相关异常.</p></dd>
+<dt><span class="term">返回:</span></dt>
+<dd><p>不带 <code class="computeroutput"><span class="identifier">pred</span></code> 的重载返回 <code class="computeroutput"><span class="identifier">cv_status</span><span class="special">::</span><span class="identifier">no_timeout</span></code>——若它由 <code class="computeroutput"><span class="identifier">notify_one</span><span class="special">()</span></code> 或 <code class="computeroutput"><span class="identifier">notify_all</span><span class="special">()</span></code> 唤醒; 或返回 <code class="computeroutput"><span class="identifier">cv_status</span><span class="special">::</span><span class="identifier">timeout</span></code>——若因系统时间已过 <code class="computeroutput"><span class="identifier">abs_time</span></code> 而唤醒.</p></dd>
+<dt><span class="term">返回:</span></dt>
+<dd><p>接受 <code class="computeroutput"><span class="identifier">pred</span></code> 的重载返回 <code class="computeroutput"><span class="keyword">false</span></code>——若调用返回是因为已到达 <code class="computeroutput"><span class="identifier">abs_time</span></code> 所指定的时间, 且谓词返回 <code class="computeroutput"><span class="keyword">false</span></code>, <code class="computeroutput"><span class="keyword">true</span></code> 否则.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>参见 <span class="bold"><strong>注释</strong></span> (关于 <a class="link" href="conditions.html#condition_variable_wait"><code class="computeroutput">condition_variable::wait()</code></a>).</p></dd>
+</dl>
+</div>
+<p>
+        </p>
+<h5>
+<a name="condition_variable_wait_for_bridgehead"></a>
+  <span class="phrase"><a name="condition_variable_wait_for"></a></span>
+  <a class="link" href="conditions.html#condition_variable_wait_for">模板成员函数 <code class="computeroutput">wait_for</code>()</a>
+</h5>
+<p>
+      </p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> typename <span class="identifier">Rep</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Period</span> <span class="special">&gt;</span>
+<span class="identifier">cv_status</span> <span class="identifier">wait_for</span><span class="special">(</span> std::unique_lock&lt; mutex &gt; <span class="special">&amp;</span> <span class="identifier">lk</span><span class="special">,</span>
+                    <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">duration</span><span class="special">&lt;</span> <span class="identifier">Rep</span><span class="special">,</span> <span class="identifier">Period</span> <span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rel_time</span><span class="special">);</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span> typename <span class="identifier">Rep</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Period</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Pred</span> <span class="special">&gt;</span>
+<span class="keyword">bool</span> <span class="identifier">wait_for</span><span class="special">(</span> std::unique_lock&lt; mutex &gt; <span class="special">&amp;</span> <span class="identifier">lk</span><span class="special">,</span>
+               <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">duration</span><span class="special">&lt;</span> <span class="identifier">Rep</span><span class="special">,</span> <span class="identifier">Period</span> <span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rel_time</span><span class="special">,</span>
+               <span class="identifier">Pred</span> <span class="identifier">pred</span><span class="special">);</span>
+</pre>
+<div class="variablelist">
+<p class="title"><b></b></p>
+<dl class="variablelist">
+<dt><span class="term">前置条件:</span></dt>
+<dd><p>
+              <code class="computeroutput"><span class="identifier">lk</span></code> 已被当前纤程锁定, 并且: 要么当前没有其他纤程在 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 上等待, 要么执行 <code class="computeroutput"><span class="identifier">mutex</span><span class="special">()</span></code> 成员函数, 作用对象为 <code class="computeroutput"><span class="identifier">lk</span></code> 对象 (由调用 <code class="computeroutput"><span class="identifier">wait</span></code>、<code class="computeroutput"><span class="identifier">wait_for</span></code> 或 <code class="computeroutput"><span class="identifier">wait_until</span></code> 时, 当前所有等待 <code class="computeroutput"><span class="special">*</span><span class="keyword">this</span></code> 的纤程所提供), 所得值须与 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">mutex</span><span class="special">()</span></code> 在本次对 <code class="computeroutput"><span class="identifier">wait_for</span></code> 的调用中返回的值相同.</p></dd>
+<dt><span class="term">效果:</span></dt>
+<dd>
+<p>原子性地调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">unlock</span><span class="special">()</span></code> 并阻塞当前纤程. 当通过对 <code class="computeroutput"><span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">notify_one</span><span class="special">()</span></code> 或 <code class="computeroutput"><span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">notify_all</span><span class="special">()</span></code> 的调用收到通知, 或所经过的时间大于等于指定的 <code class="computeroutput"><span class="identifier">rel_time</span></code> 时, 该纤程将解除阻塞. 当纤程被解除阻塞时 (无论原因如何), 锁会先通过调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">lock</span><span class="special">()</span></code> 重新获取, 之后 <code class="computeroutput"><span class="identifier">wait</span></code> 调用才返回. 若函数因异常退出, 锁同样会通过调用 <code class="computeroutput"><span class="identifier">lk</span><span class="special">.</span><span class="identifier">lock</span><span class="special">()</span></code> 重新获取. 该 <code class="computeroutput"><span class="identifier">wait_for</span><span class="special">()</span></code> 成员函数中接受 <code class="computeroutput"><span class="identifier">pred</span></code> 的版本是以下写法的简写:</p>
+<pre class="programlisting"><span class="keyword">while</span> <span class="special">(</span> <span class="special">!</span> <span class="identifier">pred</span><span class="special">()</span> <span class="special">)</span> <span class="special">{</span>
+    <span class="keyword">if</span> <span class="special">(</span> <span class="identifier">cv_status</span><span class="special">::</span><span class="identifier">timeout</span> <span class="special">==</span> <span class="identifier">wait_for</span><span class="special">(</span> <span class="identifier">lk</span><span class="special">,</span> <span class="identifier">rel_time</span><span class="special">)</span> <span class="special">)</span> <span class="special">{</span>
+        <span class="keyword">return</span> <span class="identifier">pred</span><span class="special">();</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+<span class="keyword">return</span> <span class="keyword">true</span><span class="special">;</span>
+</pre>
+<p>(当然, <code class="computeroutput"><span class="identifier">rel_time</span></code> 会在每次迭代中被调整). 关键在于, 即使 <code class="computeroutput"><span class="identifier">wait_for</span><span class="special">()</span></code> 超时, 它仍可能返回 <code class="computeroutput"><span class="keyword">true</span></code>——若此时 <code class="computeroutput"><span class="identifier">pred</span><span class="special">()</span></code> 返回 <code class="computeroutput"><span class="keyword">true</span></code>.</p>
+</dd>
+<dt><span class="term">后置条件:</span></dt>
+<dd><p>
+              <code class="computeroutput"><span class="identifier">lk</span></code> 已被当前纤程锁定.</p></dd>
+<dt><span class="term">抛出:</span></dt>
+<dd><p>
+              <code class="computeroutput"><span class="identifier">fiber_error</span></code> (若发生错误), 或超时相关异常.</p></dd>
+<dt><span class="term">返回:</span></dt>
+<dd><p>不带 <code class="computeroutput"><span class="identifier">pred</span></code> 的重载返回 <code class="computeroutput"><span class="identifier">cv_status</span><span class="special">::</span><span class="identifier">no_timeout</span></code>——若它由 <code class="computeroutput"><span class="identifier">notify_one</span><span class="special">()</span></code> 或 <code class="computeroutput"><span class="identifier">notify_all</span><span class="special">()</span></code> 唤醒; 或返回 <code class="computeroutput"><span class="identifier">cv_status</span><span class="special">::</span><span class="identifier">timeout</span></code>——若因至少已经过 <code class="computeroutput"><span class="identifier">rel_time</span></code> 而唤醒.</p></dd>
+<dt><span class="term">返回:</span></dt>
+<dd><p>接受 <code class="computeroutput"><span class="identifier">pred</span></code> 的重载返回 <code class="computeroutput"><span class="keyword">false</span></code>——若调用返回是因为至少已经过 <code class="computeroutput"><span class="identifier">rel_time</span></code>, 且谓词返回 <code class="computeroutput"><span class="keyword">false</span></code>, <code class="computeroutput"><span class="keyword">true</span></code> 否则.</p></dd>
+<dt><span class="term">注释:</span></dt>
+<dd><p>参见 <span class="bold"><strong>注释</strong></span> (关于 <a class="link" href="conditions.html#condition_variable_wait"><code class="computeroutput">condition_variable::wait()</code></a>).</p></dd>
+</dl>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2013 Oliver Kowalke<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="mutex_types.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../synchronization.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="barriers.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

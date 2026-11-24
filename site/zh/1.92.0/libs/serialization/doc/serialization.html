@@ -1,0 +1,431 @@
+<!doctype HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!--
+(C) Copyright 2002-4 Robert Ramey - http://www.rrsd.com . 
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt)
+-->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<link rel="stylesheet" type="text/css" href="../../../boost.css">
+<link rel="stylesheet" type="text/css" href="style.css">
+<title>Serialization - 类的序列化</title>
+</head>
+<body link="#0000ff" vlink="#800080">
+<table border="0" cellpadding="7" cellspacing="0" width="100%" summary="header">
+  <tr> 
+    <td valign="top" width="300"> 
+      <h3><a href="../../../index.htm"><img height="86" width="277" alt="C++ Boost" src="../../../boost.png" border="0"></a></h3>
+    </td>
+    <td valign="top"> 
+      <h1 align="center">序列化</h1>
+      <h2 align="center">可序列化概念</h2>
+    </td>
+  </tr>
+</table>
+<hr>
+<dl class="page-index">
+  <dt><a href="#primitiveoperators"> 原始类型 </a>
+  <dt><a href="#classoperators"> 类类型 </a>
+  <dl class="page-index">
+    <dt><a href="#member"> 成员函数 </a>
+    <dt><a href="#free"> 自由函数 </a>
+    <dl class="page-index">
+      <dt><a href="#namespaces"> 自由函数重写的命名空间 </a>
+    </dl>
+    <dt><a href="#classmembers"> 类成员 </a>
+    <dl class="page-index">
+      <dt><a href="#base"> 基类 </a>
+      <dt><a href="#const"><code style="white-space: normal">const</code> 成员 </a>
+      <dt><a href="#templates"> 模板 </a>
+    </dl>
+    <dt><a href="#versioning"> 版本控制 </a>
+    <dt><a href="#splitting"> 把 <code style="white-space: normal">serialize</code> 拆分为 <code style="white-space: normal">save/load</code></a>
+      <dl class="page-index">
+        <dt><a href="#splittingmemberfunctions"> 成员函数 </a>
+        <dt><a href="#splittingfreefunctions"> 自由函数 </a>
+      </dl>
+  </dl>
+  <dt><a href="#pointeroperators"> 指针 </a>
+    <dl class="page-index">
+      <dt><a href="#constructors"> 非默认构造函数 </a>
+      <dt><a href="#derivedpointers"> 指向派生类对象的指针 </a>
+      <dl class="page-index">
+        <dt><a href="#registration"> 注册 </a>
+        <dt><a href="#export"> 导出 </a>
+        <dt><a href="#instantiation"> 实例化 </a>
+        <dt><a href="#selectivetracking"> 选择性跟踪 </a>
+        <dt><a href="#runtimecasting"> 运行期转换 </a>
+      </dl>
+    </dl>
+  <dt><a href="#references">参考文献</a>
+  <dt><a href="#arrays"> 数组 </a>
+  <dt><a href="traits.html"> 类序列化特征 </a>
+  <dt><a href="wrappers.html"> 序列化包装器 </a>
+  <dt><a href="#models"> 模型 - 库中包含的序列化实现 </a>
+</dl> 类型 <code style="white-space: normal">T</code> 是 <strong> 可序列化 </strong> 的, 当且仅当以下条件之一成立: <ul>
+  <li>它是一个原始类型. <br> 所谓<i> 原始类型 </i>, 我们指的是 C++ 内建类型, 而且<i> 仅仅是 </i>C++ 内建类型. 算术类型 (包括字符) 、bool、enum 是原始类型. 下文 <a target="detail" href="traits.html#Traits"> 序列化特征 </a> 中, 我们会出于不同目的以不同方式定义"primitive"实现级别. 这可能是混淆的来源.<li>它是一个类类型, 并且已按下面详述的原型之一声明了以下内容: <ul>
+    <li>一个类成员函数 <code style="white-space: normal">serialize</code>
+    <li>一个全局函数 <code style="white-space: normal">serialize</code>
+    </ul>
+  <li>它是一个指向 <strong> 可序列化 </strong> 类型的指针.<li>它是一个对 <strong> 可序列化 </strong> 类型的引用.<li>它是一个 <strong> 可序列化 </strong> 类型的原生 C++ 数组.</ul>
+
+<h2><a name="primitiveoperators"> 原始类型 </a></h2> 上文所述档案类的模板运算符 &amp;、&lt;&lt; 和 &gt;&gt; 会生成代码, 把所有原始类型保存到档案/从档案加载. 这些代码通常只是按照档案格式把数据加入档案. 例如, 一个四字节整数以 4 个二进制字节的形式追加到二进制档案, 而在文本档案中它会被渲染为一个空格后跟字符串表示. <h2><a name="classoperators"> 类类型 </a></h2> 对于类/结构体类型, 模板运算符 &amp;、&lt;&lt; 和 &gt;&gt; 会生成调用程序员为该特定数据类型所写序列化代码的代码. 没有默认实现. 试图序列化一个未显式指定序列化的类/结构体会导致编译期错误. 类的序列化可以通过类成员函数指定, 也可以通过接受该类实例引用作为参数的自由函数指定. <h3><a name="member"> 成员函数 </a></h3> 序列化库调用以下代码来向档案保存类实例或从档案加载类实例. <pre><code>
+template&lt;class Archive, class T&gt;
+inline void serialize(
+    Archive &amp; ar, 
+    T &amp; t, 
+    const unsigned int file_version
+){
+    // invoke member function for class T
+    t.serialize(ar, file_version);
+}
+</code></pre> 也就是说, 模板 <code style="white-space: normal">serialize</code> 的默认定义假定存在具有如下签名的类成员函数模板: <pre><code>
+template&lt;class Archive&gt;
+void serialize(Archive &amp;ar, const unsigned int version){
+    ...
+}
+</code></pre> 如果没有声明这样的成员函数, 就会出现编译期错误. 为了使该模板生成的成员函数能被调用来把数据追加到档案, 它要么必须是 public 的, 要么必须通过在类定义中包含: <pre><code>
+friend class boost::serialization::access;
+</code></pre> 来使该类对序列化库可访问. 后一种方法应当优先于把成员函数设为 public 的做法. 这可以防止从库外部调用序列化函数. 这几乎肯定是个错误. 遗憾的是, 它可能看起来正常工作, 却以一种极难发现的方式失败. <p>乍看之下可能不明显: 为什么这一个模板既能向档案保存数据、又能从档案加载数据. 关键在于 <code style="white-space: normal">&amp;</code> 运算符对输出档案定义为 <code style="white-space: normal">&lt;&lt;</code>, 对输入档案定义为 <code style="white-space: normal">&gt;&gt;</code>. <code style="white-space: normal">&amp;</code> 的"多态"行为使同一个模板既可用于保存操作, 也可用于加载操作. 这非常便利: 省去大量输入工作, 并保证类数据成员的保存与加载始终同步. 这是整个序列化系统的关键.<h3><a name="free"> 自由函数 </a></h3> 当然, 我们并不限于使用上面描述的默认实现. 我们可以用自己的实现覆盖默认实现. 这样做使我们能够在不改动类定义本身的情况下实现类的序列化. 我们称之为<strong> 非侵入式 </strong>序列化. 假设我们的类名为 <code style="white-space: normal">my_class</code>, 重写应如下指定: <pre><code>
+// namespace selection
+
+template&lt;class Archive&gt;
+inline void serialize(
+    Archive &amp; ar, 
+    my_class &amp; t, 
+    const unsigned int file_version
+){
+    ...
+}
+</code></pre> 注意, 我们把这个重写称为"非侵入式". 这略微不够准确. 它不要求类具有特殊函数、派生自某个公共基类或做任何其他根本性的设计改动. 但是, 它需要能够访问要保存和加载的类成员. 如果这些成员是 <code style="white-space: normal">private</code>, 就无法序列化它们. 所以在某些情况下, 即使使用这种"非侵入式"方法, 也需要对被序列化的类做少量修改. 在实践中这也许不算什么问题, 因为许多库 (例如 STL) 暴露了足够的信息, 使得完全不需要改动库就能实现非侵入式序列化. <h4><a name="namespaces"> 自由函数重写的命名空间 </a></h4> 为获得最大可移植性, 应把所有自由函数模板和定义放在命名空间 <code style="white-space: normal">boost::serialization</code> 中. 如果可移植性不是考量因素, 且所用编译器支持 ADL (实参依赖查找) , 则自由函数和模板可以放在以下任一命名空间中: <ul>
+<li><code style="white-space: normal">boost::serialization</code>
+<li>档案类的命名空间<li>被序列化类型的命名空间</ul>
+<p>注意, 乍看之下, 这条建议对于实现两阶段查找的编译器似乎是错的. 事实上, 即使对这类编译器, 序列化库也使用了一个或许过于聪明的方法来支持这条规则. 有兴趣深入研究的人可以在 <a target=serialization_hpp href="../../../boost/serialization/serialization.hpp"> serialization.hpp </a> 中找到更多信息.<h3><a name="classmembers"> 类成员的序列化 </a></h3> 无论使用上述哪种方法, serialize 函数体都必须通过对类的所有数据成员依次应用档案 <code style="white-space: normal">operator &amp;</code> 来指定要保存/加载的数据. <pre><code>
+{
+    // save/load class member variables
+    ar &amp; member1;
+    ar &amp; member2;
+}
+</code></pre>
+
+<h4><a name="base"> 基类 </a></h4> 头文件 <a href="../../../boost/serialization/base_object.hpp" target="base_object_hpp"> base_object.hpp </a> 包含模板: <pre><code>
+template&lt;class Base, class Derived&gt;
+Base &amp; base_object(Derived &amp;d);
+</code></pre> 应当使用它来创建对基类对象的引用, 该引用可用作档案序列化运算符的实参. 因此对于 <strong> 可序列化 </strong> 类型 <code style="white-space: normal">T</code> 的类, 基类状态应当这样序列化: <pre><code>
+{
+    // invoke serialization of the base class 
+    ar &amp; boost::serialization::base_object&lt;base_class_of_T&gt;(*this);
+    // save/load class member variables
+    ar &amp; member1;
+    ar &amp; member2;
+}
+</code></pre> 请抵制直接把 <code style="white-space: normal">*this</code> 转换为基类的诱惑. 这看似可行, 但可能无法调用正确序列化所需的代码. <p>注意, 这<strong> 不等于 </strong>调用基类的 <code style="white-space: normal">serialize</code> 函数. 这看似可行, 但会绕过用于对象跟踪、注册基类-派生类关系以及序列化系统按设计运作所需的其他簿记的特定代码. 因此, 所有 <code style="white-space: normal">serialize</code> 成员函数都应当 <code style="white-space: normal">private</code>.<h4><a name="const"><code style="white-space: normal">const</code> 成员 </a></h4> 把 <code style="white-space: normal">const</code> 成员保存到档案不需要特别考虑. 加载 <code style="white-space: normal">const</code> 成员可以通过使用 <code style="white-space: normal">const_cast</code> 来解决: <pre><code>
+    ar &amp; const_cast&lt;T &amp;&gt;(t);
+</code></pre> 注意, 这违背了 <code style="white-space: normal">const</code> 关键字的精神与意图. <code style="white-space: normal">const</code> 成员在类实例构造时初始化且此后不再改变. 不过, 在许多情况下这可能是最合适的做法. 归根结底, 这归结为在序列化上下文中 <code style="white-space: normal">const</code> 意味着什么的问题. <h4><a name="templates"></a> 模板</h4> 模板的序列化实现与普通类完全相同, 不需要额外考虑. 其中之一是: 如果组件模板的序列化已定义, 模板组合的序列化会在需要时自动生成. 例如, 本库包含 <code style="white-space: normal">boost::shared_ptr&lt;T&gt;</code> 和 <code style="white-space: normal">std::list&lt;T&gt;</code> 的序列化定义. 如果我已经为自己的类 <code style="white-space: normal">my_t</code> 定义了序列化, 那么 <code style="white-space: normal">std::list&lt; boost::shared_ptr&lt; my_t&gt; &gt;</code> 的序列化就已经可以使用了. <p>有关如何为自己的类模板实现这一想法的示例, 参见 <a href="../example/demo_auto_ptr.cpp" target="demo_auto_ptr.cpp"> demo_auto_ptr.cpp </a>. 它展示了如何实现标准库模板 <code style="white-space: normal">auto_ptr</code> 的非侵入式序列化.<p>在示例 <a href="../../../boost/serialization/shared_ptr.hpp" target="shared_ptr_hpp"> shared_ptr.hpp </a> 中可以找到为标准模板添加序列化的一个更棘手的例子 <!--
+Only the most minimal change to
+<code>shared_count.hpp</code>
+(to gain access to some private members) was necessary to achieve this.
+This should demonstrate how easy it is to non-intrusively
+implement serialization to any data type or template. 
+-->
+<p>在为模板规定序列化时, 通常把 <code style="white-space: normal">serialize</code> 拆分为 <code style="white-space: normal">load/save</code> 对. 注意, <a href="#BOOST_SERIALIZATION_SPLIT_FREE"> 前文 </a> 所述的便捷宏在这些情况下没有帮助, 因为模板类实参的数量和种类与拆分简单类的 <code style="white-space: normal">serialize</code> 时所用不相同. 此时应改用重写语法.<h3><a name="versioning"> 版本控制 </a></h3> 最终会出现这样的情况: 档案创建之后类定义发生了变化. 保存类实例时, 当前版本会包含在存储于档案中的类信息里. 从档案加载类实例时, 原始版本号作为实参传给加载函数. 这使加载函数可以包含适配该类旧定义并把它们与最新版本协调起来的逻辑. save 函数总是保存当前版本. 因此这会自动把旧格式档案转换为最新版本. 版本号对每个类独立维护. 这形成了一个简单的系统, 可用于访问旧文件并对其进行转换. 类的当前版本作为<a href="traits.html"> 类序列化特征 </a> 指定, 本手册后文有描述. <pre><code>
+{
+    // invoke serialization of the base class 
+    ar &amp; boost::serialization::base_object&lt;base_class_of_T&gt;(*this);
+    // save/load class member variables
+    ar &amp; member1;
+    ar &amp; member2;
+    // if its a recent version of the class
+    if(1 &lt; file_version)
+        // save load recently added class members
+        ar &amp; member3;
+}
+</code></pre>
+
+<h3><a name="splitting"> 把 <code style="white-space: normal">serialize</code> 拆分为 Save/Load </a></h3> 有时对 save 和 load 函数使用同一个模板并不方便. 例如, 当版本控制变得复杂时可能出现这种情况. <h4><a name="splittingmemberfunctions"> 拆分成员函数 </a></h4> 对成员函数而言, 可以通过包含头文件 <a href="../../../boost/serialization/split_member.hpp" target="split_member_hpp"> boost/serialization/split_member.hpp </a> 并在类中包含如下代码来解决: <pre><code>
+template&lt;class Archive&gt;
+void save(Archive &amp; ar, const unsigned int version) const
+{
+    // invoke serialization of the base class 
+    ar &lt;&lt; boost::serialization::base_object&lt;const base_class_of_T&gt;(*this);
+    ar &lt;&lt; member1;
+    ar &lt;&lt; member2;
+    ar &lt;&lt; member3;
+}
+
+template&lt;class Archive&gt;
+void load(Archive &amp; ar, const unsigned int version)
+{
+    // invoke serialization of the base class 
+    ar &gt;&gt; boost::serialization::base_object&lt;base_class_of_T&gt;(*this);
+    ar &gt;&gt; member1;
+    ar &gt;&gt; member2;
+    if(version &gt; 0)
+        ar &gt;&gt; member3;
+}
+
+template&lt;class Archive&gt;
+void serialize(
+    Archive &amp; ar,
+    const unsigned int file_version 
+){
+    boost::serialization::split_member(ar, *this, file_version);
+}
+</code></pre> 这会把序列化拆分为两个独立的函数 <code style="white-space: normal">save</code> 和 <code style="white-space: normal">load</code>. 由于新的 <code style="white-space: normal">serialize</code> 模板总是相同的, 可以通过调用头文件 <a href="../../../boost/serialization/split_member.hpp" target="split_member_hpp"> boost/serialization/split_member.hpp </a> 中定义的宏 BOOST_SERIALIZATION_SPLIT_MEMBER() 来生成它. 因此上面的整个 <code style="white-space: normal">serialize</code> 函数可以替换为: <pre><code>
+BOOST_SERIALIZATION_SPLIT_MEMBER()
+</code></pre>
+<h4><a name="splittingfreefunctions"> 拆分自由函数 </a></h4> 对于使用自由 <code style="white-space: normal">serialize</code> 函数模板的非侵入式序列化, 情况相同. <a name="BOOST_SERIALIZATION_SPLIT_FREE"> 要使用 <code style="white-space: normal">save</code> 和 <code style="white-space: normal">load</code> 函数模板而非 <code style="white-space: normal">serialize</code>: <pre><code>
+namespace boost { namespace serialization {
+template&lt;class Archive&gt;
+void save(Archive &amp; ar, const my_class &amp; t, unsigned int version)
+{
+    ...
+}
+template&lt;class Archive&gt;
+void load(Archive &amp; ar, my_class &amp; t, unsigned int version)
+{
+    ...
+}
+}}
+</code></pre> 包含头文件 <a href="../../../boost/serialization/split_free.hpp" target="split_free_hpp"> boost/serialization/split_free.hpp </a>, 并重写自由 <code style="white-space: normal">serialize</code> 函数模板: <pre><code>
+namespace boost { namespace serialization {
+template&lt;class Archive&gt;
+inline void serialize(
+    Archive &amp; ar,
+    my_class &amp; t,
+    const unsigned int file_version
+){
+    split_free(ar, t, file_version); 
+}
+}}
+</code></pre> 为减少输入, 上面的模板可以用宏替换: <pre><code>
+BOOST_SERIALIZATION_SPLIT_FREE(my_class)
+</code></pre> 注意, 尽管提供了把 <code style="white-space: normal">
+serialize</code> 函数拆分为 <code style="white-space: normal">save/load</code> 的功能, 仍然优先推荐把 <code style="white-space: normal">serialize</code> 函数与相应的 <code style="white-space: normal">&amp;</code> 运算符一起使用. 序列化实现的关键在于对象按完全相同的顺序保存和加载. 使用 <code style="white-space: normal">&amp;</code> 运算符和 <code style="white-space: normal">serialize</code> 函数保证了这一点始终成立, 并将把与 <code style="white-space: normal">save</code> 和 <code style="white-space: normal">load</code> 函数同步相关的难以发现的错误的发生率降到最低. <p>另请注意, <code style="white-space: normal">BOOST_SERIALIZATION_SPLIT_FREE</code> 必须在任何命名空间之外使用.<h2><a name="pointeroperators"> 指针 </a></h2> 指向任何类实例的指针都可以用任何档案 save/load 运算符序列化. <p>要通过指针正确保存和恢复对象, 必须处理以下情形:<ol>
+    <li>如果同一对象通过不同指针被保存多次, 只需保存该对象的一个副本.<li>如果同一对象通过不同指针被加载多次, 只应创建一个新对象, 所有返回的指针都应指向它.<li>系统必须检测到这种情况: 对象先通过指针保存, 随后对象本身又被保存. 若不采取额外防范措施, 加载时会导致原始对象被创建多个副本. 本系统在保存时检测这种情况并抛出异常——见下文.<li>派生类的对象可以通过指向基类的指针存储. 必须确定并保存对象的真实类型. 恢复时必须创建正确的类型, 并把其地址正确转换为基类. 也就是说, 必须考虑多态指针.<li>保存时必须检测 NULL 指针, 反序列化时恢复为 NULL.</ol> 本序列化库处理了上述所有考量. 通过指针保存和加载对象的过程并不简单. 可以概括如下: <p>保存一个指针:<ol>
+    <li>确定被指向对象的真实类型.<li>向档案写入一个特殊标签<li>如果被指向的对象尚未写入档案, 现在写入</ol> 加载一个指针: <ol>
+    <li>从档案读取一个标签.<li>确定要创建的对象类型<li>如果对象已经加载, 返回其地址.<li>否则, 创建对象的一个新实例<li>使用上述运算符把数据读回<li>返回新建对象的地址.</ol> 鉴于类实例只向档案保存/从档案加载一次, 无论它们用 <code style="white-space: normal">&lt;&lt;</code> 和 <code style="white-space: normal">&gt;&gt;</code> 运算符序列化多少次 <ul>
+    <li>多次加载同一个指针对象只会创建一个对象, 从而复现原有的指针配置.<li>诸如多态指针集合之类的结构无需本库使用者付出特别的努力即可处理.</ul> 通过指向基类的指针序列化派生类型的指针可能需要一点额外的"帮助". 此外, 程序员可能出于自己的原因想修改上述过程. 例如, 可能希望抑制对象跟踪, 因为事先知道相关应用程序绝不会创建重复对象. 指针的序列化可以通过指定 <a target="detail" href="traits.html#Traits"> 类序列化特征 </a> 来"微调", 如<a target="detail" href="special.html#derivedpointers"> 本手册的另一节 </a> 所述 <h3><a name="constructors"> 非默认构造函数 </a></h3> 指针的序列化在库中用类似下面的代码实现: <pre><code>
+// load data required for construction and invoke constructor in place
+template&lt;class Archive, class T&gt;
+inline void load_construct_data(
+    Archive &amp; ar, T * t, const unsigned int file_version
+){
+    // default just uses the default constructor to initialize
+    // previously allocated memory. 
+    ::new(t)T();
+}
+</code></pre> 默认的 <code style="white-space: normal">load_construct_data</code> 会"就地"调用默认构造函数来初始化内存. <p>如果没有这样的默认构造函数, 则必须重写函数模板 <code style="white-space: normal">load_construct_data</code>, 可能还有 <code style="white-space: normal">save_construct_data</code>. 下面是一个简单示例: <pre><code>
+class my_class {
+private:
+    friend class boost::serialization::access;
+    const int m_attribute;  // some immutable aspect of the instance
+    int m_state;            // mutable state of this instance
+    template&lt;class Archive&gt;
+    void serialize(Archive &amp;ar, const unsigned int file_version){
+        ar &amp; m_state;
+    }
+public:
+    // no default construct guarantees that no invalid object
+    // ever exists
+    my_class(int attribute) :
+        m_attribute(attribute),
+        m_state(0)
+    {}
+};
+</code></pre> 重写应为: <pre><code>
+namespace boost { namespace serialization {
+template&lt;class Archive&gt;
+inline void save_construct_data(
+    Archive &amp; ar, const my_class * t, const unsigned int file_version
+){
+    // save data required to construct instance
+    ar &lt;&lt; t-&gt;m_attribute;
+}
+
+template&lt;class Archive&gt;
+inline void load_construct_data(
+    Archive &amp; ar, my_class * t, const unsigned int file_version
+){
+    // retrieve data from archive required to construct new instance
+    int attribute;
+    ar &gt;&gt; attribute;
+    // invoke inplace constructor to initialize instance of my_class
+    ::new(t)my_class(attribute);
+}
+}} // namespace ...
+</code></pre> 除了指针的反序列化之外, 这些重写还用于元素类型没有默认构造函数的 STL 容器的反序列化.<h3><a name="derivedpointers"> 指向派生类对象的指针 </a></h3>
+<h4><a name="registration"> 注册 </a></h4> 考虑以下情形: <pre><code>
+class base {
+    ...
+};
+class derived_one : public base {
+    ...
+};
+class derived_two : public base {
+    ...
+};
+int main(){
+    ...
+    base *b;
+    ...
+    ar &amp; b; 
+}
+</code></pre> 保存 <code style="white-space: normal">b</code> 时应当保存哪种对象? 加载 <code style="white-space: normal">b</code> 时应当创建哪种对象? 应当是类 <code style="white-space: normal">derived_one</code>、<code style="white-space: normal">derived_two</code>, 还是 <code style="white-space: normal">base</code> 的对象? <p>事实证明, 序列化的对象类型取决于基类 (此处是 <code style="white-space: normal">base</code>) 是否多态. 如果 <code style="white-space: normal">base</code> 不是多态的, 即它没有虚函数, 那么将序列化 <code style="white-space: normal">base</code> 类型的对象. 任何派生类中的信息都会丢失. 如果这正是所期望的 (通常不是) , 则无需其他工作.<p>如果基类是多态的, 将序列化最派生类型 (此处是 <code style="white-space: normal">derived_one</code> 或 <code style="white-space: normal">derived_two</code>) 的对象. 序列化哪种类型的对象这个问题 (几乎) 由库自动处理.<p>系统在该类的对象第一次被序列化时在档案中"注册"该类, 并为其分配一个顺序号. 下次在同一档案中序列化该类的对象时, 档案中写入的就是这个号. 这样, 每个类在档案内都被唯一标识. 当档案被读回时, 每个新的顺序号都与正在读取的类重新关联. 注意, 这意味着"注册"必须在保存和加载时都发生, 使加载时构建的类-整数表与保存时构建的完全一致. 事实上, 整个序列化系统的关键在于一切总是按相同顺序保存和加载. "注册"也包括在内.<p>扩展我们先前的示例: <pre><code>
+int main(){
+    derived_one d1;
+    derived_two d2:
+    ...
+    ar &amp; d1;
+    ar &amp; d2;
+    // A side effect of serialization of objects d1 and d2 is that
+    // the classes derived_one and derived_two become known to the archive.
+    // So subsequent serialization of those classes by base pointer works
+    // without any special considerations.
+    base *b;
+    ...
+    ar &amp; b; 
+}
+</code></pre> 读取 <code style="white-space: normal">b</code> 时, 它前面有一个唯一的 (对档案而言) 类标识符, 该标识符先前已与类 <code style="white-space: normal">derived_one</code> 或 <code style="white-space: normal">derived_two</code> 关联.<p>如果派生类没有像上文所述那样被自动"注册", 调用序列化时会抛出 <a target="detail" href="exceptions.html#unregistered_class">
+<code style="white-space: normal">unregistered_class</code></a> 异常.<p>这可以通过显式注册派生类来解决. 所有档案都派生自一个实现了以下模板的基类: <pre><code>
+template&lt;class T&gt;
+register_type(T * = NULL);
+</code></pre> 因此我们的问题同样可以这样解决: <pre><code>
+int main(){
+    ...
+    ar.template register_type&lt;derived_one&gt;();
+    ar.template register_type&lt;derived_two&gt;();
+    base *b;
+    ...
+    ar &amp; b; 
+}
+</code></pre> 注意, 如果序列化函数在 save 和 load 之间拆分, 两个函数都必须包含注册. 这是保持 save 与对应 load 同步所必需的.<h4><a name="export"> 导出 </a></h4> 上面的做法可行, 但可能不方便. 在编写通过基类指针序列化的代码时, 我们并不总是知道要序列化哪些派生类. 每编写一个新的派生类, 我们都不得不回到所有序列化基类的地方并更新代码. <p>所以我们还有另一种方法: <pre><code>
+#include &lt;boost/serialization/export.hpp&gt;
+...
+BOOST_CLASS_EXPORT_GUID(derived_one, "derived_one")
+BOOST_CLASS_EXPORT_GUID(derived_two, "derived_two")
+
+int main(){
+    ...
+    base *b;
+    ...
+    ar &amp; b; 
+}
+</code></pre> 宏 <code style="white-space: normal">BOOST_CLASS_EXPORT_GUID</code> 把字符串字面量与类关联. 在上例中我们使用了类名的字符串形式. 如果这样一个"导出"类的对象通过指针序列化且未以其他方式注册, "导出"字符串就会被包含进档案. 之后读取档案时, 序列化库用该字符串字面量查找应当创建的类. 这使得每个类可以连同其字符串标识符一起放在单独的头文件中. 无需维护可能被序列化的派生类的单独"预注册". 这种注册方式称为"键导出". 有关此主题的更多信息见类特征一节的 <a target="detail" href="traits.html#export"> 导出键 </a>.<p>
+<h4><a name="instantiation"> 实例化 </a></h4> 通过上述任一方法进行的注册还实现了另一个作用, 其重要性可能不明显. 本系统依赖于形如 <code style="white-space: normal">template&lt;class Archive, class T&gt;</code> 的模板化函数. 这意味着对于程序中序列化的每种档案与数据类型的组合, 都必须实例化序列化代码. <p>派生类的多态指针可能永远不会被程序显式引用, 因此正常情况下序列化这些类的代码永远不会被实例化. 因此, 除了在档案中包含导出键字符串之外, <code style="white-space: normal">BOOST_CLASS_EXPORT_GUID</code> 还会为程序使用的所有档案类显式实例化类序列化代码.<h4><a name="selectivetracking"> 选择性跟踪 </a></h4> 对象是否被跟踪由其 <a target="detail" href="traits.html#tracking"> 对象跟踪特征 </a> 决定. 用户定义类型的默认设置是 <code style="white-space: normal">track_selectively</code>. 也就是说, 当且仅当对象在程序中任何地方通过指针序列化时才跟踪它. 通过上述任何方式"注册"的任何对象都被假定在程序中某处通过指针序列化, 因此会被跟踪. 在某些情况下这可能导致低效. 假设我们有一个被多个程序使用的类模块. 由于某些程序会序列化指向该类对象的多态指针, 我们通过 <a target="detail" href="traits.html#export"> 导出 </a> 一个类标识符——在类头文件中指定 <code style="white-space: normal">BOOST_CLASS_EXPORT</code>. 当另一个程序包含该模块时, 该类的对象总会被跟踪, 即使可能没有必要. 这种情况可以通过在这些程序中使用 <a target="detail" href="traits.html#tracking"><code style="white-space: normal">track_never</code></a> 来解决. <p>也可能出现这种情况: 即使程序通过指针序列化, 我们更关心效率而不是避免创建重复对象的可能性. 可能我们恰好知道不会有重复. 也可能创建少量重复是无害的、不值得为跟踪重复付出运行期代价. 同样, 可以使用 <a target="detail" href="traits.html#tracking"><code style="white-space: normal">track_never</code></a>.<h4><a name="runtimecasting"> 运行期转换 </a></h4> 为了在运行期正确地在基类指针与派生类指针之间转换, 系统要求每个基类/派生类对都能在表中找到. 用 <code style="white-space: normal">boost::serialization::base_object&lt;Base&gt;(Derived &amp;)</code> 序列化基类对象的一个副作用是: 确保在进入 <code style="white-space: normal">main</code> 函数之前把基类/派生类对加入表中. 这非常方便, 并带来干净的语法. 唯一的问题是可能出现这种情况: 通过指针序列化的派生类无需调用其基类的序列化. 在这种情况下有两个选择. 显而易见的一个是用 <code style="white-space: normal">base_object</code> 调用基类序列化, 并为基类序列化指定空函数. 另一种选择是通过调用模板 <code style="white-space: normal">void_cast_register&lt;Derived, Base&gt;();</code> 显式"注册"基类/派生类关系. 注意, 这里"register"一词的用法与上一节中的用法无关. 下面是一个示例: <pre><code>
+#include &lt;sstream&gt;
+#include &lt;boost/serialization/serialization.hpp&gt;
+#include &lt;boost/archive/text_iarchive.hpp&gt;
+#include &lt;boost/serialization/export.hpp&gt;
+
+class base {
+    friend class boost::serialization::access;
+    //...
+    // only required when using method 1 below
+    // no real serialization required - specify a vestigial one
+    template&lt;class Archive&gt;
+    void serialize(Archive &amp; ar, const unsigned int file_version){}
+};
+
+class derived : public base {
+    friend class boost::serialization::access;
+    template&lt;class Archive&gt;
+    void serialize(Archive &amp; ar, const unsigned int file_version){
+        // method 1 : invoke base class serialization
+        ar &amp; boost::serialization::base_object&lt;base&gt;(*this);
+        // method 2 : explicitly register base/derived relationship
+        boost::serialization::void_cast_register&lt;derived, base&gt;(
+            static_cast&lt;derived *&gt;(NULL),
+            static_cast&lt;base *&gt;(NULL)
+        )
+    }
+};
+
+BOOST_CLASS_EXPORT_GUID(derived, "derived")
+
+int main(){
+    //...
+    std::stringstream ss;
+    boost::archive::text_iarchive ar(ss);
+    base *b;
+    ar &gt;&gt; b; 
+}
+</code></pre>
+<p>为了使这个模板能在不合标准编译器编译的代码中被调用, 可以使用以下语法: <pre><code>
+boost::serialization::void_cast_register(
+    static_cast&lt;Derived *&gt;(NULL),
+    static_cast&lt;Base *&gt;(NULL)
+);
+</code></pre> 更多信息参见 <a target="detail" href="implementation.html#tempatesyntax"> 模板调用语法 </a>
+
+<h3><a name="references"></a>参考文献</h3> 包含引用成员的类通常需要非默认构造函数, 因为引用只能在实例构造时设置. 如果类有引用成员, 上一节的例子会稍微复杂一些. 这引出了被引用对象存储在哪里、如何存储以及如何创建的问题. 还有对多态基类的引用的问题. 基本上, 这些与指针引发的问题相同. 这并不奇怪, 因为引用实际上是一种特殊的指针. 我们通过把引用当作指针一样序列化来解决这些问题. <pre><code>
+class object;
+class my_class {
+private:
+    friend class boost::serialization::access;
+    int member1;
+    object &amp; member2;
+    template&lt;class Archive&gt;
+    void serialize(Archive &amp;ar, const unsigned int file_version);
+public:
+    my_class(int m, object &amp; o) :
+        member1(m), 
+        member2(o)
+    {}
+};
+</code></pre> 重写应为: <pre><code>
+namespace boost { namespace serialization {
+template&lt;class Archive&gt;
+inline void save_construct_data(
+    Archive &amp; ar, const my_class * t, const unsigned int file_version
+){
+    // save data required to construct instance
+    ar &lt;&lt; t.member1;
+    // serialize reference to object as a pointer
+    ar &lt;&lt; &amp; t.member2;
+}
+
+template&lt;class Archive&gt;
+inline void load_construct_data(
+    Archive &amp; ar, my_class * t, const unsigned int file_version
+){
+    // retrieve data from archive required to construct new instance
+    int m;
+    ar &gt;&gt; m;
+    // create and load data through pointer to object
+    // tracking handles issues of duplicates.
+    object * optr;
+    ar &gt;&gt; optr;
+    // invoke inplace constructor to initialize instance of my_class
+    ::new(t)my_class(m, *optr);
+}
+}} // namespace ...
+</code></pre>
+
+<h3><a name="arrays"></a> 数组</h3> 如果 <code style="white-space: normal">T</code> 是可序列化类型, 那么任何类型为 T 的原生 C++ 数组都是可序列化类型. 也就是说, 如果 <code style="white-space: normal">T</code> 是可序列化类型, 那么以下内容自动可用并按预期工作: <pre><code>
+T t[4];
+ar &lt;&lt; t;
+    ...
+ar &gt;&gt; t;
+</code></pre>
+
+<h2><a href="traits.html"> 类序列化特征 </a></h2>
+
+<h2><a href="wrappers.html"> 序列化包装器 </a></h2>
+
+<h2><a name="models"></a> 模型 - 库中包含的序列化实现</h2> 上述设施足以实现所有 STL 容器的序列化. 事实上, 这已经完成并包含在库中. 例如, 要使用为 <code style="white-space: normal">std::list</code> 包含的序列化代码, 请使用: <pre><code>
+#include &lt;boost/serialization/list.hpp&gt;
+</code></pre> 而不是 <pre><code>
+#include &lt;list&gt;
+</code></pre> 由于前者包含后者, 这就是全部所需. 对所有 STL 集合以及支持它们所需的模板 (例如 <code style="white-space: normal">std::pair</code>) 也是如此. <p>截至撰写本文时, 本库包含以下 boost 类的序列化:<ul>
+  <li>optional
+  <li>variant
+  <li>scoped_ptr
+  <li>shared_ptr
+  <li>auto_ptr (demo)
+</ul> C++17 <code style="white-space: normal">std::variant is supported as well</code>. 还有其他实现正在加入列表, 请查看 boost 文件部分和头文件以了解新实现! <hr>
+<p><i> 版权所有 © <a href="http://www.rrsd.com"> Robert Ramey </a> 2002-2004. 按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt) </i></p>
+</body>
+</html>

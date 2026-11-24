@@ -1,0 +1,81 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>LEAF - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="../css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="../images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="../alternatives/outcome.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../alternatives.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../motivation.html"><img src="../images/next.png" alt="下一页"></a></div><div id="content">
+  <div class="titlepage"><div><div><h1 style="clear: both">LEAF</h1></div></div></div>
+  
+
+<p>正如 Outcome 起因于对当时最初提案的 <code>std::expected&lt;T, E&gt;</code> 的负面反应, <a href="https://boostorg.github.io/leaf/">LEAF</a> 也起因于对 Outcome 的负面反应. 人们眼中 Outcome 的一些问题包括 (<a href="https://boostorg.github.io/leaf/#rationale">LEAF 自己对此的表述可在此查看</a>):</p>
+
+<ul>
+<li><p>基于 Outcome 的代码视觉上较为杂乱, 因为正常与失败两条路径都出现在代码中.</p></li>
+
+<li><p>基于 Outcome 的代码会在运行期生成大量分支, 这会影响低端 CPU 与首次执行的代码.</p></li>
+
+<li><p>Outcome 的 Result 类型把错误类型编码进函数签名, 对于大规模代码重构而言, 这可以被认为更脆弱、更容易出问题<sup class="footnote-ref" id="fnref:1"><a href="#fn:1">1</a></sup>.</p></li>
+
+<li><p>Outcome 对自己作为程序中终极错误处理框架的定位更为强势 (即假定所有第三方自定义错误处理都会经由定制点适配器汇入 Outcome), 而 LEAF 的立场没那么强势, 却提供了同等的功能.</p></li>
+</ul>
+
+<p>因此 LEAF 看起来更像标准 C++ 异常处理, 但没有不确定性的失败路径, 代价是对正常路径运行期性能的轻微影响. LEAF 目前的设计完成于 2020 年.</p>
+
+<p>如果你需要一个失败路径开销可预测 (不像 C++ 异常) 的错误处理框架, 同时又希望拥有与 C++ 异常相似的语法与使用体验, LEAF 是非常稳妥的选择.</p>
+
+<h4 id="pros">优点:</h4>
+
+<ul>
+<li><p>正常路径上运行时开销极低.</p></li>
+
+<li><p>失败路径上运行时开销极低.</p></li>
+
+<li><p>不会像 Outcome 那样产生大量分支代码, 且与 C++ 异常不同, 其失败路径是确定性的.</p></li>
+
+<li><p>给二进制增加的代码生成膨胀极少 (不过支持库存在固定的绝对开销, 其中大部分如有需要可用一个宏编译掉).</p></li>
+
+<li><p>与前面所有选项不同, 失败与成功都不会被无意丢弃. 这与 C++ 异常具有同等强度的保证.</p></li>
+
+<li><p>在 C++ 的大多数配置下工作良好, 包括全局禁用 C++ 异常与 RTTI 的配置. 不进行动态内存分配.</p></li>
+</ul>
+
+<h4 id="cons">缺点:</h4>
+
+<ul>
+<li><p>需要带外存储来保存状态, 例如线程局部存储或全局同步环形缓冲区<sup class="footnote-ref" id="fnref:2"><a href="#fn:2">2</a></sup>.</p>
+
+<ul>
+<li><p>如果选择线程局部存储作为带外存储, 跨线程传递 LEAF 状态需要人工干预.</p></li>
+
+<li><p>如果选择全局环形缓冲区作为带外存储, 则需要与全局状态进行线程同步, 且环形缓冲区可能回绕, 从而丢失状态.</p></li>
+</ul></li>
+
+<li><p>线程局部存储在 HPC、GPU、DSP 与微控制器等许多小众架构上可能有麻烦甚至是致命障碍. 全局同步状态在这些架构上可能带来不可接受的性能影响.</p></li>
+
+<li><p>截至写作本文时, 当前编译器对线程局部存储的使用反应不佳: 由于对逃逸分析的悲观假设, 一旦触及线程局部状态, 代码生成的消除似乎就会受到抑制. 鉴于 <code>errno</code> 存在同样的问题而波及所有 C 与 C++ 代码, 希望未来的编译器会改善这一点. 在此之前, 任何触及线程局部存储或 magic static 的代码<sup class="footnote-ref" id="fnref:3"><a href="#fn:3">3</a></sup>的优化效果都不如两者皆不触及的代码.</p></li>
+</ul>
+<div class="footnotes">
+
+<hr />
+
+<ol>
+<li id="fn:1">在 Outcome 中, 强烈建议为所有公共 API 选择单一通用错误类型, 例如 Experimental.Outcome 中的 <code>std::error_code</code> 或 <code>error</code>, 这样只要程序员自律, 函数签名就不会暴露内部错误类型. 这类单一通用错误类型会对原始错误对象做类型擦除, 但仍允许检查原始错误对象. 这避免了众所周知的难以扩展的 '异常规范 (exception specifications)'. <a class="footnote-return" href="#fnref:1"><sup>[return]</sup></a></li>
+<li id="fn:2">LEAF 并不附带全局同步环形缓冲区的实现, 但 LEAF 为定制的线程局部存储实现暴露了定制点, 使得实现一个这样的存储非常直接. <a class="footnote-return" href="#fnref:2"><sup>[return]</sup></a></li>
+<li id="fn:3"><code>std::error_code</code> 的构造会触及 magic static 或调用 extern 函数, 因此 Outcome 与 <code>std::error_code</code> 组合使用时也会出现代码生成劣化. Experimental Outcome 的 <code>error</code> 修复了这个历史遗留的疏忽. <a class="footnote-return" href="#fnref:3"><sup>[return]</sup></a></li>
+</ol>
+</div>
+
+
+        </div><p><small>最后修订: January 10, 2022 at 14:29:13 UTC</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../alternatives/outcome.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../alternatives.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../motivation.html"><img src="../images/next.png" alt="下一页"></a></div></body>
+</html>

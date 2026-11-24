@@ -1,0 +1,334 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>L-BFGS</title>
+<link rel="stylesheet" href="../../math.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="Math Toolkit 4.2.1">
+<link rel="up" href="../gd_opt.html" title="基于梯度的优化器">
+<link rel="prev" href="nesterov.html" title="Nesterov 加速梯度下降">
+<link rel="next" href="minimize.html" title="minimize">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="nesterov.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../gd_opt.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="minimize.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="math_toolkit.gd_opt.lbfgs"></a><a class="link" href="lbfgs.html" title="L-BFGS">L-BFGS</a>
+</h3></div></div></div>
+<h5>
+<a name="math_toolkit.gd_opt.lbfgs.h0"></a>
+        <span class="phrase"><a name="math_toolkit.gd_opt.lbfgs.synopsis"></a></span><a class="link" href="lbfgs.html#math_toolkit.gd_opt.lbfgs.synopsis">概要</a>
+      </h5>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">math</span><span class="special">/</span><span class="identifier">optimization</span><span class="special">/</span><span class="identifier">lbfgs</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">math</span> <span class="special">{</span>
+<span class="keyword">namespace</span> <span class="identifier">optimization</span> <span class="special">{</span>
+
+<span class="keyword">namespace</span> <span class="identifier">rdiff</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">differentiation</span><span class="special">::</span><span class="identifier">reverse_mode</span><span class="special">;</span>
+
+<span class="comment">/**
+ *
+ * @brief Limited-memory BFGS (L-BFGS) optimizer
+ *
+ * The `lbfgs` class implements the Limited-memory BFGS optimization algorithm,
+ * a quasi-Newton method that approximates the inverse Hessian using a rolling
+ * window of the last `m` updates. It is suitable for medium- to large-scale
+ * optimization problems where full Hessian storage is infeasible.
+ *
+ * @tparam&gt; ArgumentContainer: container type for parameters, e.g.
+ * std::vector&lt;RealType&gt;
+ * @tparam&gt; RealType scalar floating type (e.g. double, float)
+ * @tparam&gt; Objective: objective function. must support "f(x)" evaluation
+ * @tparam&gt; InitializationPolicy: policy for initializing x
+ * @tparam&gt; ObjectiveEvalPolicy: policy for computing the objective value
+ * @tparam&gt; GradEvalPolicy: policy for computing gradients
+ * @tparam&gt; LineaSearchPolicy: e.g. Armijo, StrongWolfe
+ *
+ * https://en.wikipedia.org/wiki/Limited-memory_BFGS
+ */</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">ArgumentContainer</span><span class="special">,</span>
+         <span class="keyword">typename</span> <span class="identifier">RealType</span><span class="special">,</span>
+         <span class="keyword">class</span> <span class="identifier">Objective</span><span class="special">,</span>
+         <span class="keyword">class</span> <span class="identifier">InitializationPolicy</span><span class="special">,</span>
+         <span class="keyword">class</span> <span class="identifier">ObjectiveEvalPolicy</span><span class="special">,</span>
+         <span class="keyword">class</span> <span class="identifier">GradEvalPolicy</span><span class="special">,</span>
+         <span class="keyword">class</span> <span class="identifier">LineSearchPolicy</span><span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">lbfgs</span>
+<span class="special">{</span>
+<span class="keyword">public</span><span class="special">:</span>
+  <span class="identifier">lbfgs</span><span class="special">(</span><span class="identifier">Objective</span><span class="special">&amp;&amp;</span> <span class="identifier">objective</span><span class="special">,</span>
+        <span class="identifier">ArgumentContainer</span><span class="special">&amp;</span> <span class="identifier">x</span><span class="special">,</span>
+        <span class="identifier">size_t</span> <span class="identifier">m</span><span class="special">,</span>
+        <span class="identifier">InitializationPolicy</span><span class="special">&amp;&amp;</span> <span class="identifier">ip</span><span class="special">,</span>
+        <span class="identifier">ObjectiveEvalPolicy</span><span class="special">&amp;&amp;</span> <span class="identifier">oep</span><span class="special">,</span>
+        <span class="identifier">GradEvalPolicy</span><span class="special">&amp;&amp;</span> <span class="identifier">gep</span><span class="special">,</span>
+        <span class="identifier">lbfgs_update_policy</span><span class="special">&lt;</span><span class="identifier">RealType</span><span class="special">&gt;&amp;&amp;</span> <span class="identifier">up</span><span class="special">,</span>
+        <span class="identifier">LineSearchPolicy</span><span class="special">&amp;&amp;</span> <span class="identifier">lsp</span><span class="special">);</span>
+
+  <span class="keyword">void</span> <span class="identifier">step</span><span class="special">();</span>
+<span class="special">};</span>
+
+<span class="comment">/* Convenience overloads */</span>
+<span class="comment">/* create l-bfgs optimizer with
+ * objective function
+ * argument container
+ * optional
+ * - history size : how far to look in the past
+ */</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Objective</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">ArgumentContainer</span><span class="special">&gt;</span>
+<span class="keyword">auto</span> <span class="identifier">make_lbfgs</span><span class="special">(</span><span class="identifier">Objective</span><span class="special">&amp;&amp;</span> <span class="identifier">obj</span><span class="special">,</span> <span class="identifier">ArgumentContainer</span><span class="special">&amp;</span> <span class="identifier">x</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">m</span> <span class="special">=</span> <span class="number">10</span><span class="special">);</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Objective</span><span class="special">,</span>
+         <span class="keyword">typename</span> <span class="identifier">ArgumentContainer</span><span class="special">,</span>
+         <span class="keyword">class</span> <span class="identifier">InitializationPolicy</span><span class="special">&gt;</span>
+<span class="keyword">auto</span> <span class="identifier">make_lbfgs</span><span class="special">(</span><span class="identifier">Objective</span><span class="special">&amp;&amp;</span> <span class="identifier">obj</span><span class="special">,</span>
+           <span class="identifier">ArgumentContainer</span><span class="special">&amp;</span> <span class="identifier">x</span><span class="special">,</span>
+           <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">m</span><span class="special">,</span>
+           <span class="identifier">InitializationPolicy</span><span class="special">&amp;&amp;</span> <span class="identifier">ip</span><span class="special">)</span>
+
+<span class="comment">/* construct lbfgs with a custom initialization and line search policy */</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Objective</span><span class="special">,</span>
+         <span class="keyword">typename</span> <span class="identifier">ArgumentContainer</span><span class="special">,</span>
+         <span class="keyword">class</span> <span class="identifier">InitializationPolicy</span><span class="special">,</span>
+         <span class="keyword">class</span> <span class="identifier">LineSearchPolicy</span><span class="special">&gt;</span>
+<span class="keyword">auto</span> <span class="identifier">make_lbfgs</span><span class="special">(</span><span class="identifier">Objective</span><span class="special">&amp;&amp;</span> <span class="identifier">obj</span><span class="special">,</span>
+           <span class="identifier">ArgumentContainer</span><span class="special">&amp;</span> <span class="identifier">x</span><span class="special">,</span>
+           <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">m</span><span class="special">,</span>
+           <span class="identifier">InitializationPolicy</span><span class="special">&amp;&amp;</span> <span class="identifier">ip</span><span class="special">,</span>
+           <span class="identifier">LineSearchPolicy</span><span class="special">&amp;&amp;</span> <span class="identifier">lsp</span><span class="special">);</span>
+
+<span class="comment">/* construct lbfgs optimizer with:
+ * custom initialization policy
+ * function evaluation policy
+ * gradient evaluation policy
+ * line search policy
+ */</span>
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Objective</span><span class="special">,</span>
+         <span class="keyword">typename</span> <span class="identifier">ArgumentContainer</span><span class="special">,</span>
+         <span class="keyword">class</span> <span class="identifier">InitializationPolicy</span><span class="special">,</span>
+         <span class="keyword">class</span> <span class="identifier">FunctionEvalPolicy</span><span class="special">,</span>
+         <span class="keyword">class</span> <span class="identifier">GradientEvalPolicy</span><span class="special">,</span>
+         <span class="keyword">class</span> <span class="identifier">LineSearchPolicy</span><span class="special">&gt;</span>
+<span class="keyword">auto</span> <span class="identifier">make_lbfgs</span><span class="special">(</span><span class="identifier">Objective</span><span class="special">&amp;&amp;</span> <span class="identifier">obj</span><span class="special">,</span>
+           <span class="identifier">ArgumentContainer</span><span class="special">&amp;</span> <span class="identifier">x</span><span class="special">,</span>
+           <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">m</span><span class="special">,</span>
+           <span class="identifier">InitializationPolicy</span><span class="special">&amp;&amp;</span> <span class="identifier">ip</span><span class="special">,</span>
+           <span class="identifier">FunctionEvalPolicy</span><span class="special">&amp;&amp;</span> <span class="identifier">fep</span><span class="special">,</span>
+           <span class="identifier">GradientEvalPolicy</span><span class="special">&amp;&amp;</span> <span class="identifier">gep</span><span class="special">,</span>
+           <span class="identifier">LineSearchPolicy</span><span class="special">&amp;&amp;</span> <span class="identifier">lsp</span><span class="special">);</span>
+
+<span class="special">}</span> <span class="comment">// namespace optimization</span>
+<span class="special">}</span> <span class="comment">// namespace math</span>
+<span class="special">}</span> <span class="comment">// namespace boost</span>
+</pre>
+<p>LBFGS (limited memory BFGS) 是一种拟牛顿优化器, 它仅使用一阶信息 (函数值与梯度) 构建逆 Hessian 的近似. 与完整的 BFGS 不同, 它不存储也不更新稠密矩阵, 而是维护最近 m 个校正对的固定大小历史, 并用两循环递归计算搜索方向. 实践中, LBFGS 通常比普通基于梯度的方法以明显更少的迭代收敛, 尤其是在光滑、病态的目标上.</p>
+<h5>
+<a name="math_toolkit.gd_opt.lbfgs.h1"></a>
+        <span class="phrase"><a name="math_toolkit.gd_opt.lbfgs.algorithm"></a></span><a class="link" href="lbfgs.html#math_toolkit.gd_opt.lbfgs.algorithm">算法</a>
+      </h5>
+<p>在每次迭代 k, LBFGS: * 求值梯度 g_k = grad(f(x_k)). * 利用最近 m 次更新计算拟牛顿搜索方向. * 用线搜索策略选择步长 alpha_k. * 更新参数:</p>
+<pre class="programlisting"><span class="identifier">x_k</span> <span class="special">+=</span> <span class="identifier">alpha_k</span> <span class="identifier">p_k</span>
+</pre>
+<p>* 构造校正对:</p>
+<pre class="programlisting"><span class="identifier">s_k</span> <span class="special">=</span> <span class="identifier">x_k</span> <span class="special">-</span> <span class="identifier">x_prev</span> <span class="identifier">y_k</span> <span class="special">=</span> <span class="identifier">g_k</span> <span class="special">-</span> <span class="identifier">g_prev</span>
+</pre>
+<p>并保存最近至多 <code class="computeroutput"><span class="identifier">m</span></code> 对 <code class="computeroutput"><span class="special">(</span><span class="identifier">s_k</span><span class="special">,</span> <span class="identifier">y_k</span><span class="special">)</span></code>.</p>
+<p>线搜索是实用 LBFGS 的关键部分: 它通常免除了手工调节学习率的必要, 并提高稳健性.</p>
+<h5>
+<a name="math_toolkit.gd_opt.lbfgs.h2"></a>
+        <span class="phrase"><a name="math_toolkit.gd_opt.lbfgs.parameters"></a></span><a class="link" href="lbfgs.html#math_toolkit.gd_opt.lbfgs.parameters">参数</a>
+      </h5>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">Objective</span><span class="special">&amp;&amp;</span>
+            <span class="identifier">obj</span></code> : 要最小化的目标函数.</li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">ArgumentContainer</span><span class="special">&amp;</span>
+            <span class="identifier">x</span></code> : 要优化的变量. 原地更新.</li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">m</span></code> : 历史大小. 典型值为 5-20. 默认为 10. 更大的 m 可以改善方向, 但增加内存与每步成本.</li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">InitializationPolicy</span><span class="special">&amp;&amp;</span> <span class="identifier">ip</span></code> : 优化器状态与变量的初始化策略. 用户可以提供自定义初始化策略, 控制参数容器以及任何 AD 特有的运行期状态 (即反向模式磁带的挂载/重置) 如何初始化. 默认情况下, 优化器使用与梯度下降相同的初始化: 采用用户在 x 中提供的初始值, 并把内部动量/速度状态初始化为零. 自定义初始化策略对随机起点、非 rvar AD 类型或外部提供梯度的情形很有用. 编写自定义策略时, 初始化策略的结构请查阅反向模式自动微分策略文档.</li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">ObjectiveEvalPolicy</span><span class="special">&amp;&amp;</span>
+            <span class="identifier">oep</span></code> : 在给定 x 处求值目标函数值的策略. 使用 <code class="computeroutput"><span class="identifier">rvar</span></code> 时, 默认是反向模式 AD 求值策略.</li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">GradEvalPolicy</span><span class="special">&amp;&amp;</span>
+            <span class="identifier">gep</span></code> : 求值目标梯度的策略. 使用 <code class="computeroutput"><span class="identifier">rvar</span></code> 时, 默认是反向模式 AD 梯度求值策略.</li>
+<li class="listitem">
+<p class="simpara">
+            <code class="computeroutput"><span class="identifier">LineSearchPolicy</span><span class="special">&amp;&amp;</span>
+            <span class="identifier">lsp</span></code> : 沿搜索方向选择步长 alpha 的策略. 它决定接受判据, 以及一步中可执行的函数/梯度求值次数. 默认为 Strong Wolfe, 但也可选 Armijo. Strong Wolfe 同时利用函数与梯度信息以保证良好的曲率条件, 而 Armijo 只依赖函数下降, 更简单但对拟牛顿方法不够稳健.</p>
+<h5>
+<a name="math_toolkit.gd_opt.lbfgs.h3"></a>
+            <span class="phrase"><a name="math_toolkit.gd_opt.lbfgs.notes"></a></span><a class="link" href="lbfgs.html#math_toolkit.gd_opt.lbfgs.notes">注释</a>
+          </h5>
+</li>
+<li class="listitem">LBFGS 假定目标足够光滑, 使梯度有信息量. 它通常对无约束的光滑问题最有效.</li>
+<li class="listitem">LBFGS 通常比梯度下降需要更少的迭代, 但每次迭代更昂贵, 因为它在线搜索期间执行多次目标/梯度求值.</li>
+</ul></div>
+<h5>
+<a name="math_toolkit.gd_opt.lbfgs.h4"></a>
+        <span class="phrase"><a name="math_toolkit.gd_opt.lbfgs.example_thomson_problem"></a></span><a class="link" href="lbfgs.html#math_toolkit.gd_opt.lbfgs.example_thomson_problem">示例: Thomson 问题</a>
+      </h5>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">math</span><span class="special">/</span><span class="identifier">differentiation</span><span class="special">/</span><span class="identifier">autodiff_reverse</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">math</span><span class="special">/</span><span class="identifier">optimization</span><span class="special">/</span><span class="identifier">lbfgs</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">math</span><span class="special">/</span><span class="identifier">optimization</span><span class="special">/</span><span class="identifier">minimizer</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">cmath</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">fstream</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">random</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">string</span><span class="special">&gt;</span>
+<span class="keyword">namespace</span> <span class="identifier">rdiff</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">differentiation</span><span class="special">::</span><span class="identifier">reverse_mode</span><span class="special">;</span>
+<span class="keyword">namespace</span> <span class="identifier">bopt</span>  <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">math</span><span class="special">::</span><span class="identifier">optimization</span><span class="special">;</span>
+<span class="keyword">double</span> <span class="identifier">random_double</span><span class="special">(</span><span class="keyword">double</span> <span class="identifier">min</span> <span class="special">=</span> <span class="number">0.0</span><span class="special">,</span> <span class="keyword">double</span> <span class="identifier">max</span> <span class="special">=</span> <span class="number">1.0</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">static</span> <span class="keyword">thread_local</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">mt19937</span>       <span class="identifier">rng</span><span class="special">{</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">random_device</span><span class="special">{}()};</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">uniform_real_distribution</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">&gt;</span> <span class="identifier">dist</span><span class="special">(</span><span class="identifier">min</span><span class="special">,</span> <span class="identifier">max</span><span class="special">);</span>
+    <span class="keyword">return</span> <span class="identifier">dist</span><span class="special">(</span><span class="identifier">rng</span><span class="special">);</span>
+<span class="special">}</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">S</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">vec3</span>
+<span class="special">{</span>
+    <span class="comment">/**
+     * @brief R^3 coordinates of particle on Thomson Sphere
+     */</span>
+    <span class="identifier">S</span> <span class="identifier">x</span><span class="special">,</span> <span class="identifier">y</span><span class="special">,</span> <span class="identifier">z</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">S</span><span class="special">&gt;</span>
+<span class="keyword">static</span> <span class="keyword">inline</span> <span class="identifier">vec3</span><span class="special">&lt;</span><span class="identifier">S</span><span class="special">&gt;</span> <span class="identifier">sph_to_xyz</span><span class="special">(</span><span class="keyword">const</span> <span class="identifier">S</span><span class="special">&amp;</span> <span class="identifier">theta</span><span class="special">,</span> <span class="keyword">const</span> <span class="identifier">S</span><span class="special">&amp;</span> <span class="identifier">phi</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="comment">/**
+     * convenience overload to convert from [theta,phi] -&gt; x, y, z
+     */</span>
+    <span class="keyword">return</span> <span class="special">{</span><span class="identifier">sin</span><span class="special">(</span><span class="identifier">theta</span><span class="special">)</span> <span class="special">*</span> <span class="identifier">cos</span><span class="special">(</span><span class="identifier">phi</span><span class="special">),</span> <span class="identifier">sin</span><span class="special">(</span><span class="identifier">theta</span><span class="special">)</span> <span class="special">*</span> <span class="identifier">sin</span><span class="special">(</span><span class="identifier">phi</span><span class="special">),</span> <span class="identifier">cos</span><span class="special">(</span><span class="identifier">theta</span><span class="special">)};</span>
+<span class="special">}</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">T</span><span class="special">&gt;</span>
+<span class="identifier">T</span> <span class="identifier">thomson_energy</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;&amp;</span> <span class="identifier">r</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="comment">/* inverse square law
+     */</span>
+    <span class="keyword">const</span> <span class="identifier">size_t</span> <span class="identifier">N</span>    <span class="special">=</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">size</span><span class="special">()</span> <span class="special">/</span> <span class="number">2</span><span class="special">;</span>
+    <span class="keyword">const</span> <span class="identifier">T</span>      <span class="identifier">tiny</span> <span class="special">=</span> <span class="identifier">T</span><span class="special">(</span><span class="number">1e-12</span><span class="special">);</span>
+
+    <span class="identifier">T</span> <span class="identifier">E</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+    <span class="keyword">for</span> <span class="special">(</span><span class="identifier">size_t</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">N</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span> <span class="special">{</span>
+        <span class="keyword">const</span> <span class="identifier">T</span><span class="special">&amp;</span> <span class="identifier">theta_i</span> <span class="special">=</span> <span class="identifier">r</span><span class="special">[</span><span class="number">2</span> <span class="special">*</span> <span class="identifier">i</span> <span class="special">+</span> <span class="number">0</span><span class="special">];</span>
+        <span class="keyword">const</span> <span class="identifier">T</span><span class="special">&amp;</span> <span class="identifier">phi_i</span>   <span class="special">=</span> <span class="identifier">r</span><span class="special">[</span><span class="number">2</span> <span class="special">*</span> <span class="identifier">i</span> <span class="special">+</span> <span class="number">1</span><span class="special">];</span>
+        <span class="keyword">auto</span>     <span class="identifier">ri</span>      <span class="special">=</span> <span class="identifier">sph_to_xyz</span><span class="special">(</span><span class="identifier">theta_i</span><span class="special">,</span> <span class="identifier">phi_i</span><span class="special">);</span>
+
+        <span class="keyword">for</span> <span class="special">(</span><span class="identifier">size_t</span> <span class="identifier">j</span> <span class="special">=</span> <span class="identifier">i</span> <span class="special">+</span> <span class="number">1</span><span class="special">;</span> <span class="identifier">j</span> <span class="special">&lt;</span> <span class="identifier">N</span><span class="special">;</span> <span class="special">++</span><span class="identifier">j</span><span class="special">)</span> <span class="special">{</span>
+            <span class="keyword">const</span> <span class="identifier">T</span><span class="special">&amp;</span> <span class="identifier">theta_j</span> <span class="special">=</span> <span class="identifier">r</span><span class="special">[</span><span class="number">2</span> <span class="special">*</span> <span class="identifier">j</span> <span class="special">+</span> <span class="number">0</span><span class="special">];</span>
+            <span class="keyword">const</span> <span class="identifier">T</span><span class="special">&amp;</span> <span class="identifier">phi_j</span>   <span class="special">=</span> <span class="identifier">r</span><span class="special">[</span><span class="number">2</span> <span class="special">*</span> <span class="identifier">j</span> <span class="special">+</span> <span class="number">1</span><span class="special">];</span>
+            <span class="keyword">auto</span>     <span class="identifier">rj</span>      <span class="special">=</span> <span class="identifier">sph_to_xyz</span><span class="special">(</span><span class="identifier">theta_j</span><span class="special">,</span> <span class="identifier">phi_j</span><span class="special">);</span>
+
+            <span class="identifier">T</span> <span class="identifier">dx</span> <span class="special">=</span> <span class="identifier">ri</span><span class="special">.</span><span class="identifier">x</span> <span class="special">-</span> <span class="identifier">rj</span><span class="special">.</span><span class="identifier">x</span><span class="special">;</span>
+            <span class="identifier">T</span> <span class="identifier">dy</span> <span class="special">=</span> <span class="identifier">ri</span><span class="special">.</span><span class="identifier">y</span> <span class="special">-</span> <span class="identifier">rj</span><span class="special">.</span><span class="identifier">y</span><span class="special">;</span>
+            <span class="identifier">T</span> <span class="identifier">dz</span> <span class="special">=</span> <span class="identifier">ri</span><span class="special">.</span><span class="identifier">z</span> <span class="special">-</span> <span class="identifier">rj</span><span class="special">.</span><span class="identifier">z</span><span class="special">;</span>
+
+            <span class="identifier">T</span> <span class="identifier">d2</span> <span class="special">=</span> <span class="identifier">dx</span> <span class="special">*</span> <span class="identifier">dx</span> <span class="special">+</span> <span class="identifier">dy</span> <span class="special">*</span> <span class="identifier">dy</span> <span class="special">+</span> <span class="identifier">dz</span> <span class="special">*</span> <span class="identifier">dz</span> <span class="special">+</span> <span class="identifier">tiny</span><span class="special">;</span>
+            <span class="identifier">E</span> <span class="special">+=</span> <span class="number">1.0</span> <span class="special">/</span> <span class="identifier">sqrt</span><span class="special">(</span><span class="identifier">d2</span><span class="special">);</span>
+        <span class="special">}</span>
+    <span class="special">}</span>
+    <span class="keyword">return</span> <span class="identifier">E</span><span class="special">;</span>
+<span class="special">}</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">&gt;</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">rdiff</span><span class="special">::</span><span class="identifier">rvar</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">,</span> <span class="number">1</span><span class="special">&gt;&gt;</span> <span class="identifier">init_theta_phi_uniform</span><span class="special">(</span><span class="identifier">size_t</span> <span class="identifier">N</span><span class="special">,</span> <span class="keyword">unsigned</span> <span class="identifier">seed</span> <span class="special">=</span> <span class="number">12345</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">const</span> <span class="identifier">T</span> <span class="identifier">pi</span> <span class="special">=</span> <span class="identifier">T</span><span class="special">(</span><span class="number">3.1415926535897932384626433832795</span><span class="special">);</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">mt19937</span>                      <span class="identifier">rng</span><span class="special">(</span><span class="identifier">seed</span><span class="special">);</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">uniform_real_distribution</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span> <span class="identifier">unif01</span><span class="special">(</span><span class="identifier">T</span><span class="special">(</span><span class="number">0</span><span class="special">),</span> <span class="identifier">T</span><span class="special">(</span><span class="number">1</span><span class="special">));</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">uniform_real_distribution</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span> <span class="identifier">unifm11</span><span class="special">(</span><span class="identifier">T</span><span class="special">(-</span><span class="number">1</span><span class="special">),</span> <span class="identifier">T</span><span class="special">(</span><span class="number">1</span><span class="special">));</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">rdiff</span><span class="special">::</span><span class="identifier">rvar</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">,</span> <span class="number">1</span><span class="special">&gt;&gt;</span> <span class="identifier">u</span><span class="special">;</span>
+    <span class="identifier">u</span><span class="special">.</span><span class="identifier">reserve</span><span class="special">(</span><span class="number">2</span> <span class="special">*</span> <span class="identifier">N</span><span class="special">);</span>
+
+    <span class="keyword">for</span> <span class="special">(</span><span class="identifier">size_t</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">i</span> <span class="special">&lt;</span> <span class="identifier">N</span><span class="special">;</span> <span class="special">++</span><span class="identifier">i</span><span class="special">)</span> <span class="special">{</span>
+        <span class="identifier">T</span> <span class="identifier">z</span>     <span class="special">=</span> <span class="identifier">unifm11</span><span class="special">(</span><span class="identifier">rng</span><span class="special">);</span>
+        <span class="identifier">T</span> <span class="identifier">phi</span>   <span class="special">=</span> <span class="special">(</span><span class="identifier">T</span><span class="special">(</span><span class="number">2</span><span class="special">)</span> <span class="special">*</span> <span class="identifier">pi</span><span class="special">)</span> <span class="special">*</span> <span class="identifier">unif01</span><span class="special">(</span><span class="identifier">rng</span><span class="special">)</span> <span class="special">-</span> <span class="identifier">pi</span><span class="special">;</span>
+        <span class="identifier">T</span> <span class="identifier">theta</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">acos</span><span class="special">(</span><span class="identifier">z</span><span class="special">);</span>
+
+        <span class="identifier">u</span><span class="special">.</span><span class="identifier">emplace_back</span><span class="special">(</span><span class="identifier">theta</span><span class="special">);</span>
+        <span class="identifier">u</span><span class="special">.</span><span class="identifier">emplace_back</span><span class="special">(</span><span class="identifier">phi</span><span class="special">);</span>
+    <span class="special">}</span>
+    <span class="keyword">return</span> <span class="identifier">u</span><span class="special">;</span>
+<span class="special">}</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">argc</span><span class="special">,</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">argv</span><span class="special">[])</span>
+<span class="special">{</span>
+
+    <span class="keyword">if</span> <span class="special">(</span><span class="identifier">argc</span> <span class="special">!=</span> <span class="number">2</span><span class="special">)</span> <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cerr</span> <span class="special">&lt;&lt;</span> <span class="string">"Usage: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">argv</span><span class="special">[</span><span class="number">0</span><span class="special">]</span> <span class="special">&lt;&lt;</span> <span class="string">" &lt;N&gt;\n"</span><span class="special">;</span>
+        <span class="keyword">return</span> <span class="number">1</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">const</span> <span class="keyword">int</span>    <span class="identifier">N</span>      <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">stoi</span><span class="special">(</span><span class="identifier">argv</span><span class="special">[</span><span class="number">1</span><span class="special">]);</span>
+    <span class="keyword">auto</span> <span class="identifier">u_ad</span> <span class="special">=</span> <span class="identifier">init_theta_phi_uniform</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">&gt;(</span><span class="identifier">N</span><span class="special">);</span>
+
+    <span class="keyword">auto</span> <span class="identifier">lbfgs_opt</span> <span class="special">=</span> <span class="identifier">bopt</span><span class="special">::</span><span class="identifier">make_lbfgs</span><span class="special">(&amp;</span><span class="identifier">thomson_energy</span><span class="special">&lt;</span><span class="identifier">rdiff</span><span class="special">::</span><span class="identifier">rvar</span><span class="special">&lt;</span><span class="keyword">double</span><span class="special">,</span> <span class="number">1</span><span class="special">&gt;&gt;,</span> <span class="identifier">u_ad</span><span class="special">);</span>
+
+    <span class="comment">// filenames</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">pos_filename</span>    <span class="special">=</span> <span class="string">"thomson_"</span> <span class="special">+</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">to_string</span><span class="special">(</span><span class="identifier">N</span><span class="special">)</span> <span class="special">+</span> <span class="string">".csv"</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">energy_filename</span> <span class="special">=</span> <span class="string">"lbfgs_energy_"</span> <span class="special">+</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">to_string</span><span class="special">(</span><span class="identifier">N</span><span class="special">)</span> <span class="special">+</span> <span class="string">".csv"</span><span class="special">;</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">ofstream</span> <span class="identifier">pos_out</span><span class="special">(</span><span class="identifier">pos_filename</span><span class="special">);</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">ofstream</span> <span class="identifier">energy_out</span><span class="special">(</span><span class="identifier">energy_filename</span><span class="special">);</span>
+
+    <span class="identifier">energy_out</span> <span class="special">&lt;&lt;</span> <span class="string">"step,energy\n"</span><span class="special">;</span>
+
+    <span class="keyword">auto</span> <span class="identifier">result</span> <span class="special">=</span> <span class="identifier">minimize</span><span class="special">(</span><span class="identifier">lbfgs_opt</span><span class="special">);</span>
+    <span class="keyword">for</span> <span class="special">(</span><span class="keyword">int</span> <span class="identifier">pi</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="identifier">pi</span> <span class="special">&lt;</span> <span class="identifier">N</span><span class="special">;</span> <span class="special">++</span><span class="identifier">pi</span><span class="special">)</span> <span class="special">{</span>
+        <span class="keyword">double</span> <span class="identifier">theta</span> <span class="special">=</span> <span class="identifier">u_ad</span><span class="special">[</span><span class="number">2</span> <span class="special">*</span> <span class="identifier">pi</span> <span class="special">+</span> <span class="number">0</span><span class="special">].</span><span class="identifier">item</span><span class="special">();</span>
+        <span class="keyword">double</span> <span class="identifier">phi</span>   <span class="special">=</span> <span class="identifier">u_ad</span><span class="special">[</span><span class="number">2</span> <span class="special">*</span> <span class="identifier">pi</span> <span class="special">+</span> <span class="number">1</span><span class="special">].</span><span class="identifier">item</span><span class="special">();</span>
+        <span class="keyword">auto</span>   <span class="identifier">r</span>     <span class="special">=</span> <span class="identifier">sph_to_xyz</span><span class="special">(</span><span class="identifier">theta</span><span class="special">,</span> <span class="identifier">phi</span><span class="special">);</span>
+        <span class="identifier">pos_out</span> <span class="special">&lt;&lt;</span> <span class="identifier">pi</span> <span class="special">&lt;&lt;</span> <span class="string">","</span> <span class="special">&lt;&lt;</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">x</span> <span class="special">&lt;&lt;</span> <span class="string">","</span> <span class="special">&lt;&lt;</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">y</span> <span class="special">&lt;&lt;</span> <span class="string">","</span> <span class="special">&lt;&lt;</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">z</span> <span class="special">&lt;&lt;</span> <span class="string">"\n"</span><span class="special">;</span>
+    <span class="special">}</span>
+    <span class="keyword">auto</span> <span class="identifier">E</span> <span class="special">=</span> <span class="identifier">lbfgs_opt</span><span class="special">.</span><span class="identifier">objective_value</span><span class="special">();</span>
+    <span class="keyword">int</span> <span class="identifier">i</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+    <span class="keyword">for</span><span class="special">(</span><span class="keyword">auto</span><span class="special">&amp;</span> <span class="identifier">obj_hist</span> <span class="special">:</span> <span class="identifier">result</span><span class="special">.</span><span class="identifier">objective_history</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">energy_out</span> <span class="special">&lt;&lt;</span> <span class="identifier">i</span> <span class="special">&lt;&lt;</span> <span class="string">","</span> <span class="special">&lt;&lt;</span> <span class="identifier">obj_hist</span> <span class="special">&lt;&lt;</span> <span class="string">"\n"</span><span class="special">;</span>
+        <span class="special">++</span><span class="identifier">i</span><span class="special">;</span>
+    <span class="special">}</span>
+    <span class="identifier">energy_out</span> <span class="special">&lt;&lt;</span> <span class="string">","</span> <span class="special">&lt;&lt;</span> <span class="identifier">E</span> <span class="special">&lt;&lt;</span> <span class="string">"\n"</span><span class="special">;</span>
+
+    <span class="identifier">pos_out</span><span class="special">.</span><span class="identifier">close</span><span class="special">();</span>
+    <span class="identifier">energy_out</span><span class="special">.</span><span class="identifier">close</span><span class="special">();</span>
+
+    <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>对 <code class="computeroutput"><span class="identifier">N</span> <span class="special">=</span>
+        <span class="number">2</span></code> 情形, LBFGS 只需 5 次迭代即收敛; 默认参数下该问题的 nesterov 版本在 <code class="computeroutput"><span class="number">4663</span></code> 次迭代内收敛, 而梯度下降需要 <code class="computeroutput"><span class="number">93799</span></code> 次迭代. 收敛被理解为梯度范数小于 <code class="computeroutput"><span class="number">1e-3</span></code>. 下面是针对 <code class="computeroutput"><span class="identifier">N</span><span class="special">=</span><span class="number">20</span></code> 粒子情形展示 3 种不同方法的图.</p>
+<div class="blockquote"><blockquote class="blockquote"><div class="blockquote"><blockquote class="blockquote"><p>
+            <span class="inlinemediaobject"><img src="../../../graphs/gradient_based_optimizers/lbfgs_to_nag_and_gd_comparison.svg"></span>
+          </p></blockquote></div></blockquote></div>
+<p>在此情形下, 梯度下降达到最大迭代次数而没有收敛, nag 在 <code class="computeroutput"><span class="number">150</span></code> 次迭代内收敛, LBFGS 在 <code class="computeroutput"><span class="number">67</span></code> 次迭代内收敛.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2006-2021 Nikhar Agrawal, Anton Bikineev, Matthew Borland, Paul A. Bristow, Marco Guazzone, Christopher Kormanyos, Hubert Holin, Bruno Lalande, John Maddock, Evan Miller, Jeremy Murphy, Matthew Pulver, Johan Råde, Gautam Sewani, Benjamin Sobotta, Nicholas Thompson, Thijs van den Berg, Daryle Walker, Xiaogang Zhang, and Maksym Zhelyeznyakov<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="nesterov.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../gd_opt.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="minimize.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

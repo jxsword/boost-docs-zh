@@ -1,0 +1,92 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>为什么作用域属性不会覆盖已有属性?</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Boost.Log v2">
+<link rel="up" href="../rationale.html" title="设计理由与常见问题 (FAQ)">
+<link rel="prev" href="../rationale.html" title="设计理由与常见问题 (FAQ)">
+<link rel="next" href="why_weak_record_ordering.html" title="为什么在多线程应用程序中日志记录是弱序的?">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr><td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td></tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../rationale.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../rationale.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="why_weak_record_ordering.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="log.rationale.why_weak_scoped_attributes"></a><a class="link" href="why_weak_scoped_attributes.html" title="为什么作用域属性不会覆盖已有属性?">为什么作用域属性不会覆盖已有属性?</a>
+</h3></div></div></div>
+<p>最初, 作用域属性在遇到时如果发现同名属性已注册, 可以覆盖其他属性. 这允许一些有趣的用例, 例如:</p>
+<pre class="programlisting"><span class="identifier">BOOST_LOG_DECLARE_GLOBAL_LOGGER</span><span class="special">(</span><span class="identifier">my_logger</span><span class="special">,</span> <span class="identifier">src</span><span class="special">::</span><span class="identifier">logger_mt</span><span class="special">)</span>
+
+<span class="keyword">void</span> <span class="identifier">foo</span><span class="special">()</span>
+<span class="special">{</span>
+    <span class="comment">// This scoped attribute would temporarily replace the existing tag</span>
+    <span class="identifier">BOOST_LOG_SCOPED_THREAD_TAG</span><span class="special">(</span><span class="string">"Section"</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">,</span> <span class="string">"In foo"</span><span class="special">);</span>
+
+    <span class="comment">// This log record will have a "Section" attribute with value "In foo"</span>
+    <span class="identifier">BOOST_LOG</span><span class="special">(</span><span class="identifier">get_my_logger</span><span class="special">())</span> <span class="special">&lt;&lt;</span> <span class="string">"We're in foo section"</span><span class="special">;</span>
+<span class="special">}</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">int</span><span class="special">,</span> <span class="keyword">char</span><span class="special">*[])</span>
+<span class="special">{</span>
+    <span class="identifier">BOOST_LOG_SCOPED_THREAD_TAG</span><span class="special">(</span><span class="string">"Section"</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">,</span> <span class="string">"In main"</span><span class="special">);</span>
+
+    <span class="comment">// This log record will have a "Section" attribute with value "In main"</span>
+    <span class="identifier">BOOST_LOG</span><span class="special">(</span><span class="identifier">get_my_logger</span><span class="special">())</span> <span class="special">&lt;&lt;</span> <span class="string">"We're in main section"</span><span class="special">;</span>
+
+    <span class="identifier">foo</span><span class="special">();</span>
+
+    <span class="comment">// This log record will have a "Section" attribute with value "In main" again</span>
+    <span class="identifier">BOOST_LOG</span><span class="special">(</span><span class="identifier">get_my_logger</span><span class="special">())</span> <span class="special">&lt;&lt;</span> <span class="string">"We're in main section again"</span><span class="special">;</span>
+
+    <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>然而, 该功能引入了许多安全问题, 包括难以排查的线程安全问题. 例如, 在不同线程中对同一日志器使用日志器级作用域属性不再安全, 因为最终得到的属性是不确定的:</p>
+<pre class="programlisting"><span class="identifier">BOOST_LOG_DECLARE_GLOBAL_LOGGER</span><span class="special">(</span><span class="identifier">my_logger</span><span class="special">,</span> <span class="identifier">src</span><span class="special">::</span><span class="identifier">logger_mt</span><span class="special">)</span>
+
+<span class="keyword">void</span> <span class="identifier">thread1</span><span class="special">()</span>
+<span class="special">{</span>
+    <span class="identifier">BOOST_LOG_SCOPED_LOGGER_TAG</span><span class="special">(</span><span class="identifier">get_my_logger</span><span class="special">(),</span> <span class="string">"Tag"</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">,</span> <span class="string">"thread1"</span><span class="special">);</span>
+    <span class="identifier">BOOST_LOG</span><span class="special">(</span><span class="identifier">get_my_logger</span><span class="special">())</span> <span class="special">&lt;&lt;</span> <span class="string">"We're in thread1"</span><span class="special">;</span>
+<span class="special">}</span>
+
+<span class="keyword">void</span> <span class="identifier">thread2</span><span class="special">()</span>
+<span class="special">{</span>
+    <span class="identifier">BOOST_LOG_SCOPED_LOGGER_TAG</span><span class="special">(</span><span class="identifier">get_my_logger</span><span class="special">(),</span> <span class="string">"Tag"</span><span class="special">,</span> <span class="keyword">int</span><span class="special">,</span> <span class="number">10</span><span class="special">);</span>
+    <span class="identifier">BOOST_LOG</span><span class="special">(</span><span class="identifier">get_my_logger</span><span class="special">())</span> <span class="special">&lt;&lt;</span> <span class="string">"We're in thread2"</span><span class="special">;</span>
+<span class="special">}</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">int</span><span class="special">,</span> <span class="keyword">char</span><span class="special">*[])</span>
+<span class="special">{</span>
+    <span class="identifier">BOOST_LOG_SCOPED_LOGGER_TAG</span><span class="special">(</span><span class="identifier">get_my_logger</span><span class="special">(),</span> <span class="string">"Tag"</span><span class="special">,</span> <span class="keyword">double</span><span class="special">,</span> <span class="special">-</span><span class="number">2.2</span><span class="special">);</span>
+
+    <span class="identifier">BOOST_LOG</span><span class="special">(</span><span class="identifier">get_my_logger</span><span class="special">())</span> <span class="special">&lt;&lt;</span> <span class="string">"We're in main"</span><span class="special">;</span>
+
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">thread</span> <span class="identifier">t1</span><span class="special">(&amp;</span><span class="identifier">thread1</span><span class="special">);</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">thread</span> <span class="identifier">t2</span><span class="special">(&amp;</span><span class="identifier">thread2</span><span class="special">);</span>
+
+    <span class="identifier">t1</span><span class="special">.</span><span class="identifier">join</span><span class="special">();</span>
+    <span class="identifier">t2</span><span class="special">.</span><span class="identifier">join</span><span class="special">();</span>
+
+    <span class="comment">// Which "Tag" is registered here?</span>
+    <span class="identifier">BOOST_LOG</span><span class="special">(</span><span class="identifier">get_my_logger</span><span class="special">())</span> <span class="special">&lt;&lt;</span> <span class="string">"We're in main again"</span><span class="special">;</span>
+
+    <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>还有其他问题, 例如属性集迭代器本指向一个属性对象, 却在 seemingly 未修改它的情况下突然指向另一个属性对象 (可能是不同类型的). 这种行为可能导致难以调查的隐蔽故障. 因此该功能最终被放弃, 这大幅简化了作用域属性的实现.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2007-2024 Andrey Semashev<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>) .</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../rationale.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../rationale.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="why_weak_record_ordering.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>与映射地址无关的指针: offset_ptr</title>
+<link rel="stylesheet" href="../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="Boost C++ 库 BoostBook 文档子集">
+<link rel="up" href="../interprocess.html" title="第 15 章 Boost.Interprocess">
+<link rel="prev" href="sharedmemorybetweenprocesses.html" title="进程间共享内存">
+<link rel="next" href="synchronization_mechanisms.html" title="同步机制">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../boost.png"></td>
+<td align="center"><a href="../../../index.html">首页</a></td>
+<td align="center"><a href="../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="sharedmemorybetweenprocesses.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../interprocess.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="synchronization_mechanisms.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="interprocess.offset_ptr"></a><a class="link" href="offset_ptr.html" title="与映射地址无关的指针: offset_ptr">与映射地址无关的指针: offset_ptr</a>
+</h2></div></div></div>
+<p>当创建共享内存和内存映射文件来在两个进程之间通信时, 内存段在每个进程中可能映射到不同地址:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span><span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">interprocess</span><span class="special">/</span><span class="identifier">shared_memory_object</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="comment">// ...</span>
+
+<span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">;</span>
+
+<span class="comment">//Open a shared memory segment</span>
+<span class="identifier">shared_memory_object</span> <span class="identifier">shm_obj</span>
+   <span class="special">(</span><span class="identifier">open_only</span>                    <span class="comment">//open or create</span>
+   <span class="special">,</span><span class="string">"shared_memory"</span>              <span class="comment">//name</span>
+   <span class="special">,</span><span class="identifier">read_only</span>   <span class="comment">//read-only mode</span>
+   <span class="special">);</span>
+
+<span class="comment">//Map the whole shared memory</span>
+<span class="identifier">mapped_region</span> <span class="identifier">region</span>
+   <span class="special">(</span> <span class="identifier">shm</span>                         <span class="comment">//Memory-mappable object</span>
+   <span class="special">,</span> <span class="identifier">read_write</span>                  <span class="comment">//Access mode</span>
+   <span class="special">);</span>
+
+<span class="comment">//This address can be different in each process</span>
+<span class="keyword">void</span> <span class="special">*</span><span class="identifier">addr</span> <span class="special">=</span> <span class="identifier">region</span><span class="special">.</span><span class="identifier">get_address</span><span class="special">();</span>
+</pre>
+<p>这使在映射区域中创建复杂对象变得困难: 放在映射区域中的 C++ 类实例可能有指针指向同样放在映射区域中的另一个对象. 由于指针存储的是绝对地址, 该地址只对把对象放到那里的进程有效, 除非所有进程把映射区域映射到相同地址.</p>
+<p>为了能在映射区域中模拟指针, 用户必须使用 <span class="bold"><strong>偏移量</strong></span> (对象之间的距离) 而非绝对地址. 映射区域中两个对象之间的偏移量对任何映射该区域的进程都相同, 即使该区域放在不同基址上. 为便于使用偏移量, <span class="bold"><strong>Boost.Interprocess</strong></span> 提供了 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1offset__ptr.html" title="类模板 offset_ptr">offset_ptr</a></code>.</p>
+<p>
+      <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1offset__ptr.html" title="类模板 offset_ptr">offset_ptr</a></code> 封装了提供类指针接口所需的全部底层操作. 该类的接口受 Boost 智能指针启发, 这个智能指针存储所指对象地址与其自身 <code class="computeroutput"><span class="keyword">this</span></code> 指针之间的偏移 (以字节为单位的距离). 想象常见 32 位处理器上的一个结构:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">structure</span>
+<span class="special">{</span>
+   <span class="keyword">int</span>               <span class="identifier">integer1</span><span class="special">;</span>   <span class="comment">//The compiler places this at offset 0 in the structure</span>
+   <span class="identifier">offset_ptr</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span>   <span class="identifier">ptr</span><span class="special">;</span>        <span class="comment">//The compiler places this at offset 4 in the structure</span>
+   <span class="keyword">int</span>               <span class="identifier">integer2</span><span class="special">;</span>   <span class="comment">//The compiler places this at offset 8 in the structure</span>
+<span class="special">};</span>
+
+<span class="comment">//...</span>
+
+<span class="identifier">structure</span> <span class="identifier">s</span><span class="special">;</span>
+
+<span class="comment">//Assign the address of "integer1" to "ptr".</span>
+<span class="comment">//"ptr" will store internally "-4":</span>
+<span class="comment">//    (char*)&amp;s.integer1 - (char*)&amp;s.ptr;</span>
+<span class="identifier">s</span><span class="special">.</span><span class="identifier">ptr</span> <span class="special">=</span> <span class="special">&amp;</span><span class="identifier">s</span><span class="special">.</span><span class="identifier">integer1</span><span class="special">;</span>
+
+<span class="comment">//Assign the address of "integer2" to "ptr".</span>
+<span class="comment">//"ptr" will store internally "4":</span>
+<span class="comment">//    (char*)&amp;s.integer2 - (char*)&amp;s.ptr;</span>
+<span class="identifier">s</span><span class="special">.</span><span class="identifier">ptr</span> <span class="special">=</span> <span class="special">&amp;</span><span class="identifier">s</span><span class="special">.</span><span class="identifier">integer2</span><span class="special">;</span>
+</pre>
+<p>的一个大问题 <code class="computeroutput"><span class="identifier">offset_ptr</span></code> 是空指针的表示. 空指针无法安全地用偏移表示, 因为绝对地址 0 总是在映射区域之外. 由于段在每个进程中可能映射到不同基址, 地址 0 与 <code class="computeroutput"><span class="identifier">offset_ptr</span></code> 之间的距离对每个进程都不同.</p>
+<p>一些实现选择偏移 0 (即指向自身的 <code class="computeroutput"><span class="identifier">offset_ptr</span></code> ) 作为空指针表示, 但这对许多用例无效, 因为像链表或 STL 容器节点这样的结构经常指向自身 (例如空容器的末端节点), 需要用到 0 偏移值. 另一种方案是在偏移之外再存储一个布尔值来指示指针是否为空. 然而, 这会增加指针大小并损害性能.</p>
+<p>因此, <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1offset__ptr.html" title="类模板 offset_ptr">offset_ptr</a></code> 把偏移 1 定义为空指针, 这意味着该类 <span class="bold"><strong>不能</strong></span> 指向其自身 <span class="emphasis"><em>this</em></span> 指针之后的那个字节:</p>
+<pre class="programlisting"><span class="keyword">using</span> <span class="keyword">namespace</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">interprocess</span><span class="special">;</span>
+
+<span class="identifier">offset_ptr</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">&gt;</span> <span class="identifier">ptr</span><span class="special">;</span>
+
+<span class="comment">//Pointing to the next byte of it's own address</span>
+<span class="comment">//marks the smart pointer as null.</span>
+<span class="identifier">ptr</span> <span class="special">=</span> <span class="special">(</span><span class="keyword">char</span><span class="special">*)&amp;</span><span class="identifier">ptr</span> <span class="special">+</span> <span class="number">1</span><span class="special">;</span>
+
+<span class="comment">//ptr is equal to null</span>
+<span class="identifier">assert</span><span class="special">(!</span><span class="identifier">ptr</span><span class="special">);</span>
+
+<span class="comment">//This is the same as assigning the null value...</span>
+<span class="identifier">ptr</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+
+<span class="comment">//ptr is also equal to null</span>
+<span class="identifier">assert</span><span class="special">(!</span><span class="identifier">ptr</span><span class="special">);</span>
+</pre>
+<p>实践中这一限制并不重要, 因为用户几乎从不需要指向这个地址.</p>
+<p>
+      <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1offset__ptr.html" title="类模板 offset_ptr">offset_ptr</a></code> 提供所有类指针操作和 random_access_iterator typedef, 因此可以用在需要随机访问迭代器的 STL 算法中, 并可通过 traits 检测. 关于该类成员与操作的更多信息, 请参见 <code class="computeroutput"><a class="link" href="../doxygen/boost_interprocess_header_reference/classboost_1_1interprocess_1_1offset__ptr.html" title="类模板 offset_ptr">offset_ptr reference</a></code>.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2005-2024 Ion Gaztanaga<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="sharedmemorybetweenprocesses.html"><img src="../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../interprocess.html"><img src="../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="synchronization_mechanisms.html"><img src="../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

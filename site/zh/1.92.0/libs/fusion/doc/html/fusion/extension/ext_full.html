@@ -1,0 +1,324 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>完整扩展机制</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Fusion 2.2">
+<link rel="up" href="../extension.html" title="扩展">
+<link rel="prev" href="../extension.html" title="扩展">
+<link rel="next" href="sequence_facade.html" title="序列 Facade">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../extension.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../extension.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="sequence_facade.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="fusion.extension.ext_full"></a><a class="link" href="ext_full.html" title="完整扩展机制">完整扩展机制</a>
+</h3></div></div></div>
+<p>Fusion 库设计为可扩展的, 可以方便地添加新的序列类型. 事实上, 库对 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span></code>、<code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">array</span></code> 和 <a href="http://www.boost.org/libs/mpl" target="_top">MPL</a> 序列的支持完全是通过扩展机制提供的.</p>
+<p>向 Fusion 添加新序列类型的过程是:</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">为你的序列类型启用 Fusion 所使用的 <a class="link" href="../notes.html#fusion.notes.tag_dispatching"><span class="emphasis"><em>标签分派</em></span></a> 机制</li>
+<li class="listitem">为该序列设计一个迭代器类型</li>
+<li class="listitem">为新 Fusion 序列的内蕴操作提供特化行为</li>
+</ol></div>
+<h5>
+<a name="fusion.extension.ext_full.h0"></a>
+        <span class="phrase"><a name="fusion.extension.ext_full.our_example"></a></span><a class="link" href="ext_full.html#fusion.extension.ext_full.our_example">我们的示例</a>
+      </h5>
+<p>为了演示启用一个新序列类型以配合 Fusion 使用, 我们将使用如下类型:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">example</span>
+<span class="special">{</span>
+    <span class="keyword">struct</span> <span class="identifier">example_struct</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">name</span><span class="special">;</span>
+        <span class="keyword">int</span> <span class="identifier">age</span><span class="special">;</span>
+        <span class="identifier">example_struct</span><span class="special">(</span>
+            <span class="keyword">const</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;</span> <span class="identifier">n</span><span class="special">,</span>
+            <span class="keyword">int</span> <span class="identifier">a</span><span class="special">)</span>
+            <span class="special">:</span> <span class="identifier">name</span><span class="special">(</span><span class="identifier">n</span><span class="special">),</span> <span class="identifier">age</span><span class="special">(</span><span class="identifier">a</span><span class="special">)</span>
+        <span class="special">{}</span>
+    <span class="special">};</span>
+<span class="special">}</span>
+</pre>
+<p>我们将假定该类型由第三方库提供, 因而不能修改. 我们将完整走完所有必要步骤, 使 <code class="computeroutput"><span class="identifier">example_struct</span></code> 能够按照 <a class="link" href="../sequence/concepts/associative_sequence.html" title="关联序列">快速入门</a> 指南的描述充当一个 <a class="link" href="../quick_start.html" title="快速入门">关联序列</a>.</p>
+<h5>
+<a name="fusion.extension.ext_full.h1"></a>
+        <span class="phrase"><a name="fusion.extension.ext_full.enabling_tag_dispatching"></a></span><a class="link" href="ext_full.html#fusion.extension.ext_full.enabling_tag_dispatching">启用标签分派</a>
+      </h5>
+<p>Fusion 扩展机制使用 <a class="link" href="../notes.html#fusion.notes.tag_dispatching"><span class="emphasis"><em>标签分派</em></span></a> 为给定序列类型调用正确的代码. 为了利用标签分派机制, 我们必须首先为该机制声明一个新的标签类型. 例如:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">example</span> <span class="special">{</span>
+    <span class="keyword">struct</span> <span class="identifier">example_sequence_tag</span><span class="special">;</span> <span class="comment">// Only definition needed</span>
+<span class="special">}</span>
+</pre>
+<p>接下来, 我们需要启用 <code class="computeroutput"><span class="identifier">traits</span><span class="special">::</span><span class="identifier">tag_of</span></code> 元函数, 使其在涉及我们序列的操作中返回我们新选定的标签类型. 这通过为我们的序列类型特化 <code class="computeroutput"><span class="identifier">traits</span><span class="special">::</span><span class="identifier">tag_of</span></code> 来完成.</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">fusion</span><span class="special">/</span><span class="identifier">support</span><span class="special">/</span><span class="identifier">tag_of_fwd</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">fusion</span><span class="special">/</span><span class="identifier">include</span><span class="special">/</span><span class="identifier">tag_of_fwd</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">namespace</span> <span class="identifier">boost</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">fusion</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">traits</span> <span class="special">{</span>
+    <span class="keyword">template</span><span class="special">&lt;&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">tag_of</span><span class="special">&lt;</span><span class="identifier">example_struct</span><span class="special">&gt;</span>
+    <span class="special">{</span>
+        <span class="keyword">typedef</span> <span class="identifier">example</span><span class="special">::</span><span class="identifier">example_sequence_tag</span> <span class="identifier">type</span><span class="special">;</span>
+    <span class="special">};</span>
+<span class="special">}}}</span>
+</pre>
+<p>
+        <code class="computeroutput"><span class="identifier">traits</span><span class="special">::</span><span class="identifier">tag_of</span></code> 还有第二个模板实参, 可与 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">enable_if</span></code> 结合使用, 为一组相关类型提供标签支持. 该特性对我们的序列并非必需, 但示例代码参见:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">fusion</span><span class="special">/</span><span class="identifier">adapted</span><span class="special">/</span><span class="identifier">array</span><span class="special">/</span><span class="identifier">tag_of</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">fusion</span><span class="special">/</span><span class="identifier">include</span><span class="special">/</span><span class="identifier">tag_of</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+</pre>
+<h5>
+<a name="fusion.extension.ext_full.h2"></a>
+        <span class="phrase"><a name="fusion.extension.ext_full.designing_a_suitable_iterator"></a></span><a class="link" href="ext_full.html#fusion.extension.ext_full.designing_a_suitable_iterator">设计合适的迭代器</a>
+      </h5>
+<p>我们需要一个迭代器来描述位置并提供对序列内数据的访问. 由于这很简单, 我们将在示例中提供一个随机访问迭代器.</p>
+<p>我们将使用一个简单的设计: <code class="computeroutput"><span class="identifier">example_struct</span></code> 的 2 个成员分别赋予编号索引, <code class="computeroutput"><span class="identifier">name</span></code> 为 0, <code class="computeroutput"><span class="identifier">age</span></code> 为 1.</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Struct</span><span class="special">,</span> <span class="keyword">int</span> <span class="identifier">Pos</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">example_struct_iterator</span>
+    <span class="special">:</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fusion</span><span class="special">::</span><span class="identifier">iterator_base</span><span class="special">&lt;</span><span class="identifier">example_struct_iterator</span><span class="special">&lt;</span><span class="identifier">Struct</span><span class="special">,</span> <span class="identifier">Pos</span><span class="special">&gt;</span> <span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="identifier">BOOST_STATIC_ASSERT</span><span class="special">(</span><span class="identifier">Pos</span> <span class="special">&gt;=</span><span class="number">0</span> <span class="special">&amp;&amp;</span> <span class="identifier">Pos</span> <span class="special">&lt;</span> <span class="number">3</span><span class="special">);</span>
+    <span class="keyword">typedef</span> <span class="identifier">Struct</span> <span class="identifier">struct_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">mpl</span><span class="special">::</span><span class="identifier">int_</span><span class="special">&lt;</span><span class="identifier">Pos</span><span class="special">&gt;</span> <span class="identifier">index</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">fusion</span><span class="special">::</span><span class="identifier">random_access_traversal_tag</span> <span class="identifier">category</span><span class="special">;</span>
+
+    <span class="identifier">example_struct_iterator</span><span class="special">(</span><span class="identifier">Struct</span><span class="special">&amp;</span> <span class="identifier">str</span><span class="special">)</span>
+        <span class="special">:</span> <span class="identifier">struct_</span><span class="special">(</span><span class="identifier">str</span><span class="special">)</span> <span class="special">{}</span>
+
+    <span class="identifier">Struct</span><span class="special">&amp;</span> <span class="identifier">struct_</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>我们的迭代器细节概要如下:</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">该迭代器以其所遍历的类型和当前元素的索引为模板参数.</li>
+<li class="listitem">typedef <code class="computeroutput"><span class="identifier">struct_type</span></code> 和 <code class="computeroutput"><span class="identifier">index</span></code> 提供了对实现后续所需信息的便捷访问.</li>
+<li class="listitem">typedef <code class="computeroutput"><span class="identifier">category</span></code> 使 <code class="computeroutput"><span class="identifier">traits</span><span class="special">::</span><a class="link" href="../support/category_of.html" title="category_of"><code class="computeroutput"><span class="identifier">category_of</span></code></a></code> 元函数能够确定该迭代器的遍历类别.</li>
+<li class="listitem">构造函数保存对正在被遍历的 <code class="computeroutput"><span class="identifier">example_struct</span></code> 的引用.</li>
+</ol></div>
+<p>我们还需要为我们的迭代器类型启用 <a class="link" href="../notes.html#fusion.notes.tag_dispatching"><span class="emphasis"><em>标签分派</em></span></a>, 即对 <code class="computeroutput"><span class="identifier">traits</span><span class="special">::</span><span class="identifier">tag_of</span></code> 做另一个特化.</p>
+<p>孤立地看, 迭代器的实现相当枯燥. 随着我们为实现添加功能, 一切会逐渐清晰起来.</p>
+<h5>
+<a name="fusion.extension.ext_full.h3"></a>
+        <span class="phrase"><a name="fusion.extension.ext_full.a_first_couple_of_instructive_features"></a></span><a class="link" href="ext_full.html#fusion.extension.ext_full.a_first_couple_of_instructive_features">最初的几个有启发性的功能</a>
+      </h5>
+<p>首先, 我们要让 <a class="link" href="../iterator/metafunctions/value_of.html" title="value_of"><code class="computeroutput"><span class="identifier">result_of</span><span class="special">::</span><span class="identifier">value_of</span></code></a> 元函数工作起来. 为此, 我们为迭代器的标签类型提供 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">fusion</span><span class="special">::</span><span class="identifier">extension</span><span class="special">::</span><span class="identifier">value_of_impl</span></code> 模板的一个特化.</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">value_of_impl</span><span class="special">&lt;</span><span class="identifier">example</span><span class="special">::</span><span class="identifier">example_struct_iterator_tag</span><span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Iterator</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">apply</span><span class="special">;</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Struct</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">apply</span><span class="special">&lt;</span><span class="identifier">example</span><span class="special">::</span><span class="identifier">example_struct_iterator</span><span class="special">&lt;</span><span class="identifier">Struct</span><span class="special">,</span> <span class="number">0</span><span class="special">&gt;</span> <span class="special">&gt;</span>
+    <span class="special">{</span>
+        <span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">type</span><span class="special">;</span>
+    <span class="special">};</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Struct</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">apply</span><span class="special">&lt;</span><span class="identifier">example</span><span class="special">::</span><span class="identifier">example_struct_iterator</span><span class="special">&lt;</span><span class="identifier">Struct</span><span class="special">,</span> <span class="number">1</span><span class="special">&gt;</span> <span class="special">&gt;</span>
+    <span class="special">{</span>
+        <span class="keyword">typedef</span> <span class="keyword">int</span> <span class="identifier">type</span><span class="special">;</span>
+    <span class="special">};</span>
+<span class="special">};</span>
+</pre>
+<p>实现本身相当简单, 它只是根据迭代器的索引, 用 2 个部分特化来提供 <code class="computeroutput"><span class="identifier">example_struct</span></code> 的 2 个不同成员的类型.</p>
+<p>要理解库如何使用 <code class="computeroutput"><span class="identifier">value_of_impl</span></code>, 我们来看一下 <a class="link" href="../iterator/metafunctions/value_of.html" title="value_of"><code class="computeroutput"><span class="identifier">result_of</span><span class="special">::</span><span class="identifier">value_of</span></code></a> 的实现:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Iterator</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">value_of</span>
+    <span class="special">:</span> <span class="identifier">extension</span><span class="special">::</span><span class="identifier">value_of_impl</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">detail</span><span class="special">::</span><span class="identifier">tag_of</span><span class="special">&lt;</span><span class="identifier">Iterator</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">&gt;::</span>
+        <span class="keyword">template</span> <span class="identifier">apply</span><span class="special">&lt;</span><span class="identifier">Iterator</span><span class="special">&gt;</span>
+<span class="special">{};</span>
+</pre>
+<p>所以 <a class="link" href="../iterator/metafunctions/value_of.html" title="value_of"><code class="computeroutput"><span class="identifier">result_of</span><span class="special">::</span><span class="identifier">value_of</span></code></a> 使用 <a class="link" href="../notes.html#fusion.notes.tag_dispatching"><span class="emphasis"><em>标签分派</em></span></a> 选择一个 <a href="http://www.boost.org/libs/mpl/doc/refmanual/metafunction-class.html" target="_top">MPL 元函数类</a> 来提供其功能. 在 Fusion 的整个实现中你都会注意到这种模式.</p>
+<p>好, 现在让我们启用迭代器的解引用. 此时我们必须提供 <code class="computeroutput"><span class="identifier">deref_impl</span></code> 的一个适当特化.</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">deref_impl</span><span class="special">&lt;</span><span class="identifier">example</span><span class="special">::</span><span class="identifier">example_struct_iterator_tag</span><span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Iterator</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">apply</span><span class="special">;</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Struct</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">apply</span><span class="special">&lt;</span><span class="identifier">example</span><span class="special">::</span><span class="identifier">example_struct_iterator</span><span class="special">&lt;</span><span class="identifier">Struct</span><span class="special">,</span> <span class="number">0</span><span class="special">&gt;</span> <span class="special">&gt;</span>
+    <span class="special">{</span>
+        <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">mpl</span><span class="special">::</span><span class="identifier">if_</span><span class="special">&lt;</span>
+            <span class="identifier">is_const</span><span class="special">&lt;</span><span class="identifier">Struct</span><span class="special">&gt;,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;&gt;::</span><span class="identifier">type</span> <span class="identifier">type</span><span class="special">;</span>
+
+        <span class="keyword">static</span> <span class="identifier">type</span>
+        <span class="identifier">call</span><span class="special">(</span><span class="identifier">example</span><span class="special">::</span><span class="identifier">example_struct_iterator</span><span class="special">&lt;</span><span class="identifier">Struct</span><span class="special">,</span> <span class="number">0</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">it</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="keyword">return</span> <span class="identifier">it</span><span class="special">.</span><span class="identifier">struct_</span><span class="special">.</span><span class="identifier">name</span><span class="special">;</span>
+        <span class="special">}</span>
+    <span class="special">};</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Struct</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">apply</span><span class="special">&lt;</span><span class="identifier">example</span><span class="special">::</span><span class="identifier">example_struct_iterator</span><span class="special">&lt;</span><span class="identifier">Struct</span><span class="special">,</span> <span class="number">1</span><span class="special">&gt;</span> <span class="special">&gt;</span>
+    <span class="special">{</span>
+        <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">mpl</span><span class="special">::</span><span class="identifier">if_</span><span class="special">&lt;</span>
+            <span class="identifier">is_const</span><span class="special">&lt;</span><span class="identifier">Struct</span><span class="special">&gt;,</span> <span class="keyword">int</span> <span class="keyword">const</span><span class="special">&amp;,</span> <span class="keyword">int</span><span class="special">&amp;&gt;::</span><span class="identifier">type</span> <span class="identifier">type</span><span class="special">;</span>
+
+        <span class="keyword">static</span> <span class="identifier">type</span>
+        <span class="identifier">call</span><span class="special">(</span><span class="identifier">example</span><span class="special">::</span><span class="identifier">example_struct_iterator</span><span class="special">&lt;</span><span class="identifier">Struct</span><span class="special">,</span> <span class="number">1</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">it</span><span class="special">)</span>
+        <span class="special">{</span>
+                <span class="keyword">return</span> <span class="identifier">it</span><span class="special">.</span><span class="identifier">struct_</span><span class="special">.</span><span class="identifier">age</span><span class="special">;</span>
+            <span class="special">}</span>
+        <span class="special">};</span>
+    <span class="special">};</span>
+<span class="special">}</span>
+</pre>
+<p> <code class="computeroutput"><span class="identifier">deref_impl</span></code> 的用法与 <code class="computeroutput"><span class="identifier">value_of_impl</span></code> 非常相似, 但这次它还通过 <code class="computeroutput"><span class="identifier">call</span></code> 静态成员函数提供了一些运行期功能. 要了解 <code class="computeroutput"><span class="identifier">deref_impl</span></code> 的用法, 让我们看一下 <a class="link" href="../iterator/functions/deref.html" title="deref"><code class="computeroutput"><span class="identifier">deref</span></code></a> 的实现:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">result_of</span>
+<span class="special">{</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Iterator</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <a class="link" href="../iterator/functions/deref.html" title="deref"><code class="computeroutput"><span class="identifier">deref</span></code></a>
+        <span class="special">:</span> <span class="identifier">extension</span><span class="special">::</span><span class="identifier">deref_impl</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">detail</span><span class="special">::</span><span class="identifier">tag_of</span><span class="special">&lt;</span><span class="identifier">Iterator</span><span class="special">&gt;::</span><span class="identifier">type</span><span class="special">&gt;::</span>
+            <span class="keyword">template</span> <span class="identifier">apply</span><span class="special">&lt;</span><span class="identifier">Iterator</span><span class="special">&gt;</span>
+    <span class="special">{};</span>
+<span class="special">}</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Iterator</span><span class="special">&gt;</span>
+<span class="keyword">typename</span> <span class="identifier">result_of</span><span class="special">::</span><span class="identifier">deref</span><span class="special">&lt;</span><span class="identifier">Iterator</span><span class="special">&gt;::</span><span class="identifier">type</span>
+<a class="link" href="../iterator/functions/deref.html" title="deref"><code class="computeroutput"><span class="identifier">deref</span></code></a><span class="special">(</span><span class="identifier">Iterator</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">i</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">typedef</span> <span class="identifier">result_of</span><span class="special">::</span><span class="identifier">deref</span><span class="special">&lt;</span><span class="identifier">Iterator</span><span class="special">&gt;</span> <span class="identifier">deref_meta</span><span class="special">;</span>
+    <span class="keyword">return</span> <span class="identifier">deref_meta</span><span class="special">::</span><span class="identifier">call</span><span class="special">(</span><span class="identifier">i</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+<p>同样, <a class="link" href="../iterator/metafunctions/deref.html" title="deref"><code class="computeroutput"><span class="identifier">result_of</span><span class="special">::</span><span class="identifier">deref</span></code></a> 使用 <a class="link" href="../notes.html#fusion.notes.tag_dispatching"><span class="emphasis"><em>标签分派</em></span></a> 的方式与 <a class="link" href="../iterator/metafunctions/value_of.html" title="value_of"><code class="computeroutput"><span class="identifier">result_of</span><span class="special">::</span><span class="identifier">value_of</span></code></a> 的实现完全相同. <a class="link" href="../iterator/functions/deref.html" title="deref"><code class="computeroutput"><span class="identifier">deref</span></code></a> 所用的运行期功能由所选 <code class="computeroutput"><span class="identifier">call</span></code> 静态函数提供, 该函数来自 <a href="http://www.boost.org/libs/mpl/doc/refmanual/metafunction-class.html" target="_top">MPL 元函数类</a>.</p>
+<p> <code class="computeroutput"><span class="identifier">deref_impl</span></code> 的实际实现比 <code class="computeroutput"><span class="identifier">value_of_impl</span></code> 略复杂一些. 我们还需要实现 <code class="computeroutput"><span class="identifier">call</span></code> 函数, 它返回对底层序列相应成员的引用. 若底层序列为 const, 我们还需要一点元编程来返回 <code class="computeroutput"><span class="keyword">const</span></code> 引用.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>虽然要产生一个功能完备的 Fusion 序列还有相当多的工作要做, 但 <a class="link" href="../iterator/metafunctions/value_of.html" title="value_of"><code class="computeroutput"><span class="identifier">result_of</span><span class="special">::</span><span class="identifier">value_of</span></code></a> 和 <a class="link" href="../iterator/functions/deref.html" title="deref"><code class="computeroutput"><span class="identifier">deref</span></code></a> 已展示了所需的全部重要概念. 其余过程非常重复, 只需为每个特性实现一个合适的 <code class="computeroutput"><span class="identifier">xxxx_impl</span></code> <code class="computeroutput"><span class="identifier">xxxx</span></code>.</p></td></tr>
+</table></div>
+<h5>
+<a name="fusion.extension.ext_full.h4"></a>
+        <span class="phrase"><a name="fusion.extension.ext_full.implementing_the_remaining_iterator_functionality"></a></span><a class="link" href="ext_full.html#fusion.extension.ext_full.implementing_the_remaining_iterator_functionality">实现其余的迭代器功能</a>
+      </h5>
+<p>好, 现在我们已经了解了 <a class="link" href="../iterator/metafunctions/value_of.html" title="value_of"><code class="computeroutput"><span class="identifier">result_of</span><span class="special">::</span><span class="identifier">value_of</span></code></a> 和 <a class="link" href="../iterator/functions/deref.html" title="deref"><code class="computeroutput"><span class="identifier">deref</span></code></a> 的工作方式, 其余的一切都会以几乎相同的方式工作. 让我们从向前迭代开始, 提供一个 <code class="computeroutput"><span class="identifier">next_impl</span></code>:</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">next_impl</span><span class="special">&lt;</span><span class="identifier">example</span><span class="special">::</span><span class="identifier">example_struct_iterator_tag</span><span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Iterator</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">apply</span>
+    <span class="special">{</span>
+        <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">Iterator</span><span class="special">::</span><span class="identifier">struct_type</span> <span class="identifier">struct_type</span><span class="special">;</span>
+        <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">Iterator</span><span class="special">::</span><span class="identifier">index</span> <span class="identifier">index</span><span class="special">;</span>
+        <span class="keyword">typedef</span> <span class="identifier">example</span><span class="special">::</span><span class="identifier">example_struct_iterator</span><span class="special">&lt;</span><span class="identifier">struct_type</span><span class="special">,</span> <span class="identifier">index</span><span class="special">::</span><span class="identifier">value</span> <span class="special">+</span> <span class="number">1</span><span class="special">&gt;</span> <span class="identifier">type</span><span class="special">;</span>
+
+        <span class="keyword">static</span> <span class="identifier">type</span>
+        <span class="identifier">call</span><span class="special">(</span><span class="identifier">Iterator</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">i</span><span class="special">)</span>
+        <span class="special">{</span>
+             <span class="keyword">return</span> <span class="identifier">type</span><span class="special">(</span><span class="identifier">i</span><span class="special">.</span><span class="identifier">struct_</span><span class="special">);</span>
+        <span class="special">}</span>
+    <span class="special">};</span>
+<span class="special">};</span>
+</pre>
+<p>这与我们的 <code class="computeroutput"><span class="identifier">deref_impl</span></code> 实现非常相似, 我们此后会反复使用这种方法. 我们的设计只是递增 <code class="computeroutput"><span class="identifier">index</span></code> 计数器以移到下一个元素. 我们需要执行的其他各种迭代器操作都只涉及对 <code class="computeroutput"><span class="identifier">index</span></code> 变量的简单计算.</p>
+<p>我们还需要提供合适的 <code class="computeroutput"><span class="identifier">equal_to_impl</span></code>, 使迭代器能够被正确比较. <a class="link" href="../iterator/concepts/bidirectional_iterator.html" title="双向迭代器">双向迭代器</a> 还需要实现 <code class="computeroutput"><span class="identifier">prior_impl</span></code>. 对于 <a class="link" href="../iterator/concepts/random_access_iterator.html" title="Random Access Iterator">随机访问迭代器</a>, 还需提供 <code class="computeroutput"><span class="identifier">distance_impl</span></code> 和 <code class="computeroutput"><span class="identifier">advance_impl</span></code> 以满足必要的复杂度保证. 由于我们的迭代器是 <a class="link" href="../iterator/concepts/random_access_iterator.html" title="Random Access Iterator">随机访问迭代器</a>, 我们必须实现所有这些函数.</p>
+<p>示例代码中提供了 <code class="computeroutput"><span class="identifier">prior_impl</span></code>、<code class="computeroutput"><span class="identifier">advance_impl</span></code>、<code class="computeroutput"><span class="identifier">distance_impl</span></code> 和 <code class="computeroutput"><span class="identifier">equal_to_impl</span></code> 的完整实现.</p>
+<h5>
+<a name="fusion.extension.ext_full.h5"></a>
+        <span class="phrase"><a name="fusion.extension.ext_full.implementing_the_intrinsic_functions_of_the_sequence"></a></span><a class="link" href="ext_full.html#fusion.extension.ext_full.implementing_the_intrinsic_functions_of_the_sequence">实现序列的内蕴函数</a>
+      </h5>
+<p>为了使 Fusion 能把我们的序列正确识别为 Fusion 序列, 我们需要为序列类型启用 <code class="computeroutput"><span class="identifier">is_sequence</span></code>. 照例, 我们只需为我们的序列标签创建一个特化的 <code class="computeroutput"><span class="identifier">impl</span></code> 类型:</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">is_sequence_impl</span><span class="special">&lt;</span><span class="identifier">example</span><span class="special">::</span><span class="identifier">example_sequence_tag</span><span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">T</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">apply</span> <span class="special">:</span> <span class="identifier">mpl</span><span class="special">::</span><span class="identifier">true_</span> <span class="special">{};</span>
+<span class="special">};</span>
+</pre>
+<p>我们还有一些类似的例行手续要完成: 提供 <code class="computeroutput"><span class="identifier">category_of_impl</span></code> 使 Fusion 能正确识别我们的序列类型, 以及 <code class="computeroutput"><span class="identifier">is_view_impl</span></code> 使 Fusion 能正确识别我们的序列不是 <a class="link" href="../view.html" title="视图">视图</a> 类型. 实现已在示例代码中给出.</p>
+<p>现在我们完成了一些例行手续, 接下来是更有趣的功能. 让我们让 <a class="link" href="../sequence/intrinsic/functions/begin.html" title="begin"><code class="computeroutput"><span class="identifier">begin</span></code></a> 工作起来, 以便获得一个迭代器来开始访问序列中的数据.</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">begin_impl</span><span class="special">&lt;</span><span class="identifier">example</span><span class="special">::</span><span class="identifier">example_sequence_tag</span><span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Sequence</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">apply</span>
+    <span class="special">{</span>
+        <span class="keyword">typedef</span> <span class="identifier">example</span><span class="special">::</span><span class="identifier">example_struct_iterator</span><span class="special">&lt;</span><span class="identifier">Sequence</span><span class="special">,</span> <span class="number">0</span><span class="special">&gt;</span> <span class="identifier">type</span><span class="special">;</span>
+
+        <span class="keyword">static</span> <span class="identifier">type</span>
+        <span class="identifier">call</span><span class="special">(</span><span class="identifier">Sequence</span><span class="special">&amp;</span> <span class="identifier">seq</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="keyword">return</span> <span class="identifier">type</span><span class="special">(</span><span class="identifier">seq</span><span class="special">);</span>
+        <span class="special">}</span>
+    <span class="special">};</span>
+<span class="special">};</span>
+</pre>
+<p>该实现使用了我们一贯采用的相同思路, 此处我们只是创建我们先前开发的其中一个迭代器, 指向序列中的第一个元素. <a class="link" href="../sequence/intrinsic/functions/end.html" title="end"><code class="computeroutput"><span class="identifier">end</span></code></a> 的实现非常相似, 已在示例代码中给出.</p>
+<p>对于我们的 <a class="link" href="../sequence/concepts/random_access_sequence.html" title="随机访问序列">随机访问序列</a>, 我们还需要实现 <code class="computeroutput"><span class="identifier">size_impl</span></code>、<code class="computeroutput"><span class="identifier">value_at_impl</span></code> 和 <code class="computeroutput"><span class="identifier">at_impl</span></code>.</p>
+<h5>
+<a name="fusion.extension.ext_full.h6"></a>
+        <span class="phrase"><a name="fusion.extension.ext_full.enabling_our_type_as_an_associative_sequence"></a></span><a class="link" href="ext_full.html#fusion.extension.ext_full.enabling_our_type_as_an_associative_sequence">启用我们的类型作为关联序列</a>
+      </h5>
+<p>为了使 <code class="computeroutput"><span class="identifier">example_struct</span></code> 能够充当关联前向序列, 我们需要相应地调整序列和迭代器的遍历类别, 并启用 3 个内蕴序列查找特性: <a class="link" href="../sequence/intrinsic/functions/at_key.html" title="at_key"><code class="computeroutput"><span class="identifier">at_key</span></code></a>、<a class="link" href="../sequence/intrinsic/metafunctions/value_at_key.html" title="value_at_key"><code class="computeroutput"><span class="identifier">result_of</span><span class="special">::</span><span class="identifier">value_at_key</span></code></a> 和 <a class="link" href="../sequence/intrinsic/functions/has_key.html" title="has_key"><code class="computeroutput"><span class="identifier">has_key</span></code></a>. 我们还需要启用 3 个迭代器查找特性: <a class="link" href="../iterator/metafunctions/key_of.html" title="key_of"><code class="computeroutput"><span class="identifier">result_of</span><span class="special">::</span><span class="identifier">key_of</span></code></a>、<a class="link" href="../iterator/metafunctions/value_of_data.html" title="value_of_data"><code class="computeroutput"><span class="identifier">result_of</span><span class="special">::</span><span class="identifier">value_of_data</span></code></a> 和 <a class="link" href="../iterator/functions/deref_data.html" title="deref_data"><code class="computeroutput"><span class="identifier">deref_data</span></code></a>.</p>
+<p>为了实现 <code class="computeroutput"><span class="identifier">at_key_impl</span></code>, 我们需要把 <code class="computeroutput"><span class="identifier">fields</span><span class="special">::</span><span class="identifier">name</span></code> 和 <code class="computeroutput"><span class="identifier">fields</span><span class="special">::</span><span class="identifier">age</span></code> 类型 (在 <a class="link" href="../quick_start.html" title="快速入门">快速入门</a> 指南中描述) 与 <code class="computeroutput"><span class="identifier">example_struct</span></code> 的相应成员关联起来. 我们的实现如下:</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">at_key_impl</span><span class="special">&lt;</span><span class="identifier">example</span><span class="special">::</span><span class="identifier">example_sequence_tag</span><span class="special">&gt;</span>
+<span class="special">{</span>
+    <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Sequence</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Key</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">apply</span><span class="special">;</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Sequence</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">apply</span><span class="special">&lt;</span><span class="identifier">Sequence</span><span class="special">,</span> <span class="identifier">fields</span><span class="special">::</span><span class="identifier">name</span><span class="special">&gt;</span>
+    <span class="special">{</span>
+        <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">mpl</span><span class="special">::</span><span class="identifier">if_</span><span class="special">&lt;</span>
+            <span class="identifier">is_const</span><span class="special">&lt;</span><span class="identifier">Sequence</span><span class="special">&gt;,</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;,</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&amp;&gt;::</span><span class="identifier">type</span> <span class="identifier">type</span><span class="special">;</span>
+
+        <span class="keyword">static</span> <span class="identifier">type</span>
+        <span class="identifier">call</span><span class="special">(</span><span class="identifier">Sequence</span><span class="special">&amp;</span> <span class="identifier">seq</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="keyword">return</span> <span class="identifier">seq</span><span class="special">.</span><span class="identifier">name</span><span class="special">;</span>
+        <span class="special">};</span>
+    <span class="special">};</span>
+
+    <span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Sequence</span><span class="special">&gt;</span>
+    <span class="keyword">struct</span> <span class="identifier">apply</span><span class="special">&lt;</span><span class="identifier">Sequence</span><span class="special">,</span> <span class="identifier">fields</span><span class="special">::</span><span class="identifier">age</span><span class="special">&gt;</span>
+    <span class="special">{</span>
+        <span class="keyword">typedef</span> <span class="keyword">typename</span> <span class="identifier">mpl</span><span class="special">::</span><span class="identifier">if_</span><span class="special">&lt;</span>
+            <span class="identifier">is_const</span><span class="special">&lt;</span><span class="identifier">Sequence</span><span class="special">&gt;,</span>
+            <span class="keyword">int</span> <span class="keyword">const</span><span class="special">&amp;,</span>
+            <span class="keyword">int</span><span class="special">&amp;&gt;::</span><span class="identifier">type</span> <span class="identifier">type</span><span class="special">;</span>
+
+        <span class="keyword">static</span> <span class="identifier">type</span>
+        <span class="identifier">call</span><span class="special">(</span><span class="identifier">Sequence</span><span class="special">&amp;</span> <span class="identifier">seq</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="keyword">return</span> <span class="identifier">seq</span><span class="special">.</span><span class="identifier">age</span><span class="special">;</span>
+        <span class="special">};</span>
+    <span class="special">};</span>
+<span class="special">};</span>
+</pre>
+<p>这一切都与我们之前看到的实现非常相似, 例如 <code class="computeroutput"><span class="identifier">deref_impl</span></code> 和 <code class="computeroutput"><span class="identifier">value_of_impl</span></code>. 现在我们不再按索引或位置识别成员, 而是使用 <code class="computeroutput"><span class="identifier">fields</span><span class="special">::</span><span class="identifier">name</span></code> 和 <code class="computeroutput"><span class="identifier">fields</span><span class="special">::</span><span class="identifier">age</span></code> 类型来选择它们. 其他函数的实现同样简单直接, 已在示例代码中给出.</p>
+<h5>
+<a name="fusion.extension.ext_full.h7"></a>
+        <span class="phrase"><a name="fusion.extension.ext_full.summary"></a></span><a class="link" href="ext_full.html#fusion.extension.ext_full.summary">小结</a>
+      </h5>
+<p>我们现在已经完成了添加新随机访问序列的整个过程, 并使我们的类型能够充当关联序列. 该实现略显冗长, 但遵循一个简单的重复模式.</p>
+<p>对 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">pair</span></code>、<a href="http://www.boost.org/libs/mpl" target="_top">MPL</a> 序列和 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">array</span></code> 的支持都使用相同的方法, 并为各种类型提供了该方法的更多示例.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2001-2006, 2011, 2012 Joel de Guzman, Dan Marsden, Tobias Schwinger<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../extension.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../extension.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="sequence_facade.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

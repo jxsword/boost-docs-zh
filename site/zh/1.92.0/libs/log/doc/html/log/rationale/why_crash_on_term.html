@@ -1,0 +1,53 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>为什么使用文件接收器时应用程序在进程终止时会崩溃?</title>
+<link rel="stylesheet" href="../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="第 1 章 Boost.Log v2">
+<link rel="up" href="../rationale.html" title="设计理由与常见问题 (FAQ)">
+<link rel="prev" href="init_term_support.html" title="Boost.Log 是否支持在进程初始化和终止时记录日志?">
+<link rel="next" href="namespace_mangling.html" title="为什么我的应用程序无法与 Boost.Log 链接? 库命名空间是怎么回事?">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr><td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../boost.png"></td></tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="init_term_support.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../rationale.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="namespace_mangling.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="log.rationale.why_crash_on_term"></a><a class="link" href="why_crash_on_term.html" title="为什么使用文件接收器时应用程序在进程终止时会崩溃?">为什么使用文件接收器时应用程序在进程终止时会崩溃?</a>
+</h3></div></div></div>
+<p> <a href="https://www.boost.org/doc/libs/release/libs/filesystem/doc/index.htm" target="_top">Boost.Filesystem</a> 存在一些已知问题 (例如 <a href="https://svn.boost.org/trac/boost/ticket/8642" target="_top">#8642</a> 和 <a href="https://svn.boost.org/trac/boost/ticket/9219" target="_top">#9219</a>), 会影响 Boost.Log 的文件接收器后端. 当文件接收器销毁时, 它会尝试执行最终的日志文件轮转, 这涉及使用 <a href="https://www.boost.org/doc/libs/release/libs/filesystem/doc/index.htm" target="_top">Boost.Filesystem</a> 移动文件. 这通常发生在 Boost.Log 核心去初始化时, 即离开 <code class="computeroutput"><span class="identifier">main</span><span class="special">()</span></code> 之后的全局去初始化阶段. 问题的症结在于, <a href="https://www.boost.org/doc/libs/release/libs/filesystem/doc/index.htm" target="_top">Boost.Filesystem</a> 内部使用一个全局 locale 对象来为 <code class="computeroutput"><span class="identifier">path</span></code> 执行字符编码转换, 而该 locale 可能在 Boost.Log 去初始化之前被销毁, 从而导致崩溃.</p>
+<p>Boost.Log 无法影响全局去初始化的顺序, 但该问题可以在用户侧规避. 一种解决方案是确保 locale 在 Boost.Log <span class="emphasis"><em>之前</em></span>初始化. 可以通过在应用程序启动早期、执行任何 Boost.Log 调用之前调用 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">filesystem</span><span class="special">::</span><span class="identifier">path</span><span class="special">::</span><span class="identifier">codecvt</span><span class="special">()</span></code> 或 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">filesystem</span><span class="special">::</span><span class="identifier">path</span><span class="special">::</span><span class="identifier">imbue</span><span class="special">()</span></code> 来实现. 例如:</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">argc</span><span class="special">,</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">argv</span><span class="special">[])</span>
+<span class="special">{</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">filesystem</span><span class="special">::</span><span class="identifier">path</span><span class="special">::</span><span class="identifier">imbue</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">locale</span><span class="special">(</span><span class="string">"C"</span><span class="special">));</span>
+    <span class="identifier">initialize_log</span><span class="special">();</span>
+
+    <span class="comment">// ...</span>
+<span class="special">}</span>
+</pre>
+<p>注意, 在这种情况下, 您不能在全局构造函数中使用 Boost.Log, 或者必须确保 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">filesystem</span><span class="special">::</span><span class="identifier">path</span><span class="special">::</span><span class="identifier">imbue</span><span class="special">()</span></code> 仍被最先调用.</p>
+<p>另一种解决方案是在从 <code class="computeroutput"><span class="identifier">main</span><span class="special">()</span></code> 返回之前, 从日志核心中移除并销毁文件接收器. 这样, 文件轮转会在离开 <code class="computeroutput"><span class="identifier">main</span><span class="special">()</span></code> 之前、locale 仍有效时发生. 文件接收器既可以逐个移除, 也可以作为 <code class="computeroutput"><span class="identifier">remove_all_sinks</span><span class="special">()</span></code> 调用的一部分移除:</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">main</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">argc</span><span class="special">,</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">argv</span><span class="special">[])</span>
+<span class="special">{</span>
+    <span class="comment">// ...</span>
+
+    <span class="identifier">logging</span><span class="special">::</span><span class="identifier">core</span><span class="special">::</span><span class="identifier">get</span><span class="special">()-&gt;</span><span class="identifier">remove_all_sinks</span><span class="special">();</span>
+
+    <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>最后, 您可以为您注册到日志核心的每个文件接收器禁用最终日志文件轮转. 对于以编程方式添加的接收器, 可以通过在接收器后端上调用 <code class="computeroutput"><span class="identifier">enable_final_rotation</span><span class="special">(</span><span class="keyword">false</span><span class="special">)</span></code> 来实现. 如果接收器是从 <a class="link" href="../detailed/utilities.html#log.detailed.utilities.setup.settings" title="从 settings 容器初始化库">settings</a> 创建的, 可以通过将 EnableFinalRotation 参数设置为 "false" 来实现.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2007-2024 Andrey Semashev<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>) .</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="init_term_support.html"><img src="../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../rationale.html"><img src="../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="namespace_mangling.html"><img src="../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

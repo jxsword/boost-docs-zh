@@ -1,0 +1,1116 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>泛型迭代器</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.Iterator">
+<link rel="up" href="../index.html" title="第 1 章 Boost.Iterator">
+<link rel="prev" href="concepts/traversal.html" title="遍历">
+<link rel="next" href="generic/adaptor.html" title="迭代器适配器">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="concepts/traversal.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="generic/adaptor.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="iterator.generic"></a><a class="link" href="generic.html" title="泛型迭代器">泛型迭代器</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="generic.html#iterator.generic.facade">迭代器 Facade</a></span></dt>
+<dd><dl>
+<dt><span class="section"><a href="generic.html#iterator.generic.facade.facade_reference">参考</a></span></dt>
+<dt><span class="section"><a href="generic.html#iterator.generic.facade.facade_tutorial">教程</a></span></dt>
+</dl></dd>
+<dt><span class="section"><a href="generic/adaptor.html">迭代器适配器</a></span></dt>
+<dd><dl>
+<dt><span class="section"><a href="generic/adaptor.html#iterator.generic.adaptor.adaptor_reference">参考</a></span></dt>
+<dt><span class="section"><a href="generic/adaptor.html#iterator.generic.adaptor.adaptor_tutorial">教程</a></span></dt>
+</dl></dd>
+</dl></div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="iterator.generic.facade"></a><a class="link" href="generic.html#iterator.generic.facade" title="迭代器 Facade">迭代器 Facade</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="generic.html#iterator.generic.facade.facade_reference">参考</a></span></dt>
+<dt><span class="section"><a href="generic.html#iterator.generic.facade.facade_tutorial">教程</a></span></dt>
+</dl></div>
+<p>尽管迭代器接口十分丰富, 但接口中存在一个为全部功能所必需的核心子集. 我们已为迭代器确定出以下核心行为:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">解引用</li>
+<li class="listitem">递增</li>
+<li class="listitem">递减</li>
+<li class="listitem">相等比较</li>
+<li class="listitem">随机访问移动</li>
+<li class="listitem">距离测量</li>
+</ul></div>
+<p>除上述行为之外, 核心接口元素还包括通过迭代器特征暴露的关联类型: <code class="computeroutput"><span class="identifier">value_type</span></code>、<code class="computeroutput"><span class="identifier">reference</span></code>、<code class="computeroutput"><span class="identifier">difference_type</span></code> 与 <code class="computeroutput"><span class="identifier">iterator_category</span></code>.</p>
+<p>迭代器外观使用了奇特递归模板模式 (CRTP) [Cop95]_, 使用户能够在派生类中指定 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 的行为. 先前的设计使用策略对象来指定行为, 但该方案因若干原因被放弃:</p>
+<p>1. 策略对象的创建及最终的拷贝可能产生额外开销, 而当前方案可以避免这种开销.</p>
+<p>2. 策略对象方案不允许在所创建的迭代器类型上定义自定义构造函数, 而若 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 要用于其他库的实现, 这是必不可少的特性.</p>
+<p>3. 若不使用 CRTP, 标准关于迭代器的 <code class="computeroutput"><span class="keyword">operator</span><span class="special">++</span></code> 必须返回迭代器类型本身的要求将意味着: 用本库构建的所有迭代器都不得不成为 <code class="computeroutput"><span class="identifier">iterator_facade</span><span class="special">&lt;...&gt;</span></code> 的特化, 而不能是 <code class="computeroutput"><span class="identifier">indirect_iterator</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">*&gt;</span></code> 这样更具描述性的名字. 构建新的参数化迭代器将需要繁琐的类型生成元函数, 而独立的 <code class="computeroutput"><span class="identifier">iterator_adaptor</span></code> 层也将无从实现.</p>
+<h3>
+<a name="iterator.generic.facade.h0"></a>
+        <span class="phrase"><a name="iterator.generic.facade.usage"></a></span><a class="link" href="generic.html#iterator.generic.facade.usage">用法</a>
+      </h3>
+<p> <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 的用户从一个 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 特化派生自己的迭代器类, 并把派生迭代器类作为 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 的第一个模板参数传递. 其余模板参数的顺序经过精心选择, 以便利用有用的默认值. 例如, 在定义一个常量左值迭代器时, 用户可以把该迭代器 <code class="computeroutput"><span class="identifier">value_type</span></code> 的 const 限定版本作为 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 的 <code class="computeroutput"><span class="identifier">Value</span></code> 参数传入, 并省略紧随其后的 <code class="computeroutput"><span class="identifier">Reference</span></code> 参数.</p>
+<p>派生迭代器类必须定义实现迭代器核心行为的成员函数. 下表描述了根据派生迭代器类型的类别而必须有效的表达式. 这些成员函数在下文有简要描述, 并在迭代器外观要求一节中有更详细的说明.</p>
+<div class="table">
+<a name="iterator.generic.facade.core_interface"></a><p class="title"><b>表 1.10. 核心接口</b></p>
+<div class="table-contents"><table class="table" summary="Core Interface">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>表达式</p>
+              </th>
+<th>
+                <p>效果</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">i</span><span class="special">.</span><span class="identifier">dereference</span><span class="special">()</span></code>
+                </p>
+              </td>
+<td>
+                <p>访问所引用的值</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">i</span><span class="special">.</span><span class="identifier">equal</span><span class="special">(</span><span class="identifier">j</span><span class="special">)</span></code>
+                </p>
+              </td>
+<td>
+                <p>与如下对象进行相等比较: <code class="computeroutput"><span class="identifier">j</span></code>
+                </p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">i</span><span class="special">.</span><span class="identifier">increment</span><span class="special">()</span></code>
+                </p>
+              </td>
+<td>
+                <p>前进一个位置</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">i</span><span class="special">.</span><span class="identifier">decrement</span><span class="special">()</span></code>
+                </p>
+              </td>
+<td>
+                <p>后退一个位置</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">i</span><span class="special">.</span><span class="identifier">advance</span><span class="special">(</span><span class="identifier">n</span><span class="special">)</span></code>
+                </p>
+              </td>
+<td>
+                <p>前进 <code class="computeroutput"><span class="identifier">n</span></code> 个位置</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  <code class="computeroutput"><span class="identifier">i</span><span class="special">.</span><span class="identifier">distance_to</span><span class="special">(</span><span class="identifier">j</span><span class="special">)</span></code>
+                </p>
+              </td>
+<td>
+                <p>测量到如下对象的距离: <code class="computeroutput"><span class="identifier">j</span></code>
+                </p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><p>除了实现核心接口函数之外, 从 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 派生的迭代器通常还会定义若干构造函数. 要模型化任何标准迭代器概念, 该迭代器至少必须有一个拷贝构造函数. 此外, 若迭代器类型 <code class="computeroutput"><span class="identifier">X</span></code> 预期与另一迭代器类型 <code class="computeroutput"><span class="identifier">Y</span></code> 自动互操作 (如常量迭代器与可变迭代器那样), 则必须存在从 <code class="computeroutput"><span class="identifier">X</span></code> 到 <code class="computeroutput"><span class="identifier">Y</span></code> 或从 <code class="computeroutput"><span class="identifier">Y</span></code> 到 <code class="computeroutput"><span class="identifier">X</span></code> 的隐式转换 (但两者不可兼有), 通常以转换构造函数实现. 最后, 若该迭代器要模型化前向遍历迭代器或更精化的迭代器概念, 则需要一个默认构造函数.</p>
+<h3>
+<a name="iterator.generic.facade.h1"></a>
+        <span class="phrase"><a name="iterator.generic.facade.iterator_core_access"></a></span><a class="link" href="generic.html#iterator.generic.facade.iterator_core_access">迭代器核心访问</a>
+      </h3>
+<p>
+        <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 与运算符实现需要能够访问派生类中的核心成员函数. 把核心成员函数设为公有会把实现细节暴露给用户. 这里采用的设计确保实现细节不会出现在派生迭代器类型的公有接口中.</p>
+<p>阻止对核心成员函数的直接访问有两个优点. 首先, 用户不可能在本想访问 value_type 的成员时误用迭代器的成员函数. 这在过去曾是智能指针实现的一个问题. 第二个也是主要的优点是, 库实现者可以放心地把手写的迭代器实现替换为基于 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 的实现, 而不必担心破坏直接访问公有核心成员函数的代码.</p>
+<p>在朴素的实现中, 把派生类的核心成员函数保持为私有, 将要求它向 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 以及七个运算符中的每一个授予友元关系. 为了减轻限制访问的负担, 本库提供了 <code class="computeroutput"><span class="identifier">iterator_core_access</span></code>——一个充当通往派生迭代器类中核心成员函数之网关的类. 派生类的作者只需向 <code class="computeroutput"><span class="identifier">iterator_core_access</span></code> 授予友元关系, 即可使其核心成员函数对本库可用.</p>
+<p>
+        <code class="computeroutput"><span class="identifier">iterator_core_access</span></code> 通常实现为一个空类, 其中只包含调用迭代器核心成员函数的私有静态成员函数. 不过, 无需对网关协议进行标准化. 注意, 即使 <code class="computeroutput"><span class="identifier">iterator_core_access</span></code> 使用公有成员函数, 也不会打开安全漏洞, 因为每个核心成员函数都保持迭代器的不变式.</p>
+<h3>
+<a name="iterator.generic.facade.h2"></a>
+        <span class="phrase"><a name="iterator.generic.facade.operator"></a></span><a class="link" href="generic.html#iterator.generic.facade.operator"><code class="computeroutput"><span class="keyword">operator</span><span class="special">[]</span></code></a>
+      </h3>
+<p>泛化迭代器的下标运算符带来特殊的挑战. 随机访问迭代器的 <code class="computeroutput"><span class="keyword">operator</span><span class="special">[]</span></code> 只要求返回可转换为其 <code class="computeroutput"><span class="identifier">value_type</span></code> 的东西. 若要求它返回左值, 将排除当前合法的、把被引用值保存在数据成员中的随机访问迭代器 (例如 |counting|_), 因为 <code class="computeroutput"><span class="special">*(</span><span class="identifier">p</span><span class="special">+</span><span class="identifier">n</span><span class="special">)</span></code> 是指向临时迭代器 <code class="computeroutput"><span class="identifier">p</span><span class="special">+</span><span class="identifier">n</span></code> 的引用, 而该临时对象在 <code class="computeroutput"><span class="keyword">operator</span><span class="special">[]</span></code> 返回时即被销毁.</p>
+<p>
+        .. |counting| replace:: <code class="computeroutput"><span class="identifier">counting_iterator</span></code>
+      </p>
+<p>用 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 构建的可写迭代器实现了 <code class="computeroutput"><span class="identifier">issue</span> <span class="number">299</span></code>_ 的首选决议所要求、并由提案 n1550_ 采纳的语义: <code class="computeroutput"><span class="identifier">p</span><span class="special">[</span><span class="identifier">n</span><span class="special">]</span></code> 的结果是一个可转换为迭代器 <code class="computeroutput"><span class="identifier">value_type</span></code> 的对象, 且 <code class="computeroutput"><span class="identifier">p</span><span class="special">[</span><span class="identifier">n</span><span class="special">]</span> <span class="special">=</span>
+        <span class="identifier">x</span></code> 等价于 <code class="computeroutput"><span class="special">*(</span><span class="identifier">p</span> <span class="special">+</span>
+        <span class="identifier">n</span><span class="special">)</span> <span class="special">=</span> <span class="identifier">x</span></code> (注意: 该结果对象可实现为包含 <code class="computeroutput"><span class="identifier">p</span><span class="special">+</span><span class="identifier">n</span></code> 副本的代理). 无论其实现的其他细节如何, 该方法对任何随机访问迭代器都能正常工作. 对自己迭代器的实现了解更多细节的用户, 可以在派生迭代器类中自行实现一个返回左值的 <code class="computeroutput"><span class="keyword">operator</span><span class="special">[]</span></code>; 它会向该迭代器的客户隐藏 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 所提供的那个.</p>
+<p>
+        .. _n1550: http://www.open-std.org/JTC1/SC22/WG21/docs/papers/2003/n1550.htm
+      </p>
+<p>
+        .. _<code class="computeroutput"><span class="identifier">issue</span> <span class="number">299</span></code>:
+        http://www.open-std.org/jtc1/sc22/wg21/docs/lwg-active.html#299
+      </p>
+<p>
+        .. _<code class="computeroutput"><span class="keyword">operator</span> <span class="identifier">arrow</span></code>:
+      </p>
+<h3>
+<a name="iterator.generic.facade.h3"></a>
+        <span class="phrase"><a name="iterator.generic.facade.operator0"></a></span><a class="link" href="generic.html#iterator.generic.facade.operator0"><code class="computeroutput"><span class="keyword">operator</span><span class="special">-&gt;</span></code></a>
+      </h3>
+<p>可读迭代器 (以及如今的输入迭代器) 的 <code class="computeroutput"><span class="identifier">reference</span></code> 类型实际上不必是引用, 只要它可转换为该迭代器的 <code class="computeroutput"><span class="identifier">value_type</span></code> 即可. 然而, 当 <code class="computeroutput"><span class="identifier">value_type</span></code> 是类类型时, 仍必须能够通过 <code class="computeroutput"><span class="keyword">operator</span><span class="special">-&gt;</span></code> 访问成员. 因此, 其 <code class="computeroutput"><span class="identifier">reference</span></code> 类型实际上不是引用的迭代器, 必须从其 <code class="computeroutput"><span class="keyword">operator</span><span class="special">-&gt;</span></code> 返回一个包含被引用值副本的代理.</p>
+<p> <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 的 <code class="computeroutput"><span class="keyword">operator</span><span class="special">-&gt;</span></code> 与 <code class="computeroutput"><span class="keyword">operator</span><span class="special">[]</span></code> 的返回类型未被显式指定. 作为替代, 这些类型以一组要求来描述, <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 的实现必须满足这组要求.</p>
+<p>
+        .. [Cop95] [Coplien, 1995] Coplien, J., Curiously Recurring Template Patterns,
+        C++ Report, February 1995, pp. 24-27.
+      </p>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="iterator.generic.facade.facade_reference"></a><a class="link" href="generic.html#iterator.generic.facade.facade_reference" title="参考">参考</a>
+</h4></div></div></div>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span>
+    <span class="keyword">class</span> <span class="identifier">Derived</span>
+  <span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Value</span>
+  <span class="special">,</span> <span class="keyword">class</span> <span class="identifier">CategoryOrTraversal</span>
+  <span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Reference</span>  <span class="special">=</span> <span class="identifier">Value</span><span class="special">&amp;</span>
+  <span class="special">,</span> <span class="keyword">class</span> <span class="identifier">Difference</span> <span class="special">=</span> <span class="identifier">ptrdiff_t</span>
+<span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">iterator_facade</span> <span class="special">{</span>
+ <span class="keyword">public</span><span class="special">:</span>
+    <span class="keyword">typedef</span> <span class="identifier">remove_const</span><span class="special">&lt;</span><span class="identifier">Value</span><span class="special">&gt;::</span><span class="identifier">type</span> <span class="identifier">value_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="identifier">Reference</span> <span class="identifier">reference</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="identifier">Value</span><span class="special">\*</span> <span class="identifier">pointer</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="identifier">Difference</span> <span class="identifier">difference_type</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="comment">/* see below__ \*/</span> <span class="identifier">iterator_category</span><span class="special">;</span>
+
+    <span class="identifier">reference</span> <span class="keyword">operator</span><span class="special">\*()</span> <span class="keyword">const</span><span class="special">;</span>
+    <span class="comment">/* see below__ \*/</span> <span class="keyword">operator</span><span class="special">-&gt;()</span> <span class="keyword">const</span><span class="special">;</span>
+    <span class="comment">/* see below__ \*/</span> <span class="keyword">operator</span><span class="special">[](</span><span class="identifier">difference_type</span> <span class="identifier">n</span><span class="special">)</span> <span class="keyword">const</span><span class="special">;</span>
+    <span class="identifier">Derived</span><span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">++();</span>
+    <span class="identifier">Derived</span> <span class="keyword">operator</span><span class="special">++(</span><span class="keyword">int</span><span class="special">);</span>
+    <span class="identifier">Derived</span><span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">--();</span>
+    <span class="identifier">Derived</span> <span class="keyword">operator</span><span class="special">--(</span><span class="keyword">int</span><span class="special">);</span>
+    <span class="identifier">Derived</span><span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">+=(</span><span class="identifier">difference_type</span> <span class="identifier">n</span><span class="special">);</span>
+    <span class="identifier">Derived</span><span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">-=(</span><span class="identifier">difference_type</span> <span class="identifier">n</span><span class="special">);</span>
+    <span class="identifier">Derived</span> <span class="keyword">operator</span><span class="special">-(</span><span class="identifier">difference_type</span> <span class="identifier">n</span><span class="special">)</span> <span class="keyword">const</span><span class="special">;</span>
+ <span class="keyword">protected</span><span class="special">:</span>
+    <span class="keyword">typedef</span> <span class="identifier">iterator_facade</span> <span class="identifier">iterator_facade</span><span class="special">\</span><span class="identifier">_</span><span class="special">;</span>
+<span class="special">};</span>
+
+<span class="comment">// Comparison operators</span>
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D1</span><span class="special">,</span>
+          <span class="keyword">class</span> <span class="identifier">Dr2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D2</span><span class="special">&gt;</span>
+<span class="keyword">typename</span> <span class="identifier">enable_if_interoperable</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">Dr2</span><span class="special">,</span><span class="keyword">bool</span><span class="special">&gt;::</span><span class="identifier">type</span> <span class="comment">// exposition</span>
+<span class="keyword">operator</span> <span class="special">==(</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">V1</span><span class="special">,</span><span class="identifier">TC1</span><span class="special">,</span><span class="identifier">R1</span><span class="special">,</span><span class="identifier">D1</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">lhs</span><span class="special">,</span>
+            <span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">V2</span><span class="special">,</span><span class="identifier">TC2</span><span class="special">,</span><span class="identifier">R2</span><span class="special">,</span><span class="identifier">D2</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rhs</span><span class="special">);</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D1</span><span class="special">,</span>
+          <span class="keyword">class</span> <span class="identifier">Dr2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D2</span><span class="special">&gt;</span>
+<span class="keyword">typename</span> <span class="identifier">enable_if_interoperable</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">Dr2</span><span class="special">,</span><span class="keyword">bool</span><span class="special">&gt;::</span><span class="identifier">type</span>
+<span class="keyword">operator</span> <span class="special">!=(</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">V1</span><span class="special">,</span><span class="identifier">TC1</span><span class="special">,</span><span class="identifier">R1</span><span class="special">,</span><span class="identifier">D1</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">lhs</span><span class="special">,</span>
+            <span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">V2</span><span class="special">,</span><span class="identifier">TC2</span><span class="special">,</span><span class="identifier">R2</span><span class="special">,</span><span class="identifier">D2</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rhs</span><span class="special">);</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D1</span><span class="special">,</span>
+          <span class="keyword">class</span> <span class="identifier">Dr2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D2</span><span class="special">&gt;</span>
+<span class="keyword">typename</span> <span class="identifier">enable_if_interoperable</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">Dr2</span><span class="special">,</span><span class="keyword">bool</span><span class="special">&gt;::</span><span class="identifier">type</span>
+<span class="keyword">operator</span> <span class="special">&lt;(</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">V1</span><span class="special">,</span><span class="identifier">TC1</span><span class="special">,</span><span class="identifier">R1</span><span class="special">,</span><span class="identifier">D1</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">lhs</span><span class="special">,</span>
+           <span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">V2</span><span class="special">,</span><span class="identifier">TC2</span><span class="special">,</span><span class="identifier">R2</span><span class="special">,</span><span class="identifier">D2</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rhs</span><span class="special">);</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D1</span><span class="special">,</span>
+          <span class="keyword">class</span> <span class="identifier">Dr2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D2</span><span class="special">&gt;</span>
+<span class="keyword">typename</span> <span class="identifier">enable_if_interoperable</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">Dr2</span><span class="special">,</span><span class="keyword">bool</span><span class="special">&gt;::</span><span class="identifier">type</span>
+<span class="keyword">operator</span> <span class="special">&lt;=(</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">V1</span><span class="special">,</span><span class="identifier">TC1</span><span class="special">,</span><span class="identifier">R1</span><span class="special">,</span><span class="identifier">D1</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">lhs</span><span class="special">,</span>
+            <span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">V2</span><span class="special">,</span><span class="identifier">TC2</span><span class="special">,</span><span class="identifier">R2</span><span class="special">,</span><span class="identifier">D2</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rhs</span><span class="special">);</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D1</span><span class="special">,</span>
+          <span class="keyword">class</span> <span class="identifier">Dr2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D2</span><span class="special">&gt;</span>
+<span class="keyword">typename</span> <span class="identifier">enable_if_interoperable</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">Dr2</span><span class="special">,</span><span class="keyword">bool</span><span class="special">&gt;::</span><span class="identifier">type</span>
+<span class="keyword">operator</span> <span class="special">&gt;(</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">V1</span><span class="special">,</span><span class="identifier">TC1</span><span class="special">,</span><span class="identifier">R1</span><span class="special">,</span><span class="identifier">D1</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">lhs</span><span class="special">,</span>
+           <span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">V2</span><span class="special">,</span><span class="identifier">TC2</span><span class="special">,</span><span class="identifier">R2</span><span class="special">,</span><span class="identifier">D2</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rhs</span><span class="special">);</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D1</span><span class="special">,</span>
+          <span class="keyword">class</span> <span class="identifier">Dr2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D2</span><span class="special">&gt;</span>
+<span class="keyword">typename</span> <span class="identifier">enable_if_interoperable</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">Dr2</span><span class="special">,</span><span class="keyword">bool</span><span class="special">&gt;::</span><span class="identifier">type</span>
+<span class="keyword">operator</span> <span class="special">&gt;=(</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">V1</span><span class="special">,</span><span class="identifier">TC1</span><span class="special">,</span><span class="identifier">R1</span><span class="special">,</span><span class="identifier">D1</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">lhs</span><span class="special">,</span>
+            <span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">V2</span><span class="special">,</span><span class="identifier">TC2</span><span class="special">,</span><span class="identifier">R2</span><span class="special">,</span><span class="identifier">D2</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rhs</span><span class="special">);</span>
+
+<span class="comment">// Iterator difference</span>
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D1</span><span class="special">,</span>
+          <span class="keyword">class</span> <span class="identifier">Dr2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D2</span><span class="special">&gt;</span>
+<span class="comment">/* see below__ \*/</span>
+<span class="keyword">operator</span><span class="special">-(</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">V1</span><span class="special">,</span><span class="identifier">TC1</span><span class="special">,</span><span class="identifier">R1</span><span class="special">,</span><span class="identifier">D1</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">lhs</span><span class="special">,</span>
+          <span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">V2</span><span class="special">,</span><span class="identifier">TC2</span><span class="special">,</span><span class="identifier">R2</span><span class="special">,</span><span class="identifier">D2</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rhs</span><span class="special">);</span>
+
+<span class="comment">// Iterator addition</span>
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D</span><span class="special">&gt;</span>
+<span class="identifier">Derived</span> <span class="keyword">operator</span><span class="special">+</span> <span class="special">(</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr</span><span class="special">,</span><span class="identifier">V</span><span class="special">,</span><span class="identifier">TC</span><span class="special">,</span><span class="identifier">R</span><span class="special">,</span><span class="identifier">D</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;,</span>
+                   <span class="keyword">typename</span> <span class="identifier">Derived</span><span class="special">::</span><span class="identifier">difference_type</span> <span class="identifier">n</span><span class="special">);</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D</span><span class="special">&gt;</span>
+<span class="identifier">Derived</span> <span class="keyword">operator</span><span class="special">+</span> <span class="special">(</span><span class="keyword">typename</span> <span class="identifier">Derived</span><span class="special">::</span><span class="identifier">difference_type</span> <span class="identifier">n</span><span class="special">,</span>
+                   <span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr</span><span class="special">,</span><span class="identifier">V</span><span class="special">,</span><span class="identifier">TC</span><span class="special">,</span><span class="identifier">R</span><span class="special">,</span><span class="identifier">D</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;);</span>
+</pre>
+<p>
+          __ <code class="computeroutput"><span class="identifier">iterator</span> <span class="identifier">category</span></code>_
+        </p>
+<p>
+          __ <code class="computeroutput"><span class="keyword">operator</span> <span class="identifier">arrow</span></code>_
+        </p>
+<p>
+          __ brackets_
+        </p>
+<p>
+          __ minus_
+        </p>
+<p>
+          .. _<code class="computeroutput"><span class="identifier">iterator</span> <span class="identifier">category</span></code>:
+        </p>
+<p> <code class="computeroutput"><span class="identifier">iterator_category</span></code> 成员 (属于 <code class="computeroutput"><span class="identifier">iterator_facade</span></code>) 为</p>
+<p>
+          .. parsed-literal::
+        </p>
+<pre class="programlisting"><span class="special">*</span><span class="identifier">iterator</span><span class="special">-</span><span class="identifier">category</span><span class="special">*\</span> <span class="special">(</span><span class="identifier">CategoryOrTraversal</span><span class="special">,</span> <span class="identifier">reference</span><span class="special">,</span> <span class="identifier">value_type</span><span class="special">)</span>
+</pre>
+<p>其中 <span class="bold"><strong>iterator-category</strong></span> (迭代器类别) 定义如下:</p>
+<p>
+          .. include:: facade_iterator_category.rst
+        </p>
+<p>上文使用的 <code class="computeroutput"><span class="identifier">enable_if_interoperable</span></code> 模板仅用于说明. 只要派生类型 <code class="computeroutput"><span class="identifier">Dr1</span></code> 与 <code class="computeroutput"><span class="identifier">Dr2</span></code> 可互操作——即至少其中一个类型可转换为另一个——成员运算符才应进入重载集. <code class="computeroutput"><span class="identifier">enable_if_interoperable</span></code> 方式使用 SFINAE 在类型不可互操作时把运算符移出重载集. 这些运算符的行为应当 <span class="bold"><strong>如同</strong></span> <code class="computeroutput"><span class="identifier">enable_if_interoperable</span></code> 被定义为:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">bool</span><span class="special">,</span> <span class="keyword">typename</span><span class="special">&gt;</span> <span class="identifier">enable_if_interoperable_impl</span>
+<span class="special">{};</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">T</span><span class="special">&gt;</span> <span class="identifier">enable_if_interoperable_impl</span><span class="special">&lt;</span><span class="keyword">true</span><span class="special">,</span><span class="identifier">T</span><span class="special">&gt;</span>
+<span class="special">{</span> <span class="keyword">typedef</span> <span class="identifier">T</span> <span class="identifier">type</span><span class="special">;</span> <span class="special">};</span>
+
+<span class="keyword">template</span><span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Dr1</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Dr2</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">T</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">enable_if_interoperable</span>
+  <span class="special">:</span> <span class="identifier">enable_if_interoperable_impl</span><span class="special">&lt;</span>
+        <span class="identifier">is_convertible</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">Dr2</span><span class="special">&gt;::</span><span class="identifier">value</span> <span class="special">||</span> <span class="identifier">is_convertible</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">Dr1</span><span class="special">&gt;::</span><span class="identifier">value</span>
+      <span class="special">,</span> <span class="identifier">T</span>
+    <span class="special">&gt;</span>
+<span class="special">{};</span>
+</pre>
+<h3>
+<a name="iterator.generic.facade.facade_reference.h0"></a>
+          <span class="phrase"><a name="iterator.generic.facade.facade_reference.requirements"></a></span><a class="link" href="generic.html#iterator.generic.facade.facade_reference.requirements">要求</a>
+        </h3>
+<p>下表描述 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 的 <code class="computeroutput"><span class="identifier">Derived</span></code> 参数上典型的有效表达式, 具体取决于它将要模型化的迭代器概念. 第一列中的操作必须可被类 <code class="computeroutput"><span class="identifier">iterator_core_access</span></code> 的成员函数访问. 此外, <code class="computeroutput"><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span><span class="special">*&gt;(</span><span class="identifier">iterator_facade</span><span class="special">*)</span></code> 必须是良构的.</p>
+<p>在下表中, <code class="computeroutput"><span class="identifier">F</span></code> 为 <code class="computeroutput"><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">X</span><span class="special">,</span><span class="identifier">V</span><span class="special">,</span><span class="identifier">C</span><span class="special">,</span><span class="identifier">R</span><span class="special">,</span><span class="identifier">D</span><span class="special">&gt;</span></code>, <code class="computeroutput"><span class="identifier">a</span></code> 是 <code class="computeroutput"><span class="identifier">X</span></code> 类型的对象, <code class="computeroutput"><span class="identifier">b</span></code> 与 <code class="computeroutput"><span class="identifier">c</span></code> 是 <code class="computeroutput"><span class="keyword">const</span> <span class="identifier">X</span></code> 类型的对象, <code class="computeroutput"><span class="identifier">n</span></code> 是 <code class="computeroutput"><span class="identifier">F</span><span class="special">::</span><span class="identifier">difference_type</span></code> 的对象, <code class="computeroutput"><span class="identifier">y</span></code> 是与 <code class="computeroutput"><span class="identifier">X</span></code> 可互操作的单遍迭代器类型的常量对象, <code class="computeroutput"><span class="identifier">z</span></code> 是与 <code class="computeroutput"><span class="identifier">X</span></code> 可互操作的随机访问遍历迭代器类型的常量对象.</p>
+<p>
+          .. _<code class="computeroutput"><span class="identifier">core</span> <span class="identifier">operations</span></code>:
+        </p>
+<p>.. topic:: <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 核心操作</p>
+<div class="table">
+<a name="iterator.generic.facade.facade_reference.core_operations"></a><p class="title"><b>表 1.11. 核心操作</b></p>
+<div class="table-contents"><table class="table" summary="Core Operations">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>表达式</p>
+                </th>
+<th>
+                  <p>返回类型</p>
+                </th>
+<th>
+                  <p>断言/注释</p>
+                </th>
+<th>
+                  <p>用于实现的迭代器概念</p>
+                </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">c</span><span class="special">.</span><span class="identifier">dereference</span><span class="special">()</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">F</span><span class="special">::</span><span class="identifier">reference</span></code>
+                  </p>
+                </td>
+<td>
+                </td>
+<td>
+                  <p>可读迭代器, 可写迭代器</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">c</span><span class="special">.</span><span class="identifier">equal</span><span class="special">(</span><span class="identifier">y</span><span class="special">)</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>可转换为 bool</p>
+                </td>
+<td>
+                  <p>当且仅当 <code class="computeroutput"><span class="identifier">c</span></code> 与 <code class="computeroutput"><span class="identifier">y</span></code> 指向相同位置时为 true</p>
+                </td>
+<td>
+                  <p>单遍迭代器</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">a</span><span class="special">.</span><span class="identifier">increment</span><span class="special">()</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    unused
+                  </p>
+                </td>
+<td>
+                </td>
+<td>
+                  <p>可递增迭代器</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">a</span><span class="special">.</span><span class="identifier">decrement</span><span class="special">()</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    unused
+                  </p>
+                </td>
+<td>
+                </td>
+<td>
+                  <p>双向遍历迭代器</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">a</span><span class="special">.</span><span class="identifier">advance</span><span class="special">(</span><span class="identifier">n</span><span class="special">)</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    unused
+                  </p>
+                </td>
+<td>
+                </td>
+<td>
+                  <p>随机访问遍历迭代器</p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">c</span><span class="special">.</span><span class="identifier">distance_to</span><span class="special">(</span><span class="identifier">z</span><span class="special">)</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>可转换为 <code class="computeroutput"><span class="identifier">F</span><span class="special">::</span><span class="identifier">difference_type</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>等价于 <code class="computeroutput"><span class="identifier">distance</span><span class="special">(</span><span class="identifier">c</span><span class="special">,</span> <span class="identifier">X</span><span class="special">(</span><span class="identifier">z</span><span class="special">))</span></code>.</p>
+                </td>
+<td>
+                  <p>随机访问遍历迭代器</p>
+                </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><h3>
+<a name="iterator.generic.facade.facade_reference.h1"></a>
+          <span class="phrase"><a name="iterator.generic.facade.facade_reference.operations"></a></span><a class="link" href="generic.html#iterator.generic.facade.facade_reference.operations">操作</a>
+        </h3>
+<p>本节的操作以 <code class="computeroutput"><span class="identifier">Derived</span></code> 核心接口上的操作来描述, 这些操作可能是不可访问的 (即私有的). 实现应当通过类 <code class="computeroutput"><span class="identifier">iterator_core_access</span></code> 的成员函数来访问这些操作.</p>
+<pre class="programlisting"><span class="identifier">reference</span> <span class="keyword">operator</span><span class="special">*()</span> <span class="keyword">const</span><span class="special">;</span>
+</pre>
+<p>
+          <span class="bold"><strong>返回:</strong></span> <code class="computeroutput"><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span>
+          <span class="keyword">const</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">)-&gt;</span><span class="identifier">dereference</span><span class="special">()</span></code>
+        </p>
+<pre class="programlisting"><span class="keyword">operator</span><span class="special">-&gt;()</span> <span class="keyword">const</span><span class="special">;</span> <span class="special">(</span><span class="identifier">see</span> <span class="identifier">below__</span><span class="special">)</span>
+</pre>
+<p>
+          __ <code class="computeroutput"><span class="keyword">operator</span> <span class="identifier">arrow</span></code>_
+        </p>
+<p>
+          <span class="bold"><strong>返回:</strong></span> If <code class="computeroutput"><span class="identifier">reference</span></code> 是引用类型, 则为一个 <code class="computeroutput"><span class="identifier">pointer</span></code> 类型的对象, 等于: <code class="computeroutput"><span class="special">&amp;</span><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span>
+          <span class="keyword">const</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">)-&gt;</span><span class="identifier">dereference</span><span class="special">()</span></code> 否则返回一个未指定类型的对象, 使得 <code class="computeroutput"><span class="special">(*</span><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span>
+          <span class="keyword">const</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">))-&gt;</span><span class="identifier">m</span></code> 等价于 <code class="computeroutput"><span class="special">(</span><span class="identifier">w</span> <span class="special">=</span> <span class="special">**</span><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span>
+          <span class="keyword">const</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">),</span> <span class="identifier">w</span><span class="special">.</span><span class="identifier">m</span><span class="special">)</span></code> 成立, 其中 <code class="computeroutput"><span class="identifier">w</span></code> 是某个 <code class="computeroutput"><span class="identifier">value_type</span></code> 类型的临时对象.</p>
+<p>
+          .. _brackets:
+        </p>
+<pre class="programlisting"><span class="special">*</span><span class="identifier">unspecified</span><span class="special">*</span> <span class="keyword">operator</span><span class="special">[](</span><span class="identifier">difference_type</span> <span class="identifier">n</span><span class="special">)</span> <span class="keyword">const</span><span class="special">;</span>
+</pre>
+<p>
+          <span class="bold"><strong>返回:</strong></span> 可转换为 <code class="computeroutput"><span class="identifier">value_type</span></code> (常量对象<code class="computeroutput"><span class="identifier">v</span></code> (类型为<code class="computeroutput"><span class="identifier">value_type</span></code>) 与<code class="computeroutput"><span class="identifier">n</span></code> (类型为<code class="computeroutput"><span class="identifier">difference_type</span></code>)<code class="computeroutput"><span class="special">(*</span><span class="keyword">this</span><span class="special">)[</span><span class="identifier">n</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">v</span></code> 等价于 <code class="computeroutput"><span class="special">*(*</span><span class="keyword">this</span>
+          <span class="special">+</span> <span class="identifier">n</span><span class="special">)</span> <span class="special">=</span> <span class="identifier">v</span></code>) 与<code class="computeroutput"><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">value_type</span> <span class="keyword">const</span><span class="special">&amp;&gt;((*</span><span class="keyword">this</span><span class="special">)[</span><span class="identifier">n</span><span class="special">])</span></code> 等价于 <code class="computeroutput"><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">value_type</span>
+          <span class="keyword">const</span><span class="special">&amp;&gt;(*(*</span><span class="keyword">this</span> <span class="special">+</span> <span class="identifier">n</span><span class="special">))</span></code>
+        </p>
+<pre class="programlisting"><span class="identifier">Derived</span><span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">++();</span>
+</pre>
+<p>
+          <span class="bold"><strong>Effects:</strong></span>
+        </p>
+<pre class="programlisting">  <span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">)-&gt;</span><span class="identifier">increment</span><span class="special">();</span>
+  <span class="keyword">return</span> <span class="special">*</span><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">);</span>
+
+<span class="identifier">Derived</span> <span class="keyword">operator</span><span class="special">++(</span><span class="keyword">int</span><span class="special">);</span>
+</pre>
+<p>
+          <span class="bold"><strong>Effects:</strong></span>
+        </p>
+<pre class="programlisting">  <span class="identifier">Derived</span> <span class="identifier">tmp</span><span class="special">(</span><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span> <span class="keyword">const</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">));</span>
+  <span class="special">++*</span><span class="keyword">this</span><span class="special">;</span>
+  <span class="keyword">return</span> <span class="identifier">tmp</span><span class="special">;</span>
+
+<span class="identifier">Derived</span><span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">--();</span>
+</pre>
+<p>
+          <span class="bold"><strong>Effects:</strong></span>
+        </p>
+<pre class="programlisting">    <span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">)-&gt;</span><span class="identifier">decrement</span><span class="special">();</span>
+    <span class="keyword">return</span> <span class="special">*</span><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">);</span>
+
+<span class="identifier">Derived</span> <span class="keyword">operator</span><span class="special">--(</span><span class="keyword">int</span><span class="special">);</span>
+</pre>
+<p>
+          <span class="bold"><strong>Effects:</strong></span>
+        </p>
+<pre class="programlisting">  <span class="identifier">Derived</span> <span class="identifier">tmp</span><span class="special">(</span><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span> <span class="keyword">const</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">));</span>
+  <span class="special">--*</span><span class="keyword">this</span><span class="special">;</span>
+  <span class="keyword">return</span> <span class="identifier">tmp</span><span class="special">;</span>
+
+
+<span class="identifier">Derived</span><span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">+=(</span><span class="identifier">difference_type</span> <span class="identifier">n</span><span class="special">);</span>
+</pre>
+<p>
+          <span class="bold"><strong>Effects:</strong></span>
+        </p>
+<pre class="programlisting">    <span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">)-&gt;</span><span class="identifier">advance</span><span class="special">(</span><span class="identifier">n</span><span class="special">);</span>
+    <span class="keyword">return</span> <span class="special">*</span><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">);</span>
+
+
+<span class="identifier">Derived</span><span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">-=(</span><span class="identifier">difference_type</span> <span class="identifier">n</span><span class="special">);</span>
+</pre>
+<p>
+          <span class="bold"><strong>Effects:</strong></span>
+        </p>
+<pre class="programlisting">    <span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">)-&gt;</span><span class="identifier">advance</span><span class="special">(-</span><span class="identifier">n</span><span class="special">);</span>
+    <span class="keyword">return</span> <span class="special">*</span><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">);</span>
+
+
+<span class="identifier">Derived</span> <span class="keyword">operator</span><span class="special">-(</span><span class="identifier">difference_type</span> <span class="identifier">n</span><span class="special">)</span> <span class="keyword">const</span><span class="special">;</span>
+</pre>
+<p>
+          <span class="bold"><strong>Effects:</strong></span>
+        </p>
+<pre class="programlisting">  <span class="identifier">Derived</span> <span class="identifier">tmp</span><span class="special">(</span><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span> <span class="keyword">const</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">));</span>
+  <span class="keyword">return</span> <span class="identifier">tmp</span> <span class="special">-=</span> <span class="identifier">n</span><span class="special">;</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D</span><span class="special">&gt;</span>
+<span class="identifier">Derived</span> <span class="keyword">operator</span><span class="special">+</span> <span class="special">(</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr</span><span class="special">,</span><span class="identifier">V</span><span class="special">,</span><span class="identifier">TC</span><span class="special">,</span><span class="identifier">R</span><span class="special">,</span><span class="identifier">D</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;,</span>
+                   <span class="keyword">typename</span> <span class="identifier">Derived</span><span class="special">::</span><span class="identifier">difference_type</span> <span class="identifier">n</span><span class="special">);</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D</span><span class="special">&gt;</span>
+<span class="identifier">Derived</span> <span class="keyword">operator</span><span class="special">+</span> <span class="special">(</span><span class="keyword">typename</span> <span class="identifier">Derived</span><span class="special">::</span><span class="identifier">difference_type</span> <span class="identifier">n</span><span class="special">,</span>
+                   <span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr</span><span class="special">,</span><span class="identifier">V</span><span class="special">,</span><span class="identifier">TC</span><span class="special">,</span><span class="identifier">R</span><span class="special">,</span><span class="identifier">D</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;);</span>
+</pre>
+<p>
+          <span class="bold"><strong>Effects:</strong></span>
+        </p>
+<pre class="programlisting">  <span class="identifier">Derived</span> <span class="identifier">tmp</span><span class="special">(</span><span class="keyword">static_cast</span><span class="special">&lt;</span><span class="identifier">Derived</span> <span class="keyword">const</span><span class="special">*&gt;(</span><span class="keyword">this</span><span class="special">));</span>
+  <span class="keyword">return</span> <span class="identifier">tmp</span> <span class="special">+=</span> <span class="identifier">n</span><span class="special">;</span>
+
+<span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D1</span><span class="special">,</span>
+          <span class="keyword">class</span> <span class="identifier">Dr2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D2</span><span class="special">&gt;</span>
+<span class="keyword">typename</span> <span class="identifier">enable_if_interoperable</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">Dr2</span><span class="special">,</span><span class="keyword">bool</span><span class="special">&gt;::</span><span class="identifier">type</span>
+<span class="keyword">operator</span> <span class="special">==(</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">V1</span><span class="special">,</span><span class="identifier">TC1</span><span class="special">,</span><span class="identifier">R1</span><span class="special">,</span><span class="identifier">D1</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">lhs</span><span class="special">,</span>
+            <span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">V2</span><span class="special">,</span><span class="identifier">TC2</span><span class="special">,</span><span class="identifier">R2</span><span class="special">,</span><span class="identifier">D2</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rhs</span><span class="special">);</span>
+</pre>
+<p>
+          <span class="bold"><strong>返回:</strong></span>
+        </p>
+<pre class="programlisting">  if <code class="computeroutput"><span class="identifier">is_convertible</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">Dr1</span><span class="special">&gt;::</span><span class="identifier">value</span></code>
+
+  then
+    <code class="computeroutput"><span class="special">((</span><span class="identifier">Dr1</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">lhs</span><span class="special">).</span><span class="identifier">equal</span><span class="special">((</span><span class="identifier">Dr2</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">rhs</span><span class="special">)</span></code>.
+
+  Otherwise,
+    <code class="computeroutput"><span class="special">((</span><span class="identifier">Dr2</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">rhs</span><span class="special">).</span><span class="identifier">equal</span><span class="special">((</span><span class="identifier">Dr1</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">lhs</span><span class="special">)</span></code>.
+</pre>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D1</span><span class="special">,</span>
+          <span class="keyword">class</span> <span class="identifier">Dr2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D2</span><span class="special">&gt;</span>
+<span class="keyword">typename</span> <span class="identifier">enable_if_interoperable</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">Dr2</span><span class="special">,</span><span class="keyword">bool</span><span class="special">&gt;::</span><span class="identifier">type</span>
+<span class="keyword">operator</span> <span class="special">!=(</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">V1</span><span class="special">,</span><span class="identifier">TC1</span><span class="special">,</span><span class="identifier">R1</span><span class="special">,</span><span class="identifier">D1</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">lhs</span><span class="special">,</span>
+            <span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">V2</span><span class="special">,</span><span class="identifier">TC2</span><span class="special">,</span><span class="identifier">R2</span><span class="special">,</span><span class="identifier">D2</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rhs</span><span class="special">);</span>
+</pre>
+<p>
+          <span class="bold"><strong>返回:</strong></span>
+        </p>
+<pre class="programlisting">  if <code class="computeroutput"><span class="identifier">is_convertible</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">Dr1</span><span class="special">&gt;::</span><span class="identifier">value</span></code>
+
+  then
+    <code class="computeroutput"><span class="special">!((</span><span class="identifier">Dr1</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">lhs</span><span class="special">).</span><span class="identifier">equal</span><span class="special">((</span><span class="identifier">Dr2</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">rhs</span><span class="special">)</span></code>.
+
+  Otherwise,
+    <code class="computeroutput"><span class="special">!((</span><span class="identifier">Dr2</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">rhs</span><span class="special">).</span><span class="identifier">equal</span><span class="special">((</span><span class="identifier">Dr1</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">lhs</span><span class="special">)</span></code>.
+</pre>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D1</span><span class="special">,</span>
+          <span class="keyword">class</span> <span class="identifier">Dr2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D2</span><span class="special">&gt;</span>
+<span class="keyword">typename</span> <span class="identifier">enable_if_interoperable</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">Dr2</span><span class="special">,</span><span class="keyword">bool</span><span class="special">&gt;::</span><span class="identifier">type</span>
+<span class="keyword">operator</span> <span class="special">&lt;(</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">V1</span><span class="special">,</span><span class="identifier">TC1</span><span class="special">,</span><span class="identifier">R1</span><span class="special">,</span><span class="identifier">D1</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">lhs</span><span class="special">,</span>
+           <span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">V2</span><span class="special">,</span><span class="identifier">TC2</span><span class="special">,</span><span class="identifier">R2</span><span class="special">,</span><span class="identifier">D2</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rhs</span><span class="special">);</span>
+</pre>
+<p>
+          <span class="bold"><strong>返回:</strong></span>
+        </p>
+<pre class="programlisting">  if <code class="computeroutput"><span class="identifier">is_convertible</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">Dr1</span><span class="special">&gt;::</span><span class="identifier">value</span></code>
+
+  then
+    <code class="computeroutput"><span class="special">((</span><span class="identifier">Dr1</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">lhs</span><span class="special">).</span><span class="identifier">distance_to</span><span class="special">((</span><span class="identifier">Dr2</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">rhs</span><span class="special">)</span> <span class="special">&lt;</span> <span class="number">0</span></code>.
+
+  Otherwise,
+    <code class="computeroutput"><span class="special">((</span><span class="identifier">Dr2</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">rhs</span><span class="special">).</span><span class="identifier">distance_to</span><span class="special">((</span><span class="identifier">Dr1</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">lhs</span><span class="special">)</span> <span class="special">&gt;</span> <span class="number">0</span></code>.
+</pre>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D1</span><span class="special">,</span>
+          <span class="keyword">class</span> <span class="identifier">Dr2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D2</span><span class="special">&gt;</span>
+<span class="keyword">typename</span> <span class="identifier">enable_if_interoperable</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">Dr2</span><span class="special">,</span><span class="keyword">bool</span><span class="special">&gt;::</span><span class="identifier">type</span>
+<span class="keyword">operator</span> <span class="special">&lt;=(</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">V1</span><span class="special">,</span><span class="identifier">TC1</span><span class="special">,</span><span class="identifier">R1</span><span class="special">,</span><span class="identifier">D1</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">lhs</span><span class="special">,</span>
+            <span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">V2</span><span class="special">,</span><span class="identifier">TC2</span><span class="special">,</span><span class="identifier">R2</span><span class="special">,</span><span class="identifier">D2</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rhs</span><span class="special">);</span>
+</pre>
+<p>
+          <span class="bold"><strong>返回:</strong></span>
+        </p>
+<pre class="programlisting">  if <code class="computeroutput"><span class="identifier">is_convertible</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">Dr1</span><span class="special">&gt;::</span><span class="identifier">value</span></code>
+
+  then
+    <code class="computeroutput"><span class="special">((</span><span class="identifier">Dr1</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">lhs</span><span class="special">).</span><span class="identifier">distance_to</span><span class="special">((</span><span class="identifier">Dr2</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">rhs</span><span class="special">)</span> <span class="special">&lt;=</span> <span class="number">0</span></code>.
+
+  Otherwise,
+    <code class="computeroutput"><span class="special">((</span><span class="identifier">Dr2</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">rhs</span><span class="special">).</span><span class="identifier">distance_to</span><span class="special">((</span><span class="identifier">Dr1</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">lhs</span><span class="special">)</span> <span class="special">&gt;=</span> <span class="number">0</span></code>.
+</pre>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D1</span><span class="special">,</span>
+          <span class="keyword">class</span> <span class="identifier">Dr2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D2</span><span class="special">&gt;</span>
+<span class="keyword">typename</span> <span class="identifier">enable_if_interoperable</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">Dr2</span><span class="special">,</span><span class="keyword">bool</span><span class="special">&gt;::</span><span class="identifier">type</span>
+<span class="keyword">operator</span> <span class="special">&gt;(</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">V1</span><span class="special">,</span><span class="identifier">TC1</span><span class="special">,</span><span class="identifier">R1</span><span class="special">,</span><span class="identifier">D1</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">lhs</span><span class="special">,</span>
+           <span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">V2</span><span class="special">,</span><span class="identifier">TC2</span><span class="special">,</span><span class="identifier">R2</span><span class="special">,</span><span class="identifier">D2</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rhs</span><span class="special">);</span>
+</pre>
+<p>
+          <span class="bold"><strong>返回:</strong></span>
+        </p>
+<pre class="programlisting">  if <code class="computeroutput"><span class="identifier">is_convertible</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">Dr1</span><span class="special">&gt;::</span><span class="identifier">value</span></code>
+
+  then
+    <code class="computeroutput"><span class="special">((</span><span class="identifier">Dr1</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">lhs</span><span class="special">).</span><span class="identifier">distance_to</span><span class="special">((</span><span class="identifier">Dr2</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">rhs</span><span class="special">)</span> <span class="special">&gt;</span> <span class="number">0</span></code>.
+
+  Otherwise,
+    <code class="computeroutput"><span class="special">((</span><span class="identifier">Dr2</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">rhs</span><span class="special">).</span><span class="identifier">distance_to</span><span class="special">((</span><span class="identifier">Dr1</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">lhs</span><span class="special">)</span> <span class="special">&lt;</span> <span class="number">0</span></code>.
+</pre>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D1</span><span class="special">,</span>
+          <span class="keyword">class</span> <span class="identifier">Dr2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D2</span><span class="special">&gt;</span>
+<span class="keyword">typename</span> <span class="identifier">enable_if_interoperable</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">Dr2</span><span class="special">,</span><span class="keyword">bool</span><span class="special">&gt;::</span><span class="identifier">type</span>
+<span class="keyword">operator</span> <span class="special">&gt;=(</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">V1</span><span class="special">,</span><span class="identifier">TC1</span><span class="special">,</span><span class="identifier">R1</span><span class="special">,</span><span class="identifier">D1</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">lhs</span><span class="special">,</span>
+            <span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">V2</span><span class="special">,</span><span class="identifier">TC2</span><span class="special">,</span><span class="identifier">R2</span><span class="special">,</span><span class="identifier">D2</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rhs</span><span class="special">);</span>
+</pre>
+<p>
+          <span class="bold"><strong>返回:</strong></span>
+        </p>
+<pre class="programlisting">  if <code class="computeroutput"><span class="identifier">is_convertible</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">Dr1</span><span class="special">&gt;::</span><span class="identifier">value</span></code>
+
+  then
+    <code class="computeroutput"><span class="special">((</span><span class="identifier">Dr1</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">lhs</span><span class="special">).</span><span class="identifier">distance_to</span><span class="special">((</span><span class="identifier">Dr2</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">rhs</span><span class="special">)</span> <span class="special">&gt;=</span> <span class="number">0</span></code>.
+
+  Otherwise,
+    <code class="computeroutput"><span class="special">((</span><span class="identifier">Dr2</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">rhs</span><span class="special">).</span><span class="identifier">distance_to</span><span class="special">((</span><span class="identifier">Dr1</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">lhs</span><span class="special">)</span> <span class="special">&lt;=</span> <span class="number">0</span></code>.
+</pre>
+<p>
+          .. _minus:
+        </p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Dr1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R1</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D1</span><span class="special">,</span>
+          <span class="keyword">class</span> <span class="identifier">Dr2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">V2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">TC2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">R2</span><span class="special">,</span> <span class="keyword">class</span> <span class="identifier">D2</span><span class="special">&gt;</span>
+<span class="keyword">typename</span> <span class="identifier">enable_if_interoperable</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">difference</span><span class="special">&gt;::</span><span class="identifier">type</span>
+<span class="keyword">operator</span> <span class="special">-(</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">,</span><span class="identifier">V1</span><span class="special">,</span><span class="identifier">TC1</span><span class="special">,</span><span class="identifier">R1</span><span class="special">,</span><span class="identifier">D1</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">lhs</span><span class="special">,</span>
+           <span class="identifier">iterator_facade</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">V2</span><span class="special">,</span><span class="identifier">TC2</span><span class="special">,</span><span class="identifier">R2</span><span class="special">,</span><span class="identifier">D2</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">rhs</span><span class="special">);</span>
+</pre>
+<p>
+          <span class="bold"><strong>返回类型:</strong></span>
+        </p>
+<pre class="programlisting">  if <code class="computeroutput"><span class="identifier">is_convertible</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">Dr1</span><span class="special">&gt;::</span><span class="identifier">value</span></code>
+
+   then
+    <code class="computeroutput"><span class="identifier">difference</span></code> shall be
+    <code class="computeroutput"><span class="identifier">iterator_traits</span><span class="special">&lt;</span><span class="identifier">Dr1</span><span class="special">&gt;::</span><span class="identifier">difference_type</span></code>.
+
+   Otherwise
+    <code class="computeroutput"><span class="identifier">difference</span></code> shall be <code class="computeroutput"><span class="identifier">iterator_traits</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">&gt;::</span><span class="identifier">difference_type</span></code>
+</pre>
+<p>
+          <span class="bold"><strong>返回:</strong></span>
+        </p>
+<pre class="programlisting">  if <code class="computeroutput"><span class="identifier">is_convertible</span><span class="special">&lt;</span><span class="identifier">Dr2</span><span class="special">,</span><span class="identifier">Dr1</span><span class="special">&gt;::</span><span class="identifier">value</span></code>
+
+  then
+    <code class="computeroutput"><span class="special">-((</span><span class="identifier">Dr1</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">lhs</span><span class="special">).</span><span class="identifier">distance_to</span><span class="special">((</span><span class="identifier">Dr2</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">rhs</span><span class="special">)</span></code>.
+
+  Otherwise,
+    <code class="computeroutput"><span class="special">((</span><span class="identifier">Dr2</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">rhs</span><span class="special">).</span><span class="identifier">distance_to</span><span class="special">((</span><span class="identifier">Dr1</span> <span class="keyword">const</span><span class="special">&amp;)</span><span class="identifier">lhs</span><span class="special">)</span></code>.
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="iterator.generic.facade.facade_tutorial"></a><a class="link" href="generic.html#iterator.generic.facade.facade_tutorial" title="Tutorial">Tutorial</a>
+</h4></div></div></div>
+<p>本节将基于多态对象链表的简单示例, 讲解如何用 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 实现几个迭代器. 本示例的灵感来自 Keith Macdonald 发表在 <a href="http://thread.gmane.org/gmane.comp.lib.boost.user/5100" target="_top"><code class="computeroutput"><span class="identifier">posting</span></code></a> 邮件列表 (<a href="http://www.boost.org/more/mailing_lists.htm#users" target="_top"><code class="computeroutput"><span class="identifier">Boost</span><span class="special">-</span><span class="identifier">Users</span></code></a>) 上的一篇文章.</p>
+<h3>
+<a name="iterator.generic.facade.facade_tutorial.h0"></a>
+          <span class="phrase"><a name="iterator.generic.facade.facade_tutorial.the_problem"></a></span><a class="link" href="generic.html#iterator.generic.facade.facade_tutorial.the_problem">问题所在</a>
+        </h3>
+<p>假设我们已经写了一个多态链表节点基类:</p>
+<pre class="programlisting"><span class="preprocessor"># include</span> <span class="special">&lt;</span><span class="identifier">iostream</span><span class="special">&gt;</span>
+
+<span class="keyword">struct</span> <span class="identifier">node_base</span>
+<span class="special">{</span>
+    <span class="identifier">node_base</span><span class="special">()</span> <span class="special">:</span> <span class="identifier">m_next</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">{}</span>
+
+    <span class="comment">// Each node manages all of its tail nodes</span>
+    <span class="keyword">virtual</span> <span class="special">~</span><span class="identifier">node_base</span><span class="special">()</span> <span class="special">{</span> <span class="keyword">delete</span> <span class="identifier">m_next</span><span class="special">;</span> <span class="special">}</span>
+
+    <span class="comment">// Access the rest of the list</span>
+    <span class="identifier">node_base</span><span class="special">*</span> <span class="identifier">next</span><span class="special">()</span> <span class="keyword">const</span> <span class="special">{</span> <span class="keyword">return</span> <span class="identifier">m_next</span><span class="special">;</span> <span class="special">}</span>
+
+    <span class="comment">// print to the stream</span>
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">print</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">ostream</span><span class="special">&amp;</span> <span class="identifier">s</span><span class="special">)</span> <span class="keyword">const</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+
+    <span class="comment">// double the value</span>
+    <span class="keyword">virtual</span> <span class="keyword">void</span> <span class="identifier">double_me</span><span class="special">()</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+
+    <span class="keyword">void</span> <span class="identifier">append</span><span class="special">(</span><span class="identifier">node_base</span><span class="special">*</span> <span class="identifier">p</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="keyword">if</span> <span class="special">(</span><span class="identifier">m_next</span><span class="special">)</span>
+            <span class="identifier">m_next</span><span class="special">-&gt;</span><span class="identifier">append</span><span class="special">(</span><span class="identifier">p</span><span class="special">);</span>
+        <span class="keyword">else</span>
+            <span class="identifier">m_next</span> <span class="special">=</span> <span class="identifier">p</span><span class="special">;</span>
+    <span class="special">}</span>
+
+ <span class="keyword">private</span><span class="special">:</span>
+    <span class="identifier">node_base</span><span class="special">*</span> <span class="identifier">m_next</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>通过把以下模板的各特化链接起来, 链表可以持有不同类型的对象:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">T</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">node</span> <span class="special">:</span> <span class="identifier">node_base</span>
+<span class="special">{</span>
+    <span class="identifier">node</span><span class="special">(</span><span class="identifier">T</span> <span class="identifier">x</span><span class="special">)</span>
+      <span class="special">:</span> <span class="identifier">m_value</span><span class="special">(</span><span class="identifier">x</span><span class="special">)</span>
+    <span class="special">{}</span>
+
+    <span class="keyword">void</span> <span class="identifier">print</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">ostream</span><span class="special">&amp;</span> <span class="identifier">s</span><span class="special">)</span> <span class="keyword">const</span> <span class="special">{</span> <span class="identifier">s</span> <span class="special">&lt;&lt;</span> <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">m_value</span><span class="special">;</span> <span class="special">}</span>
+    <span class="keyword">void</span> <span class="identifier">double_me</span><span class="special">()</span> <span class="special">{</span> <span class="identifier">m_value</span> <span class="special">+=</span> <span class="identifier">m_value</span><span class="special">;</span> <span class="special">}</span>
+
+ <span class="keyword">private</span><span class="special">:</span>
+    <span class="identifier">T</span> <span class="identifier">m_value</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>我们可以使用以下流运算符打印任意节点:</p>
+<pre class="programlisting"><span class="keyword">inline</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">ostream</span><span class="special">&amp;</span> <span class="keyword">operator</span><span class="special">&lt;&lt;(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">ostream</span><span class="special">&amp;</span> <span class="identifier">s</span><span class="special">,</span> <span class="identifier">node_base</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">n</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">n</span><span class="special">.</span><span class="identifier">print</span><span class="special">(</span><span class="identifier">s</span><span class="special">);</span>
+    <span class="keyword">return</span> <span class="identifier">s</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>我们的第一个挑战是为这些链表构建一个合适的迭代器.</p>
+<h3>
+<a name="iterator.generic.facade.facade_tutorial.h1"></a>
+          <span class="phrase"><a name="iterator.generic.facade.facade_tutorial.a_basic_iterator_using_iterator_"></a></span><a class="link" href="generic.html#iterator.generic.facade.facade_tutorial.a_basic_iterator_using_iterator_">基本迭代器: 使用 <code class="computeroutput"><span class="identifier">iterator_facade</span></code></a>
+        </h3>
+<p>我们将构造一个 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 类, 利用从 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 的继承来实现该迭代器的大部分操作.</p>
+<pre class="programlisting"><span class="preprocessor"># include</span> <span class="string">"node.hpp"</span>
+<span class="preprocessor"># include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">iterator</span><span class="special">/</span><span class="identifier">iterator_facade</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">class</span> <span class="identifier">node_iterator</span>
+  <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">iterator_facade</span><span class="special">&lt;...&gt;</span>
+<span class="special">{</span>
+   <span class="special">...</span>
+<span class="special">};</span>
+</pre>
+<h3>
+<a name="iterator.generic.facade.facade_tutorial.h2"></a>
+          <span class="phrase"><a name="iterator.generic.facade.facade_tutorial.template_arguments_for_iterator_"></a></span><a class="link" href="generic.html#iterator.generic.facade.facade_tutorial.template_arguments_for_iterator_">模板实参: <code class="computeroutput"><span class="identifier">iterator_facade</span></code></a>
+        </h3>
+<p>
+          <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 有若干模板参数, 因此我们必须决定各实参使用什么类型. 这些参数是 <code class="computeroutput"><span class="identifier">Derived</span></code>、<code class="computeroutput"><span class="identifier">Value</span></code>、<code class="computeroutput"><span class="identifier">CategoryOrTraversal</span></code>、<code class="computeroutput"><span class="identifier">Reference</span></code> 与 <code class="computeroutput"><span class="identifier">Difference</span></code>.</p>
+<h4>
+<a name="iterator.generic.facade.facade_tutorial.h3"></a>
+          <span class="phrase"><a name="iterator.generic.facade.facade_tutorial.derived"></a></span><a class="link" href="generic.html#iterator.generic.facade.facade_tutorial.derived"><code class="computeroutput"><span class="identifier">Derived</span></code></a>
+        </h4>
+<p>由于 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 预期与 CRTP [Cop95]_ 一起使用, 第一个参数是迭代器类名本身, 即 <code class="computeroutput"><span class="identifier">node_iterator</span></code>.</p>
+<h4>
+<a name="iterator.generic.facade.facade_tutorial.h4"></a>
+          <span class="phrase"><a name="iterator.generic.facade.facade_tutorial.value"></a></span><a class="link" href="generic.html#iterator.generic.facade.facade_tutorial.value"><code class="computeroutput"><span class="identifier">Value</span></code></a>
+        </h4>
+<p> <code class="computeroutput"><span class="identifier">Value</span></code> 参数决定 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 的 <code class="computeroutput"><span class="identifier">value_type</span></code>. 本例中我们遍历的是 <code class="computeroutput"><span class="identifier">node_base</span></code> 对象, 因此 <code class="computeroutput"><span class="identifier">Value</span></code> 将为 <code class="computeroutput"><span class="identifier">node_base</span></code>.</p>
+<h4>
+<a name="iterator.generic.facade.facade_tutorial.h5"></a>
+          <span class="phrase"><a name="iterator.generic.facade.facade_tutorial.categoryortraversal"></a></span><a class="link" href="generic.html#iterator.generic.facade.facade_tutorial.categoryortraversal"><code class="computeroutput"><span class="identifier">CategoryOrTraversal</span></code></a>
+        </h4>
+<p>现在我们必须确定 <code class="computeroutput"><span class="identifier">iterator</span>
+          <span class="identifier">traversal</span> <span class="identifier">concept</span></code>_ ——我们的 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 要模型化哪一个. 单向链表只有前向链接, 因此我们的迭代器不能是 <code class="computeroutput"><span class="identifier">bidirectional</span>
+          <span class="identifier">traversal</span> <span class="identifier">iterator</span></code>_. 我们的迭代器应当能够对同一链表进行多遍遍历 (不同于例如 <code class="computeroutput"><span class="identifier">istream_iterator</span></code> 那样会消耗其遍历的流), 因此它必须是 <code class="computeroutput"><span class="identifier">forward</span> <span class="identifier">traversal</span>
+          <span class="identifier">iterator</span></code>_. 因此, 我们将在此位置传入 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">forward_traversal_tag</span></code> <a name="category"></a>_.</p>
+<p>.. <a name="category0"></a><code class="computeroutput"><span class="identifier">iterator_facade</span></code> 也支持旧式类别标签, 因此我们也可以在此传入 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">forward_iterator_tag</span></code>; 无论如何, 所得迭代器的 <code class="computeroutput"><span class="identifier">iterator_category</span></code> 最终都会是 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">forward_iterator_tag</span></code>.</p>
+<h4>
+<a name="iterator.generic.facade.facade_tutorial.h6"></a>
+          <span class="phrase"><a name="iterator.generic.facade.facade_tutorial.reference"></a></span><a class="link" href="generic.html#iterator.generic.facade.facade_tutorial.reference"><code class="computeroutput"><span class="identifier">Reference</span></code></a>
+        </h4>
+<p> <code class="computeroutput"><span class="identifier">Reference</span></code> 实参成为 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 的解引用操作所返回的类型, 并且也将与 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">iterator_traits</span><span class="special">&lt;</span><span class="identifier">node_iterator</span><span class="special">&gt;::</span><span class="identifier">reference</span></code> 相同. 库对该参数的默认值为 <code class="computeroutput"><span class="identifier">Value</span><span class="special">&amp;</span></code>; 由于 <code class="computeroutput"><span class="identifier">node_base</span><span class="special">&amp;</span></code> 对该迭代器的 <code class="computeroutput"><span class="identifier">reference</span></code> 类型是个好选择, 我们可以省略该实参, 或传入 <code class="computeroutput"><span class="identifier">use_default</span></code>.</p>
+<h4>
+<a name="iterator.generic.facade.facade_tutorial.h7"></a>
+          <span class="phrase"><a name="iterator.generic.facade.facade_tutorial.difference"></a></span><a class="link" href="generic.html#iterator.generic.facade.facade_tutorial.difference"><code class="computeroutput"><span class="identifier">Difference</span></code></a>
+        </h4>
+<p> <code class="computeroutput"><span class="identifier">Difference</span></code> 实参决定两个 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 之间的距离如何测量, 并且也将与 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">iterator_traits</span><span class="special">&lt;</span><span class="identifier">node_iterator</span><span class="special">&gt;::</span><span class="identifier">difference_type</span></code> 相同. 库对 <code class="computeroutput"><span class="identifier">Difference</span></code> 的默认值为 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">ptrdiff_t</span></code>——一个适合测量内存中任意两个地址之间距离的类型, 且几乎适用于任何迭代器, 因此我们也可以省略这个实参.</p>
+<p>因此 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 的声明将类似于:</p>
+<pre class="programlisting"><span class="preprocessor"># include</span> <span class="string">"node.hpp"</span>
+<span class="preprocessor"># include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">iterator</span><span class="special">/</span><span class="identifier">iterator_facade</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">class</span> <span class="identifier">node_iterator</span>
+  <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span>
+        <span class="identifier">node_iterator</span>
+      <span class="special">,</span> <span class="identifier">node_base</span>
+      <span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">forward_traversal_tag</span>
+    <span class="special">&gt;</span>
+<span class="special">{</span>
+   <span class="special">...</span>
+<span class="special">};</span>
+</pre>
+<h3>
+<a name="iterator.generic.facade.facade_tutorial.h8"></a>
+          <span class="phrase"><a name="iterator.generic.facade.facade_tutorial.constructors_and_data_members"></a></span><a class="link" href="generic.html#iterator.generic.facade.facade_tutorial.constructors_and_data_members">构造函数与数据成员</a>
+        </h3>
+<p>接下来我们需要决定如何表示迭代器的位置. 该表示将以数据成员的形式出现, 因此我们还需要编写构造函数来初始化它们. <code class="computeroutput"><span class="identifier">node_iterator</span></code> 的位置用指向 <code class="computeroutput"><span class="identifier">node_base</span></code> 的指针来表示十分自然. 我们需要一个从 <code class="computeroutput"><span class="identifier">node_base</span><span class="special">*</span></code> 构造迭代器的构造函数, 以及一个满足 <code class="computeroutput"><span class="identifier">forward</span> <span class="identifier">traversal</span>
+          <span class="identifier">iterator</span></code>_ 要求的默认构造函数 <a name="default"></a>_. 我们的 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 于是变为:</p>
+<pre class="programlisting"><span class="preprocessor"># include</span> <span class="string">"node.hpp"</span>
+<span class="preprocessor"># include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">iterator</span><span class="special">/</span><span class="identifier">iterator_facade</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">class</span> <span class="identifier">node_iterator</span>
+  <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span>
+        <span class="identifier">node_iterator</span>
+      <span class="special">,</span> <span class="identifier">node_base</span>
+      <span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">forward_traversal_tag</span>
+    <span class="special">&gt;</span>
+<span class="special">{</span>
+ <span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">node_iterator</span><span class="special">()</span>
+      <span class="special">:</span> <span class="identifier">m_node</span><span class="special">(</span><span class="number">0</span><span class="special">)</span>
+    <span class="special">{}</span>
+
+    <span class="keyword">explicit</span> <span class="identifier">node_iterator</span><span class="special">(</span><span class="identifier">node_base</span><span class="special">*</span> <span class="identifier">p</span><span class="special">)</span>
+      <span class="special">:</span> <span class="identifier">m_node</span><span class="special">(</span><span class="identifier">p</span><span class="special">)</span>
+    <span class="special">{}</span>
+
+ <span class="keyword">private</span><span class="special">:</span>
+    <span class="special">...</span>
+    <span class="identifier">node_base</span><span class="special">*</span> <span class="identifier">m_node</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>.. <a name="default0"></a>严格来说, C++ 标准对默认构造的迭代器几乎没有任何要求, 因此如果我们真的关心效率, 可以把默认构造函数写成让 <code class="computeroutput"><span class="identifier">m_node</span></code> 保持未初始化.</p>
+<h3>
+<a name="iterator.generic.facade.facade_tutorial.h9"></a>
+          <span class="phrase"><a name="iterator.generic.facade.facade_tutorial.implementing_the_core_operations"></a></span><a class="link" href="generic.html#iterator.generic.facade.facade_tutorial.implementing_the_core_operations">实现核心操作</a>
+        </h3>
+<p>最后一步是实现我们希望迭代器模型化的概念所要求的 <code class="computeroutput"><span class="identifier">core</span>
+          <span class="identifier">operations</span></code>_. 参照 table__, 可以看到前三行适用, 因为 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 需要满足 <code class="computeroutput"><span class="identifier">readable</span>
+          <span class="identifier">iterator</span></code>_、<code class="computeroutput"><span class="identifier">single</span>
+          <span class="identifier">pass</span> <span class="identifier">iterator</span></code>_ 与 <code class="computeroutput"><span class="identifier">incrementable</span> <span class="identifier">iterator</span></code>_ 的要求.</p>
+<p>
+          __ <code class="computeroutput"><span class="identifier">core</span> <span class="identifier">operations</span></code>_
+        </p>
+<p>因此我们需要提供 <code class="computeroutput"><span class="identifier">dereference</span></code>、<code class="computeroutput"><span class="identifier">equal</span></code> 与 <code class="computeroutput"><span class="identifier">increment</span></code> 成员. 我们不希望这些成员成为 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 公有接口的一部分, 所以可以把它们设为私有, 并向 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">iterator_core_access</span></code> 授予友元关系——它是 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 用来访问核心操作的"后门":</p>
+<pre class="programlisting"><span class="preprocessor"># include</span> <span class="string">"node.hpp"</span>
+<span class="preprocessor"># include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">iterator</span><span class="special">/</span><span class="identifier">iterator_facade</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">class</span> <span class="identifier">node_iterator</span>
+  <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span>
+        <span class="identifier">node_iterator</span>
+      <span class="special">,</span> <span class="identifier">node_base</span>
+      <span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">forward_traversal_tag</span>
+    <span class="special">&gt;</span>
+<span class="special">{</span>
+ <span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">node_iterator</span><span class="special">()</span>
+      <span class="special">:</span> <span class="identifier">m_node</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">{}</span>
+
+    <span class="keyword">explicit</span> <span class="identifier">node_iterator</span><span class="special">(</span><span class="identifier">node_base</span><span class="special">*</span> <span class="identifier">p</span><span class="special">)</span>
+      <span class="special">:</span> <span class="identifier">m_node</span><span class="special">(</span><span class="identifier">p</span><span class="special">)</span> <span class="special">{}</span>
+
+ <span class="keyword">private</span><span class="special">:</span>
+    <span class="keyword">friend</span> <span class="keyword">class</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">iterator_core_access</span><span class="special">;</span>
+
+    <span class="keyword">void</span> <span class="identifier">increment</span><span class="special">()</span> <span class="special">{</span> <span class="identifier">m_node</span> <span class="special">=</span> <span class="identifier">m_node</span><span class="special">-&gt;</span><span class="identifier">next</span><span class="special">();</span> <span class="special">}</span>
+
+    <span class="keyword">bool</span> <span class="identifier">equal</span><span class="special">(</span><span class="identifier">node_iterator</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">other</span><span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">return</span> <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">m_node</span> <span class="special">==</span> <span class="identifier">other</span><span class="special">.</span><span class="identifier">m_node</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="identifier">node_base</span><span class="special">&amp;</span> <span class="identifier">dereference</span><span class="special">()</span> <span class="keyword">const</span> <span class="special">{</span> <span class="keyword">return</span> <span class="special">*</span><span class="identifier">m_node</span><span class="special">;</span> <span class="special">}</span>
+
+    <span class="identifier">node_base</span><span class="special">*</span> <span class="identifier">m_node</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<p>瞧, 一个完整且符合规范的可读前向遍历迭代器! 关于其使用的可运行示例, 参见 <a href="../../../example/node_iterator1.cpp" target="_top">this program</a>.</p>
+<p>
+          __ ../../example/node_iterator1.cpp
+        </p>
+<h3>
+<a name="iterator.generic.facade.facade_tutorial.h10"></a>
+          <span class="phrase"><a name="iterator.generic.facade.facade_tutorial.a_constant_node_iterator"></a></span><a class="link" href="generic.html#iterator.generic.facade.facade_tutorial.a_constant_node_iterator">常量 <code class="computeroutput"><span class="identifier">node_iterator</span></code></a>
+        </h3>
+<div class="blurb">
+<div class="titlepage"><div><div><p class="title"><b></b></p></div></div></div>
+<p>
+          <span class="bold"><strong>常量与可变迭代器</strong></span><br>
+          <br> 术语 **可变迭代器 (mutable iterator)** 指经由它可以修改所引用对象 (其"引用对象") 的迭代器. **常量迭代器 (constant iterator)** 则是不允许修改其引用对象的迭代器.<br>
+          <br> <span class="bold"><strong>常量</strong></span> 与 <span class="bold"><strong>可变</strong></span> 这两个词并不指修改迭代器本身的能力. 例如, <code class="computeroutput"><span class="keyword">int</span>
+          <span class="keyword">const</span><span class="special">*</span></code> 是一个非 <code class="computeroutput"><span class="keyword">const</span></code> 的 <span class="bold"><strong>常量迭代器</strong></span>, 它可以递增但不允许修改其引用对象; 而 <code class="computeroutput"><span class="keyword">int</span><span class="special">*</span>
+          <span class="keyword">const</span></code> 是一个 <code class="computeroutput"><span class="keyword">const</span></code> 的 <span class="bold"><strong>可变迭代器</strong></span>, 它本身不可修改但允许修改其引用对象.<br> <br> 令人困惑? 我们同意, 但这些是标准术语. 容器的常量迭代器被称为 <code class="computeroutput"><span class="identifier">const_iterator</span></code> 这一点恐怕也无济于事.</p>
+</div>
+<p>现在, 我们的 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 让客户既能访问 <code class="computeroutput"><span class="identifier">node</span></code> 的 <code class="computeroutput"><span class="identifier">print</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">ostream</span><span class="special">&amp;)</span>
+          <span class="keyword">const</span></code> 成员函数, 也能访问其用于修改的 <code class="computeroutput"><span class="identifier">double_me</span><span class="special">()</span></code> 成员. 如果我们想构建一个 <span class="bold"><strong>常量</strong></span> <code class="computeroutput"><span class="identifier">node_iterator</span></code>, 只需做三处修改:</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">const_node_iterator</span>
+  <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span>
+        <span class="identifier">const_node_iterator</span>
+      <span class="special">,</span> <span class="identifier">node_base</span> <span class="special">**</span><span class="keyword">const</span><span class="special">**</span>
+      <span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">forward_traversal_tag</span>
+    <span class="special">&gt;</span>
+<span class="special">{</span>
+ <span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">const_node_iterator</span><span class="special">()</span>
+      <span class="special">:</span> <span class="identifier">m_node</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">{}</span>
+
+    <span class="keyword">explicit</span> <span class="identifier">const_node_iterator</span><span class="special">(</span><span class="identifier">node_base</span><span class="special">*</span> <span class="identifier">p</span><span class="special">)</span>
+      <span class="special">:</span> <span class="identifier">m_node</span><span class="special">(</span><span class="identifier">p</span><span class="special">)</span> <span class="special">{}</span>
+
+ <span class="keyword">private</span><span class="special">:</span>
+    <span class="keyword">friend</span> <span class="keyword">class</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">iterator_core_access</span><span class="special">;</span>
+
+    <span class="keyword">void</span> <span class="identifier">increment</span><span class="special">()</span> <span class="special">{</span> <span class="identifier">m_node</span> <span class="special">=</span> <span class="identifier">m_node</span><span class="special">-&gt;</span><span class="identifier">next</span><span class="special">();</span> <span class="special">}</span>
+
+    <span class="keyword">bool</span> <span class="identifier">equal</span><span class="special">(</span><span class="identifier">const_node_iterator</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">other</span><span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">return</span> <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">m_node</span> <span class="special">==</span> <span class="identifier">other</span><span class="special">.</span><span class="identifier">m_node</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="identifier">node_base</span> <span class="special">**</span><span class="keyword">const</span><span class="special">**\</span> <span class="special">&amp;</span> <span class="identifier">dereference</span><span class="special">()</span> <span class="keyword">const</span> <span class="special">{</span> <span class="keyword">return</span> <span class="special">\*</span><span class="identifier">m_node</span><span class="special">;</span> <span class="special">}</span>
+
+    <span class="identifier">node_base</span> <span class="special">**</span><span class="keyword">const</span><span class="special">**\</span> <span class="special">*</span> <span class="identifier">m_node</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<div class="blurb">
+<div class="titlepage"><div><div><p class="title"><b></b></p></div></div></div>
+<p>
+          <code class="computeroutput"><span class="keyword">const</span></code> 与迭代器的 <code class="computeroutput"><span class="identifier">value_type</span></code><br> <br> C++ 标准要求迭代器的 <code class="computeroutput"><span class="identifier">value_type</span></code>
+          <span class="bold"><strong>不得</strong></span> 是 <code class="computeroutput"><span class="keyword">const</span></code> 限定的, 因此 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 会从其 <code class="computeroutput"><span class="keyword">const</span></code> 参数中剥离 <code class="computeroutput"><span class="identifier">Value</span></code>, 以产生迭代器的 <code class="computeroutput"><span class="identifier">value_type</span></code>. 把 <code class="computeroutput"><span class="identifier">Value</span></code> 实参设为 <code class="computeroutput"><span class="keyword">const</span></code> 会向 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 提供一个有用的提示: 该迭代器是 <span class="bold"><strong>常量迭代器</strong></span>, 而默认的 <code class="computeroutput"><span class="identifier">Reference</span></code> 实参将对所有左值迭代器都是正确的.</p>
+</div>
+<p>事实上, <code class="computeroutput"><span class="identifier">node_iterator</span></code> 与 <code class="computeroutput"><span class="identifier">const_node_iterator</span></code> 如此相似, 以至于把公共代码提取到一个模板中是合理的, 如下所示:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Value</span><span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">node_iter</span>
+  <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span>
+        <span class="identifier">node_iter</span><span class="special">&lt;</span><span class="identifier">Value</span><span class="special">&gt;</span>
+      <span class="special">,</span> <span class="identifier">Value</span>
+      <span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">forward_traversal_tag</span>
+    <span class="special">&gt;</span>
+<span class="special">{</span>
+ <span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">node_iter</span><span class="special">()</span>
+      <span class="special">:</span> <span class="identifier">m_node</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">{}</span>
+
+    <span class="keyword">explicit</span> <span class="identifier">node_iter</span><span class="special">(</span><span class="identifier">Value</span><span class="special">*</span> <span class="identifier">p</span><span class="special">)</span>
+      <span class="special">:</span> <span class="identifier">m_node</span><span class="special">(</span><span class="identifier">p</span><span class="special">)</span> <span class="special">{}</span>
+
+ <span class="keyword">private</span><span class="special">:</span>
+    <span class="keyword">friend</span> <span class="keyword">class</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">iterator_core_access</span><span class="special">;</span>
+
+    <span class="keyword">bool</span> <span class="identifier">equal</span><span class="special">(</span><span class="identifier">node_iter</span><span class="special">&lt;</span><span class="identifier">Value</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">other</span><span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">return</span> <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">m_node</span> <span class="special">==</span> <span class="identifier">other</span><span class="special">.</span><span class="identifier">m_node</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">void</span> <span class="identifier">increment</span><span class="special">()</span>
+    <span class="special">{</span> <span class="identifier">m_node</span> <span class="special">=</span> <span class="identifier">m_node</span><span class="special">-&gt;</span><span class="identifier">next</span><span class="special">();</span> <span class="special">}</span>
+
+    <span class="identifier">Value</span><span class="special">&amp;</span> <span class="identifier">dereference</span><span class="special">()</span> <span class="keyword">const</span>
+    <span class="special">{</span> <span class="keyword">return</span> <span class="special">*</span><span class="identifier">m_node</span><span class="special">;</span> <span class="special">}</span>
+
+    <span class="identifier">Value</span><span class="special">*</span> <span class="identifier">m_node</span><span class="special">;</span>
+<span class="special">};</span>
+<span class="keyword">typedef</span> <span class="identifier">node_iter</span><span class="special">&lt;</span><span class="identifier">node_base</span><span class="special">&gt;</span> <span class="identifier">node_iterator</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">node_iter</span><span class="special">&lt;</span><span class="identifier">node_base</span> <span class="keyword">const</span><span class="special">&gt;</span> <span class="identifier">node_const_iterator</span><span class="special">;</span>
+</pre>
+<h3>
+<a name="iterator.generic.facade.facade_tutorial.h11"></a>
+          <span class="phrase"><a name="iterator.generic.facade.facade_tutorial.interoperability"></a></span><a class="link" href="generic.html#iterator.generic.facade.facade_tutorial.interoperability">互操作性</a>
+        </h3>
+<p>我们的 <code class="computeroutput"><span class="identifier">const_node_iterator</span></code> 单独使用时工作良好, 但与 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 一起使用时就不太符合预期了. 例如, 我们希望能够把一个 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 传入期望 <code class="computeroutput"><span class="identifier">node_const_iterator</span></code> 的地方, 就像 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">list</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span></code> 的 <code class="computeroutput"><span class="identifier">iterator</span></code> 与 <code class="computeroutput"><span class="identifier">const_iterator</span></code> 那样. 此外, 给定一个 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 和一个指向同一链表的 <code class="computeroutput"><span class="identifier">node_const_iterator</span></code>, 我们应当能够对它们进行相等比较.</p>
+<p>这种把两种不同迭代器类型配合使用的预期能力被称为 |interoperability|_. 在我们的情形中, 实现互操作很简单: 把 <code class="computeroutput"><span class="identifier">equal</span></code> 函数模板化, 并添加一个模板化的转换构造函数 <a name="broken"></a>_ <a name="random"></a>_:</p>
+<pre class="programlisting"><span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">Value</span><span class="special">&gt;</span>
+<span class="keyword">class</span> <span class="identifier">node_iter</span>
+  <span class="special">:</span> <span class="keyword">public</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">iterator_facade</span><span class="special">&lt;</span>
+        <span class="identifier">node_iter</span><span class="special">&lt;</span><span class="identifier">Value</span><span class="special">&gt;</span>
+      <span class="special">,</span> <span class="identifier">Value</span>
+      <span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">forward_traversal_tag</span>
+    <span class="special">&gt;</span>
+<span class="special">{</span>
+ <span class="keyword">public</span><span class="special">:</span>
+    <span class="identifier">node_iter</span><span class="special">()</span>
+      <span class="special">:</span> <span class="identifier">m_node</span><span class="special">(</span><span class="number">0</span><span class="special">)</span> <span class="special">{}</span>
+
+    <span class="keyword">explicit</span> <span class="identifier">node_iter</span><span class="special">(</span><span class="identifier">Value</span><span class="special">*</span> <span class="identifier">p</span><span class="special">)</span>
+      <span class="special">:</span> <span class="identifier">m_node</span><span class="special">(</span><span class="identifier">p</span><span class="special">)</span> <span class="special">{}</span>
+
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">OtherValue</span><span class="special">&gt;</span>
+    <span class="identifier">node_iter</span><span class="special">(</span><span class="identifier">node_iter</span><span class="special">&lt;</span><span class="identifier">OtherValue</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">other</span><span class="special">)</span>
+      <span class="special">:</span> <span class="identifier">m_node</span><span class="special">(</span><span class="identifier">other</span><span class="special">.</span><span class="identifier">m_node</span><span class="special">)</span> <span class="special">{}</span>
+
+ <span class="keyword">private</span><span class="special">:</span>
+    <span class="keyword">friend</span> <span class="keyword">class</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">iterator_core_access</span><span class="special">;</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span><span class="special">&gt;</span> <span class="keyword">friend</span> <span class="keyword">class</span> <span class="identifier">node_iter</span><span class="special">;</span>
+
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">OtherValue</span><span class="special">&gt;</span>
+    <span class="keyword">bool</span> <span class="identifier">equal</span><span class="special">(</span><span class="identifier">node_iter</span><span class="special">&lt;</span><span class="identifier">OtherValue</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">other</span><span class="special">)</span> <span class="keyword">const</span>
+    <span class="special">{</span>
+        <span class="keyword">return</span> <span class="keyword">this</span><span class="special">-&gt;</span><span class="identifier">m_node</span> <span class="special">==</span> <span class="identifier">other</span><span class="special">.</span><span class="identifier">m_node</span><span class="special">;</span>
+    <span class="special">}</span>
+
+    <span class="keyword">void</span> <span class="identifier">increment</span><span class="special">()</span>
+    <span class="special">{</span> <span class="identifier">m_node</span> <span class="special">=</span> <span class="identifier">m_node</span><span class="special">-&gt;</span><span class="identifier">next</span><span class="special">();</span> <span class="special">}</span>
+
+    <span class="identifier">Value</span><span class="special">&amp;</span> <span class="identifier">dereference</span><span class="special">()</span> <span class="keyword">const</span>
+    <span class="special">{</span> <span class="keyword">return</span> <span class="special">*</span><span class="identifier">m_node</span><span class="special">;</span> <span class="special">}</span>
+
+    <span class="identifier">Value</span><span class="special">*</span> <span class="identifier">m_node</span><span class="special">;</span>
+<span class="special">};</span>
+<span class="keyword">typedef</span> <span class="identifier">impl</span><span class="special">::</span><span class="identifier">node_iterator</span><span class="special">&lt;</span><span class="identifier">node_base</span><span class="special">&gt;</span> <span class="identifier">node_iterator</span><span class="special">;</span>
+<span class="keyword">typedef</span> <span class="identifier">impl</span><span class="special">::</span><span class="identifier">node_iterator</span><span class="special">&lt;</span><span class="identifier">node_base</span> <span class="keyword">const</span><span class="special">&gt;</span> <span class="identifier">node_const_iterator</span><span class="special">;</span>
+</pre>
+<p>
+          .. |interoperability| replace:: **interoperability** .. _interoperability:
+          new-iter-concepts.html#interoperable-iterators-lib-interoperable-iterators
+        </p>
+<p>.. <a name="broken0"></a>如果你使用较旧的编译器且它无法处理本示例, 请参见 <code class="computeroutput"><span class="identifier">example</span>
+          <span class="identifier">code</span></code>__ 中的变通方法.</p>
+<p>.. <a name="random0"></a>若 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 曾是 <code class="computeroutput"><span class="identifier">random</span> <span class="identifier">access</span>
+          <span class="identifier">traversal</span> <span class="identifier">iterator</span></code>_, 我们还必须把它的 <code class="computeroutput"><span class="identifier">distance_to</span></code> 函数模板化.</p>
+<p>
+          __ ../../example/node_iterator2.hpp
+        </p>
+<p>你可以参见一个演练我们可互操作迭代器的示例程序 <a href="../../../example/node_iterator2.cpp" target="_top">here</a>.</p>
+<h3>
+<a name="iterator.generic.facade.facade_tutorial.h12"></a>
+          <span class="phrase"><a name="iterator.generic.facade.facade_tutorial.telling_the_truth"></a></span><a class="link" href="generic.html#iterator.generic.facade.facade_tutorial.telling_the_truth">说出真相</a>
+        </h3>
+<p>现在 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 与 <code class="computeroutput"><span class="identifier">node_const_iterator</span></code> 的行为完全符合预期……差不多. 我们可以比较它们, 也可以单向转换: 从 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 到 <code class="computeroutput"><span class="identifier">node_const_iterator</span></code>. 若尝试从 <code class="computeroutput"><span class="identifier">node_const_iterator</span></code> 转换到 <code class="computeroutput"><span class="identifier">node_iterator</span></code>, 转换构造函数尝试初始化 <code class="computeroutput"><span class="identifier">node_iterator</span></code> 的 <code class="computeroutput"><span class="identifier">m_node</span></code> (一个 <code class="computeroutput"><span class="identifier">node</span><span class="special">*</span></code>) 时——用 <code class="computeroutput"><span class="identifier">node</span> <span class="keyword">const</span><span class="special">*</span></code>——会得到错误. 那么问题出在哪里?</p>
+<p>问题在于 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span></code>|is_convertible|_<code class="computeroutput"><span class="special">&lt;</span><span class="identifier">node_const_iterator</span><span class="special">,</span><span class="identifier">node_iterator</span><span class="special">&gt;::</span><span class="identifier">value</span></code> 将为 <code class="computeroutput"><span class="keyword">true</span></code>, 但它应当为 <code class="computeroutput"><span class="keyword">false</span></code>. |is_convertible|_ 说谎了, 因为它只能看到 <span class="bold"><strong>声明</strong></span> (即 <code class="computeroutput"><span class="identifier">node_iter</span></code> 转换构造函数的声明), 却无法查看其 <span class="bold"><strong>定义</strong></span> 来确认它能够编译. 一个完美的方案会让 <code class="computeroutput"><span class="identifier">node_iter</span></code> 的转换构造函数在 <code class="computeroutput"><span class="identifier">m_node</span></code> 转换会失败时自动消失.</p>
+<p>
+          .. |is_convertible| replace:: <code class="computeroutput"><span class="identifier">is_convertible</span></code>
+          .. _is_convertible: ../../type_traits/index.html#relationships
+        </p>
+<p>事实上, 使用 |enable_if|__ 可以实现这种魔法. 把转换构造函数重写如下, 我们就能在不合适的时候把它从重载集中移除:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">type_traits</span><span class="special">/</span><span class="identifier">is_convertible</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">utility</span><span class="special">/</span><span class="identifier">enable_if</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+  <span class="special">...</span>
+
+<span class="keyword">private</span><span class="special">:</span>
+  <span class="keyword">struct</span> <span class="identifier">enabler</span> <span class="special">{};</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+  <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">class</span> <span class="identifier">OtherValue</span><span class="special">&gt;</span>
+  <span class="identifier">node_iter</span><span class="special">(</span>
+      <span class="identifier">node_iter</span><span class="special">&lt;</span><span class="identifier">OtherValue</span><span class="special">&gt;</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">other</span>
+    <span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">enable_if</span><span class="special">&lt;</span>
+          <span class="identifier">boost</span><span class="special">::</span><span class="identifier">is_convertible</span><span class="special">&lt;</span><span class="identifier">OtherValue</span><span class="special">*,</span><span class="identifier">Value</span><span class="special">*&gt;</span>
+        <span class="special">,</span> <span class="identifier">enabler</span>
+      <span class="special">&gt;::</span><span class="identifier">type</span> <span class="special">=</span> <span class="identifier">enabler</span><span class="special">()</span>
+  <span class="special">)</span>
+    <span class="special">:</span> <span class="identifier">m_node</span><span class="special">(</span><span class="identifier">other</span><span class="special">.</span><span class="identifier">m_node</span><span class="special">)</span> <span class="special">{}</span>
+</pre>
+<p>
+          .. |enable_if| replace:: <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">enable_if</span></code>
+          __ ../../utility/enable_if.html
+        </p>
+<h3>
+<a name="iterator.generic.facade.facade_tutorial.h13"></a>
+          <span class="phrase"><a name="iterator.generic.facade.facade_tutorial.wrap_up"></a></span><a class="link" href="generic.html#iterator.generic.facade.facade_tutorial.wrap_up">收尾</a>
+        </h3>
+<p>我们的 <code class="computeroutput"><span class="identifier">iterator_facade</span></code> 教程到此结束, 但在你停止阅读之前, 我们强烈建议你看一看 |iterator_adaptor|__. 还有另一种编写这些迭代器的方式, 甚至可能更优.</p>
+<p>
+          .. |iterator_adaptor| replace:: <code class="computeroutput"><span class="identifier">iterator_adaptor</span></code>
+          __ iterator_adaptor.html
+        </p>
+<p>
+          .. _<code class="computeroutput"><span class="identifier">iterator</span> <span class="identifier">traversal</span>
+          <span class="identifier">concept</span></code>: new-iter-concepts.html#iterator-traversal-concepts-lib-iterator-traversal
+          .. _<code class="computeroutput"><span class="identifier">readable</span> <span class="identifier">iterator</span></code>:
+          new-iter-concepts.html#readable-iterators-lib-readable-iterators .. _<code class="computeroutput"><span class="identifier">lvalue</span> <span class="identifier">iterator</span></code>:
+          new-iter-concepts.html#lvalue-iterators-lib-lvalue-iterators .. _<code class="computeroutput"><span class="identifier">single</span> <span class="identifier">pass</span>
+          <span class="identifier">iterator</span></code>: new-iter-concepts.html#single-pass-iterators-lib-single-pass-iterators
+          .. _<code class="computeroutput"><span class="identifier">incrementable</span> <span class="identifier">iterator</span></code>:
+          new-iter-concepts.html#incrementable-iterators-lib-incrementable-iterators
+          .. _<code class="computeroutput"><span class="identifier">forward</span> <span class="identifier">traversal</span>
+          <span class="identifier">iterator</span></code>: new-iter-concepts.html#forward-traversal-iterators-lib-forward-traversal-iterators
+          .. _<code class="computeroutput"><span class="identifier">bidirectional</span> <span class="identifier">traversal</span>
+          <span class="identifier">iterator</span></code>: new-iter-concepts.html#bidirectional-traversal-iterators-lib-bidirectional-traversal-iterators
+          .. _<code class="computeroutput"><span class="identifier">random</span> <span class="identifier">access</span>
+          <span class="identifier">traversal</span> <span class="identifier">iterator</span></code>:
+          new-iter-concepts.html#random-access-traversal-iterators-lib-random-access-traversal-iterators
+        </p>
+</div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2003, 2005 David Abrahams Jeremy Siek Thomas Witt<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 &lt;ulink url="http://www.boost.org/LICENSE_1_0.txt"&gt; http://www.boost.org/LICENSE_1_0.txt &lt;/ulink&gt;) .</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="concepts/traversal.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="generic/adaptor.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

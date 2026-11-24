@@ -1,0 +1,512 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>可恢复的 C++20 协程</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../../boost_asio.html" title="Boost.Asio">
+<link rel="up" href="../composition.html" title="组合与完成标记">
+<link rel="prev" href="cpp20_coroutines.html" title="C++20 协程支持">
+<link rel="next" href="deferred.html" title="延迟操作">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="cpp20_coroutines.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../composition.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="deferred.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="boost_asio.overview.composition.coro"></a><a class="link" href="coro.html" title="可恢复的 C++20 协程">可恢复的 C++20 协程</a>
+</h4></div></div></div>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>这是一项实验性特性.</p></td></tr>
+</table></div>
+<p> <a class="link" href="../../reference/experimental__coro.html" title="experimental::coro"><code class="computeroutput"><span class="identifier">experimental</span><span class="special">::</span><span class="identifier">coro</span></code></a> 类为一种通用 C++20 协程提供支持. 根据签名的不同, 这些协程可用作任务、生成器和变换器.</p>
+<pre class="programlisting"><span class="identifier">coro</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span><span class="special">&gt;</span> <span class="identifier">line_reader</span><span class="special">(</span><span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span> <span class="identifier">stream</span><span class="special">)</span>
+<span class="special">{</span>
+   <span class="keyword">while</span> <span class="special">(</span><span class="identifier">stream</span><span class="special">.</span><span class="identifier">is_open</span><span class="special">())</span>
+   <span class="special">{</span>
+     <span class="identifier">std</span><span class="special">::</span><span class="identifier">array</span><span class="special">&lt;</span><span class="keyword">char</span><span class="special">,</span> <span class="number">4096</span><span class="special">&gt;</span> <span class="identifier">buf</span><span class="special">;</span>
+
+     <span class="keyword">auto</span> <span class="identifier">read</span> <span class="special">=</span> <span class="identifier">co_await</span> <span class="identifier">stream</span><span class="special">.</span><span class="identifier">async_read_some</span><span class="special">(</span>
+         <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">buffer</span><span class="special">(</span><span class="identifier">buf</span><span class="special">),</span> <span class="identifier">deferred</span><span class="special">);</span>
+
+     <span class="keyword">if</span> <span class="special">(</span><span class="identifier">read</span> <span class="special">==</span> <span class="number">0u</span><span class="special">)</span>
+       <span class="keyword">continue</span><span class="special">;</span>
+
+     <span class="identifier">co_yield</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string_view</span> <span class="special">{</span> <span class="identifier">buf</span><span class="special">.</span><span class="identifier">data</span><span class="special">(),</span> <span class="identifier">read</span> <span class="special">};</span>
+   <span class="special">}</span>
+<span class="special">}</span>
+
+<span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span><span class="special">&gt;</span> <span class="identifier">line_logger</span><span class="special">(</span><span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span> <span class="identifier">stream</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">lines_read</span> <span class="special">=</span> <span class="number">0u</span><span class="special">;</span>
+  <span class="keyword">auto</span> <span class="identifier">reader</span> <span class="special">=</span> <span class="identifier">line_reader</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">stream</span><span class="special">));</span>
+  <span class="keyword">while</span> <span class="special">(</span><span class="keyword">auto</span> <span class="identifier">l</span> <span class="special">=</span> <span class="identifier">co_await</span> <span class="identifier">reader</span><span class="special">)</span>
+  <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Read: '"</span> <span class="special">&lt;&lt;</span> <span class="special">*</span><span class="identifier">l</span> <span class="special">&lt;&lt;</span> <span class="string">"'"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="identifier">lines_read</span><span class="special">++;</span>
+  <span class="special">}</span>
+  <span class="identifier">co_return</span> <span class="identifier">lines_read</span><span class="special">;</span>
+<span class="special">}</span>
+
+<span class="keyword">void</span> <span class="identifier">read_lines</span><span class="special">(</span><span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span> <span class="identifier">sock</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="identifier">co_spawn</span><span class="special">(</span><span class="identifier">line_logger</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">sock</span><span class="special">),</span>
+      <span class="special">[](</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">exception_ptr</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">lines</span><span class="special">)</span>
+      <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">clog</span> <span class="special">&lt;&lt;</span> <span class="string">"Read "</span> <span class="special">&lt;&lt;</span> <span class="identifier">lines</span> <span class="special">&lt;&lt;</span> <span class="string">" lines"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+      <span class="special">}));</span>
+<span class="special">}</span>
+</pre>
+<p> <a class="link" href="../../reference/experimental__coro.html" title="experimental::coro"><code class="computeroutput"><span class="identifier">coro</span></code></a> 具有高度的可配置性, 因而能够覆盖多种不同的用例.</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span>
+    <span class="keyword">typename</span> <span class="identifier">Yield</span><span class="special">,</span>
+    <span class="keyword">typename</span> <span class="identifier">Return</span> <span class="special">=</span> <span class="keyword">void</span><span class="special">,</span>
+    <span class="keyword">typename</span> <span class="identifier">Executor</span> <span class="special">=</span> <span class="identifier">any_io_executor</span><span class="special">&gt;</span>
+<span class="keyword">struct</span> <span class="identifier">coro</span><span class="special">;</span>
+</pre>
+<h6>
+<a name="boost_asio.overview.composition.coro.h0"></a>
+          <span class="phrase"><a name="boost_asio.overview.composition.coro.yield"></a></span><a class="link" href="coro.html#boost_asio.overview.composition.coro.yield">Yield</a>
+        </h6>
+<p> <code class="computeroutput"><span class="identifier">Yield</span></code> 参数指定 <code class="computeroutput"><span class="identifier">co_yield</span></code> 语句的行为方式. 它既可以是一个类型, 如 <code class="computeroutput"><span class="keyword">int</span></code>, 也可以是带有零个或一个类型的签名:</p>
+<pre class="programlisting"><span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span> <span class="comment">// A coroutine with no yield</span>
+<span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="comment">// A coroutine that can yield int</span>
+
+<span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">()&gt;</span> <span class="comment">// A coroutine with no yield</span>
+<span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">()&gt;</span> <span class="comment">// A coroutine that can yield int</span>
+
+<span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">(</span><span class="keyword">double</span><span class="special">)&gt;</span> <span class="comment">// A coroutine that can yield int and receive double</span>
+</pre>
+<p>接收一个值意味着 <code class="computeroutput"><span class="identifier">co_yield</span></code> 语句会返回一个值.</p>
+<pre class="programlisting"><span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">(</span><span class="keyword">int</span><span class="special">)&gt;</span> <span class="identifier">my_sum</span><span class="special">(</span><span class="identifier">any_io_executor</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="keyword">int</span> <span class="identifier">value</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+  <span class="keyword">while</span> <span class="special">(</span><span class="keyword">true</span><span class="special">)</span>
+    <span class="identifier">value</span> <span class="special">+=</span> <span class="identifier">co_yield</span> <span class="identifier">value</span><span class="special">;</span> <span class="comment">//sum up all values</span>
+<span class="special">}</span>
+</pre>
+<p>向协程传入值可以通过两种方式完成: 直接恢复 (来自另一个 coro) 或通过 async_resume. 第一个值会被忽略, 因为协程是惰性的.</p>
+<pre class="programlisting"><span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span> <span class="identifier">c</span><span class="special">(</span><span class="identifier">any_io_executor</span> <span class="identifier">exec</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="keyword">auto</span> <span class="identifier">sum</span> <span class="special">=</span> <span class="identifier">my_sum</span><span class="special">(</span><span class="identifier">exec</span><span class="special">);</span>
+  <span class="identifier">assert</span><span class="special">(</span><span class="number">0</span>  <span class="special">==</span> <span class="identifier">co_await</span> <span class="identifier">sum</span><span class="special">(-</span><span class="number">1</span><span class="special">));</span>
+  <span class="identifier">assert</span><span class="special">(</span><span class="number">0</span>  <span class="special">==</span> <span class="identifier">co_await</span> <span class="identifier">sum</span><span class="special">(</span><span class="number">10</span><span class="special">));</span>
+  <span class="identifier">assert</span><span class="special">(</span><span class="number">10</span> <span class="special">==</span> <span class="identifier">co_await</span> <span class="identifier">sum</span><span class="special">(</span><span class="number">15</span><span class="special">));</span>
+  <span class="identifier">assert</span><span class="special">(</span><span class="number">25</span> <span class="special">==</span> <span class="identifier">co_await</span> <span class="identifier">sum</span><span class="special">(</span><span class="number">0</span><span class="special">));</span>
+<span class="special">}</span>
+
+<span class="identifier">awaitable</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span> <span class="identifier">a</span><span class="special">()</span>
+<span class="special">{</span>
+  <span class="keyword">auto</span> <span class="identifier">sum</span> <span class="special">=</span> <span class="identifier">my_sum</span><span class="special">(</span><span class="identifier">co_await</span> <span class="identifier">this_coro</span><span class="special">::</span><span class="identifier">executor</span><span class="special">);</span>
+  <span class="identifier">assert</span><span class="special">(</span><span class="number">0</span>  <span class="special">==</span> <span class="identifier">co_await</span> <span class="identifier">sum</span><span class="special">.</span><span class="identifier">async_resume</span><span class="special">(-</span><span class="number">1</span><span class="special">,</span> <span class="identifier">use_awaitable</span><span class="special">));</span>
+  <span class="identifier">assert</span><span class="special">(</span><span class="number">0</span>  <span class="special">==</span> <span class="identifier">co_await</span> <span class="identifier">sum</span><span class="special">.</span><span class="identifier">async_resume</span><span class="special">(</span><span class="number">10</span><span class="special">,</span> <span class="identifier">use_awaitable</span><span class="special">));</span>
+  <span class="identifier">assert</span><span class="special">(</span><span class="number">10</span> <span class="special">==</span> <span class="identifier">co_await</span> <span class="identifier">sum</span><span class="special">.</span><span class="identifier">async_resume</span><span class="special">(</span><span class="number">15</span><span class="special">,</span> <span class="identifier">use_awaitable</span><span class="special">));</span>
+  <span class="identifier">assert</span><span class="special">(</span><span class="number">25</span> <span class="special">==</span> <span class="identifier">co_await</span> <span class="identifier">sum</span><span class="special">.</span><span class="identifier">async_resume</span><span class="special">(</span><span class="number">0</span><span class="special">,</span> <span class="identifier">use_awaitable</span><span class="special">));</span>
+<span class="special">}</span>
+</pre>
+<h6>
+<a name="boost_asio.overview.composition.coro.h1"></a>
+          <span class="phrase"><a name="boost_asio.overview.composition.coro._code__phrase_role__keyword__noexcept__phrase___code_"></a></span><a class="link" href="coro.html#boost_asio.overview.composition.coro._code__phrase_role__keyword__noexcept__phrase___code_"><code class="computeroutput"><span class="keyword">noexcept</span></code></a>
+        </h6>
+<p>coro 可以是 noexcept 的:</p>
+<pre class="programlisting"><span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">&gt;</span> <span class="identifier">c</span><span class="special">;</span>
+<span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">&gt;</span> <span class="identifier">c</span><span class="special">;</span>
+<span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">(</span><span class="keyword">double</span><span class="special">)</span> <span class="keyword">noexcept</span><span class="special">&gt;</span> <span class="identifier">c</span><span class="special">;</span>
+</pre>
+<p>这会将其 @c async_resume 签名从 <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">exception_ptr</span><span class="special">)</span></code> 变为 <code class="computeroutput"><span class="keyword">void</span><span class="special">()</span></code> 或 <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">exception_ptr</span><span class="special">,</span> <span class="identifier">T</span><span class="special">)</span></code> 变为 <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="identifier">T</span><span class="special">)</span></code>. 以异常结束的 noexcept coro 将导致 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">terminate</span></code> 被调用.</p>
+<p>此外, 对一个已过期的 noexcept coro 调用 <code class="computeroutput"><span class="identifier">async_resume</span></code> 和 <code class="computeroutput"><span class="identifier">co_await</span></code> 将导致未定义行为.</p>
+<h6>
+<a name="boost_asio.overview.composition.coro.h2"></a>
+          <span class="phrase"><a name="boost_asio.overview.composition.coro.return"></a></span><a class="link" href="coro.html#boost_asio.overview.composition.coro.return">Return</a>
+        </h6>
+<p>coro 还可以定义一个可与 <code class="computeroutput"><span class="identifier">co_return</span></code> 配合使用的类型:</p>
+<pre class="programlisting"><span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">()</span> <span class="keyword">noexcept</span><span class="special">,</span> <span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">c</span><span class="special">(</span><span class="identifier">any_io_executor</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="identifier">co_return</span> <span class="number">42</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+<p>coro 可以同时拥有均非 void 的 <code class="computeroutput"><span class="identifier">Yield</span></code> 和 <code class="computeroutput"><span class="identifier">Return</span></code>.</p>
+<h6>
+<a name="boost_asio.overview.composition.coro.h3"></a>
+          <span class="phrase"><a name="boost_asio.overview.composition.coro.result"></a></span><a class="link" href="coro.html#boost_asio.overview.composition.coro.result">Result</a>
+        </h6>
+<p>协程的结果类型由 <code class="computeroutput"><span class="identifier">Yield</span></code> 和 <code class="computeroutput"><span class="identifier">Return</span></code> 共同决定. 注意在下表中仅考虑 yield 输出值, 即 <code class="computeroutput"><span class="identifier">T</span><span class="special">(</span><span class="identifier">U</span><span class="special">)</span></code> 表示 <code class="computeroutput"><span class="identifier">T</span></code>.</p>
+<div class="table">
+<a name="boost_asio.overview.composition.coro.result_type"></a><p class="title"><b>表 2. 结果类型推导</b></p>
+<div class="table-contents"><table class="table" summary="Result type deduction">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>
+                    Yield
+                  </p>
+                </th>
+<th>
+                  <p>
+                    Return
+                  </p>
+                </th>
+<th>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">noexcept</span></code>
+                  </p>
+                </th>
+<th>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">result_type</span></code>
+                  </p>
+                </th>
+<th>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">completion_signature</span></code>
+                  </p>
+                </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">T</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">U</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">false</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">variant</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">,</span>
+                    <span class="identifier">U</span><span class="special">&gt;</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">exception_ptr</span><span class="special">,</span>
+                    <span class="identifier">variant</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">,</span>
+                    <span class="identifier">U</span><span class="special">&gt;)</span></code>
+                  </p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">T</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">U</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">true</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">variant</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">,</span>
+                    <span class="identifier">U</span><span class="special">&gt;</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="identifier">variant</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">,</span>
+                    <span class="identifier">U</span><span class="special">&gt;)</span></code>
+                  </p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">T</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">false</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">exception_ptr</span><span class="special">,</span>
+                    <span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;)</span></code>
+                  </p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">T</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">true</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;)</span></code>
+                  </p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">false</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">exception_ptr</span><span class="special">)</span></code>
+                  </p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">true</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span><span class="special">()</span></code>
+                  </p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">T</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">false</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">exception_ptr</span><span class="special">,</span>
+                    <span class="identifier">T</span><span class="special">)</span></code>
+                  </p>
+                </td>
+</tr>
+<tr>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">T</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">true</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="identifier">optional</span><span class="special">&lt;</span><span class="identifier">T</span><span class="special">&gt;</span></code>
+                  </p>
+                </td>
+<td>
+                  <p>
+                    <code class="computeroutput"><span class="keyword">void</span><span class="special">(</span><span class="identifier">T</span><span class="special">)</span></code>
+                  </p>
+                </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><h6>
+<a name="boost_asio.overview.composition.coro.h4"></a>
+          <span class="phrase"><a name="boost_asio.overview.composition.coro.executor"></a></span><a class="link" href="coro.html#boost_asio.overview.composition.coro.executor">Executor</a>
+        </h6>
+<p>每个协程都需要拥有自己的执行器. 由于协程会被多次调用, 它无法像 <code class="computeroutput"><span class="identifier">awaitable</span></code> 那样从调用者那里获取执行器. 因此, <code class="computeroutput"><span class="identifier">coro</span></code> 需要在第一个参数中传入一个执行器或 execution_context.</p>
+<pre class="programlisting"><span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">with_executor</span><span class="special">(</span><span class="identifier">any_io_executor</span><span class="special">);</span>
+<span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">with_context</span><span class="special">(</span><span class="identifier">io_context</span> <span class="special">&amp;);</span>
+</pre>
+<p>需要注意的是, execution_context 的定义尽可能宽松. 执行上下文可以是任何拥有 <code class="computeroutput"><span class="identifier">get_executor</span><span class="special">()</span></code> 函数的对象, 该函数返回的执行器可转换为协程的 executor_type. 这使得大多数 io_object 都可以用作执行器的来源:</p>
+<pre class="programlisting"><span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">with_socket</span><span class="special">(</span><span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span><span class="special">);</span>
+</pre>
+<p>此外, <code class="computeroutput"><span class="identifier">coro</span></code> 成员函数还会检查 <code class="computeroutput"><span class="keyword">this</span></code> 指针, 无论它是执行器还是执行上下文:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">my_io_object</span>
+<span class="special">{</span>
+  <span class="identifier">any_io_executor</span> <span class="identifier">get_executor</span><span class="special">();</span>
+
+  <span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">my_coro</span><span class="special">();</span>
+<span class="special">};</span>
+</pre>
+<p>最后, 可以为成员 coro 显式指定一个执行器或执行上下文, 以覆盖该对象自带的那个:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">my_io_object</span>
+<span class="special">{</span>
+  <span class="identifier">any_io_executor</span> <span class="identifier">get_executor</span><span class="special">();</span>
+
+  <span class="identifier">coro</span><span class="special">&lt;</span><span class="keyword">int</span><span class="special">&gt;</span> <span class="identifier">my_coro</span><span class="special">(</span><span class="identifier">any_io_executor</span> <span class="identifier">exec</span><span class="special">);</span> <span class="comment">// it will use exec</span>
+<span class="special">};</span>
+</pre>
+<h6>
+<a name="boost_asio.overview.composition.coro.h5"></a>
+          <span class="phrase"><a name="boost_asio.overview.composition.coro._code__phrase_role__identifier__co_await__phrase___code_"></a></span><a class="link" href="coro.html#boost_asio.overview.composition.coro._code__phrase_role__identifier__co_await__phrase___code_"><code class="computeroutput"><span class="identifier">co_await</span></code></a>
+        </h6>
+<p>在 <code class="computeroutput"><span class="identifier">coro</span></code> 中的 @c co_await 并不等同于 <code class="computeroutput"><span class="identifier">async_resume</span><span class="special">(</span><span class="identifier">deferred</span><span class="special">)</span></code>, 除非两个 coro 使用不同的执行器. 如果二者相同, <code class="computeroutput"><span class="identifier">coro</span></code> 将直接挂起并恢复执行器, 而不会使用该执行器.</p>
+<p>
+          <code class="computeroutput"><span class="identifier">co_await</span> <span class="identifier">this_coro</span><span class="special">::</span></code> 的行为与使用 @c boost::asio::awaitable 的协程相同.</p>
+<h6>
+<a name="boost_asio.overview.composition.coro.h6"></a>
+          <span class="phrase"><a name="boost_asio.overview.composition.coro.integrating_with_awaitable"></a></span><a class="link" href="coro.html#boost_asio.overview.composition.coro.integrating_with_awaitable">与 awaitable 集成</a>
+        </h6>
+<p>由于 <code class="computeroutput"><span class="identifier">coro</span></code> 成员函数 <code class="computeroutput"><span class="identifier">async_resume</span></code> 是一个异步操作, 因此它也可以在单一控制流中与 <code class="computeroutput"><span class="identifier">awaitable</span></code> 协程配合使用. 例如:</p>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">asio</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><span class="identifier">boost</span><span class="special">/</span><span class="identifier">asio</span><span class="special">/</span><span class="identifier">experimental</span><span class="special">/</span><span class="identifier">coro</span><span class="special">.</span><span class="identifier">hpp</span><span class="special">&gt;</span>
+
+<span class="keyword">using</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">ip</span><span class="special">::</span><span class="identifier">tcp</span><span class="special">;</span>
+
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">experimental</span><span class="special">::</span><span class="identifier">coro</span><span class="special">&lt;</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;</span> <span class="identifier">reader</span><span class="special">(</span><span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span><span class="special">&amp;</span> <span class="identifier">sock</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">buf</span><span class="special">;</span>
+  <span class="keyword">while</span> <span class="special">(</span><span class="identifier">sock</span><span class="special">.</span><span class="identifier">is_open</span><span class="special">())</span>
+  <span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">n</span> <span class="special">=</span> <span class="identifier">co_await</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">async_read_until</span><span class="special">(</span>
+        <span class="identifier">sock</span><span class="special">,</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">dynamic_buffer</span><span class="special">(</span><span class="identifier">buf</span><span class="special">),</span> <span class="char">'\n'</span><span class="special">,</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">deferred</span><span class="special">);</span>
+    <span class="identifier">co_yield</span> <span class="identifier">buf</span><span class="special">.</span><span class="identifier">substr</span><span class="special">(</span><span class="number">0</span><span class="special">,</span> <span class="identifier">n</span><span class="special">);</span>
+    <span class="identifier">buf</span><span class="special">.</span><span class="identifier">erase</span><span class="special">(</span><span class="number">0</span><span class="special">,</span> <span class="identifier">n</span><span class="special">);</span>
+  <span class="special">}</span>
+<span class="special">}</span>
+
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">awaitable</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span> <span class="identifier">consumer</span><span class="special">(</span><span class="identifier">tcp</span><span class="special">::</span><span class="identifier">socket</span> <span class="identifier">sock</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="keyword">auto</span> <span class="identifier">r</span> <span class="special">=</span> <span class="identifier">reader</span><span class="special">(</span><span class="identifier">sock</span><span class="special">);</span>
+  <span class="keyword">auto</span> <span class="identifier">msg1</span> <span class="special">=</span> <span class="identifier">co_await</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">async_resume</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">use_awaitable</span><span class="special">);</span>
+  <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Message 1: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">msg1</span><span class="special">.</span><span class="identifier">value_or</span><span class="special">(</span><span class="string">"\n"</span><span class="special">);</span>
+  <span class="keyword">auto</span> <span class="identifier">msg2</span> <span class="special">=</span> <span class="identifier">co_await</span> <span class="identifier">r</span><span class="special">.</span><span class="identifier">async_resume</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">use_awaitable</span><span class="special">);</span>
+  <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Message 2: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">msg2</span><span class="special">.</span><span class="identifier">value_or</span><span class="special">(</span><span class="string">"\n"</span><span class="special">);</span>
+<span class="special">}</span>
+
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">awaitable</span><span class="special">&lt;</span><span class="keyword">void</span><span class="special">&gt;</span> <span class="identifier">listen</span><span class="special">(</span><span class="identifier">tcp</span><span class="special">::</span><span class="identifier">acceptor</span><span class="special">&amp;</span> <span class="identifier">acceptor</span><span class="special">)</span>
+<span class="special">{</span>
+  <span class="keyword">for</span> <span class="special">(;;)</span>
+  <span class="special">{</span>
+    <span class="identifier">co_spawn</span><span class="special">(</span>
+        <span class="identifier">acceptor</span><span class="special">.</span><span class="identifier">get_executor</span><span class="special">(),</span>
+        <span class="identifier">consumer</span><span class="special">(</span><span class="identifier">co_await</span> <span class="identifier">acceptor</span><span class="special">.</span><span class="identifier">async_accept</span><span class="special">(</span><span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">use_awaitable</span><span class="special">)),</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">detached</span><span class="special">);</span>
+  <span class="special">}</span>
+<span class="special">}</span>
+
+<span class="keyword">int</span> <span class="identifier">main</span><span class="special">()</span>
+<span class="special">{</span>
+  <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">io_context</span> <span class="identifier">ctx</span><span class="special">;</span>
+  <span class="identifier">tcp</span><span class="special">::</span><span class="identifier">acceptor</span> <span class="identifier">acceptor</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">,</span> <span class="special">{</span><span class="identifier">tcp</span><span class="special">::</span><span class="identifier">v4</span><span class="special">(),</span> <span class="number">54321</span><span class="special">});</span>
+  <span class="identifier">co_spawn</span><span class="special">(</span><span class="identifier">ctx</span><span class="special">,</span> <span class="identifier">listen</span><span class="special">(</span><span class="identifier">acceptor</span><span class="special">),</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">asio</span><span class="special">::</span><span class="identifier">detached</span><span class="special">);</span>
+  <span class="identifier">ctx</span><span class="special">.</span><span class="identifier">run</span><span class="special">();</span>
+<span class="special">}</span>
+</pre>
+<h6>
+<a name="boost_asio.overview.composition.coro.h7"></a>
+          <span class="phrase"><a name="boost_asio.overview.composition.coro.see_also"></a></span><a class="link" href="coro.html#boost_asio.overview.composition.coro.see_also">参见</a>
+        </h6>
+<p>
+          <a class="link" href="../../reference/co_spawn.html" title="co_spawn">co_spawn</a>、<a class="link" href="../../reference/experimental__coro.html" title="experimental::coro">experimental::coro</a>、<a class="link" href="cpp20_coroutines.html" title="C++20 协程支持">C++20 协程</a>、<a class="link" href="spawn.html" title="有栈协程">有栈协程</a>、<a class="link" href="coroutine.html" title="无栈协程">无栈协程</a>.</p>
+</div>
+<div class="copyright-footer">版权所有 © 2003-2026 Christopher M. Kohlhoff<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="cpp20_coroutines.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../composition.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../../boost_asio.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="deferred.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

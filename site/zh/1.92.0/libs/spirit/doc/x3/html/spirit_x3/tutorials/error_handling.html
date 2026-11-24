@@ -1,0 +1,351 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>错误处理</title>
+<link rel="stylesheet" href="../../../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../../index.html" title="Spirit X3 3.10">
+<link rel="up" href="../tutorials.html" title="教程">
+<link rel="prev" href="rexpr.html" title="RExpressions - 递归 AST!">
+<link rel="next" href="non_throwing_expectations.html" title="不抛出异常的期望">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr>
+<td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../../../boost.png"></td>
+<td align="center"><a href="../../../../../../../index.html">首页</a></td>
+<td align="center"><a href="../../../../../../../libs/libraries.htm">库</a></td>
+<td align="center"><a href="http://www.boost.org/users/people.html">人物</a></td>
+<td align="center"><a href="http://www.boost.org/users/faq.html">常见问题(FAQ)</a></td>
+<td align="center"><a href="../../../../../../../more/index.htm">更多</a></td>
+</tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="rexpr.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../tutorials.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="non_throwing_expectations.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="spirit_x3.tutorials.error_handling"></a><a class="link" href="error_handling.html" title="错误处理">错误处理</a>
+</h3></div></div></div>
+<p>不谈错误处理, 本教程就不算完整. 作为理解本教程的先决条件, 请回顾前面的 <a class="link" href="employee.html" title="Employee - 解析到结构体">employee</a> 与 <a class="link" href="annotation.html" title="注解 - 装饰 AST">annotations</a> 示例. 本示例正是建立在这些先前示例的基础之上.</p>
+<p>本示例完整的 cpp 文件可在这里找到: <a href="../../../../../example/x3/error_handling.cpp" target="_top">error_handling.cpp</a>
+      </p>
+<p>请回顾前面的 <a class="link" href="annotation.html" title="注解 - 装饰 AST">annotations 示例</a>. 其中的内容对理解错误处理非常有帮助.</p>
+<h5>
+<a name="spirit_x3.tutorials.error_handling.h0"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.error_handling.the_ast"></a></span><a class="link" href="error_handling.html#spirit_x3.tutorials.error_handling.the_ast">AST</a>
+      </h5>
+<p>我们的 AST 与之前 <a class="link" href="annotation.html" title="注解 - 装饰 AST">annotations</a> 中的完全相同:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">client</span> <span class="special">{</span> <span class="keyword">namespace</span> <span class="identifier">ast</span>
+<span class="special">{</span>
+    <span class="keyword">struct</span> <span class="identifier">person</span> <span class="special">:</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">position_tagged</span>
+    <span class="special">{</span>
+        <span class="identifier">person</span><span class="special">(</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">first_name</span> <span class="special">=</span> <span class="string">""</span>
+          <span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">last_name</span> <span class="special">=</span> <span class="string">""</span>
+        <span class="special">)</span>
+        <span class="special">:</span> <span class="identifier">first_name</span><span class="special">(</span><span class="identifier">first_name</span><span class="special">)</span>
+        <span class="special">,</span> <span class="identifier">last_name</span><span class="special">(</span><span class="identifier">last_name</span><span class="special">)</span>
+        <span class="special">{}</span>
+
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">first_name</span><span class="special">,</span> <span class="identifier">last_name</span><span class="special">;</span>
+    <span class="special">};</span>
+
+    <span class="keyword">struct</span> <span class="identifier">employee</span> <span class="special">:</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">position_tagged</span>
+    <span class="special">{</span>
+        <span class="keyword">int</span> <span class="identifier">age</span><span class="special">;</span>
+        <span class="identifier">person</span> <span class="identifier">who</span><span class="special">;</span>
+        <span class="keyword">double</span> <span class="identifier">salary</span><span class="special">;</span>
+    <span class="special">};</span>
+<span class="special">}}</span>
+</pre>
+<p>我们有两个 struct: <code class="computeroutput"><span class="identifier">person</span></code> 和 <code class="computeroutput"><span class="identifier">employee</span></code>. 每一个都继承自 <code class="computeroutput"><span class="identifier">x3</span><span class="special">::</span><span class="identifier">position_tagged</span></code>, 后者提供位置信息, 使我们随时都能得知 AST 在输入流中的位置. 错误处理与报告将需要这些信息.</p>
+<p>与之前一样, 我们需要把我们的 struct 告知 <a href="../../../../../../../libs/fusion/doc/html/index.html" target="_top">Boost.Fusion</a>, 使它们成为文法可以利用的一等 fusion 公民:</p>
+<pre class="programlisting"><span class="identifier">BOOST_FUSION_ADAPT_STRUCT</span><span class="special">(</span><span class="identifier">client</span><span class="special">::</span><span class="identifier">ast</span><span class="special">::</span><span class="identifier">person</span><span class="special">,</span>
+    <span class="identifier">first_name</span><span class="special">,</span> <span class="identifier">last_name</span>
+<span class="special">)</span>
+
+<span class="identifier">BOOST_FUSION_ADAPT_STRUCT</span><span class="special">(</span><span class="identifier">client</span><span class="special">::</span><span class="identifier">ast</span><span class="special">::</span><span class="identifier">employee</span><span class="special">,</span>
+    <span class="identifier">age</span><span class="special">,</span> <span class="identifier">who</span><span class="special">,</span> <span class="identifier">salary</span>
+<span class="special">)</span>
+</pre>
+<h5>
+<a name="spirit_x3.tutorials.error_handling.h1"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.error_handling.expectations"></a></span><a class="link" href="error_handling.html#spirit_x3.tutorials.error_handling.expectations">期望</a>
+      </h5>
+<p>有些场合要求输入必须匹配某个特定解析器, 否则输入无效. 这种情况通常出现在匹配了文法的一部分之后, 此时上下文已完全明确. 在这种情况下, 匹配失败应当导致异常. 例如, 在解析电子邮件地址时, 必须匹配一个名称、一个 "@" 和一个域名, 否则该地址无效.</p>
+<p>X3 有两种机制可辅助实现解析器期望:</p>
+<div class="orderedlist"><ol class="orderedlist" type="1">
+<li class="listitem">期望运算符(Expectation operator)</li>
+<li class="listitem">expect 指令 (<code class="computeroutput"><span class="identifier">expect</span></code><code class="computeroutput"><span class="special">[</span><span class="identifier">p</span><span class="special">]</span></code>)</li>
+</ol></div>
+<p>期望运算符(Expectation operator)要求随后的解析器 (<code class="computeroutput"><span class="identifier">b</span></code>) 匹配输入, 否则就会抛出一个 <code class="computeroutput"><span class="identifier">expectation_failure</span></code>. 使用客户端提供的 <code class="computeroutput"><span class="identifier">on_error</span></code> 处理器, 该异常可得到处理: 以解析失败处的源迭代器和上下文调用该处理器, 即可报告相应位置.</p>
+<p>相比之下, 序列运算符(Sequence)不要求随后的解析器匹配输入, 因而允许回溯, 或者直接从 parse 函数返回 false 而不抛出异常.</p>
+<p>expect 指令 (<code class="computeroutput"><span class="identifier">expect</span></code><code class="computeroutput"><span class="special">[</span><span class="identifier">p</span><span class="special">]</span></code>) 要求其参数解析器匹配输入, 否则就会抛出异常. 借助 on_error(), 该异常可得到处理: 以解析失败处的上下文调用处理器, 即可报告相应位置.</p>
+<div class="tip"><table border="0" summary="Tip">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[提示]" src="../../images/tip.png"></td>
+<th align="left">提示</th>
+</tr>
+<tr><td align="left" valign="top"><p>关于如何在不使用 C++ 异常的情况下切换到更高效的错误处理, 请参阅 <a class="link" href="non_throwing_expectations.html" title="不抛出异常的期望">不抛出异常的期望教程</a>.</p></td></tr>
+</table></div>
+<h5>
+<a name="spirit_x3.tutorials.error_handling.h2"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.error_handling.on_error"></a></span><a class="link" href="error_handling.html#spirit_x3.tutorials.error_handling.on_error">on_error</a>
+      </h5>
+<p>
+        <code class="computeroutput"><span class="identifier">on_error</span></code> 是 <code class="computeroutput"><span class="identifier">on_success</span></code> 的对应物, 如 <a class="link" href="annotation.html" title="注解 - 装饰 AST">annotations 示例</a> 中所讨论的. <code class="computeroutput"><span class="identifier">on_success</span></code> 处理器是在<span class="emphasis"><em>成功</em></span>解析之后由解析器执行的客户端代码回调钩子, 而 <code class="computeroutput"><span class="identifier">on_error</span></code> 处理器则是在通过 expect 运算符或指令抛出 <code class="computeroutput"><span class="identifier">expectation_failure</span></code> 时由解析器执行的客户端代码回调钩子. <code class="computeroutput"><span class="identifier">on_error</span></code> 处理器可以访问迭代器、上下文以及被抛出的异常.</p>
+<a name="__tutorial_error_handling__"></a><h5>
+<a name="spirit_x3.tutorials.error_handling.h3"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.error_handling.error_handling"></a></span><a class="link" href="error_handling.html#spirit_x3.tutorials.error_handling.error_handling">错误处理</a>
+      </h5>
+<p>在继续之前, 让我介绍一个辅助类: x3::error_handler. 它是一个实用类, 提供 <a href="https://clang.llvm.org/" target="_top">Clang</a> 风格的错误报告, 会给出如下美观的报告:</p>
+<pre class="programlisting">In line 16:
+Error! Expecting: person here:
+    'I am not a person!'    &lt;--- this should be a person
+____^_
+</pre>
+<p>稍后我们将看到, 这条错误消息正是本示例所输出的内容.</p>
+<p>下面是我们的 <code class="computeroutput"><span class="identifier">on_error</span></code> 处理器:</p>
+<pre class="programlisting"><span class="keyword">struct</span> <span class="identifier">error_handler</span>
+<span class="special">{</span>
+    <span class="keyword">template</span> <span class="special">&lt;</span><span class="keyword">typename</span> <span class="identifier">Iterator</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Exception</span><span class="special">,</span> <span class="keyword">typename</span> <span class="identifier">Context</span><span class="special">&gt;</span>
+    <span class="identifier">x3</span><span class="special">::</span><span class="identifier">error_handler_result</span> <span class="identifier">on_error</span><span class="special">(</span>
+        <span class="identifier">Iterator</span><span class="special">&amp;</span> <span class="identifier">first</span><span class="special">,</span> <span class="identifier">Iterator</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">last</span>
+      <span class="special">,</span> <span class="identifier">Exception</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">x</span><span class="special">,</span> <span class="identifier">Context</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">context</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="keyword">auto</span><span class="special">&amp;</span> <span class="identifier">error_handler</span> <span class="special">=</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span><span class="identifier">x3</span><span class="special">::</span><span class="identifier">error_handler_tag</span><span class="special">&gt;(</span><span class="identifier">context</span><span class="special">).</span><span class="identifier">get</span><span class="special">();</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">message</span> <span class="special">=</span> <span class="string">"Error! Expecting: "</span> <span class="special">+</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">which</span><span class="special">(</span><span class="identifier">x</span><span class="special">)</span> <span class="special">+</span> <span class="string">" here:"</span><span class="special">;</span>
+        <span class="identifier">error_handler</span><span class="special">(</span><span class="identifier">x3</span><span class="special">::</span><span class="identifier">where</span><span class="special">(</span><span class="identifier">x</span><span class="special">),</span> <span class="identifier">message</span><span class="special">);</span>
+        <span class="keyword">return</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">error_handler_result</span><span class="special">::</span><span class="identifier">fail</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>
+        <code class="computeroutput"><span class="identifier">x3</span><span class="special">::</span><span class="identifier">error_handler_tag</span></code> 是一个特殊标签, 我们将用它获取对实际 x3::error_handler 的引用; 后者将在最初调用 parse 时注入. 我们在这里取得 x3::error_handler:</p>
+<pre class="programlisting"><span class="keyword">auto</span><span class="special">&amp;</span> <span class="identifier">error_handler</span> <span class="special">=</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">get</span><span class="special">&lt;</span><span class="identifier">error_handler_tag</span><span class="special">&gt;(</span><span class="identifier">context</span><span class="special">).</span><span class="identifier">get</span><span class="special">();</span>
+</pre>
+<p>x3::error_handler 处理所有琐碎的细节, 例如确定行号和实际列位置, 以及格式化要打印的错误消息. 我们所要做的只是提供实际的错误字符串, 它从 <code class="computeroutput"><span class="identifier">expectation_failure</span></code> 异常中提取:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">message</span> <span class="special">=</span> <span class="string">"Error! Expecting: "</span> <span class="special">+</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">which</span><span class="special">(</span><span class="identifier">x</span><span class="special">)</span> <span class="special">+</span> <span class="string">" here:"</span><span class="special">;</span>
+</pre>
+<p>然后, 我们返回 <code class="computeroutput"><span class="identifier">x3</span><span class="special">::</span><span class="identifier">error_handler_result</span><span class="special">::</span><span class="identifier">fail</span></code>, 告诉 X3: 捕获到这类事件时, 我们希望使解析失败. 你可以返回以下之一:</p>
+<div class="informaltable"><table class="table">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>
+                  <code class="computeroutput"><span class="identifier">Action</span></code>
+                </p>
+              </th>
+<th>
+                <p>说明</p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>
+                  fail
+                </p>
+              </td>
+<td>
+                <p>退出并失败. 返回 no_match.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  retry
+                </p>
+              </td>
+<td>
+                <p>尝试错误恢复, 可能移动迭代器位置.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  accept
+                </p>
+              </td>
+<td>
+                <p>强制成功, 恰当地移动迭代器位置.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>
+                  rethrow
+                </p>
+              </td>
+<td>
+                <p>重新抛出该错误.</p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+<h5>
+<a name="spirit_x3.tutorials.error_handling.h4"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.error_handling.the_parser"></a></span><a class="link" href="error_handling.html#spirit_x3.tutorials.error_handling.the_parser">解析器</a>
+      </h5>
+<p>现在我们重写 employee 解析器, 把错误处理考虑在内. 与 <a class="link" href="annotation.html" title="注解 - 装饰 AST">annotations</a> 示例一样, 输入将采用如下形式:</p>
+<pre class="programlisting"><span class="special">{</span> <span class="identifier">age</span><span class="special">,</span> <span class="string">"forename"</span><span class="special">,</span> <span class="string">"surname"</span><span class="special">,</span> <span class="identifier">salary</span> <span class="special">}</span>
+</pre>
+<p>下面开始:</p>
+<pre class="programlisting"><span class="keyword">namespace</span> <span class="identifier">parser</span>
+<span class="special">{</span>
+    <span class="keyword">using</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">int_</span><span class="special">;</span>
+    <span class="keyword">using</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">double_</span><span class="special">;</span>
+    <span class="keyword">using</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">lexeme</span><span class="special">;</span>
+    <span class="keyword">using</span> <span class="identifier">ascii</span><span class="special">::</span><span class="identifier">char_</span><span class="special">;</span>
+
+    <span class="keyword">struct</span> <span class="identifier">quoted_string_class</span><span class="special">;</span>
+    <span class="keyword">struct</span> <span class="identifier">person_class</span><span class="special">;</span>
+    <span class="keyword">struct</span> <span class="identifier">employee_class</span><span class="special">;</span>
+
+    <span class="identifier">x3</span><span class="special">::</span><span class="identifier">rule</span><span class="special">&lt;</span><span class="identifier">quoted_string_class</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">&gt;</span> <span class="keyword">const</span> <span class="identifier">quoted_string</span> <span class="special">=</span> <span class="string">"quoted_string"</span><span class="special">;</span>
+    <span class="identifier">x3</span><span class="special">::</span><span class="identifier">rule</span><span class="special">&lt;</span><span class="identifier">person_class</span><span class="special">,</span> <span class="identifier">ast</span><span class="special">::</span><span class="identifier">person</span><span class="special">&gt;</span> <span class="keyword">const</span> <span class="identifier">person</span> <span class="special">=</span> <span class="string">"person"</span><span class="special">;</span>
+    <span class="identifier">x3</span><span class="special">::</span><span class="identifier">rule</span><span class="special">&lt;</span><span class="identifier">employee_class</span><span class="special">,</span> <span class="identifier">ast</span><span class="special">::</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="keyword">const</span> <span class="identifier">employee</span> <span class="special">=</span> <span class="string">"employee"</span><span class="special">;</span>
+
+    <span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">quoted_string_def</span> <span class="special">=</span> <span class="identifier">lexeme</span><span class="special">[</span><span class="char">'"'</span> <span class="special">&gt;&gt;</span> <span class="special">+(</span><span class="identifier">char_</span> <span class="special">-</span> <span class="char">'"'</span><span class="special">)</span> <span class="special">&gt;&gt;</span> <span class="char">'"'</span><span class="special">];</span>
+    <span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">person_def</span> <span class="special">=</span> <span class="identifier">quoted_string</span> <span class="special">&gt;</span> <span class="char">','</span> <span class="special">&gt;</span> <span class="identifier">quoted_string</span><span class="special">;</span>
+
+    <span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">employee_def</span> <span class="special">=</span>
+            <span class="char">'{'</span>
+        <span class="special">&gt;</span>   <span class="identifier">int_</span> <span class="special">&gt;</span> <span class="char">','</span>
+        <span class="special">&gt;</span>   <span class="identifier">person</span> <span class="special">&gt;</span> <span class="char">','</span>
+        <span class="special">&gt;</span>   <span class="identifier">double_</span>
+        <span class="special">&gt;</span>   <span class="char">'}'</span>
+        <span class="special">;</span>
+
+    <span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">employees</span> <span class="special">=</span> <span class="identifier">employee</span> <span class="special">&gt;&gt;</span> <span class="special">*(</span><span class="char">','</span> <span class="special">&gt;&gt;</span> <span class="identifier">employee</span><span class="special">);</span>
+
+    <span class="identifier">BOOST_SPIRIT_DEFINE</span><span class="special">(</span><span class="identifier">quoted_string</span><span class="special">,</span> <span class="identifier">person</span><span class="special">,</span> <span class="identifier">employee</span><span class="special">);</span>
+
+    <span class="keyword">struct</span> <span class="identifier">quoted_string_class</span> <span class="special">{};</span>
+    <span class="keyword">struct</span> <span class="identifier">person_class</span> <span class="special">:</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">annotate_on_success</span> <span class="special">{};</span>
+    <span class="keyword">struct</span> <span class="identifier">employee_class</span> <span class="special">:</span> <span class="identifier">error_handler</span><span class="special">,</span> <span class="identifier">x3</span><span class="special">::</span><span class="identifier">annotate_on_success</span> <span class="special">{};</span>
+<span class="special">}</span>
+</pre>
+<p>回头再看一看 <a class="link" href="annotation.html#__tutorial_annotated_employee_parser__">带注解的 employee 解析器</a>. 有什么变化? 它几乎完全相同, 除了:</p>
+<p>在适当之处, 我们用期望运算符(Expectation operator)取代序列运算符(Sequence):</p>
+<pre class="programlisting"><span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">person_def</span> <span class="special">=</span> <span class="identifier">quoted_string</span> <span class="special">&gt;</span> <span class="char">','</span> <span class="special">&gt;</span> <span class="identifier">quoted_string</span><span class="special">;</span>
+
+<span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">employee_def</span> <span class="special">=</span>
+        <span class="char">'{'</span>
+    <span class="special">&gt;</span>   <span class="identifier">int_</span> <span class="special">&gt;</span> <span class="char">','</span>
+    <span class="special">&gt;</span>   <span class="identifier">person</span> <span class="special">&gt;</span> <span class="char">','</span>
+    <span class="special">&gt;</span>   <span class="identifier">double_</span>
+    <span class="special">&gt;</span>   <span class="char">'}'</span>
+    <span class="special">;</span>
+</pre>
+<p>文法中会有一些“确定性点”. 它们是回溯<span class="bold"><strong>不能</strong></span>发生的地方. 对于上面的示例, 当你得到一个 <code class="computeroutput"><span class="char">'{'</span></code> 时, 接下来肯定必须看到一个 <code class="computeroutput"><span class="identifier">int_</span></code>. 之后, 肯定必须有一个 <code class="computeroutput"><span class="char">','</span></code>, 然后是一个 <code class="computeroutput"><span class="identifier">person</span></code>, 以此类推, 直到最后一个 <code class="computeroutput"><span class="char">'}'</span></code>. 否则, 无论其他分支在哪里, 继续下去并尝试它们都毫无意义. 输入肯定是错误的. 此时, 会抛出一个 expectation_failure 异常. 在外层的某个地方, 错误处理器会捕获该异常. 在我们的例子中, 它在我们的 <code class="computeroutput"><span class="identifier">on_error</span></code> 处理器中被捕获.</p>
+<p>另请注意, 我们让 <code class="computeroutput"><span class="identifier">employee_class</span></code> 继承自我们的 <code class="computeroutput"><span class="identifier">error_handler</span></code>. 这样做是在告诉 X3: 我们的 <code class="computeroutput"><span class="identifier">error_handler</span></code> 应当被调用, 无论异常是在 <code class="computeroutput"><span class="identifier">employee</span></code> 规则内部抛出, 还是在它所调用的任何内容(即 <code class="computeroutput"><span class="identifier">person</span></code> 和 <code class="computeroutput"><span class="identifier">quoted_string</span></code> 规则)内部抛出.</p>
+<h5>
+<a name="spirit_x3.tutorials.error_handling.h5"></a>
+        <span class="phrase"><a name="spirit_x3.tutorials.error_handling.let_s_parse"></a></span><a class="link" href="error_handling.html#spirit_x3.tutorials.error_handling.let_s_parse">开始解析</a>
+      </h5>
+<p>现在我们有了带错误处理的完整解析机制:</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">parse</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">input</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">using</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">x3</span><span class="special">::</span><span class="identifier">ascii</span><span class="special">::</span><span class="identifier">space</span><span class="special">;</span>
+    <span class="keyword">typedef</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">::</span><span class="identifier">const_iterator</span> <span class="identifier">iterator_type</span><span class="special">;</span>
+
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">client</span><span class="special">::</span><span class="identifier">ast</span><span class="special">::</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="identifier">ast</span><span class="special">;</span>
+    <span class="identifier">iterator_type</span> <span class="identifier">iter</span> <span class="special">=</span> <span class="identifier">input</span><span class="special">.</span><span class="identifier">begin</span><span class="special">();</span>
+    <span class="identifier">iterator_type</span> <span class="keyword">const</span> <span class="identifier">end</span> <span class="special">=</span> <span class="identifier">input</span><span class="special">.</span><span class="identifier">end</span><span class="special">();</span>
+
+    <span class="keyword">using</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">x3</span><span class="special">::</span><span class="identifier">with</span><span class="special">;</span>
+    <span class="keyword">using</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">x3</span><span class="special">::</span><span class="identifier">error_handler_tag</span><span class="special">;</span>
+    <span class="keyword">using</span> <span class="identifier">error_handler_type</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">spirit</span><span class="special">::</span><span class="identifier">x3</span><span class="special">::</span><span class="identifier">error_handler</span><span class="special">&lt;</span><span class="identifier">iterator_type</span><span class="special">&gt;;</span>
+
+    <span class="comment">// Our error handler</span>
+    <span class="identifier">error_handler_type</span> <span class="identifier">error_handler</span><span class="special">(</span><span class="identifier">iter</span><span class="special">,</span> <span class="identifier">end</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">cerr</span><span class="special">);</span>
+
+    <span class="comment">// Our parser</span>
+    <span class="keyword">using</span> <span class="identifier">client</span><span class="special">::</span><span class="identifier">parser</span><span class="special">::</span><span class="identifier">employees</span><span class="special">;</span>
+    <span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">parser</span> <span class="special">=</span>
+        <span class="comment">// we pass our error handler to the parser so we can access</span>
+        <span class="comment">// it later in our on_error and on_sucess handlers</span>
+        <span class="identifier">with</span><span class="special">&lt;</span><span class="identifier">error_handler_tag</span><span class="special">&gt;(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">error_handler</span><span class="special">))</span>
+        <span class="special">[</span>
+            <span class="identifier">employees</span>
+        <span class="special">];</span>
+
+    <span class="keyword">bool</span> <span class="identifier">r</span> <span class="special">=</span> <span class="identifier">phrase_parse</span><span class="special">(</span><span class="identifier">iter</span><span class="special">,</span> <span class="identifier">end</span><span class="special">,</span> <span class="identifier">parser</span><span class="special">,</span> <span class="identifier">space</span><span class="special">,</span> <span class="identifier">ast</span><span class="special">);</span>
+
+    <span class="comment">// ... Some final reports here</span>
+<span class="special">}</span>
+</pre>
+<p>在调用 <code class="computeroutput"><span class="identifier">phrase_parse</span></code> 之前, 我们首先创建一个 AST, 解析得到的数据将存放在其中:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span><span class="identifier">client</span><span class="special">::</span><span class="identifier">ast</span><span class="special">::</span><span class="identifier">employee</span><span class="special">&gt;</span> <span class="identifier">ast</span><span class="special">;</span>
+</pre>
+<p>我们还创建了实际的错误处理器, 把消息发送到 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">cerr</span></code>:</p>
+<pre class="programlisting"><span class="identifier">error_handler_type</span> <span class="identifier">error_handler</span><span class="special">(</span><span class="identifier">iter</span><span class="special">,</span> <span class="identifier">end</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">cerr</span><span class="special">);</span>
+</pre>
+<p>然后, 我们注入对 <code class="computeroutput"><span class="identifier">error_handler</span></code> 的引用, 所用的 <code class="computeroutput"><span class="identifier">with</span></code> 指令与我们在 <a class="link" href="annotation.html#__tutorial_with_directive__">annotations 示例</a> 中的做法类似:</p>
+<pre class="programlisting"><span class="keyword">auto</span> <span class="keyword">const</span> <span class="identifier">parser</span> <span class="special">=</span>
+    <span class="comment">// we pass our error handler to the parser so we can access</span>
+    <span class="comment">// it later in our on_error and on_sucess handlers</span>
+    <span class="identifier">with</span><span class="special">&lt;</span><span class="identifier">error_handler_tag</span><span class="special">&gt;(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">error_handler</span><span class="special">))</span>
+    <span class="special">[</span>
+        <span class="identifier">employees</span>
+    <span class="special">];</span>
+</pre>
+<p>现在, 如果我们给解析器一个错误的输入:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">bad_input</span> <span class="special">=</span> <span class="identifier">R</span><span class="string">"(
+{
+    23,
+    "</span><span class="identifier">Amanda</span><span class="string">",
+    "</span><span class="identifier">Stefanski</span><span class="string">",
+    1000.99
+},
+{
+    35,
+    "</span><span class="identifier">Angie</span><span class="string">",
+    "</span><span class="identifier">Chilcote</span><span class="string">",
+    2000.99
+},
+{
+    43,
+    'I am not a person!'    &lt;--- this should be a person
+    3000.99
+},
+{
+    22,
+    "</span><span class="identifier">Dorene</span><span class="string">",
+    "</span><span class="identifier">Dole</span><span class="string">",
+    2500.99
+},
+{
+    38,
+    "</span><span class="identifier">Rossana</span><span class="string">",
+    "</span><span class="identifier">Rafferty</span><span class="string">",
+    5000.99
+}
+)"</span><span class="special">;</span>
+</pre>
+<p>解析器将如预期地报错:</p>
+<pre class="programlisting">-------------------------
+Now we have some errors
+In line 16:
+Error! Expecting: person here:
+    'I am not a person!'    &lt;--- this should be a person
+____^_
+-------------------------
+Parsing failed
+-------------------------
+</pre>
+</div>
+<div class="copyright-footer">Copyright © 2001-2018 Joel de Guzman,
+      Hartmut Kaiser<p>按 Boost 软件许可 1.0 版分发. (随附文件 LICENSE_1_0.txt, 或复制于 <a href="http://www.boost.org/LICENSE_1_0.txt" target="_top">http://www.boost.org/LICENSE_1_0.txt</a>)</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="rexpr.html"><img src="../../../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../tutorials.html"><img src="../../../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../../index.html"><img src="../../../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="non_throwing_expectations.html"><img src="../../../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>

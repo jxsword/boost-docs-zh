@@ -1,0 +1,54 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>errno - Boost.Outcome 文档</title>
+<link rel="stylesheet" href="../css/boost.css" type="text/css">
+<meta name="generator" content="Hugo 0.52 with Boostdoc theme">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+
+<link rel="icon" href="../images/favicon.ico" type="image/ico"/>
+<body><div class="spirit-nav">
+<a accesskey="p" href="../motivation/exceptions.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../motivation.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../motivation/error_codes.html"><img src="../images/next.png" alt="下一页"></a></div><div id="content">
+  <div class="titlepage"><div><div><h1 style="clear: both">errno</h1></div></div></div>
+  
+
+<p>失败时返回一个特殊值, 并把错误码 (一个 <code>int</code>) 存入全局 (或线程局部) 对象 <code>errno</code>, 这一惯用法继承自 C, 并用于其标准库:</p>
+<div class="highlight"><pre class="chroma"><code class="language-c++" data-lang="c++"><span class="kt">int</span> <span class="nf">readValue</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span> <span class="n">filename</span><span class="p">)</span>
+<span class="p">{</span>  
+  <span class="n">FILE</span><span class="o">*</span> <span class="n">f</span> <span class="o">=</span> <span class="n">fopen</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#34;r&#34;</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">f</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span> <span class="c1">// special value indicating failure
+</span><span class="c1"></span>              <span class="c1">// keep errno value set by fopen()
+</span><span class="c1"></span>
+  <span class="kt">int</span> <span class="n">i</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">r</span> <span class="o">=</span> <span class="n">fscanf</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="s">&#34;%d&#34;</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">i</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">r</span> <span class="o">==</span> <span class="mi">0</span> <span class="o">||</span> <span class="n">r</span> <span class="o">==</span> <span class="n">EOF</span><span class="p">)</span> <span class="p">{</span> <span class="c1">// special values: i not read
+</span><span class="c1"></span>    <span class="n">errno</span> <span class="o">=</span> <span class="n">ENODATA</span><span class="p">;</span>        <span class="c1">// choose error value to return
+</span><span class="c1"></span>    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+
+  <span class="n">fclose</span><span class="p">(</span><span class="n">f</span><span class="p">);</span>
+  <span class="n">errno</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>  <span class="c1">// clear error info (success)
+</span><span class="c1"></span>  <span class="k">return</span> <span class="n">i</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>这种技术的一个优点 (对某些人是优点, 对另一些人是缺点) 是: 它使用熟悉的控制语句 (<code>if</code> 与 <code>return</code>) 来标示所有处理失败的执行路径. 当我们阅读这段代码时, 我们知道它在何时、何种条件下可能不产出预期结果而退出.</p>
+
+<h3 id="downsides">缺点</h3>
+
+<p>因为无论失败还是成功, 我们都要写入一个全局 (或线程局部) 对象, 我们的函数不是<em>纯</em>函数: 它们有<em>副作用</em>. 这意味着许多有用的编译器优化 (如公共子表达式消除) 无法应用. 这表明并非只有 C++ 在为报告失败选择次优方案.</p>
+
+<p>无论返回什么类型, 我们总需要一个留作特殊用途的值, 这有时很麻烦. 在上例中, 如果成功读到的 <code>i</code> 值是 <code>0</code>, 而我们返回它, 调用者会认为这是一次失败, 尽管它并不是.</p>
+
+<p>使用 <code>if</code> 语句与提前 <code>return</code> 传播错误是手工的. 我们很容易忘记检查失败, 错误地让后续操作执行, 可能对程序状态造成损害.</p>
+
+<p>在几乎每一层函数调用上, 我们可能都不得不改变错误码的值, 使其反映适合当前层的错误状况. 如果这样做, 原始错误码就丢了.</p>
+
+
+        </div><p><small>最后修订: January 16, 2019 at 01:05:39 +0100</small></p>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="../motivation/exceptions.html"><img src="../images/prev.png" alt="上一页"></a>
+    <a accesskey="u" href="../motivation.html"><img src="../images/up.png" alt="上一级"></a>
+    <a accesskey="h" href="../index.html"><img src="../images/home.png" alt="首页"></a><a accesskey="n" href="../motivation/error_codes.html"><img src="../images/next.png" alt="下一页"></a></div></body>
+</html>

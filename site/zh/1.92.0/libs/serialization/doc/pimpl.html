@@ -1,0 +1,70 @@
+<!doctype HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!--
+(C) Copyright 2002-4 Robert Ramey - http://www.rrsd.com . 
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt)
+-->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<link rel="stylesheet" type="text/css" href="../../../boost.css">
+<link rel="stylesheet" type="text/css" href="style.css">
+<title>Serialization - PIMPL</title>
+</head>
+<body link="#0000ff" vlink="#800080">
+<table border="0" cellpadding="7" cellspacing="0" width="100%" summary="header">
+  <tr> 
+    <td valign="top" width="300"> 
+      <h3><a href="../../../index.htm"><img height="86" width="277" alt="C++ Boost" src="../../../boost.png" border="0"></a></h3>
+    </td>
+    <td valign="top"> 
+      <h1 align="center">序列化</h1>
+      <h2 align="center">PIMPL</h2>
+    </td>
+  </tr>
+</table>
+<hr> PIMPL 是 Herb Sutter <a href="bibliography.html#10"> [10] </a> 描述的一种 C++ 编程惯用法, 代表 "Private Implementation". 它也被称为 "Handle Body Idiom". 本库包含一个名为 <a href="../example/demo_pimpl.cpp" target="demo_impl_cpp"> demo_pimpl.cpp </a> 的程序, 演示它的用法. 文件 <a href="../example/demo_pimpl_A.cpp" target="demo_impl__Acpp"> demo_pimpl_A.hpp </a> 包含 A 类的声明, 它通过包含一个仅以指针形式定义的 struct B 指针来隐藏其实现. <pre><code>
+// class whose declaration is hidden by a pointer
+struct B;
+
+struct A {
+    // class a contains a pointer to a "hidden" declaration
+    B *pimpl;
+    template&lt;class Archive&gt;
+    void serialize(Archive &amp; ar, const unsigned int file_version);
+    A();
+};
+</code></pre> A 的序列化需要访问 B 的定义. 但这并不意味着需要从头文件获得这一访问权. 由于 B 是指针, 声明 class B 就足够了. A 序列化的实现包含了在单独编译的模块 <a href="../example/demo_pimpl_A.cpp" target="demo_impl_A_cpp"> demo_pimpl_A.cpp </a> 中通过如下方式定义的类 B 的定义: <pre><code>
+#include "demo_pimpl_A.hpp"
+
+// "hidden" definition of class B
+struct B {
+    int b;
+    template&lt;class Archive&gt;
+    void serialize(Archive &amp; ar, const unsigned int file_version){
+        ar &amp; b;
+    }
+};
+
+A::A() :
+    pimpl(new B)
+{}
+
+A::~A(){
+    delete pimpl;
+}
+
+// now we can define the serialization for class A
+template&lt;class Archive&gt;
+void A::serialize(Archive &amp; ar, const unsigned int file_version){
+    ar &amp; pimpl;
+}
+</code></pre> 如 <a href="bibliography.html#10"> [10] </a> 所述, 这带来以下优点: <ul>
+    <li>可以使用类型 "B" 而无需使用其头文件.<li>B 的实现可以改动, 而不会引发一连串重新编译.</ul> 于是, 我们编译这些模块, 一切正常. 然而在链接时, 我们得到一个错误. 有两个符号未定义: <pre><code>
+void A::serialize(boost::archive::text_oarchive &amp; ar, const unsigned int file_version);
+void A::serialize(boost::archive::text_iarchive &amp; ar, const unsigned int file_version);
+</code></pre> 问题在于编译上面的代码时, <code style="white-space: normal">serialize</code> 模板没有任何实例化. 也不可能有——因为尚"不知道"序列化将与哪些类型的档案一起使用. 因此尝试链接时这些函数是"缺失"的. 解决办法是为将要使用的那些档案显式实例化序列化代码. 在本例中, 在任意 *.cpp 文件中包含以下代码即可: <pre></code> #include &lt;boost/archive/text_iarchive.hpp&gt; #include &lt;boost/archive/text_oarchive.hpp&gt; template void A::serialize&lt;boost::archive::text_iarchive&gt;( boost::archive::text_iarchive &amp; ar, const unsigned int file_version ); template void A::serialize&lt;boost::archive::text_oarchive&gt;( boost::archive::text_oarchive &amp; ar, const unsigned int file_version ); </code></pre> 程序现在应当既能编译也能链接. <p>这样做的缺点是, 必须知道哪些档案将与隐藏的序列化一起使用. 这是使用模板驱动代码的一个副作用. 可以为所有已知模板显式调用实例化, 并假定链接器会排除未被引用的代码. 这应该可行, 但依赖于平台. <hr>
+<p><i> 版权所有 © <a href="http://www.rrsd.com"> Robert Ramey </a> 2002-2004. 按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 LICENSE_1_0.txt 或复制于 http://www.boost.org/LICENSE_1_0.txt) </i></p>
+</body>
+</html>

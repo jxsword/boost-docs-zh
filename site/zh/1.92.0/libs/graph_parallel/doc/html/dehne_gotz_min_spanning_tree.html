@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.6: http://docutils.sourceforge.net/" />
+<title>Parallel BGL 最小生成树</title>
+<link rel="stylesheet" href="../../../../rst.css" type="text/css" />
+</head>
+<body>
+<div class="document" id="logo-minimum-spanning-tree">
+<h1 class="title"><a class="reference external" href="http://www.osl.iu.edu/research/pbgl"><img align="middle" alt="Parallel BGL" class="align-middle" src="pbgl-logo.png" /></a> 最小生成树</h1>
+
+<!-- Copyright (C) 2004-2008 The Trustees of Indiana University.
+Use, modification and distribution is subject to the Boost Software
+License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
+http://www.boost.org/LICENSE_1_0.txt) -->
+<p>Parallel BGL 包含四种用于无向带权分布图的 <a class="reference external" href="http://www.boost.org/libs/graph/doc/graph_theory_review.html#sec:minimum-spanning-tree">最小生成树</a> (MST) 算法 <a class="citation-reference" href="#dg98" id="id1">[DG98]</a>. 图不必是连通的: 当给定非连通图时, 每种算法都会计算最小生成森林 (MSF).</p>
+<p>四种算法的接口与顺序 BGL 中 'Kruskal 算法'_ 的实现类似. 每种算法至少接受一个图、一个权重映射和一个输出迭代器. MST (或 MSF) 的边将通过进程 0 上的输出迭代器输出: 其他进程也可能在其输出迭代器上收到边, 但依据算法的不同, 该集合可能并不完整. 这些算法的参数一并说明, 因为它们差别不大. 有关算法选择的建议, 参见 <a class="reference internal" href="#selecting-an-mst-algorithm">选择 MST 算法</a> 一节.</p>
+<p>图本身必须对 <a class="reference external" href="http://www.boost.org/libs/graph/doc/VertexListGraph.html">顶点列表图</a> 概念与分布式边列表图概念建模. 由于最常见的分布式图结构 <a class="reference external" href="distributed_adjacency_list.html">分布式邻接表</a> 只对分布式顶点列表图概念建模, 因此只有把它包装在适当的适配器 (例如 <a class="reference external" href="vertex_list_adaptor.html">vertex_list_adaptor</a>) 中时, 才能将其用于这些算法.</p>
+<div class="contents topic" id="contents">
+<p class="topic-title first">目录</p>
+<ul class="simple">
+<li><a class="reference internal" href="#where-defined" id="id12">定义位置</a></li>
+<li><a class="reference internal" href="#parameters" id="id13">参数</a></li>
+<li><a class="reference internal" href="#dense-boruvka-minimum-spanning-tree" id="id14"><tt class="docutils literal"><span class="pre">dense_boruvka_minimum_spanning_tree</span></tt></a><ul>
+<li><a class="reference internal" href="#description" id="id15">说明</a></li>
+<li><a class="reference internal" href="#complexity" id="id16">复杂度</a></li>
+<li><a class="reference internal" href="#performance" id="id17">性能</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#merge-local-minimum-spanning-trees" id="id18"><tt class="docutils literal"><span class="pre">merge_local_minimum_spanning_trees</span></tt></a><ul>
+<li><a class="reference internal" href="#id2" id="id19">说明</a></li>
+<li><a class="reference internal" href="#id3" id="id20">复杂度</a></li>
+<li><a class="reference internal" href="#id4" id="id21">性能</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#boruvka-then-merge" id="id22"><tt class="docutils literal"><span class="pre">boruvka_then_merge</span></tt></a><ul>
+<li><a class="reference internal" href="#id5" id="id23">说明</a></li>
+<li><a class="reference internal" href="#id6" id="id24">复杂度</a></li>
+<li><a class="reference internal" href="#id7" id="id25">性能</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#boruvka-mixed-merge" id="id26"><tt class="docutils literal"><span class="pre">boruvka_mixed_merge</span></tt></a><ul>
+<li><a class="reference internal" href="#id8" id="id27">说明</a></li>
+<li><a class="reference internal" href="#id9" id="id28">复杂度</a></li>
+<li><a class="reference internal" href="#id10" id="id29">性能</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#selecting-an-mst-algorithm" id="id30">选择 MST 算法</a><ul>
+<li><a class="reference internal" href="#performance-on-sparse-graphs" id="id31">稀疏图上的性能</a></li>
+<li><a class="reference internal" href="#performance-on-dense-graphs" id="id32">稠密图上的性能</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="where-defined">
+<h1><a class="toc-backref" href="#id12">定义位置</a></h1>
+<p>&lt;<tt class="docutils literal"><span class="pre">boost/graph/distributed/dehne_gotz_min_spanning_tree.hpp</span></tt>&gt;</p>
+</div>
+<div class="section" id="parameters">
+<h1><a class="toc-backref" href="#id13">参数</a></h1>
+<dl class="docutils">
+<dt>IN: <tt class="docutils literal"><span class="pre">Graph&amp;</span> <span class="pre">g</span></tt></dt>
+<dd>图类型必须是 <a class="reference external" href="http://www.boost.org/libs/graph/doc/VertexListGraph.html">顶点列表图</a> 与 <a class="reference external" href="DistributedEdgeListGraph.html">分布式边列表图</a> 的模型.</dd>
+<dt>IN/OUT: <tt class="docutils literal"><span class="pre">WeightMap</span> <span class="pre">weight</span></tt></dt>
+<dd>权重映射必须是 <a class="reference external" href="distributed_property_map.html">分布式属性映射</a> 和 <a class="reference external" href="http://www.boost.org/libs/property_map/ReadablePropertyMap.html">可读属性映射</a>, 其键类型为图的边描述符, 值类型为数值类型.</dd>
+<dt>IN/OUT: <tt class="docutils literal"><span class="pre">OutputIterator</span> <span class="pre">out</span></tt></dt>
+<dd>用于写出 MSF 各边的输出迭代器. 它必须能够接受边描述符作为输出.</dd>
+<dt>IN: <tt class="docutils literal"><span class="pre">VertexIndexMap</span> <span class="pre">index</span></tt></dt>
+<dd><p class="first">从顶点描述符到 <em>[0, num_vertices(g))</em> 范围内索引的一个映射. 它必须是 <a class="reference external" href="http://www.boost.org/libs/property_map/ReadablePropertyMap.html">可读属性映射</a>, 其键类型为顶点描述符, 值类型为整数类型, 通常是图的 <tt class="docutils literal"><span class="pre">vertices_size_type</span></tt>.</p>
+<p class="last"><strong>默认:</strong> <tt class="docutils literal"><span class="pre">get(vertex_index,</span> <span class="pre">g)</span></tt></p>
+</dd>
+<dt>IN/UTIL: <tt class="docutils literal"><span class="pre">RankMap</span> <span class="pre">rank_map</span></tt></dt>
+<dd><p class="first">保存每个顶点的秩 (rank), 用于维护并查集 (union-find) 数据结构. 它必须是 <a class="reference external" href="http://www.boost.org/libs/property_map/ReadWritePropertyMap.html">读/写属性映射</a>, 其键类型为顶点描述符, 值类型为整数类型.</p>
+<p class="last"><strong>默认:</strong> 一个 <tt class="docutils literal"><span class="pre">iterator_property_map</span></tt>, 由图的 <tt class="docutils literal"><span class="pre">vertices_size_type</span></tt> 的 STL 向量与顶点索引映射构建.</p>
+</dd>
+<dt>IN/UTIL: <tt class="docutils literal"><span class="pre">ParentMap</span> <span class="pre">parent_map</span></tt></dt>
+<dd><p class="first">保存每个顶点的父顶点 (代表), 用于维护并查集数据结构. 它必须是 <a class="reference external" href="http://www.boost.org/libs/property_map/ReadWritePropertyMap.html">读/写属性映射</a>, 其键类型为顶点描述符, 值类型也是顶点描述符.</p>
+<p class="last"><strong>默认:</strong> 一个 <tt class="docutils literal"><span class="pre">iterator_property_map</span></tt>, 由图的 <tt class="docutils literal"><span class="pre">vertex_descriptor</span></tt> 的 STL 向量与顶点索引映射构建.</p>
+</dd>
+<dt>IN/UTIL: <tt class="docutils literal"><span class="pre">SupervertexMap</span> <span class="pre">supervertex_map</span></tt></dt>
+<dd><p class="first">保存每个顶点的超顶点索引, 用于维护超顶点列表数据结构. 它必须是 <a class="reference external" href="http://www.boost.org/libs/property_map/ReadWritePropertyMap.html">读/写属性映射</a>, 其键类型为顶点描述符, 值类型为整数类型.</p>
+<p class="last"><strong>默认:</strong> 一个 <tt class="docutils literal"><span class="pre">iterator_property_map</span></tt>, 由图的 <tt class="docutils literal"><span class="pre">vertices_size_type</span></tt> 的 STL 向量与顶点索引映射构建.</p>
+</dd>
+</dl>
+</div>
+<div class="section" id="dense-boruvka-minimum-spanning-tree">
+<h1><a class="toc-backref" href="#id14"><tt class="docutils literal"><span class="pre">dense_boruvka_minimum_spanning_tree</span></tt></a></h1>
+<pre class="literal-block">
+namespace graph {
+  template&lt;typename Graph, typename WeightMap, typename OutputIterator,
+           typename VertexIndexMap, typename RankMap, typename ParentMap,
+           typename SupervertexMap&gt;
+  OutputIterator
+  dense_boruvka_minimum_spanning_tree(const Graph&amp; g, WeightMap weight_map,
+                                    OutputIterator out,
+                                    VertexIndexMap index,
+                                    RankMap rank_map, ParentMap parent_map,
+                                    SupervertexMap supervertex_map);
+
+  template&lt;typename Graph, typename WeightMap, typename OutputIterator,
+           typename VertexIndex&gt;
+  OutputIterator
+  dense_boruvka_minimum_spanning_tree(const Graph&amp; g, WeightMap weight_map,
+                                    OutputIterator out, VertexIndex index);
+
+  template&lt;typename Graph, typename WeightMap, typename OutputIterator&gt;
+  OutputIterator
+  dense_boruvka_minimum_spanning_tree(const Graph&amp; g, WeightMap weight_map,
+                                    OutputIterator out);
+}
+</pre>
+<div class="section" id="description">
+<h2><a class="toc-backref" href="#id15">说明</a></h2>
+<p>稠密 Boruvka 分布式最小生成树算法是 Boruvka 的顺序 MST 算法的直接并行化. 该算法首先把每个顶点构成一个 <em>超顶点</em>. 然后, 在每次迭代中, 它找到与每个顶点关联的最小权边, 沿这些边收缩超顶点, 并移除所有自环. 顺序算法与并行算法的唯一区别在于: 并行算法执行一次 all-reduce 操作, 使所有进程都拥有全局最小边集.</p>
+<p>与其他三种算法不同, 该算法在所有进程上都通过输出迭代器输出最小生成森林的完整边列表. 因此, 在并行化顺序 BGL 程序时, 它可能比其他算法更有用.</p>
+</div>
+<div class="section" id="complexity">
+<h2><a class="toc-backref" href="#id16">复杂度</a></h2>
+<p>该分布式算法需要 <em>O(log n)</em> 个 BSP 超步, 每个超步每个进程需要 <em>O(m/p + n)</em> 的时间与 <em>O(n)</em> 的通信量.</p>
+</div>
+<div class="section" id="performance">
+<h2><a class="toc-backref" href="#id17">性能</a></h2>
+<p>以下图表展示了该算法在多种随机图上的性能. 可以看到, 对于稠密图, 该算法在多达 64 或 128 个处理器上 (取决于图的类型) 都具有良好的扩展性. 然而, 对于稀疏图, 当处理器数量超过 <em>m/n</em> (即平均度, 对本图为 30) 时, 性能会逐渐下降. 这一行为是该算法所固有的.</p>
+<img align="left" alt="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_5.png" class="align-left" src="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_5.png" />
+<img alt="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_5_speedup_1.png" src="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_5_speedup_1.png" />
+<img align="left" alt="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_5.png" class="align-left" src="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_5.png" />
+<img alt="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_5_speedup_1.png" src="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_5_speedup_1.png" />
+</div>
+</div>
+<div class="section" id="merge-local-minimum-spanning-trees">
+<h1><a class="toc-backref" href="#id18"><tt class="docutils literal"><span class="pre">merge_local_minimum_spanning_trees</span></tt></a></h1>
+<pre class="literal-block">
+namespace graph {
+  template&lt;typename Graph, typename WeightMap, typename OutputIterator,
+           typename VertexIndexMap&gt;
+  OutputIterator
+  merge_local_minimum_spanning_trees(const Graph&amp; g, WeightMap weight,
+                                     OutputIterator out,
+                                     VertexIndexMap index);
+
+  template&lt;typename Graph, typename WeightMap, typename OutputIterator&gt;
+  inline OutputIterator
+  merge_local_minimum_spanning_trees(const Graph&amp; g, WeightMap weight,
+                                     OutputIterator out);
+}
+</pre>
+<div class="section" id="id2">
+<h2><a class="toc-backref" href="#id19">说明</a></h2>
+<p>合并本地 MST 算法的运作方式是: 先从每个进程上存储的边计算最小生成森林, 然后各进程沿一棵树合并其边列表. 子节点停止参与计算, 而父节点则根据新获得的边重新计算 MSF. 在最后一轮中, 树的根在经由树收到来自所有其他进程的候选边之后, 计算全局 MSF.</p>
+</div>
+<div class="section" id="id3">
+<h2><a class="toc-backref" href="#id20">复杂度</a></h2>
+<p>该算法需要 <em>O(log_D p)</em> 个 BSP 超步 (其中 <em>D</em> 是树中子节点的数量, 目前固定为 3). 每个超步每个进程需要 <em>O((m/p) log (m/p) + n)</em> 的时间与 <em>O(m/p)</em> 的通信量.</p>
+</div>
+<div class="section" id="id4">
+<h2><a class="toc-backref" href="#id21">性能</a></h2>
+<p>以下图表展示了该算法在多种随机图上的性能. 该算法只在非常稠密的图上具有良好的扩展性, 此时大部分工作在初始阶段完成, 后续阶段的工作量非常少.</p>
+<img align="left" alt="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_6.png" class="align-left" src="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_6.png" />
+<img alt="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_6_speedup_1.png" src="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_6_speedup_1.png" />
+<img align="left" alt="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_6.png" class="align-left" src="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_6.png" />
+<img alt="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_6_speedup_1.png" src="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_6_speedup_1.png" />
+</div>
+</div>
+<div class="section" id="boruvka-then-merge">
+<h1><a class="toc-backref" href="#id22"><tt class="docutils literal"><span class="pre">boruvka_then_merge</span></tt></a></h1>
+<pre class="literal-block">
+namespace graph {
+  template&lt;typename Graph, typename WeightMap, typename OutputIterator,
+           typename VertexIndexMap, typename RankMap, typename ParentMap,
+           typename SupervertexMap&gt;
+  OutputIterator
+  boruvka_then_merge(const Graph&amp; g, WeightMap weight, OutputIterator out,
+                     VertexIndexMap index, RankMap rank_map,
+                     ParentMap parent_map, SupervertexMap
+                     supervertex_map);
+
+  template&lt;typename Graph, typename WeightMap, typename OutputIterator,
+           typename VertexIndexMap&gt;
+  inline OutputIterator
+  boruvka_then_merge(const Graph&amp; g, WeightMap weight, OutputIterator out,
+                      VertexIndexMap index);
+
+  template&lt;typename Graph, typename WeightMap, typename OutputIterator&gt;
+  inline OutputIterator
+  boruvka_then_merge(const Graph&amp; g, WeightMap weight, OutputIterator out);
+}
+</pre>
+<div class="section" id="id5">
+<h2><a class="toc-backref" href="#id23">说明</a></h2>
+<p>该算法把 Boruvka 步骤与本地 MSF 合并步骤结合在一起, 以获得比任何单一算法更好的渐近性能. 它首先执行 Boruvka 步骤, 直到只剩 <em>n/(log_d p)^2</em> 个超顶点, 然后对剩余的边与超顶点执行本地 MSF 合并, 完成 MSF 计算.</p>
+</div>
+<div class="section" id="id6">
+<h2><a class="toc-backref" href="#id24">复杂度</a></h2>
+<p>该算法需要 <em>log_D p</em> + <em>log log_D p</em> 个 BSP 超步. 每个超步所需的时间取决于所执行超步的类型; 详情参见分布式 Boruvka 算法或本地 MSF 合并算法.</p>
+</div>
+<div class="section" id="id7">
+<h2><a class="toc-backref" href="#id25">性能</a></h2>
+<p>以下图表展示了该算法在多种随机图上的性能. 可以看到, 对于稠密图, 该算法在多达 64 或 128 个处理器上 (取决于图的类型) 都具有良好的扩展性. 然而, 对于稀疏图, 当处理器数量超过 <em>m/n</em> (即平均度, 对本图为 30) 时, 性能会逐渐下降. 这一行为是该算法所固有的.</p>
+<img align="left" alt="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_7.png" class="align-left" src="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_7.png" />
+<img alt="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_7_speedup_1.png" src="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_7_speedup_1.png" />
+<img align="left" alt="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_7.png" class="align-left" src="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_7.png" />
+<img alt="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_7_speedup_1.png" src="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_7_speedup_1.png" />
+</div>
+</div>
+<div class="section" id="boruvka-mixed-merge">
+<h1><a class="toc-backref" href="#id26"><tt class="docutils literal"><span class="pre">boruvka_mixed_merge</span></tt></a></h1>
+<pre class="literal-block">
+namespace {
+  template&lt;typename Graph, typename WeightMap, typename OutputIterator,
+           typename VertexIndexMap, typename RankMap, typename ParentMap,
+           typename SupervertexMap&gt;
+  OutputIterator
+  boruvka_mixed_merge(const Graph&amp; g, WeightMap weight, OutputIterator out,
+                      VertexIndexMap index, RankMap rank_map,
+                      ParentMap parent_map, SupervertexMap
+                      supervertex_map);
+
+  template&lt;typename Graph, typename WeightMap, typename OutputIterator,
+           typename VertexIndexMap&gt;
+  inline OutputIterator
+  boruvka_mixed_merge(const Graph&amp; g, WeightMap weight, OutputIterator out,
+                      VertexIndexMap index);
+
+  template&lt;typename Graph, typename WeightMap, typename OutputIterator&gt;
+  inline OutputIterator
+  boruvka_mixed_merge(const Graph&amp; g, WeightMap weight, OutputIterator out);
+}
+</pre>
+<div class="section" id="id8">
+<h2><a class="toc-backref" href="#id27">说明</a></h2>
+<p>该算法把 Boruvka 步骤与本地 MSF 合并步骤结合在一起, 以获得比任何单一方法更好的渐近性能. 在每次迭代中, 该算法先执行一个 Boruvka 步骤, 然后合并基于超顶点图计算出的本地 MSF.</p>
+</div>
+<div class="section" id="id9">
+<h2><a class="toc-backref" href="#id28">复杂度</a></h2>
+<p>该算法需要 <em>log_D p</em> 个 BSP 超步. 每个超步所需的时间取决于所执行超步的类型; 详情参见分布式 Boruvka 算法或本地 MSF 合并算法. 不过, 当图足够稠密 (即 <em>m/n &gt;= p</em>) 时, 该算法的通信是可选的 (总体通信量为 <em>O(n)</em>).</p>
+</div>
+<div class="section" id="id10">
+<h2><a class="toc-backref" href="#id29">性能</a></h2>
+<p>以下图表展示了该算法在多种随机图上的性能. 可以看到, 对于稠密图, 该算法在多达 64 或 128 个处理器上 (取决于图的类型) 都具有良好的扩展性. 然而, 对于稀疏图, 当处理器数量超过 <em>m/n</em> (即平均度, 对本图为 30) 时, 性能会逐渐下降. 这一行为是该算法所固有的.</p>
+<img align="left" alt="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_8.png" class="align-left" src="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_8.png" />
+<img alt="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_8_speedup_1.png" src="chart_php_generator_ER_SF_SW_dataset_TimeSparse_columns_8_speedup_1.png" />
+<img align="left" alt="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_8.png" class="align-left" src="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_8.png" />
+<img alt="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_8_speedup_1.png" src="chart_php_generator_ER_SF_SW_dataset_TimeDense_columns_8_speedup_1.png" />
+</div>
+</div>
+<div class="section" id="selecting-an-mst-algorithm">
+<h1><a class="toc-backref" href="#id30">选择 MST 算法</a></h1>
+<p>Dehne 与 Gotz 在评估这四种算法时报告了 <a class="citation-reference" href="#dg98" id="id11">[DG98]</a> 混合的结果: 没有哪种算法在所有情况下都明显优于其他算法. 然而, 渐近意义上最优的算法 (<tt class="docutils literal"><span class="pre">boruvka_mixed_merge</span></tt>) 在他们的测试中似乎表现不如其他基于合并的算法. 以下性能图表展示了这四种最小生成树实现的性能.</p>
+<p>总体而言, 对于我们测试的图, <tt class="docutils literal"><span class="pre">dense_boruvka_minimum_spanning_tree</span></tt> 给出了一致性最好的性能与可扩展性. 此外, 它可能更适合于正在并行化的顺序程序, 因为它在每个进程中都通过输出迭代器输出完整的 MSF 边列表.</p>
+<div class="section" id="performance-on-sparse-graphs">
+<h2><a class="toc-backref" href="#id31">稀疏图上的性能</a></h2>
+<img align="left" alt="chart_php_generator_ER_dataset_TimeSparse_columns_5_6_7_8.png" class="align-left" src="chart_php_generator_ER_dataset_TimeSparse_columns_5_6_7_8.png" />
+<img alt="chart_php_generator_ER_dataset_TimeSparse_columns_5_6_7_8_speedup_1.png" src="chart_php_generator_ER_dataset_TimeSparse_columns_5_6_7_8_speedup_1.png" />
+<img align="left" alt="chart_php_generator_SF_dataset_TimeSparse_columns_5_6_7_8.png" class="align-left" src="chart_php_generator_SF_dataset_TimeSparse_columns_5_6_7_8.png" />
+<img alt="chart_php_generator_SF_dataset_TimeSparse_columns_5_6_7_8_speedup_1.png" src="chart_php_generator_SF_dataset_TimeSparse_columns_5_6_7_8_speedup_1.png" />
+<img align="left" alt="chart_php_generator_SW_dataset_TimeSparse_columns_5_6_7_8.png" class="align-left" src="chart_php_generator_SW_dataset_TimeSparse_columns_5_6_7_8.png" />
+<img alt="chart_php_generator_SW_dataset_TimeSparse_columns_5_6_7_8_speedup_1.png" src="chart_php_generator_SW_dataset_TimeSparse_columns_5_6_7_8_speedup_1.png" />
+</div>
+<div class="section" id="performance-on-dense-graphs">
+<h2><a class="toc-backref" href="#id32">稠密图上的性能</a></h2>
+<img align="left" alt="chart_php_generator_ER_dataset_TimeDense_columns_5_6_7_8.png" class="align-left" src="chart_php_generator_ER_dataset_TimeDense_columns_5_6_7_8.png" />
+<img alt="chart_php_generator_ER_dataset_TimeDense_columns_5_6_7_8_speedup_1.png" src="chart_php_generator_ER_dataset_TimeDense_columns_5_6_7_8_speedup_1.png" />
+<img align="left" alt="chart_php_generator_SF_dataset_TimeDense_columns_5_6_7_8.png" class="align-left" src="chart_php_generator_SF_dataset_TimeDense_columns_5_6_7_8.png" />
+<img alt="chart_php_generator_SF_dataset_TimeDense_columns_5_6_7_8_speedup_1.png" src="chart_php_generator_SF_dataset_TimeDense_columns_5_6_7_8_speedup_1.png" />
+<img align="left" alt="chart_php_generator_SW_dataset_TimeDense_columns_5_6_7_8.png" class="align-left" src="chart_php_generator_SW_dataset_TimeDense_columns_5_6_7_8.png" />
+<img alt="chart_php_generator_SW_dataset_TimeDense_columns_5_6_7_8_speedup_1.png" src="chart_php_generator_SW_dataset_TimeDense_columns_5_6_7_8_speedup_1.png" />
+<hr class="docutils" />
+<p>版权所有 (C) 2004 The Trustees of Indiana University.</p>
+<p>作者: Douglas Gregor 和 Andrew Lumsdaine</p>
+<table class="docutils citation" frame="void" id="dg98" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label">[DG98]</td><td><em>(<a class="fn-backref" href="#id1">1</a>, <a class="fn-backref" href="#id11">2</a>)</em> Frank Dehne and Silvia Gotz. <em>Practical Parallel Algorithms
+for Minimum Spanning Trees</em>. In Symposium on Reliable Distributed Systems,
+pages 366--371, 1998.</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr class="footer" /> 生成时间: 2009-05-31 00:21 UTC. 由 <a class="reference external" href="http://docutils.sourceforge.net/">Docutils</a> 依据 <a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> 源生成.</div>
+</body>
+</html>

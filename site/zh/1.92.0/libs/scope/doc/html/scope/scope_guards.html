@@ -1,0 +1,1429 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>作用域守护</title>
+<link rel="stylesheet" href="../../../../../doc/src/boostbook.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
+<link rel="home" href="../index.html" title="第 1 章 Boost.Scope">
+<link rel="up" href="../index.html" title="第 1 章 Boost.Scope">
+<link rel="prev" href="install_compat.html" title="安装与兼容性">
+<link rel="next" href="unique_resource.html" title="唯一资源封装">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table cellpadding="2" width="100%"><tr><td valign="top"><img alt="Boost C++ 库" width="277" height="86" src="../../../../../boost.png"></td></tr></table>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="install_compat.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="unique_resource.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="scope.scope_guards"></a><a class="link" href="scope_guards.html" title="作用域守护">作用域守护</a>
+</h2></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="scope_guards.html#scope.scope_guards.conditional">条件作用域守护: <code class="computeroutput"><span class="identifier">scope_exit</span></code>, <code class="computeroutput"><span class="identifier">scope_success</span></code> 与 <code class="computeroutput"><span class="identifier">scope_fail</span></code></a></span></dt>
+<dt><span class="section"><a href="scope_guards.html#scope.scope_guards.condition_functions">作用域守护条件函数</a></span></dt>
+<dt><span class="section"><a href="scope_guards.html#scope.scope_guards.unconditional">无条件作用域守护: <code class="computeroutput"><span class="identifier">defer_guard</span></code></a></span></dt>
+<dt><span class="section"><a href="scope_guards.html#scope.scope_guards.capture_by_reference_caveats">按引用捕获的注意事项</a></span></dt>
+<dt><span class="section"><a href="scope_guards.html#scope.scope_guards.runtime_defined">在运行期设置作用域退出动作</a></span></dt>
+<dt><span class="section"><a href="scope_guards.html#scope.scope_guards.comparison_with_boost_scope_exit">与 Boost.ScopeExit 库的比较</a></span></dt>
+<dt><span class="section"><a href="scope_guards.html#scope.scope_guards.comparison_with_library_fundamentals_ts">与 C++ 库基础扩展中定义的作用域守护的比较</a></span></dt>
+</dl></div>
+<p>作用域守护是一种在销毁时调用任意 <span class="emphasis"><em>动作</em></span> 函数对象的对象. 作用域守护适用于实现在控制流离开执行作用域时 (例如从函数返回时) 需要可靠执行的动作, 这对处理异常尤其有帮助.</p>
+<p>被封装的动作函数对象在作用域守护构造时指定, 之后不能更改. 其类型必须是以下之一:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">具有公有且无参的 <code class="computeroutput"><span class="keyword">operator</span><span class="special">()</span></code> 的用户自定义类; 或</li>
+<li class="listitem">指向该类的左值引用; 或</li>
+<li class="listitem">指向无参函数的左值引用或指针.</li>
+</ul></div>
+<p>注意, 若被封装的函数是对某个函数对象的引用, 该对象必须存储在作用域守护之外, 并在作用域守护的整个生命周期内保持有效.</p>
+<p>某些作用域守护还支持指定额外的 <span class="emphasis"><em>条件</em></span> 函数对象, 用于自定义必须调用动作函数对象的条件. 条件函数对象将在<a class="link" href="scope_guards.html#scope.scope_guards.condition_functions" title="作用域守护条件函数">后续章节</a>中详细讨论.</p>
+<p>Boost.Scope 提供四种作用域守护, 其特性及调用动作函数对象的条件各不相同, 汇总于下表.</p>
+<div class="table">
+<a name="scope.scope_guards.scope_guard_comparison"></a><p class="title"><b>表 1.2 作用域守护比较</b></p>
+<div class="table-contents"><table class="table" summary="Scope guard comparison">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+              <p>特性</p>
+            </th>
+<th>
+              <p>
+                <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code>
+              </p>
+            </th>
+<th>
+              <p>
+                <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__success.html" title="类模板 scope_success">scope_success</a></code>
+              </p>
+            </th>
+<th>
+              <p>
+                <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code>
+              </p>
+            </th>
+<th>
+              <p>
+                <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1defer__guard.html" title="类模板 defer_guard">defer_guard</a></code>
+              </p>
+            </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+              <p>支持条件函数?</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+<td>
+              <p>否</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>正常退出作用域时调用动作?</p>
+            </td>
+<td>
+              <p>默认为是. 取决于条件.</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+<td>
+              <p>否</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>因失败退出作用域时调用动作?</p>
+            </td>
+<td>
+              <p>默认为是. 取决于条件.</p>
+            </td>
+<td>
+              <p>否</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>动作可以抛出异常?</p>
+            </td>
+<td>
+              <p>默认为是. 取决于条件.</p>
+            </td>
+<td>
+              <p>通常可以</p>
+            </td>
+<td>
+              <p>通常不可以</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>可以激活/停用?</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+<td>
+              <p>否</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>可移动构造? (要求函数对象可移动构造)</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+<td>
+              <p>否</p>
+            </td>
+</tr>
+<tr>
+<td>
+              <p>有工厂函数? (对 C++11 友好)</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+<td>
+              <p>是</p>
+            </td>
+<td>
+              <p>否</p>
+            </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><p>在上表中, "失败"一词含义宽泛. 在给定上下文中什么构成失败, 由用户以条件函数对象的形式指定. 最常见的是将抛出的异常视为失败的标志, 但也可以改为例如检查外围函数返回的错误码.</p>
+<p>对于 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code>, 不存在"成功"或"失败"的概念. 只要条件返回 <code class="computeroutput"><span class="keyword">true</span></code>, 作用域守护就会调用动作函数对象. 默认情况下, 若用户未指定条件函数对象, 作用域守护如同条件始终返回 <code class="computeroutput"><span class="keyword">true</span></code> 一样运行, 这意味着无论控制流是正常离开作用域还是因异常离开, 它都会调用动作.</p>
+<p>尽管可以指定任意条件函数对象, <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__success.html" title="类模板 scope_success">scope_success</a></code> 的预期用例是在作用域正常退出时 (即非因失败) 调用其动作, 而 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 的预期用例是调用其动作处理错误 (包括异常). 因此, 与 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 一起使用的动作函数通常不允许抛出异常, 否则可能导致程序终止. 这也是 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1defer__guard.html" title="类模板 defer_guard">defer_guard</a></code> 等其他作用域守护需要关注的问题, 它们同样可能因异常而调用其动作. 用户有责任确保在另一个异常正在传播时作用域守护的动作不抛出异常. 一般建议使用作用域守护实现不会抛出异常的动作, 并将所有可能失败的操作移入正常代码流程.</p>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="scope.scope_guards.conditional"></a><a class="link" href="scope_guards.html#scope.scope_guards.conditional" title="条件作用域守护: scope_exit、scope_success 与 scope_fail">条件作用域守护: <code class="computeroutput"><span class="identifier">scope_exit</span></code>, <code class="computeroutput"><span class="identifier">scope_success</span></code> 与 <code class="computeroutput"><span class="identifier">scope_fail</span></code></a>
+</h3></div></div></div>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../reference.html#doxygen.reference.scope__exit_8hpp" title="头文件 &lt;boost/scope/scope_exit.hpp&gt;">boost/scope/scope_exit.hpp</a></code><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../reference.html#doxygen.reference.scope__success_8hpp" title="头文件 &lt;boost/scope/scope_success.hpp&gt;">boost/scope/scope_success.hpp</a></code><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../reference.html#doxygen.reference.scope__fail_8hpp" title="头文件 &lt;boost/scope/scope_fail.hpp&gt;">boost/scope/scope_fail.hpp</a></code><span class="special">&gt;</span>
+</pre>
+<p> <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code>、<code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__success.html" title="类模板 scope_success">scope_success</a></code> 与 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 作用域守护在接口和能力上有诸多相似之处, 区别在于调用动作函数对象的条件. 如上表所示, 这些作用域守护支持指定额外的条件函数对象. 默认情况下, <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__success.html" title="类模板 scope_success">scope_success</a></code> 在正常销毁时调用其动作, <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 在因抛出异常而销毁时调用其动作, 而 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code> 默认如同条件始终允许执行动作一样运行.</p>
+<div class="tip"><table border="0" summary="Tip">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[提示]" src="../../../../../doc/src/images/tip.png"></td>
+<th align="left">提示</th>
+</tr>
+<tr><td align="left" valign="top"><p>条件函数对象将在<a class="link" href="scope_guards.html#scope.scope_guards.condition_functions" title="作用域守护条件函数">下一节</a>中详细讨论. 注意, 检测是否已抛出异常存在一些注意事项, 也将在下一节讨论.</p></td></tr>
+</table></div>
+<p>由于默认条件函数对象不同, 不同的作用域守护类型通常适用于不同目的:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code> 适用于一般清理任务, 无论外围函数成功或失败都需要执行.</li>
+<li class="listitem">
+            <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__success.html" title="类模板 scope_success">scope_success</a></code> 可用于在函数成功完成时需要执行的常见收尾代码.</li>
+<li class="listitem">
+            <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 用于处理错误, 例如将未完成的操作回退到前一个有效状态.</li>
+</ul></div>
+<p>当存在多个返回点 (包括正常返回和异常返回) 且作用域守护动作不易提取为函数时, 所有作用域守护都特别有用.</p>
+<p>让我们考虑一个示例类: 它接收网络请求, 验证请求并将其传递给与每个请求对应的会话对象. 接收到请求后, 该类必须发送响应: 要么是包含请求处理结果的成功响应, 要么是错误.</p>
+<pre class="programlisting"><span class="comment">// A network request receiver</span>
+<span class="keyword">class</span> <span class="identifier">receiver</span>
+<span class="special">{</span>
+    <span class="comment">// A network connection</span>
+    <span class="identifier">connection</span> <span class="identifier">m_conn</span><span class="special">;</span>
+    <span class="comment">// A collection of sessions, searchable by session id</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">map</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span><span class="special">,</span> <span class="identifier">session</span> <span class="special">&gt;</span> <span class="identifier">m_sessions</span><span class="special">;</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="comment">// Processes a network request and sends a response</span>
+    <span class="keyword">void</span> <span class="identifier">process_request</span><span class="special">(</span><span class="identifier">request</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">req</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="keyword">const</span> <span class="keyword">auto</span> <span class="identifier">start_time</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">steady_clock</span><span class="special">::</span><span class="identifier">now</span><span class="special">();</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">time_guard</span><span class="special">([</span><span class="identifier">start_time</span><span class="special">]</span>
+        <span class="special">{</span>
+            <span class="comment">// Log the amount of time it took to process the request</span>
+            <span class="keyword">const</span> <span class="keyword">auto</span> <span class="identifier">finish_time</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">steady_clock</span><span class="special">::</span><span class="identifier">now</span><span class="special">();</span>
+
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">clog</span> <span class="special">&lt;&lt;</span> <span class="string">"Request processed in "</span>
+                <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">duration_cast</span><span class="special">&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">chrono</span><span class="special">::</span><span class="identifier">milliseconds</span> <span class="special">&gt;(</span><span class="identifier">finish_time</span> <span class="special">-</span> <span class="identifier">start_time</span><span class="special">).</span><span class="identifier">count</span><span class="special">()</span>
+                <span class="special">&lt;&lt;</span> <span class="string">" ms"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+        <span class="special">});</span>
+
+        <span class="identifier">response</span> <span class="identifier">resp</span><span class="special">;</span>
+
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_fail</span> <span class="identifier">failure_guard</span><span class="special">([&amp;]</span>
+        <span class="special">{</span>
+            <span class="comment">// Disconnect in case of exceptions</span>
+            <span class="identifier">m_conn</span><span class="special">.</span><span class="identifier">disconnect</span><span class="special">();</span> <span class="comment">// doesn't throw</span>
+        <span class="special">});</span>
+
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_success</span> <span class="identifier">success_guard</span><span class="special">([&amp;]</span>
+        <span class="special">{</span>
+            <span class="comment">// Send a response that was populated while processing the request</span>
+            <span class="identifier">m_conn</span><span class="special">.</span><span class="identifier">send_message</span><span class="special">(</span><span class="identifier">resp</span><span class="special">);</span>
+        <span class="special">});</span>
+
+        <span class="comment">// Validate the request and populate the response based on the contents of the request</span>
+        <span class="keyword">if</span> <span class="special">(</span><span class="identifier">req</span><span class="special">.</span><span class="identifier">start_line</span><span class="special">().</span><span class="identifier">version</span> <span class="special">&gt;</span> <span class="identifier">max_supported_version</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="identifier">resp</span><span class="special">.</span><span class="identifier">start_line</span><span class="special">().</span><span class="identifier">version</span> <span class="special">=</span> <span class="identifier">max_supported_version</span><span class="special">;</span>
+            <span class="identifier">resp</span><span class="special">.</span><span class="identifier">start_line</span><span class="special">().</span><span class="identifier">set_status</span><span class="special">(</span><span class="identifier">protocol_version_not_supported</span><span class="special">);</span>
+            <span class="keyword">return</span><span class="special">;</span>
+        <span class="special">}</span>
+
+        <span class="identifier">resp</span><span class="special">.</span><span class="identifier">start_line</span><span class="special">().</span><span class="identifier">version</span> <span class="special">=</span> <span class="identifier">req</span><span class="special">.</span><span class="identifier">start_line</span><span class="special">().</span><span class="identifier">version</span><span class="special">;</span>
+
+        <span class="keyword">auto</span> <span class="identifier">it_cseq</span> <span class="special">=</span> <span class="identifier">req</span><span class="special">.</span><span class="identifier">headers</span><span class="special">().</span><span class="identifier">find</span><span class="special">(</span><span class="identifier">cseq_header</span><span class="special">);</span>
+        <span class="keyword">if</span> <span class="special">(</span><span class="identifier">it_cseq</span> <span class="special">==</span> <span class="identifier">req</span><span class="special">.</span><span class="identifier">headers</span><span class="special">().</span><span class="identifier">end</span><span class="special">())</span>
+        <span class="special">{</span>
+            <span class="identifier">resp</span><span class="special">.</span><span class="identifier">start_line</span><span class="special">().</span><span class="identifier">set_status</span><span class="special">(</span><span class="identifier">bad_request</span><span class="special">);</span>
+            <span class="identifier">resp</span><span class="special">.</span><span class="identifier">set_body</span><span class="special">(</span><span class="identifier">mime</span><span class="special">::</span><span class="identifier">text_plain</span><span class="special">,</span> <span class="string">"CSeq not specified"</span><span class="special">);</span>
+            <span class="keyword">return</span><span class="special">;</span>
+        <span class="special">}</span>
+
+        <span class="identifier">resp</span><span class="special">.</span><span class="identifier">headers</span><span class="special">().</span><span class="identifier">add</span><span class="special">(</span><span class="identifier">cseq_header</span><span class="special">,</span> <span class="special">*</span><span class="identifier">it_cseq</span><span class="special">);</span>
+
+        <span class="keyword">auto</span> <span class="identifier">it_session_id</span> <span class="special">=</span> <span class="identifier">req</span><span class="special">.</span><span class="identifier">headers</span><span class="special">().</span><span class="identifier">find</span><span class="special">(</span><span class="identifier">session_id_header</span><span class="special">);</span>
+        <span class="keyword">if</span> <span class="special">(</span><span class="identifier">it_session_id</span> <span class="special">==</span> <span class="identifier">req</span><span class="special">.</span><span class="identifier">headers</span><span class="special">().</span><span class="identifier">end</span><span class="special">())</span>
+        <span class="special">{</span>
+            <span class="identifier">resp</span><span class="special">.</span><span class="identifier">start_line</span><span class="special">().</span><span class="identifier">set_status</span><span class="special">(</span><span class="identifier">bad_request</span><span class="special">);</span>
+            <span class="identifier">resp</span><span class="special">.</span><span class="identifier">set_body</span><span class="special">(</span><span class="identifier">mime</span><span class="special">::</span><span class="identifier">text_plain</span><span class="special">,</span> <span class="string">"Session id not specified"</span><span class="special">);</span>
+            <span class="keyword">return</span><span class="special">;</span>
+        <span class="special">}</span>
+
+        <span class="identifier">resp</span><span class="special">.</span><span class="identifier">headers</span><span class="special">().</span><span class="identifier">add</span><span class="special">(</span><span class="identifier">session_id_header</span><span class="special">,</span> <span class="special">*</span><span class="identifier">it_session_id</span><span class="special">);</span>
+
+        <span class="comment">// Find the session to forward the request to</span>
+        <span class="keyword">auto</span> <span class="identifier">it_session</span> <span class="special">=</span> <span class="identifier">m_sessions</span><span class="special">.</span><span class="identifier">find</span><span class="special">(*</span><span class="identifier">it_session_id</span><span class="special">);</span>
+        <span class="keyword">if</span> <span class="special">(</span><span class="identifier">it_session</span> <span class="special">==</span> <span class="identifier">m_sessions</span><span class="special">.</span><span class="identifier">end</span><span class="special">())</span>
+        <span class="special">{</span>
+            <span class="identifier">resp</span><span class="special">.</span><span class="identifier">start_line</span><span class="special">().</span><span class="identifier">set_status</span><span class="special">(</span><span class="identifier">session_not_found</span><span class="special">);</span>
+            <span class="keyword">return</span><span class="special">;</span>
+        <span class="special">}</span>
+
+        <span class="comment">// Process the request in the session and complete populating the response</span>
+        <span class="identifier">it_session</span><span class="special">-&gt;</span><span class="identifier">second</span><span class="special">.</span><span class="identifier">process_request</span><span class="special">(</span><span class="identifier">req</span><span class="special">,</span> <span class="identifier">resp</span><span class="special">);</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>在上面的示例中, 无论 <code class="computeroutput"><span class="identifier">process_request</span></code> 方法从何处返回, 各作用域守护都会自动执行各自的动作. <code class="computeroutput"><span class="identifier">success_guard</span></code> 确保发送响应, 无论它是在目标会话对象中处理请求后的成功响应, 还是某个错误响应. <code class="computeroutput"><span class="identifier">failure_guard</span></code> 处理处理过程因异常失败的情况, 并在这种情况下终止连接. 注意, 由于 <code class="computeroutput"><span class="identifier">failure_guard</span></code> 在 <code class="computeroutput"><span class="identifier">success_guard</span></code> 之后销毁, 它还覆盖发送响应期间可能发生的错误. 最后, <code class="computeroutput"><span class="identifier">time_guard</span></code> 记录处理请求所耗时间 (无论成功还是异常), 以便诊断.</p>
+<p>本节描述的每个作用域守护都支持活动和非活动状态. 只有在销毁时处于活动状态, 动作函数对象才会被调用. 默认情况下, 作用域守护以活动状态创建, 但可以通过将 <code class="computeroutput"><span class="keyword">false</span></code> 作为构造函数的最后一个实参来改变. 在生命周期内也可以调用 <code class="computeroutput"><span class="identifier">set_active</span></code> 方法来停用或激活作用域守护. 停用作用域守护常用作"提交"作用域守护创建与停用之间代码块效果的手段. 若需要在知道是否要执行作用域守护动作之前就创建守护 (例如守护需要创建在外层作用域, 而是否启用的决定在后面做出), 手动激活作用域守护有时会很有用.</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">collection</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">map</span><span class="special">&lt;</span> <span class="keyword">int</span><span class="special">,</span> <span class="identifier">object</span> <span class="special">&gt;</span> <span class="identifier">objects</span><span class="special">;</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="comment">// Finds an existing object by key or creates a new one and returns a reference to it</span>
+    <span class="identifier">object</span><span class="special">&amp;</span> <span class="identifier">obtain_object</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">key</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="comment">// Find the object or the position where it should be</span>
+        <span class="keyword">auto</span> <span class="identifier">it</span> <span class="special">=</span> <span class="identifier">objects</span><span class="special">.</span><span class="identifier">lower_bound</span><span class="special">(</span><span class="identifier">key</span><span class="special">);</span>
+
+        <span class="comment">// Create an inactive scope guard initially. Needs to be created</span>
+        <span class="comment">// at this scope to cover the on_requested() call below.</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_fail</span> <span class="identifier">rollback_guard</span><span class="special">{[&amp;]</span>
+        <span class="special">{</span>
+            <span class="comment">// Remove the object that was just inserted</span>
+            <span class="identifier">objects</span><span class="special">.</span><span class="identifier">erase</span><span class="special">(</span><span class="identifier">it</span><span class="special">);</span>
+        <span class="special">},</span>
+        <span class="keyword">false</span><span class="special">};</span>
+
+        <span class="keyword">if</span> <span class="special">(</span><span class="identifier">it</span> <span class="special">==</span> <span class="identifier">objects</span><span class="special">.</span><span class="identifier">end</span><span class="special">()</span> <span class="special">||</span> <span class="identifier">it</span><span class="special">-&gt;</span><span class="identifier">first</span> <span class="special">!=</span> <span class="identifier">key</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="comment">// Insert a new object that correspond to the specified key</span>
+            <span class="identifier">it</span> <span class="special">=</span> <span class="identifier">objects</span><span class="special">.</span><span class="identifier">emplace_hint</span><span class="special">(</span><span class="identifier">it</span><span class="special">,</span> <span class="identifier">key</span><span class="special">,</span> <span class="identifier">object</span><span class="special">{});</span>
+
+            <span class="comment">// Activate rollback guard to revert the insertion in case of error</span>
+            <span class="identifier">rollback_guard</span><span class="special">.</span><span class="identifier">set_active</span><span class="special">(</span><span class="keyword">true</span><span class="special">);</span>
+
+            <span class="comment">// Initialize the inserted object. May throw.</span>
+            <span class="identifier">it</span><span class="special">-&gt;</span><span class="identifier">second</span><span class="special">.</span><span class="identifier">initialize</span><span class="special">(*</span><span class="keyword">this</span><span class="special">,</span> <span class="identifier">key</span><span class="special">);</span>
+        <span class="special">}</span>
+
+        <span class="comment">// Notify the object that is has been requested. May throw.</span>
+        <span class="identifier">it</span><span class="special">-&gt;</span><span class="identifier">second</span><span class="special">.</span><span class="identifier">on_requested</span><span class="special">();</span>
+
+        <span class="keyword">return</span> <span class="identifier">it</span><span class="special">-&gt;</span><span class="identifier">second</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+<p>上面的代码示例依赖 C++17 <a href="https://en.cppreference.com/w/cpp/language/class_template_argument_deduction" target="_top">类模板实参推导 (CTAD)</a>, 让作用域守护类型推导函数对象类型 (即 lambda). 若该特性不可用, 可以改用工厂函数重写作用域守护的构造, 如下:</p>
+<pre class="programlisting"><span class="keyword">auto</span> <span class="identifier">rollback_guard</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">make_scope_fail</span><span class="special">([&amp;]</span>
+<span class="special">{</span>
+    <span class="identifier">objects</span><span class="special">.</span><span class="identifier">erase</span><span class="special">(</span><span class="identifier">it</span><span class="special">);</span>
+<span class="special">},</span>
+<span class="keyword">false</span><span class="special">);</span>
+</pre>
+<p>本节描述的三个作用域守护各自都提供了工厂函数, 且兼容 C++11. 工厂函数命名为 <code class="computeroutput"><span class="identifier">make_</span><span class="special">&lt;</span><span class="identifier">scope_guard</span><span class="special">&gt;</span></code>, 接受与相应作用域守护构造函数相同的实参.</p>
+<p>本节描述的作用域守护可移动构造 (但不可赋值), 这要求被封装的函数对象也可移动构造或拷贝构造. 移动之后, 被移出的作用域守护变为非活动状态. 若被移出的作用域守护在销毁时仍处于活动状态, 则行为未定义.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="scope.scope_guards.condition_functions"></a><a class="link" href="scope_guards.html#scope.scope_guards.condition_functions" title="作用域守护条件函数">作用域守护条件函数</a>
+</h3></div></div></div>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../reference.html#doxygen.reference.exception__checker_8hpp" title="头文件 &lt;boost/scope/exception_checker.hpp&gt;">boost/scope/exception_checker.hpp</a></code><span class="special">&gt;</span>
+<span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../reference.html#doxygen.reference.error__code__checker_8hpp" title="头文件 &lt;boost/scope/error_code_checker.hpp&gt;">boost/scope/error_code_checker.hpp</a></code><span class="special">&gt;</span>
+</pre>
+<p>如前所述, <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code>、<code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__success.html" title="类模板 scope_success">scope_success</a></code> 与 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 支持指定额外的条件函数对象, 该对象将被调用以决定作用域守护是否应调用动作. 条件函数对象必须满足以下要求:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">条件函数对象的类型必须是以下之一: <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; ">
+<li class="listitem">具有公有且无参的 <code class="computeroutput"><span class="keyword">operator</span><span class="special">()</span></code> 的用户自定义类; 或</li>
+<li class="listitem">指向该类的左值引用; 或</li>
+<li class="listitem">指向无参函数的左值引用或指针;</li>
+</ul></div>
+          </li>
+<li class="listitem">调用条件函数对象必须返回可按语境转换为 <code class="computeroutput"><span class="keyword">bool</span></code> 的值; 且</li>
+<li class="listitem">调用条件函数对象不得抛出异常.</li>
+</ul></div>
+<p>对这三个作用域守护而言, 条件函数对象都是可选的. 若未指定, <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code> 如同条件函数对象始终返回 <code class="computeroutput"><span class="keyword">true</span></code> 一样运行, 只要作用域守护处于活动状态就会调用其动作函数对象. 否则, 作用域守护仅在条件返回 <code class="computeroutput"><span class="keyword">true</span></code> 时才调用其动作.</p>
+<p>对 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__success.html" title="类模板 scope_success">scope_success</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 而言, 默认使用 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1exception__checker.html" title="类 exception_checker">exception_checker</a></code> 条件函数. 它在构造时 (即作用域守护构造之时) 捕获未捕获异常的数量, 然后在其被调用时 (即作用域守护销毁之时) 将捕获的值与未捕获异常的数量进行比较. 若数量增加, 则视为有新异常正在传播, 谓词返回 <code class="computeroutput"><span class="keyword">true</span></code>; 否则谓词返回 <code class="computeroutput"><span class="keyword">false</span></code>.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>按照设计, <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1exception__checker.html" title="类 exception_checker">exception_checker</a></code> 针对在栈上创建作用域守护的特定用例. 它与 C++20 协程及类似设施 (如纤程和用户态上下文切换) 不兼容: 在这些场景中, 执行线程可能在谓词捕获未捕获异常数量之后被挂起, 然后在未捕获异常数量已发生变化的其他上下文中恢复. 类似地, 它也与以下使用模式不兼容: 谓词在构造后被缓存, 并在线程离开构造谓词的作用域之后才被调用 (例如谓词或相关作用域守护被存储为类的数据成员或命名空间作用域变量).</p></td></tr>
+</table></div>
+<p>
+        <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__success.html" title="类模板 scope_success">scope_success</a></code> 在条件返回 <code class="computeroutput"><span class="keyword">false</span></code> 时 (即未检测到失败时) 调用其动作, 而 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 在条件返回 <code class="computeroutput"><span class="keyword">true</span></code> 时 (即检测到失败时) 调用其动作. 就这两种作用域守护类型而言, 条件函数对象有时被称为失败条件, 因为它指示是否发生了失败.</p>
+<p>你可能注意到, 就条件函数对象的使用方式而言, <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code> (带有用户指定的条件函数对象) 的行为与 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 相似, 而与 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__success.html" title="类模板 scope_success">scope_success</a></code> 相反. 主要区别在于语义: <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code> 没有成功/失败的含义, 可与任意条件函数一起使用; 而 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__success.html" title="类模板 scope_success">scope_success</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 通常对应各自预期的用例, 默认条件函数使它们等效于 <a href="https://cplusplus.github.io/fundamentals-ts/v3.html#scope.syn" target="_top"><code class="computeroutput"><span class="special">&lt;</span><span class="identifier">experimental</span><span class="special">/</span><span class="identifier">scope</span><span class="special">&gt;</span></code></a> 中定义的作用域守护.</p>
+<p>可以使用 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code> 来模拟本节描述的每个作用域守护: 或使用自定义条件函数对象, 或将条件函数嵌入动作函数, 或在构造后激活/停用作用域守护. 例如, 以下四段代码具有相同效果:</p>
+<div class="table">
+<a name="scope.scope_guards.condition_functions.comparison_of_scope_fail_and_sco"></a><p class="title"><b>表 1.3 <code class="computeroutput"><span class="identifier">scope_fail</span></code> 与 <code class="computeroutput"><span class="identifier">scope_exit</span></code></b></p>
+<div class="table-contents"><table class="table" summary="Comparison of scope_fail
+        and scope_exit">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>
+                  <code class="computeroutput"><span class="identifier">scope_fail</span></code>
+                </p>
+              </th>
+<th>
+                <p>带条件的 <code class="computeroutput"><span class="identifier">scope_exit</span></code> </p>
+              </th>
+<th>
+                <p>嵌入条件的 <code class="computeroutput"><span class="identifier">scope_exit</span></code> </p>
+              </th>
+<th>
+                <p>手动停用的 <code class="computeroutput"><span class="identifier">scope_exit</span></code> </p>
+              </th>
+</tr></thead>
+<tbody><tr>
+<td>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">push_back</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">x</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;&amp;</span> <span class="identifier">vec1</span><span class="special">,</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;&amp;</span> <span class="identifier">vec2</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">vec1</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">x</span><span class="special">);</span>
+
+    <span class="comment">// Revert vec1 modification on failure</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_fail</span> <span class="identifier">rollback_guard</span><span class="special">{[&amp;]</span>
+    <span class="special">{</span>
+        <span class="identifier">vec1</span><span class="special">.</span><span class="identifier">pop_back</span><span class="special">();</span>
+    <span class="special">}};</span>
+
+    <span class="identifier">vec2</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">x</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+              </td>
+<td>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">push_back</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">x</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;&amp;</span> <span class="identifier">vec1</span><span class="special">,</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;&amp;</span> <span class="identifier">vec2</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">vec1</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">x</span><span class="special">);</span>
+
+    <span class="comment">// Revert vec1 modification on failure</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">rollback_guard</span>
+    <span class="special">{</span>
+        <span class="special">[&amp;]</span> <span class="special">{</span> <span class="identifier">vec1</span><span class="special">.</span><span class="identifier">pop_back</span><span class="special">();</span> <span class="special">},</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">exception_checker</span><span class="special">()</span>
+    <span class="special">};</span>
+
+    <span class="identifier">vec2</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">x</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+              </td>
+<td>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">push_back</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">x</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;&amp;</span> <span class="identifier">vec1</span><span class="special">,</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;&amp;</span> <span class="identifier">vec2</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">vec1</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">x</span><span class="special">);</span>
+
+    <span class="comment">// Revert vec1 modification on failure</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">rollback_guard</span>
+    <span class="special">{</span>
+        <span class="special">[&amp;,</span> <span class="identifier">uncaught_count</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">uncaught_exceptions</span><span class="special">()]</span>
+        <span class="special">{</span>
+            <span class="keyword">if</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">uncaught_exceptions</span><span class="special">()</span> <span class="special">&gt;</span> <span class="identifier">uncaught_count</span><span class="special">)</span>
+                <span class="identifier">vec1</span><span class="special">.</span><span class="identifier">pop_back</span><span class="special">();</span>
+        <span class="special">}</span>
+    <span class="special">};</span>
+
+    <span class="identifier">vec2</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">x</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+              </td>
+<td>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">push_back</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">x</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;&amp;</span> <span class="identifier">vec1</span><span class="special">,</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;&amp;</span> <span class="identifier">vec2</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">vec1</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">x</span><span class="special">);</span>
+
+    <span class="comment">// Revert vec1 modification on failure</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">rollback_guard</span><span class="special">{[&amp;]</span>
+    <span class="special">{</span>
+        <span class="identifier">vec1</span><span class="special">.</span><span class="identifier">pop_back</span><span class="special">();</span>
+    <span class="special">}};</span>
+
+    <span class="identifier">vec2</span><span class="special">.</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">x</span><span class="special">);</span>
+
+    <span class="comment">// Commit vec1 modification</span>
+    <span class="identifier">rollback_guard</span><span class="special">.</span><span class="identifier">set_active</span><span class="special">(</span><span class="keyword">false</span><span class="special">);</span>
+<span class="special">}</span>
+</pre>
+              </td>
+</tr></tbody>
+</table></div>
+</div>
+<br class="table-break"><p>在此示例中使用 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 的主要好处是减少代码规模与复杂度. 可以看到, 在作用域守护动作中加入对未捕获异常数量的检查使其明显更冗长, 且若需要在多个作用域守护中执行此类检查, 这段代码不得不重复. 显式停用作用域守护也有缺点: 若必须在代码的多处执行 (例如存在多个返回点且事务需要在每处提交), 则容易出错. 这违背了作用域守护的初衷, 即自动正确执行其动作, 而无需用户在每个可能的离开作用域之处手动确保这一点.</p>
+<p> <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 的另一个好处是提升代码可读性. 对读者而言, <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 立即表明这是错误处理器, 而 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code> 没有这种含义, 可能只是一般清理代码.</p>
+<p>话虽如此, 仍可能有理由使用上面演示的某种技术来代替 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__success.html" title="类模板 scope_success">scope_success</a></code>/<code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code>, 尤其是与 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1exception__checker.html" title="类 exception_checker">exception_checker</a></code> 配合使用时. 如上所述, <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1exception__checker.html" title="类 exception_checker">exception_checker</a></code> 与协程及类似设施不兼容, 因此使用手动管理的 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code> 可能是一种解决方案. 另一个考虑因素是性能, 特别是与 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1exception__checker.html" title="类 exception_checker">exception_checker</a></code> 相关时. 该谓词必须调用运行时函数来获取未捕获异常的数量, 且必须执行两次: 作用域守护构造和销毁时各一次. 尽管这些函数通常开销很小, 但即使没有抛出异常, 这些调用通常也不会被编译器优化掉, 而停用作用域守护的开销更小. 因此, 若作用域守护用于其性能开销可能显著的紧凑循环中, 优先选择带手动停用的 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code> 可能是合理的选择.</p>
+<p>
+        <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code>、<code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__success.html" title="类模板 scope_success">scope_success</a></code> 与 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 接受条件函数对象作为构造函数或工厂函数的第二个实参, 位于动作函数对象之后. 若条件函数对象可默认构造且默认构造函数不抛出异常, 则可在作用域守护构造函数实参中省略该函数对象.</p>
+<pre class="programlisting"><span class="comment">// Writes a string to a file using a file descriptor, with file locking.</span>
+<span class="comment">// Reports errors via an error_code parameter.</span>
+<span class="keyword">void</span> <span class="identifier">locked_write_string</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">fd</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">str</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">error_code</span><span class="special">&amp;</span> <span class="identifier">ec</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">int</span> <span class="identifier">err</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+
+    <span class="comment">// Automatically transform errors to error_code on exit</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_fail</span> <span class="identifier">fail_guard</span>
+    <span class="special">{</span>
+        <span class="comment">// Action function object</span>
+        <span class="special">[&amp;]</span> <span class="special">{</span> <span class="identifier">ec</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">error_code</span><span class="special">(</span><span class="identifier">err</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">generic_category</span><span class="special">());</span> <span class="special">},</span>
+        <span class="comment">// Condition function object</span>
+        <span class="special">[&amp;</span><span class="identifier">err</span><span class="special">]()</span> <span class="keyword">noexcept</span> <span class="special">{</span> <span class="keyword">return</span> <span class="identifier">err</span> <span class="special">!=</span> <span class="number">0</span><span class="special">;</span> <span class="special">}</span>
+    <span class="special">};</span>
+
+    <span class="comment">// Performs a lock operation on the file descriptor, returns error code or 0 on success</span>
+    <span class="keyword">auto</span> <span class="identifier">lock_operation</span> <span class="special">=</span> <span class="special">[</span><span class="identifier">fd</span><span class="special">](</span><span class="keyword">int</span> <span class="identifier">operation</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="keyword">while</span> <span class="special">(</span><span class="identifier">flock</span><span class="special">(</span><span class="identifier">fd</span><span class="special">,</span> <span class="identifier">operation</span><span class="special">)</span> <span class="special">&lt;</span> <span class="number">0</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="keyword">int</span> <span class="identifier">err</span> <span class="special">=</span> <span class="identifier">errno</span><span class="special">;</span>
+            <span class="keyword">if</span> <span class="special">(</span><span class="identifier">err</span> <span class="special">!=</span> <span class="identifier">EINTR</span><span class="special">)</span>
+                <span class="keyword">return</span> <span class="identifier">err</span><span class="special">;</span>
+        <span class="special">}</span>
+
+        <span class="keyword">return</span> <span class="number">0</span><span class="special">;</span>
+    <span class="special">};</span>
+
+    <span class="comment">// Lock the file</span>
+    <span class="identifier">err</span> <span class="special">=</span> <span class="identifier">lock_operation</span><span class="special">(</span><span class="identifier">LOCK_EX</span><span class="special">);</span>
+    <span class="keyword">if</span> <span class="special">(</span><span class="identifier">err</span> <span class="special">!=</span> <span class="number">0</span><span class="special">)</span>
+        <span class="keyword">return</span><span class="special">;</span>
+
+    <span class="comment">// Unlock the file on exit</span>
+    <span class="identifier">BOOST_SCOPE_DEFER</span> <span class="special">[&amp;]</span> <span class="special">{</span> <span class="identifier">lock_operation</span><span class="special">(</span><span class="identifier">LOCK_UN</span><span class="special">);</span> <span class="special">};</span>
+
+    <span class="comment">// Write data</span>
+    <span class="keyword">const</span> <span class="keyword">char</span><span class="special">*</span> <span class="identifier">p</span> <span class="special">=</span> <span class="identifier">str</span><span class="special">.</span><span class="identifier">data</span><span class="special">();</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">size_t</span> <span class="identifier">size_left</span> <span class="special">=</span> <span class="identifier">str</span><span class="special">.</span><span class="identifier">size</span><span class="special">();</span>
+    <span class="keyword">while</span> <span class="special">(</span><span class="identifier">size_left</span> <span class="special">&gt;</span> <span class="number">0</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">ssize_t</span> <span class="identifier">written</span> <span class="special">=</span> <span class="identifier">write</span><span class="special">(</span><span class="identifier">fd</span><span class="special">,</span> <span class="identifier">p</span><span class="special">,</span> <span class="identifier">size_left</span><span class="special">);</span>
+        <span class="keyword">if</span> <span class="special">(</span><span class="identifier">written</span> <span class="special">&lt;</span> <span class="number">0</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="identifier">err</span> <span class="special">=</span> <span class="identifier">errno</span><span class="special">;</span>
+            <span class="keyword">if</span> <span class="special">(</span><span class="identifier">err</span> <span class="special">==</span> <span class="identifier">EINTR</span><span class="special">)</span>
+            <span class="special">{</span>
+                <span class="identifier">err</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span> <span class="comment">// we do not want to report EINTR to the caller</span>
+                <span class="keyword">continue</span><span class="special">;</span>
+            <span class="special">}</span>
+            <span class="keyword">return</span><span class="special">;</span>
+        <span class="special">}</span>
+
+        <span class="identifier">p</span> <span class="special">+=</span> <span class="identifier">written</span><span class="special">;</span>
+        <span class="identifier">size_left</span> <span class="special">-=</span> <span class="identifier">written</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">}</span>
+</pre>
+<p>除 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1exception__checker.html" title="类 exception_checker">exception_checker</a></code> 外, 本库还提供可用作条件函数对象的 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1error__code__checker.html" title="类模板 error_code_checker">error_code_checker</a></code>. 构造时, <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1error__code__checker.html" title="类模板 error_code_checker">error_code_checker</a></code> 捕获对外部错误码对象的引用, 并在被调用时检查其是否指示错误. 这意味着错误码对象必须在 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1error__code__checker.html" title="类模板 error_code_checker">error_code_checker</a></code> 谓词的整个生命周期内保持有效.</p>
+<p>对象 <code class="computeroutput"><span class="identifier">ec</span></code> 可用作错误码对象, 若:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">表达式 <code class="computeroutput"><span class="special">!</span><span class="identifier">ec</span></code> 有效, 绝不抛出异常, 且返回可按语境转换为 <code class="computeroutput"><span class="keyword">bool</span></code> 的值; 且</li>
+<li class="listitem">表达式 <code class="computeroutput"><span class="special">!</span><span class="identifier">ec</span></code> 在无错误时产生可按语境转换为 <code class="computeroutput"><span class="keyword">true</span></code> 的值, 否则产生 <code class="computeroutput"><span class="keyword">false</span></code>.</li>
+</ul></div>
+<p>也就是说, 对于错误码对象 <code class="computeroutput"><span class="identifier">ec</span></code>, 调用 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1error__code__checker.html" title="类模板 error_code_checker">error_code_checker</a></code> 的结果等同于 <code class="computeroutput"><span class="special">!!</span><span class="identifier">ec</span></code>. 这使 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1error__code__checker.html" title="类模板 error_code_checker">error_code_checker</a></code> 能够兼容多种错误码类型, 包括:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">error_code</span></code> 或 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">system</span><span class="special">::</span><span class="identifier">error_code</span></code> (来自 <a href="https://www.boost.org/doc/libs/release/libs/system/doc/html/system.html" target="_top">Boost.System</a>),</li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">expected</span></code>、<code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">outcome_v2</span><span class="special">::</span><span class="identifier">basic_outcome</span></code> 或 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">outcome_v2</span><span class="special">::</span><span class="identifier">basic_result</span></code> (来自 <a href="https://www.boost.org/doc/libs/release/libs/outcome/doc/html/index.html" target="_top">Boost.Outcome</a>),</li>
+<li class="listitem">
+            <code class="computeroutput"><span class="keyword">int</span></code>, 其中值 0 表示无错误,</li>
+<li class="listitem">
+            <code class="computeroutput"><span class="keyword">bool</span></code>, 其中值 <code class="computeroutput"><span class="keyword">false</span></code> 表示无错误,</li>
+<li class="listitem">
+            <code class="computeroutput"><span class="identifier">T</span><span class="special">*</span></code>, 其中空指针表示无错误.</li>
+</ul></div>
+<p>对于 C++11 编译器, 本库还提供工厂函数 <code class="computeroutput"><span class="identifier">check_error_code</span></code>. 例如, 前面的示例可以这样使用该条件函数对象:</p>
+<pre class="programlisting"><span class="comment">// Writes a string to a file using a file descriptor, with file locking.</span>
+<span class="comment">// Reports errors via an error_code parameter.</span>
+<span class="keyword">void</span> <span class="identifier">locked_write_string</span><span class="special">(</span><span class="keyword">int</span> <span class="identifier">fd</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">str</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">error_code</span><span class="special">&amp;</span> <span class="identifier">ec</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">int</span> <span class="identifier">err</span> <span class="special">=</span> <span class="number">0</span><span class="special">;</span>
+
+    <span class="comment">// Automatically transform errors to error_code on exit</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_fail</span> <span class="identifier">fail_guard</span>
+    <span class="special">{</span>
+        <span class="comment">// Action function object</span>
+        <span class="special">[&amp;]</span> <span class="special">{</span> <span class="identifier">ec</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">error_code</span><span class="special">(</span><span class="identifier">err</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">generic_category</span><span class="special">());</span> <span class="special">},</span>
+        <span class="comment">// Condition function object</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">check_error_code</span><span class="special">(</span><span class="identifier">err</span><span class="special">)</span>
+    <span class="special">};</span>
+
+    <span class="comment">// ...</span>
+<span class="special">}</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="scope.scope_guards.unconditional"></a><a class="link" href="scope_guards.html#scope.scope_guards.unconditional" title="无条件作用域守护: defer_guard">无条件作用域守护: <code class="computeroutput"><span class="identifier">defer_guard</span></code></a>
+</h3></div></div></div>
+<pre class="programlisting"><span class="preprocessor">#include</span> <span class="special">&lt;</span><code class="computeroutput"><a class="link" href="../reference.html#doxygen.reference.defer_8hpp" title="头文件 &lt;boost/scope/defer.hpp&gt;">boost/scope/defer.hpp</a></code><span class="special">&gt;</span>
+</pre>
+<p>在调用动作函数的时机方面, <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1defer__guard.html" title="类模板 defer_guard">defer_guard</a></code> 作用域守护类似于不带用户指定条件函数对象的 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code>. 但它不支持自定义条件函数, 也缺乏可移动性及激活/停用支持: 该作用域守护在构造后始终处于活动状态. 在不需要这些特性时, 这允许更高效的实现.</p>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>
+          <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1defer__guard.html" title="类模板 defer_guard">defer_guard</a></code> 是 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code> 的更轻量版本, 类似于 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">lock_guard</span></code> 之于 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_lock</span></code> 的关系.</p></td></tr>
+</table></div>
+<p>由于 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1defer__guard.html" title="类模板 defer_guard">defer_guard</a></code> 在构造之后实际上没有可供交互的接口, 它更适合匿名的"设置后即忘"类作用域守护. 为强调这一亲和性, 本库提供 <code class="computeroutput"><span class="identifier">BOOST_SCOPE_DEFER</span></code> 宏, 它如同一个关键字, 用于定义具有唯一名称的 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1defer__guard.html" title="类模板 defer_guard">defer_guard</a></code> 对象. 该宏之后应跟随在作用域退出时调用的函数对象.</p>
+<pre class="programlisting"><span class="identifier">BOOST_SCOPE_DEFER</span> <span class="special">[]</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Hello world!"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>
+          <code class="computeroutput"><span class="identifier">BOOST_SCOPE_DEFER</span></code> 要求支持 C++17 <a href="https://en.cppreference.com/w/cpp/language/class_template_argument_deduction" target="_top">CTAD</a>. <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1defer__guard.html" title="类模板 defer_guard">defer_guard</a></code> 类本身兼容 C++11, 但鉴于它没有工厂函数, 因此非常希望有 C++17 支持.</p></td></tr>
+</table></div>
+<p>如你所见, 相比其他作用域守护声明方式, <code class="computeroutput"><span class="identifier">BOOST_SCOPE_DEFER</span></code> 提供了一些语法改进:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">声明不为作用域守护变量命名, 这意味着无需费心取名, 也不会意外遗漏名称或与其他变量冲突.</li>
+<li class="listitem">声明通常键入更短, 也更容易辨认.</li>
+<li class="listitem">函数对象周围没有额外的圆括号或花括号.</li>
+</ul></div>
+<p>但应注意, <code class="computeroutput"><span class="identifier">BOOST_SCOPE_DEFER</span></code> 宏的使用完全是可选的. 用户可以自由地直接使用 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1defer__guard.html" title="类模板 defer_guard">defer_guard</a></code>.</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">defer_guard</span> <span class="identifier">guard</span><span class="special">{[]</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Hello world!"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}};</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="scope.scope_guards.capture_by_reference_caveats"></a><a class="link" href="scope_guards.html#scope.scope_guards.capture_by_reference_caveats" title="按引用捕获的注意事项">按引用捕获的注意事项</a>
+</h3></div></div></div>
+<p>使用作用域守护时, 用户应确保所有按引用捕获的变量在作用域守护销毁时仍处于有效状态. 这尤其适用于默认按引用捕获变量的 lambda 函数 (即捕获子句以 <code class="computeroutput"><span class="special">&amp;</span></code> 开头的情况). 考虑以下示例:</p>
+<pre class="programlisting"><span class="keyword">void</span> <span class="identifier">bad</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_ptr</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;</span> <span class="identifier">ptr</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">assert</span><span class="special">(</span><span class="identifier">ptr</span> <span class="special">!=</span> <span class="keyword">nullptr</span><span class="special">);</span>
+
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">guard</span><span class="special">{[&amp;]</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"processed: "</span> <span class="special">&lt;&lt;</span> <span class="special">*</span><span class="identifier">ptr</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">}};</span>
+
+    <span class="identifier">process</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">move</span><span class="special">(</span><span class="identifier">ptr</span><span class="special">));</span> <span class="comment">// may consume ptr, leaving it null for the scope guard action</span>
+<span class="special">}</span>
+</pre>
+<p>或者一个不太明显的变体, 涉及返回值的隐式移动:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_ptr</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;</span> <span class="identifier">bad</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_ptr</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;</span> <span class="identifier">ptr</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">assert</span><span class="special">(</span><span class="identifier">ptr</span> <span class="special">!=</span> <span class="keyword">nullptr</span><span class="special">);</span>
+
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">guard</span><span class="special">{[&amp;]</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"processed: "</span> <span class="special">&lt;&lt;</span> <span class="special">*</span><span class="identifier">ptr</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">}};</span>
+
+    <span class="identifier">process</span><span class="special">(*</span><span class="identifier">ptr</span><span class="special">);</span>
+
+    <span class="keyword">return</span> <span class="identifier">ptr</span><span class="special">;</span> <span class="comment">// moves from ptr, leaving it null for the scope guard action</span>
+<span class="special">}</span>
+</pre>
+<p>在这种情况下, 可考虑在函数对象中按值捕获, 或将作用域守护移到更深层的作用域, 使其在按引用捕获的变量失效之前执行其动作.</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_ptr</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;</span> <span class="identifier">good</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">unique_ptr</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;</span> <span class="identifier">ptr</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">assert</span><span class="special">(</span><span class="identifier">ptr</span> <span class="special">!=</span> <span class="keyword">nullptr</span><span class="special">);</span>
+
+    <span class="special">{</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">guard</span><span class="special">{[&amp;]</span>
+        <span class="special">{</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"processed: "</span> <span class="special">&lt;&lt;</span> <span class="special">*</span><span class="identifier">ptr</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+        <span class="special">}};</span>
+
+        <span class="identifier">process</span><span class="special">(*</span><span class="identifier">ptr</span><span class="special">);</span>
+    <span class="special">}</span> <span class="comment">// &lt;- scope guard action runs here, before ptr is moved-from</span>
+
+    <span class="keyword">return</span> <span class="identifier">ptr</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="scope.scope_guards.runtime_defined"></a><a class="link" href="scope_guards.html#scope.scope_guards.runtime_defined" title="在运行期设置作用域退出动作">在运行期设置作用域退出动作</a>
+</h3></div></div></div>
+<p>可以使用作用域守护类来实现运行期初始化的作用域退出动作. 一种方法是使用函数对象封装器 (如 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">function</span></code>) 配合作用域守护来安排函数调用. 例如:</p>
+<pre class="programlisting"><span class="keyword">using</span> <span class="identifier">cleanup_func_t</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">function</span><span class="special">&lt;</span> <span class="keyword">void</span><span class="special">()</span> <span class="special">&gt;;</span>
+<span class="identifier">cleanup_func_t</span> <span class="identifier">cleanup_func</span><span class="special">;</span>
+<span class="comment">// Create an inactive scope guard first, since the cleanup function is not set yet</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span><span class="special">&lt;</span> <span class="identifier">cleanup_func_t</span><span class="special">&amp;</span> <span class="special">&gt;</span> <span class="identifier">cleanup</span><span class="special">(</span><span class="identifier">cleanup_func</span><span class="special">,</span> <span class="keyword">false</span><span class="special">);</span>
+
+<span class="comment">// Later in the program, initialize the cleanup function with the function selected at run time</span>
+<span class="keyword">if</span> <span class="special">(</span><span class="identifier">cond</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">cleanup_func</span> <span class="special">=</span> <span class="special">[]</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"cond is true"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">};</span>
+<span class="special">}</span>
+<span class="keyword">else</span>
+<span class="special">{</span>
+    <span class="identifier">cleanup_func</span> <span class="special">=</span> <span class="special">[]</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"cond is false"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">};</span>
+<span class="special">}</span>
+
+<span class="comment">// Activate the scope guard once the cleanup function is initialized</span>
+<span class="identifier">cleanup</span><span class="special">.</span><span class="identifier">set_active</span><span class="special">(</span><span class="keyword">true</span><span class="special">);</span>
+</pre>
+<p>也可以用 <code class="computeroutput"><span class="identifier">BOOST_SCOPE_DEFER</span></code> 来做到这一点, 尽管这会失去该宏的优点之一 (即无需费心取名). 另请注意, 一旦构造了作用域守护, 函数封装器就必须始终有效.</p>
+<pre class="programlisting"><span class="comment">// Create a non-empty function wrapper that does nothing</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">function</span><span class="special">&lt;</span> <span class="keyword">void</span><span class="special">()</span> <span class="special">&gt;</span> <span class="identifier">cleanup_func</span> <span class="special">=</span> <span class="special">[]</span> <span class="special">{};</span>
+<span class="comment">// Create a scope guard that refers to the function wrapper</span>
+<span class="identifier">BOOST_SCOPE_DEFER</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">cleanup_func</span><span class="special">);</span>
+
+<span class="comment">// Later in the program, initialize the function wrapper</span>
+<span class="keyword">if</span> <span class="special">(</span><span class="identifier">cond</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">cleanup_func</span> <span class="special">=</span> <span class="special">[]</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"cond is true"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">};</span>
+<span class="special">}</span>
+<span class="keyword">else</span>
+<span class="special">{</span>
+    <span class="identifier">cleanup_func</span> <span class="special">=</span> <span class="special">[]</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"cond is false"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">};</span>
+<span class="special">}</span>
+</pre>
+<p>但用户应注意, 函数封装器通常在内部使用动态内存分配并拷贝函数对象数据, 这可能涉及调用拷贝构造函数, 而后者也可能因异常而失败. 尽管许多标准库实现对 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">function</span></code> 使用小对象优化, 且 <a href="https://www.boost.org/doc/libs/release/doc/html/function.html" target="_top">Boost.Function</a> 等其他实现也采用此技术, 但通常无法保证用给定函数对象初始化函数封装器不会抛出异常. 因此, 通常不建议使用 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">function</span></code> 及类似封装器.</p>
+<p>若设置作用域退出动作需要是无抛出操作 (例如作用域守护要回退紧邻的前一个操作的效果), 建议预先初始化非活动的作用域守护, 并在程序稍后的时刻只激活其中一个.</p>
+<pre class="programlisting"><span class="comment">// Create inactive scope guards for both branches</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">cleanup_true</span><span class="special">([]</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"cond is true"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">},</span>
+<span class="keyword">false</span><span class="special">);</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">cleanup_false</span><span class="special">([]</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"cond is false"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">},</span>
+<span class="keyword">false</span><span class="special">);</span>
+
+<span class="comment">// Later in the program, activate one of the scope guards.</span>
+<span class="comment">// This won't throw.</span>
+<span class="keyword">if</span> <span class="special">(</span><span class="identifier">cond</span><span class="special">)</span>
+    <span class="identifier">cleanup_true</span><span class="special">.</span><span class="identifier">set_active</span><span class="special">(</span><span class="keyword">true</span><span class="special">);</span>
+<span class="keyword">else</span>
+    <span class="identifier">cleanup_false</span><span class="special">.</span><span class="identifier">set_active</span><span class="special">(</span><span class="keyword">true</span><span class="special">);</span>
+</pre>
+<p>或者, 也可以在作用域守护动作自身内实现选择.</p>
+<pre class="programlisting"><span class="comment">// Create a single inactive scope guard that implements both branches</span>
+<span class="keyword">bool</span> <span class="identifier">cond</span><span class="special">;</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">cleanup</span><span class="special">([&amp;</span><span class="identifier">cond</span><span class="special">]</span>
+<span class="special">{</span>
+    <span class="keyword">if</span> <span class="special">(</span><span class="identifier">cond</span><span class="special">)</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"cond is true"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="keyword">else</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"cond is false"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">},</span>
+<span class="keyword">false</span><span class="special">);</span>
+
+<span class="comment">// Later in the program, select the branch to perform</span>
+<span class="comment">// and activate the scope guard.</span>
+<span class="identifier">cond</span> <span class="special">=</span> <span class="identifier">select_branch</span><span class="special">();</span>
+<span class="identifier">cleanup</span><span class="special">.</span><span class="identifier">set_active</span><span class="special">(</span><span class="keyword">true</span><span class="special">);</span>
+</pre>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="scope.scope_guards.comparison_with_boost_scope_exit"></a><a class="link" href="scope_guards.html#scope.scope_guards.comparison_with_boost_scope_exit" title="与 Boost.ScopeExit 库的比较">与 Boost.ScopeExit 库的比较</a>
+</h3></div></div></div>
+<p>
+        <a href="https://www.boost.org/doc/libs/release/libs/scope_exit/doc/html/index.html" target="_top">Boost.ScopeExit</a> 定义了一组宏, 用于定义在作用域退出时执行的代码块. Boost.Scope 提供的作用域守护提供类似功能, 但语法更简单且具有新特性. 两个库的差异汇总于下表.</p>
+<div class="table">
+<a name="scope.scope_guards.comparison_with_boost_scope_exit.boost_scope_exit_and_boost_scope"></a><p class="title"><b>表 1.4 <a href="https://www.boost.org/doc/libs/release/libs/scope_exit/doc/html/index.html" target="_top">Boost.ScopeExit</a> 与 Boost.Scope 的比较</b></p>
+<div class="table-contents"><table class="table" summary="Boost.ScopeExit
+        and Boost.Scope comparison">
+<colgroup>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                <p>特性</p>
+              </th>
+<th>
+                <p>
+                  <a href="https://www.boost.org/doc/libs/release/libs/scope_exit/doc/html/index.html" target="_top">Boost.ScopeExit</a>
+                </p>
+              </th>
+<th>
+                <p>
+                  Boost.Scope
+                </p>
+              </th>
+</tr></thead>
+<tbody>
+<tr>
+<td>
+                <p>最低及推荐的 C++ 版本.</p>
+              </td>
+<td>
+                <p>最低 C++03, 某些特性推荐 C++11.</p>
+              </td>
+<td>
+                <p>最低 C++11, 某些特性推荐 C++17.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>基本功能.</p>
+              </td>
+<td>
+<pre class="programlisting"><span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(</span><span class="keyword">void</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Hello, World!"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+<span class="identifier">BOOST_SCOPE_EXIT_END</span><span class="special">;</span>
+</pre>
+              </td>
+<td>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">guard</span><span class="special">([]</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Hello, World!"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">});</span>
+</pre>
+                <p>或满足以下条件之一:</p>
+<pre class="programlisting"><span class="identifier">BOOST_SCOPE_DEFER</span> <span class="special">[]</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Hello, World!"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>捕获变量.</p>
+              </td>
+<td>
+                <p>可以, 按值和按引用均可.</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">x</span><span class="special">;</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">str</span><span class="special">;</span>
+<span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(</span><span class="identifier">x</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">str</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"x = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">x</span> <span class="special">&lt;&lt;</span> <span class="string">", str = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">str</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+<span class="identifier">BOOST_SCOPE_EXIT_END</span><span class="special">;</span>
+</pre>
+                <p>在不支持变参宏的 C++03 模式下, 应使用 Boost.Preprocessor 序列列出捕获的变量.</p>
+              </td>
+<td>
+                <p>可以, 通过标准 C++ lambda 捕获.</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">x</span><span class="special">;</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">str</span><span class="special">;</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">guard</span><span class="special">([</span><span class="identifier">x</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">str</span><span class="special">]</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"x = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">x</span> <span class="special">&lt;&lt;</span> <span class="string">", str = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">str</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">});</span>
+</pre>
+                <p>或满足以下条件之一:</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">x</span><span class="special">;</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">str</span><span class="special">;</span>
+<span class="identifier">BOOST_SCOPE_DEFER</span> <span class="special">[</span><span class="identifier">x</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">str</span><span class="special">]</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"x = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">x</span> <span class="special">&lt;&lt;</span> <span class="string">", str = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">str</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>捕获所有变量.</p>
+              </td>
+<td>
+                <p>可以, 要求 C++11.</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">x</span><span class="special">;</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">str</span><span class="special">;</span>
+<span class="identifier">BOOST_SCOPE_EXIT_ALL</span><span class="special">(&amp;)</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"x = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">x</span> <span class="special">&lt;&lt;</span> <span class="string">", str = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">str</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+                <p>注意这种情况下不使用 <code class="computeroutput"><span class="identifier">BOOST_SCOPE_EXIT_END</span></code>. <code class="computeroutput"><span class="identifier">BOOST_SCOPE_EXIT_ALL</span></code> 的注意事项见下文.</p>
+              </td>
+<td>
+                <p>可以, 通过标准 C++ lambda 捕获.</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">x</span><span class="special">;</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">str</span><span class="special">;</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">guard</span><span class="special">([&amp;]</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"x = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">x</span> <span class="special">&lt;&lt;</span> <span class="string">", str = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">str</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">});</span>
+</pre>
+                <p>或满足以下条件之一:</p>
+<pre class="programlisting"><span class="keyword">int</span> <span class="identifier">x</span><span class="special">;</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">str</span><span class="special">;</span>
+<span class="identifier">BOOST_SCOPE_DEFER</span> <span class="special">[&amp;]</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"x = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">x</span> <span class="special">&lt;&lt;</span> <span class="string">", str = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">str</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">};</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>捕获 <code class="computeroutput"><span class="keyword">this</span></code>.</p>
+              </td>
+<td>
+                <p>可以, 使用特殊的 <code class="computeroutput"><span class="identifier">this_</span></code> 关键字.</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">my_class</span>
+<span class="special">{</span>
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="keyword">int</span> <span class="identifier">x</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">str</span><span class="special">;</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="keyword">void</span> <span class="identifier">foo</span><span class="special">()</span>
+    <span class="special">{</span>
+        <span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(</span><span class="identifier">this_</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"x = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">this_</span><span class="special">-&gt;</span><span class="identifier">x</span> <span class="special">&lt;&lt;</span> <span class="string">", str = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">this_</span><span class="special">-&gt;</span><span class="identifier">str</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+        <span class="special">}</span>
+        <span class="identifier">BOOST_SCOPE_EXIT_END</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+                <p>注意, 在作用域退出块内引用类的成员时必须显式使用该关键字.</p>
+                <p>捕获 <code class="computeroutput"><span class="keyword">this</span></code> 也可以使用 <code class="computeroutput"><span class="identifier">BOOST_SCOPE_EXIT_ALL</span></code> 来实现 (注意以下注意事项).</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">my_class</span>
+<span class="special">{</span>
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="keyword">int</span> <span class="identifier">x</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">str</span><span class="special">;</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="keyword">void</span> <span class="identifier">foo</span><span class="special">()</span>
+    <span class="special">{</span>
+        <span class="identifier">BOOST_SCOPE_EXIT_ALL</span><span class="special">(</span><span class="keyword">this</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"x = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">x</span> <span class="special">&lt;&lt;</span> <span class="string">", str = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">str</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+        <span class="special">};</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+              </td>
+<td>
+                <p>可以, 通过标准 C++ lambda 捕获.</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">my_class</span>
+<span class="special">{</span>
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="keyword">int</span> <span class="identifier">x</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">str</span><span class="special">;</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="keyword">void</span> <span class="identifier">foo</span><span class="special">()</span>
+    <span class="special">{</span>
+        <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">guard</span><span class="special">([</span><span class="keyword">this</span><span class="special">]</span>
+        <span class="special">{</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"x = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">x</span> <span class="special">&lt;&lt;</span> <span class="string">", str = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">str</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+        <span class="special">};</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+                <p>或满足以下条件之一:</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">my_class</span>
+<span class="special">{</span>
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="keyword">int</span> <span class="identifier">x</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">str</span><span class="special">;</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="keyword">void</span> <span class="identifier">foo</span><span class="special">()</span>
+    <span class="special">{</span>
+        <span class="identifier">BOOST_SCOPE_DEFER</span> <span class="special">[</span><span class="keyword">this</span><span class="special">]</span>
+        <span class="special">{</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"x = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">x</span> <span class="special">&lt;&lt;</span> <span class="string">", str = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">str</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+        <span class="special">};</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>捕获类的特定成员.</p>
+              </td>
+<td>
+                <p>支持.</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">my_class</span>
+<span class="special">{</span>
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="keyword">int</span> <span class="identifier">x</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">str</span><span class="special">;</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="keyword">void</span> <span class="identifier">foo</span><span class="special">()</span>
+    <span class="special">{</span>
+        <span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(</span><span class="identifier">x</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">str</span><span class="special">)</span>
+        <span class="special">{</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"x = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">x</span> <span class="special">&lt;&lt;</span> <span class="string">", str = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">str</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+        <span class="special">}</span>
+        <span class="identifier">BOOST_SCOPE_EXIT_END</span><span class="special">;</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+              </td>
+<td>
+                <p>不可以. 应捕获 <code class="computeroutput"><span class="keyword">this</span></code> 或使用 lambda 捕获初始化器 (要求 C++14).</p>
+<pre class="programlisting"><span class="keyword">class</span> <span class="identifier">my_class</span>
+<span class="special">{</span>
+<span class="keyword">private</span><span class="special">:</span>
+    <span class="keyword">int</span> <span class="identifier">x</span><span class="special">;</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">string</span> <span class="identifier">str</span><span class="special">;</span>
+
+<span class="keyword">public</span><span class="special">:</span>
+    <span class="keyword">void</span> <span class="identifier">foo</span><span class="special">()</span>
+    <span class="special">{</span>
+        <span class="identifier">BOOST_SCOPE_DEFER</span> <span class="special">[</span><span class="identifier">x</span> <span class="special">=</span> <span class="identifier">x</span><span class="special">,</span> <span class="identifier">str</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">ref</span><span class="special">(</span><span class="identifier">str</span><span class="special">)]</span>
+        <span class="special">{</span>
+            <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"x = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">x</span> <span class="special">&lt;&lt;</span> <span class="string">", str = "</span> <span class="special">&lt;&lt;</span> <span class="identifier">str</span><span class="special">.</span><span class="identifier">get</span><span class="special">()</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+        <span class="special">};</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>在模板中对作用域守护的支持.</p>
+              </td>
+<td>
+                <p>可以, 使用特殊宏.</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">T</span> <span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">foo</span><span class="special">(</span><span class="identifier">T</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">param</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">BOOST_SCOPE_EXIT_TPL</span><span class="special">(&amp;</span><span class="identifier">param</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Param: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">param</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">}</span>
+    <span class="identifier">BOOST_SCOPE_EXIT_END</span><span class="special">;</span>
+<span class="special">}</span>
+</pre>
+              </td>
+<td>
+                <p>可以, 无需特殊语法.</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span> <span class="identifier">T</span> <span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">foo</span><span class="special">(</span><span class="identifier">T</span> <span class="keyword">const</span><span class="special">&amp;</span> <span class="identifier">param</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">BOOST_SCOPE_DEFER</span> <span class="special">[&amp;</span><span class="identifier">param</span><span class="special">]</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Param: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">param</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">};</span>
+<span class="special">}</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>对变参模板和实参包的支持.</p>
+              </td>
+<td>
+                <p>可以, 使用 <code class="computeroutput"><span class="identifier">BOOST_SCOPE_EXIT_ALL</span></code> 宏 (见以下注意事项).</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span><span class="special">...</span> <span class="identifier">Args</span> <span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">foo</span><span class="special">(</span><span class="identifier">Args</span><span class="special">&amp;&amp;...</span> <span class="identifier">args</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">BOOST_SCOPE_EXIT_ALL</span><span class="special">(&amp;</span><span class="identifier">args</span><span class="special">...)</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Params: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">tuples</span><span class="special">::</span><span class="identifier">tie</span><span class="special">(</span><span class="identifier">args</span><span class="special">...)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">};</span>
+<span class="special">}</span>
+</pre>
+              </td>
+<td>
+                <p>可以, 通过标准 C++ lambda 捕获.</p>
+<pre class="programlisting"><span class="keyword">template</span><span class="special">&lt;</span> <span class="keyword">typename</span><span class="special">...</span> <span class="identifier">Args</span> <span class="special">&gt;</span>
+<span class="keyword">void</span> <span class="identifier">foo</span><span class="special">(</span><span class="identifier">Args</span><span class="special">&amp;&amp;...</span> <span class="identifier">args</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="identifier">BOOST_SCOPE_DEFER</span> <span class="special">[&amp;</span><span class="identifier">args</span><span class="special">...]</span>
+    <span class="special">{</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Params: "</span> <span class="special">&lt;&lt;</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">tuples</span><span class="special">::</span><span class="identifier">tie</span><span class="special">(</span><span class="identifier">args</span><span class="special">...)</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+    <span class="special">};</span>
+<span class="special">}</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>对作用域守护激活/停用的原生支持.</p>
+              </td>
+<td>
+                <p>不可以, 激活/停用逻辑需要嵌入动作代码块.</p>
+<pre class="programlisting"><span class="keyword">bool</span> <span class="identifier">active</span> <span class="special">=</span> <span class="keyword">false</span><span class="special">;</span>
+<span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(&amp;</span><span class="identifier">active</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">if</span> <span class="special">(</span><span class="identifier">active</span><span class="special">)</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Hello, World!"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+<span class="identifier">BOOST_SCOPE_EXIT_END</span><span class="special">;</span>
+
+<span class="identifier">active</span> <span class="special">=</span> <span class="keyword">true</span><span class="special">;</span>
+</pre>
+              </td>
+<td>
+                <p>可以, 通过 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code>、<code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__success.html" title="类模板 scope_success">scope_success</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code>. 包括延迟激活初始为非活动状态的作用域守护的能力.</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">guard</span><span class="special">([]</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Hello, World!"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">},</span>
+<span class="keyword">false</span><span class="special">);</span>
+
+<span class="identifier">guard</span><span class="special">.</span><span class="identifier">set_active</span><span class="special">(</span><span class="keyword">true</span><span class="special">);</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>对执行动作的自定义条件的支持.</p>
+              </td>
+<td>
+                <p>不可以, 条件需要嵌入动作代码块.</p>
+<pre class="programlisting"><span class="keyword">const</span> <span class="keyword">auto</span> <span class="identifier">uncaught_count</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">uncaught_exceptions</span><span class="special">();</span>
+<span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(</span><span class="identifier">uncaught_count</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">if</span> <span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">uncaught_exceptions</span><span class="special">()</span> <span class="special">&gt;</span> <span class="identifier">uncaught_count</span><span class="special">)</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Exception thrown!"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+<span class="identifier">BOOST_SCOPE_EXIT_END</span><span class="special">;</span>
+</pre>
+              </td>
+<td>
+                <p>可以, 通过 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code>、<code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__success.html" title="类模板 scope_success">scope_success</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code>.</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">guard</span><span class="special">(</span>
+<span class="special">[]</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Exception thrown!"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">},</span>
+<span class="special">[</span><span class="identifier">uncaught_count</span> <span class="special">=</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">uncaught_exceptions</span><span class="special">()]</span>
+<span class="special">{</span>
+    <span class="keyword">return</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">uncaught_exceptions</span><span class="special">()</span> <span class="special">&gt;</span> <span class="identifier">uncaught_count</span><span class="special">;</span>
+<span class="special">});</span>
+</pre>
+                <p>或者简单地:</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_fail</span> <span class="identifier">guard</span><span class="special">([]</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Exception thrown!"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">});</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>用于以异常和错误码作为调用动作判据的工具.</p>
+              </td>
+<td>
+                <p>不可以, 条件需要嵌入动作代码块.</p>
+<pre class="programlisting"><span class="keyword">const</span> <span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="identifier">uncaught_count</span> <span class="special">=</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">core</span><span class="special">::</span><span class="identifier">uncaught_exceptions</span><span class="special">();</span>
+<span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(</span><span class="identifier">uncaught_count</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">if</span> <span class="special">(</span><span class="identifier">uncaught_count</span> <span class="special">&lt;</span> <span class="identifier">boost</span><span class="special">::</span><span class="identifier">core</span><span class="special">::</span><span class="identifier">uncaught_exceptions</span><span class="special">())</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Exception thrown!"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+<span class="identifier">BOOST_SCOPE_EXIT_END</span><span class="special">;</span>
+</pre>
+                <p>或满足以下条件之一:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">error_code</span> <span class="identifier">ec</span><span class="special">;</span>
+<span class="identifier">BOOST_SCOPE_EXIT</span><span class="special">(&amp;</span><span class="identifier">ec</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">if</span> <span class="special">(</span><span class="identifier">ec</span><span class="special">)</span>
+        <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Execution failed!"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">}</span>
+<span class="identifier">BOOST_SCOPE_EXIT_END</span><span class="special">;</span>
+</pre>
+              </td>
+<td>
+                <p>可以: <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1exception__checker.html" title="类 exception_checker">exception_checker</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1error__code__checker.html" title="类模板 error_code_checker">error_code_checker</a></code>.</p>
+<pre class="programlisting"><span class="comment">// scope_fail by default checks for an exception</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_fail</span> <span class="identifier">guard</span><span class="special">([]</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Exception thrown!"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">});</span>
+</pre>
+                <p>或满足以下条件之一:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">error_code</span> <span class="identifier">ec</span><span class="special">;</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_fail</span> <span class="identifier">guard</span><span class="special">([]</span>
+<span class="special">{</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">cout</span> <span class="special">&lt;&lt;</span> <span class="string">"Execution failed!"</span> <span class="special">&lt;&lt;</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">endl</span><span class="special">;</span>
+<span class="special">},</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">check_error_code</span><span class="special">(</span><span class="identifier">ec</span><span class="special">));</span>
+</pre>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>命名的作用域守护.</p>
+              </td>
+<td>
+                <p>不可以, 作用域守护被声明为匿名代码块. (作用域守护内部实现为栈上具有唯一名称的对象, 但这并非公共接口的一部分.)</p>
+              </td>
+<td>
+                <p>可以, 作用域守护定义为对象. 此外, <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code>、<code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__success.html" title="类模板 scope_success">scope_success</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 可移动构造, 可从函数返回.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>匿名作用域守护.</p>
+              </td>
+<td>
+                <p>支持.</p>
+              </td>
+<td>
+                <p>可以, 使用 <code class="computeroutput"><span class="identifier">BOOST_SCOPE_DEFER</span></code> 宏.</p>
+              </td>
+</tr>
+<tr>
+<td>
+                <p>不使用宏的用法.</p>
+              </td>
+<td>
+                <p>不支持.</p>
+              </td>
+<td>
+                <p>支持.</p>
+              </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<br class="table-break"><p>在上表中你可能注意到, <a href="https://www.boost.org/doc/libs/release/libs/scope_exit/doc/html/index.html" target="_top">Boost.ScopeExit</a> 与 Boost.Scope 之间相当多的特性对等是通过在前者中使用 <code class="computeroutput"><span class="identifier">BOOST_SCOPE_EXIT_ALL</span></code> 宏实现的. 该宏内部使用 C++11 lambda 函数实现, 这解释了这种情况下两库的诸多相似之处. 用户也可以定义 <code class="computeroutput"><span class="identifier">BOOST_SCOPE_EXIT_CONFIG_USE_LAMBDAS</span></code>, 强制其他 <a href="https://www.boost.org/doc/libs/release/libs/scope_exit/doc/html/index.html" target="_top">Boost.ScopeExit</a> 宏在内部使用 C++11 lambda, 这将相应改变语法和变量捕获规则. 但在此模式下使用该库 (或在任何模式下使用 <code class="computeroutput"><span class="identifier">BOOST_SCOPE_EXIT_ALL</span></code> 宏) 时, 有几点注意事项需要牢记:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">由于依赖 C++11 lambda 函数, 它在 C++03 模式下不可用.</li>
+<li class="listitem">使用 C++11 lambda 实现的 <a href="https://www.boost.org/doc/libs/release/libs/scope_exit/doc/html/index.html" target="_top">Boost.ScopeExit</a> 作用域守护在内部将 lambda 函数存储于 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">function</span></code> 对象中. 这意味着创建作用域守护可能需要动态内存分配, 并可能因异常而失败. <a href="https://www.boost.org/doc/libs/release/libs/scope_exit/doc/html/index.html" target="_top">Boost.ScopeExit</a> 未对此情况的行为作出文档说明, 但实际上, 截至 Boost 1.83.0, 此时作用域退出块不会被执行. 这意味着此模式下的 <a href="https://www.boost.org/doc/libs/release/libs/scope_exit/doc/html/index.html" target="_top">Boost.ScopeExit</a> 不能在不抛出上下文中安全使用, 也无法保证作用域退出块的执行. 作用域守护的构造和执行也都存在性能开销.</li>
+</ul></div>
+<p>相比之下, Boost.Scope 作用域守护不使用 <code class="computeroutput"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">function</span></code> 或 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">function</span></code> 等函数对象封装器来存储函数对象. 这意味着作用域守护不执行动态内存分配 (除非函数对象自身执行), 也没有相关的异常安全问题与性能开销. 此外, 若作用域守护初始化因异常失败, 作用域守护仍会执行该动作.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="scope.scope_guards.comparison_with_library_fundamentals_ts"></a><a class="link" href="scope_guards.html#scope.scope_guards.comparison_with_library_fundamentals_ts" title="与 C++ 库基础扩展中定义的作用域守护的比较">与 C++ 库基础扩展中定义的作用域守护的比较</a>
+</h3></div></div></div>
+<div class="toc"><dl class="toc">
+<dt><span class="section"><a href="scope_guards.html#scope.scope_guards.comparison_with_library_fundamentals_ts.condition_functions">条件函数</a></span></dt>
+<dt><span class="section"><a href="scope_guards.html#scope.scope_guards.comparison_with_library_fundamentals_ts.activation">作用域守护的灵活激活与停用</a></span></dt>
+<dt><span class="section"><a href="scope_guards.html#scope.scope_guards.comparison_with_library_fundamentals_ts.relaxed_dtor_noexcept">析构函数上放宽的 <code class="computeroutput"><span class="keyword">noexcept</span></code> 规范</a></span></dt>
+</dl></div>
+<p> <a href="https://cplusplus.github.io/fundamentals-ts/v3.html#scopeguard.exit" target="_top">C++ Extensions for Library Fundamentals TS</a> 定义了三种作用域守护类型: <code class="computeroutput"><span class="identifier">scope_exit</span></code>、<code class="computeroutput"><span class="identifier">scope_success</span></code> 和 <code class="computeroutput"><span class="identifier">scope_fail</span></code>, 它们与本库提供的同名作用域守护语义相近. 存在一些差异和扩展, 汇总如下.</p>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="scope.scope_guards.comparison_with_library_fundamentals_ts.condition_functions"></a><a class="link" href="scope_guards.html#scope.scope_guards.comparison_with_library_fundamentals_ts.condition_functions" title="条件函数">条件函数</a>
+</h4></div></div></div>
+<p>Boost.Scope 提供的 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__exit.html" title="类模板 scope_exit">scope_exit</a></code>、<code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__success.html" title="类模板 scope_success">scope_success</a></code> 和 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 三种作用域守护都支持可选的<a class="link" href="scope_guards.html#scope.scope_guards.condition_functions" title="作用域守护条件函数">条件函数</a>, 用于决定作用域守护是否应调用其封装的动作函数. TS 定义的作用域守护没有此特性, 三种作用域守护各自的行为都由规范预先定义.</p>
+<p>Boost.Scope 作用域守护使用的默认条件函数使其行为与 TS 等效, 因此若用户不使用自定义条件函数, 两者中作用域守护的用法是等效的. 若使用自定义条件函数, 则可通过将条件函数嵌入 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">experimental</span><span class="special">::</span><span class="identifier">scope_exit</span></code> 调用的动作中, 在 TS 作用域守护中模拟. 例如, 若用户代码在 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 中以错误码作为失败标志, 等效的 TS 代码可能如下:</p>
+<div class="table">
+<a name="scope.scope_guards.comparison_with_library_fundamentals_ts.condition_functions.using_custom_condition_functions"></a><p class="title"><b>表 1.5 使用自定义条件函数</b></p>
+<div class="table-contents"><table class="table" summary="Using custom condition functions">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>
+                    Boost.Scope
+                  </p>
+                </th>
+<th>
+                  <p>
+                    Library Fundamentals TS
+                  </p>
+                </th>
+</tr></thead>
+<tbody><tr>
+<td>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">error_code</span> <span class="identifier">ec</span><span class="special">;</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_fail</span> <span class="identifier">guard</span>
+<span class="special">{</span>
+    <span class="special">[]</span> <span class="special">{</span> <span class="identifier">handle_error</span><span class="special">();</span> <span class="special">},</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">check_error_code</span><span class="special">(</span><span class="identifier">ec</span><span class="special">)</span>
+<span class="special">};</span>
+</pre>
+                </td>
+<td>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">error_code</span> <span class="identifier">ec</span><span class="special">;</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">experimental</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">guard</span>
+<span class="special">{</span>
+    <span class="special">[&amp;</span><span class="identifier">ec</span><span class="special">]</span>
+    <span class="special">{</span>
+        <span class="keyword">if</span> <span class="special">(</span><span class="identifier">ec</span><span class="special">)</span>
+            <span class="identifier">handle_error</span><span class="special">();</span>
+    <span class="special">}</span>
+<span class="special">};</span>
+</pre>
+                </td>
+</tr></tbody>
+</table></div>
+</div>
+<br class="table-break"><p>注意在 TS 的情况下必须从 <code class="computeroutput"><span class="identifier">scope_fail</span></code> 切换到 <code class="computeroutput"><span class="identifier">scope_exit</span></code>.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="scope.scope_guards.comparison_with_library_fundamentals_ts.activation"></a><a class="link" href="scope_guards.html#scope.scope_guards.comparison_with_library_fundamentals_ts.activation" title="作用域守护的灵活激活与停用">作用域守护的灵活激活与停用</a>
+</h4></div></div></div>
+<p>TS 定义的作用域守护总是以活动状态构造, 且只能通过调用 <code class="computeroutput"><span class="identifier">release</span><span class="special">()</span></code> 方法停用. Boost.Scope 支持创建初始为非活动状态的作用域守护, 并可在创建后激活或停用. 这允许在用户代码中更灵活地放置作用域守护, 当是否执行作用域守护动作的决定需要在守护构造之后做出时非常有用.</p>
+<p>该特性可在 TS 中通过额外状态来模拟, 由作用域守护动作检查该状态以确定是否需要执行动作.</p>
+<div class="table">
+<a name="scope.scope_guards.comparison_with_library_fundamentals_ts.activation.explicitly_activating_scope_guar"></a><p class="title"><b>表 1.6 显式激活作用域守护</b></p>
+<div class="table-contents"><table class="table" summary="Explicitly activating scope guards">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>
+                  <p>
+                    Boost.Scope
+                  </p>
+                </th>
+<th>
+                  <p>
+                    Library Fundamentals TS
+                  </p>
+                </th>
+</tr></thead>
+<tbody><tr>
+<td>
+<pre class="programlisting"><span class="comment">// Insert value into both containers and call on_inserted() afterwards.</span>
+<span class="comment">// pv may be null, in which case only insert the value into the set.</span>
+<span class="comment">// Maintain both containers intact if an exception is thrown.</span>
+<span class="keyword">void</span> <span class="identifier">insert_two</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;*</span> <span class="identifier">pv</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">set</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;&amp;</span> <span class="identifier">set</span><span class="special">,</span> <span class="keyword">int</span> <span class="identifier">value</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="comment">// Initially inactive scope guard</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_fail</span> <span class="identifier">pv_rollback</span><span class="special">([</span><span class="identifier">pv</span><span class="special">]</span> <span class="special">{</span> <span class="identifier">pv</span><span class="special">-&gt;</span><span class="identifier">pop_back</span><span class="special">();</span> <span class="special">},</span> <span class="keyword">false</span><span class="special">);</span>
+    <span class="keyword">if</span> <span class="special">(</span><span class="identifier">pv</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">pv</span><span class="special">-&gt;</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">value</span><span class="special">);</span> <span class="comment">// may throw</span>
+        <span class="identifier">pv_rollback</span><span class="special">.</span><span class="identifier">set_active</span><span class="special">(</span><span class="keyword">true</span><span class="special">);</span> <span class="comment">// activate the scope guard</span>
+    <span class="special">}</span>
+
+    <span class="keyword">auto</span> <span class="special">[</span><span class="identifier">it</span><span class="special">,</span> <span class="identifier">inserted</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">set</span><span class="special">.</span><span class="identifier">insert</span><span class="special">(</span><span class="identifier">value</span><span class="special">);</span> <span class="comment">// may throw</span>
+    <span class="comment">// Initially active scope guard, if a new element was inserted, otherwise inactive</span>
+    <span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_fail</span> <span class="identifier">set_rollback</span><span class="special">([&amp;</span><span class="identifier">set</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">it</span><span class="special">]</span> <span class="special">{</span> <span class="identifier">set</span><span class="special">.</span><span class="identifier">erase</span><span class="special">(</span><span class="identifier">it</span><span class="special">);</span> <span class="special">},</span> <span class="identifier">inserted</span><span class="special">);</span>
+
+    <span class="identifier">on_inserted</span><span class="special">();</span> <span class="comment">// may throw</span>
+<span class="special">}</span>
+</pre>
+                </td>
+<td>
+<pre class="programlisting"><span class="comment">// Insert value into both containers and call on_inserted() afterwards.</span>
+<span class="comment">// pv may be null, in which case only insert the value into the set.</span>
+<span class="comment">// Maintain both containers intact if an exception is thrown.</span>
+<span class="keyword">void</span> <span class="identifier">insert_two</span><span class="special">(</span><span class="identifier">std</span><span class="special">::</span><span class="identifier">vector</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;*</span> <span class="identifier">pv</span><span class="special">,</span> <span class="identifier">std</span><span class="special">::</span><span class="identifier">set</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;&amp;</span> <span class="identifier">set</span><span class="special">,</span> <span class="keyword">int</span> <span class="identifier">value</span><span class="special">)</span>
+<span class="special">{</span>
+    <span class="keyword">bool</span> <span class="identifier">pv_inserted</span> <span class="special">=</span> <span class="keyword">false</span><span class="special">;</span>
+    <span class="comment">// Initially active scope guard, but blocked by pv_inserted == false</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">experimental</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">pv_rollback</span><span class="special">([</span><span class="identifier">pv</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">pv_inserted</span><span class="special">]</span>
+    <span class="special">{</span>
+        <span class="keyword">if</span> <span class="special">(</span><span class="identifier">pv_inserted</span><span class="special">)</span>
+            <span class="identifier">pv</span><span class="special">-&gt;</span><span class="identifier">pop_back</span><span class="special">();</span>
+    <span class="special">});</span>
+    <span class="keyword">if</span> <span class="special">(</span><span class="identifier">pv</span><span class="special">)</span>
+    <span class="special">{</span>
+        <span class="identifier">pv</span><span class="special">-&gt;</span><span class="identifier">push_back</span><span class="special">(</span><span class="identifier">value</span><span class="special">);</span> <span class="comment">// may throw</span>
+        <span class="identifier">pv_inserted</span> <span class="special">=</span> <span class="keyword">true</span><span class="special">;</span> <span class="comment">// unblock the scope guard</span>
+    <span class="special">}</span>
+
+    <span class="keyword">auto</span> <span class="special">[</span><span class="identifier">it</span><span class="special">,</span> <span class="identifier">inserted</span><span class="special">]</span> <span class="special">=</span> <span class="identifier">set</span><span class="special">.</span><span class="identifier">insert</span><span class="special">(</span><span class="identifier">value</span><span class="special">);</span> <span class="comment">// may throw</span>
+    <span class="comment">// Initially active scope guard, which we immediately deactivate if no element was inserted</span>
+    <span class="identifier">std</span><span class="special">::</span><span class="identifier">experimental</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">set_rollback</span><span class="special">([&amp;</span><span class="identifier">set</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">it</span><span class="special">]</span> <span class="special">{</span> <span class="identifier">set</span><span class="special">.</span><span class="identifier">erase</span><span class="special">(</span><span class="identifier">it</span><span class="special">);</span> <span class="special">});</span>
+    <span class="keyword">if</span> <span class="special">(!</span><span class="identifier">inserted</span><span class="special">)</span>
+        <span class="identifier">set_rollback</span><span class="special">.</span><span class="identifier">release</span><span class="special">();</span>
+
+    <span class="identifier">on_inserted</span><span class="special">();</span> <span class="comment">// may throw</span>
+<span class="special">}</span>
+</pre>
+                </td>
+</tr></tbody>
+</table></div>
+</div>
+<br class="table-break"><p>注意 Boost.Scope 守护不提供 <code class="computeroutput"><span class="identifier">release</span><span class="special">()</span></code> 成员函数, 而是提供 <code class="computeroutput"><span class="identifier">set_active</span><span class="special">()</span></code> (带 <code class="computeroutput"><span class="keyword">bool</span></code> 实参), 其中 <code class="computeroutput"><span class="identifier">release</span><span class="special">()</span></code> 等效于 <code class="computeroutput"><span class="identifier">set_active</span><span class="special">(</span><span class="keyword">false</span><span class="special">)</span></code>. 这允许对作用域守护既激活又停用. 当是否需要守护处于活动状态的指示以运行期值表达时, <code class="computeroutput"><span class="keyword">bool</span></code> 实参比两个分开的激活/停用方法更方便. 例如, 上面对 <code class="computeroutput"><span class="identifier">set</span></code> 的插入可以这样写:</p>
+<pre class="programlisting"><span class="identifier">std</span><span class="special">::</span><span class="identifier">set</span><span class="special">&lt;</span> <span class="keyword">int</span> <span class="special">&gt;::</span><span class="identifier">iterator</span> <span class="identifier">it</span><span class="special">;</span>
+<span class="comment">// Initially create an inactive scope guard to revert the insertion</span>
+<span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_fail</span> <span class="identifier">set_rollback</span><span class="special">([&amp;</span><span class="identifier">set</span><span class="special">,</span> <span class="special">&amp;</span><span class="identifier">it</span><span class="special">]</span> <span class="special">{</span> <span class="identifier">set</span><span class="special">.</span><span class="identifier">erase</span><span class="special">(</span><span class="identifier">it</span><span class="special">);</span> <span class="special">},</span> <span class="keyword">false</span><span class="special">);</span>
+
+<span class="comment">// Try insering a new element into the set</span>
+<span class="keyword">bool</span> <span class="identifier">inserted</span><span class="special">;</span>
+<span class="identifier">std</span><span class="special">::</span><span class="identifier">tie</span><span class="special">(</span><span class="identifier">it</span><span class="special">,</span> <span class="identifier">inserted</span><span class="special">)</span> <span class="special">=</span> <span class="identifier">set</span><span class="special">.</span><span class="identifier">insert</span><span class="special">(</span><span class="identifier">value</span><span class="special">);</span> <span class="comment">// may throw</span>
+
+<span class="comment">// Activate the scope guard only if the element was inserted</span>
+<span class="identifier">set_rollback</span><span class="special">.</span><span class="identifier">set_active</span><span class="special">(</span><span class="identifier">inserted</span><span class="special">);</span>
+</pre>
+<div class="note"><table border="0" summary="Note">
+<tr>
+<td rowspan="2" align="center" valign="top" width="25"><img alt="[注释]" src="../../../../../doc/src/images/note.png"></td>
+<th align="left">注释</th>
+</tr>
+<tr><td align="left" valign="top"><p>在 Boost.Scope 评审期间至少有一人<a href="https://lists.boost.org/Archives/boost/2023/11/255424.php" target="_top">指出</a>, <code class="computeroutput"><span class="identifier">release</span><span class="special">()</span></code> 在作用域守护语境中是个不佳的名称. 加之带 <code class="computeroutput"><span class="keyword">bool</span></code> 实参的方法更灵活且提供相同功能, 这就是 Boost.Scope 不提供 <code class="computeroutput"><span class="identifier">release</span><span class="special">()</span></code> 的原因.</p></td></tr>
+</table></div>
+<p>除 <code class="computeroutput"><span class="identifier">set_active</span><span class="special">()</span></code> 外, 还可以通过 <code class="computeroutput"><span class="identifier">active</span><span class="special">()</span></code> 方法查询 Boost.Scope 作用域守护是否处于活动状态. 该特性在 TS 中没有对应物.</p>
+</div>
+<div class="section">
+<div class="titlepage"><div><div><h4 class="title">
+<a name="scope.scope_guards.comparison_with_library_fundamentals_ts.relaxed_dtor_noexcept"></a><a class="link" href="scope_guards.html#scope.scope_guards.comparison_with_library_fundamentals_ts.relaxed_dtor_noexcept" title="析构函数上放宽的 noexcept 规范">析构函数上放宽的 <code class="computeroutput"><span class="keyword">noexcept</span></code> 规范</a>
+</h4></div></div></div>
+<p>在 Library Fundamentals TS 中, 只有 <code class="computeroutput"><span class="identifier">scope_success</span></code> 的动作允许抛出异常, 而 <code class="computeroutput"><span class="identifier">scope_fail</span></code> 和 <code class="computeroutput"><span class="identifier">scope_exit</span></code> 的析构函数被无条件标记为 <code class="computeroutput"><span class="keyword">noexcept</span></code>. 由于 TS 不支持自定义条件函数, <code class="computeroutput"><span class="identifier">scope_fail</span></code> 只能在异常正在展开栈时调用其动作, 因此从作用域守护动作中抛出异常会导致程序终止. 就 <code class="computeroutput"><span class="identifier">scope_exit</span></code> 而言, 理由则不那么确定, 因为该作用域守护可能在无异常传播时调用其动作. 但因异常而调用动作的情况仍然可能发生, TS 采取了保守做法, 禁止动作抛出异常.</p>
+<p>Boost.Scope 采取了不同做法. 由于三种作用域守护都支持自定义条件函数, 每一种都可能无论异常是否正在栈上传播都调用其动作. "失败"的概念不再等同于"异常", 因此即使对于带自定义失败条件的 <code class="computeroutput"><a class="link" href="../doxygen/reference/classboost_1_1scope_1_1scope__fail.html" title="类模板 scope_fail">scope_fail</a></code> 作用域守护, 允许抛出异常也可能是合理的. 因此, 对 Boost.Scope 提供的所有作用域守护, 其析构函数被标记为 <code class="computeroutput"><span class="keyword">noexcept</span></code> 的前提是其动作和条件函数都标记为 <code class="computeroutput"><span class="keyword">noexcept</span></code>. 用户有责任确保当另一个异常正在传播时, 作用域守护的动作和条件不抛出异常. 用户甚至可以在需要时用 <code class="computeroutput"><span class="identifier">std</span><span class="special">::</span><span class="identifier">uncaught_exceptions</span></code> 执行运行期检查. 若用户愿意为自己的作用域守护强制不抛出保证, 他可以通过将动作函数标记为 <code class="computeroutput"><span class="keyword">noexcept</span></code> 来做到:</p>
+<pre class="programlisting"><span class="identifier">boost</span><span class="special">::</span><span class="identifier">scope</span><span class="special">::</span><span class="identifier">scope_exit</span> <span class="identifier">guard</span><span class="special">([&amp;]()</span> <span class="keyword">noexcept</span> <span class="special">{</span> <span class="comment">/* I promise I won't throw */</span> <span class="special">});</span>
+</pre>
+<p>虽然这允许更多作用域守护抛出异常, 但当动作在异常传播期间抛出异常时, 行为并无不同. 无论作用域守护的析构函数是否标记为 <code class="computeroutput"><span class="keyword">noexcept</span></code>, 在这种情况下程序都会终止.</p>
+<p>该 Boost.Scope 特性无法用 TS 作用域守护模拟 (除非用例恰好符合 <code class="computeroutput"><span class="identifier">scope_success</span></code>).</p>
+</div>
+</div>
+</div>
+<div class="copyright-footer">版权所有 © 2022-2024 Andrey Semashev<p>按 Boost 软件许可 1.0 版 (Boost Software License, Version 1.0) 分发. (随附文件 LICENSE_1_0.txt 或复制于 <a href="https://www.boost.org/LICENSE_1_0.txt" target="_top">https://www.boost.org/LICENSE_1_0.txt</a>).</p>
+</div>
+<hr>
+<div class="spirit-nav">
+<a accesskey="p" href="install_compat.html"><img src="../../../../../doc/src/images/prev.png" alt="上一页"></a><a accesskey="u" href="../index.html"><img src="../../../../../doc/src/images/up.png" alt="上一级"></a><a accesskey="h" href="../index.html"><img src="../../../../../doc/src/images/home.png" alt="首页"></a><a accesskey="n" href="unique_resource.html"><img src="../../../../../doc/src/images/next.png" alt="下一页"></a>
+</div>
+</body>
+</html>
