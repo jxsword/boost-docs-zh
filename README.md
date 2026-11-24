@@ -1,7 +1,7 @@
 # Boost C++ 库系统调研（中文）· 总索引与验收
 
 > 元数据
-> 生成日期：2026-11-14 ｜ 最后更新：2026-11-24（git 纳管 + Read the Docs 托管，DR-011）｜ 版本基线：**Boost 1.92.0（2026-11-14 冻结）**
+> 生成日期：2026-11-14 ｜ 最后更新：2026-11-24（git 纳管 + Read the Docs 上线核验，DR-011）｜ 版本基线：**Boost 1.92.0（2026-11-14 冻结）**
 > 调研分级：正式调研（research-workflow 全闸门）；总纲《00_需求计划总纲.md》为唯一详细规则来源（执行会话未改动总纲）。
 > 执行方式：P0–P8 逐阶段；P2/P4/P5/P6/P7 后台子代理并行 + P3 八批次翻译（全部落盘并独立校验后统一汇总）。
 
@@ -37,7 +37,7 @@
 | 库级进度账本 | [docs/translation_progress/progress.csv](docs/translation_progress/progress.csv) | 三账本 |
 | 批次账本 + 吞吐统计 | [work/ledger/](work/ledger/) | 三账本 |
 | **会话交接文档**（进度快照 + 操作手册 + 新会话启动提示词） | [docs/translation_progress/交接文档.md](docs/translation_progress/交接文档.md) | 跨会话续作 |
-| **中文镜像站入口**（site/zh/index.html，含翻译性质声明） | [site/zh/index.html](site/zh/index.html) ｜ **在线阅读**：<https://boost-docs-zh.readthedocs.io/>（若 RTD 导入时项目改名则同步调整） | S6 产出 / S7 托管 |
+| **中文镜像站入口**（site/zh/index.html，含翻译性质声明） | [site/zh/index.html](site/zh/index.html) ｜ **在线阅读**：<https://boost-docs-zh.readthedocs.io/>（已上线，2026-11-24 预览核验通过） | S6 产出 / S7 托管 |
 | **分层抽样回读报告**（2,624 页，三类缺陷计数与修复记录） | [docs/translation_progress/分层抽样回读报告.md](docs/translation_progress/分层抽样回读报告.md) | 第 5 道门禁 |
 
 ## 三、9 条验收清单（逐项对应 R1–R9）
@@ -84,13 +84,14 @@
   分层抽样回读 2,624 页（T1 10%/T2 5%/T3 2%），漏译 124、错译 2 全部修复，**术语违规 0（硬门禁）**。
 - **已知限制**：Antora 页内 JS（搜索/高亮）不汉化，站内搜索仍查英文索引；
   upstream=4,677 为上游既有缺陷与策略排除（example/、boost/ 源码树目录链接等），镜像如实保留。
-- **S7 托管发布（已完成 · 2026-11-24，DR-011）**：项目已纳入 git（GitHub `boost-docs-zh` 公开仓库，
-  site/zh 完整入库）；静态站托管于 Read the Docs（`.readthedocs.yaml` build.commands 直发，
-  push 后 webhook 自动重建）。1.93.0 起的增量维护另起决策（TODO ②类）。
+- **S7 托管发布（已完成并上线 · 2026-11-24，DR-011）**：项目已纳入 git（GitHub `boost-docs-zh` 公开仓库，
+  site/zh 完整入库）；静态站托管于 Read the Docs 并已核验上线：<https://boost-docs-zh.readthedocs.io/>
+  （`.readthedocs.yaml` build.commands 直发，push 后 webhook 自动重建）。1.93.0 起的增量维护另起决策（TODO ②类）。
 
 ### 在线阅读与本地预览（已核实：纯静态站）
 
-**在线阅读**：<https://boost-docs-zh.readthedocs.io/>（Read the Docs 托管，git push 自动重新渲染）。
+**在线阅读**：<https://boost-docs-zh.readthedocs.io/>（Read the Docs 托管，git push 自动重新渲染；
+2026-11-24 上线核验通过，渲染符合预期）。
 
 站点为纯静态 HTML + 相对链接（已核实无 fetch/XHR 调用，CSS/图片均为本地相对路径），
 `file://` 协议下浏览器可直接完整浏览：
